@@ -1,0 +1,2 @@
+# awesome-claude-plugins-stats
+/
