@@ -8,14 +8,14 @@
 | 2 | [payload](https://github.com/payloadcms/payload) | Payload is the open-source, fullstack Next.js framework, giving you instant backend superpowers. Get a full TypeScript backend and admin panel instantly. Use Payload as a headless CMS or for building powerful applications. | 38527 | 144 | 0 |
 | 3 | [claude-task-master](https://github.com/eyaltoledano/claude-task-master) | An AI-powered task-management system you can drop into Cursor, Lovable, Windsurf, Roo, and others. | 23427 | 141 | 0 |
 | 4 | [repomix](https://github.com/yamadashy/repomix) | 📦 Repomix is a powerful tool that packs your entire repository into a single, AI-friendly file. Perfect for when you need to feed your codebase to Large Language Models (LLMs) or other AI tools like Claude, ChatGPT, DeepSeek, Perplexity, Gemini, Gemma, Llama, Grok, and more. | 20034 | 52 | 0 |
-| 5 | [agents](https://github.com/wshobson/agents) | Intelligent automation and multi-agent orchestration for Claude Code | 19744 | 226 | 0 |
-| 6 | [skills](https://github.com/anthropics/skills) | Public repository for Skills | 15239 | 124 | 2 |
-| 7 | [chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp) | Chrome DevTools for coding agents | 13709 | 52 | 0 |
-| 8 | [claude-code-templates](https://github.com/davila7/claude-code-templates) | CLI tool for configuring and monitoring Claude Code | 10106 | 68 | 0 |
-| 9 | [claude-flow](https://github.com/ruvnet/claude-flow) | 🌊 The leading agent orchestration platform for Claude. Deploy intelligent multi-agent swarms, coordinate autonomous workflows, and build conversational AI systems. Features    enterprise-grade architecture, distributed swarm intelligence, RAG integration, and native Claude Code support via MCP protocol. Ranked #1 in agent-based frameworks. | 9529 | 124 | 1 |
-| 10 | [superpowers](https://github.com/obra/superpowers) | Claude Code superpowers: core skills library | 5825 | 73 | 0 |
+| 5 | [agents](https://github.com/wshobson/agents) | Intelligent automation and multi-agent orchestration for Claude Code | 19745 | 226 | 0 |
+| 6 | [skills](https://github.com/anthropics/skills) | Public repository for Skills | 15243 | 124 | 2 |
+| 7 | [chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp) | Chrome DevTools for coding agents | 13712 | 52 | 0 |
+| 8 | [claude-code-templates](https://github.com/davila7/claude-code-templates) | CLI tool for configuring and monitoring Claude Code | 10109 | 68 | 0 |
+| 9 | [claude-flow](https://github.com/ruvnet/claude-flow) | 🌊 The leading agent orchestration platform for Claude. Deploy intelligent multi-agent swarms, coordinate autonomous workflows, and build conversational AI systems. Features    enterprise-grade architecture, distributed swarm intelligence, RAG integration, and native Claude Code support via MCP protocol. Ranked #1 in agent-based frameworks. | 9530 | 124 | 1 |
+| 10 | [superpowers](https://github.com/obra/superpowers) | Claude Code superpowers: core skills library | 5827 | 73 | 0 |
 | 11 | [exa-mcp-server](https://github.com/exa-labs/exa-mcp-server) | Exa MCP for web search and web crawling! | 3177 | 17 | 1 |
-| 12 | [beads](https://github.com/steveyegge/beads) | Beads - A memory upgrade for your coding agent | 2358 | 26 | 0 |
+| 12 | [beads](https://github.com/steveyegge/beads) | Beads - A memory upgrade for your coding agent | 2361 | 26 | 0 |
 | 13 | [PRPs-agentic-eng](https://github.com/Wirasm/PRPs-agentic-eng) | Prompts, workflows and more for agentic engineering  | 1709 | 63 | 1 |
 | 14 | [dotai](https://github.com/udecode/dotai) | Context Manager for Claude Code Plugins + Codex + Cursor. | 1069 | 19 | 0 |
 | 15 | [InsForge](https://github.com/InsForge/InsForge) | InsForge is the Agent-Native Supabase Alternative. We are building the features of Supabase in an AI-native way, enabling AI agents to build and manage full-stack applications autonomously. | 845 | 20 | 0 |
@@ -26,11 +26,11 @@
 | 20 | [claude-code-settings](https://github.com/feiskyer/claude-code-settings) | Claude Code settings, commands and agents for vibe coding | 620 | 5 | 0 |
 | 21 | [every-marketplace](https://github.com/EveryInc/every-marketplace) | Official Every-Env plugin marketplace for Claude Code extensions | 492 | 15 | 0 |
 | 22 | [EffectPatterns](https://github.com/PaulJPhilp/EffectPatterns) | A community-driven knowledge base of practical patterns for Effect-TS. | 474 | 4 | 0 |
-| 23 | [awesome-claude-skills](https://github.com/ComposioHQ/awesome-claude-skills) | A curated list of awesome Claude Skills, resources, and tools for customizing Claude AI workflows | 372 | 23 | 0 |
+| 23 | [awesome-claude-skills](https://github.com/ComposioHQ/awesome-claude-skills) | A curated list of awesome Claude Skills, resources, and tools for customizing Claude AI workflows | 373 | 23 | 0 |
 | 24 | [claude-scientific-skills](https://github.com/K-Dense-AI/claude-scientific-skills) | A set of ready to use scientific skills for Claude | 330 | 4 | 0 |
 | 25 | [claude-mem](https://github.com/thedotmack/claude-mem) | A Claude Code plugin that automatically captures everything Claude does during your coding sessions, compresses it with AI (using Claude's agent-sdk), and injects relevant context back into future sessions. | 324 | 5 | 0 |
 | 26 | [ClaudeNightsWatch](https://github.com/aniketkarne/ClaudeNightsWatch) | Autonomous task execution system for Claude CLI that monitors your usage windows and executes predefined tasks automatically | 300 | 3 | 3 |
-| 27 | [rules](https://github.com/project-codeguard/rules) | Project CodeGuard is an AI model-agnostic security framework and ruleset that embeds secure-by-default practices into AI coding workflows (generation and review). It ships core security rules, translators for popular coding agents, and validators to test rule compliance. | 286 | 4 | 0 |
+| 27 | [rules](https://github.com/project-codeguard/rules) | Project CodeGuard is an AI model-agnostic security framework and ruleset that embeds secure-by-default practices into AI coding workflows (generation and review). It ships core security rules, translators for popular coding agents, and validators to test rule compliance. | 287 | 4 | 0 |
 | 28 | [docs](https://github.com/mintlify/docs) | Official Mintlify documentation | 276 | 3 | 0 |
 | 29 | [claude-code-plugins-plus](https://github.com/jeremylongshore/claude-code-plugins-plus) | Claude Code Plugins Hub — browse and install 227 plugins. Featuring Skills Powerkit - first Agent Skills plugin. | 267 | 5 | 0 |
 | 30 | [MyManus](https://github.com/emsi/MyManus) | 100% free agentic environment like Manus | 226 | 3 | 0 |
@@ -40,7 +40,7 @@
 | 34 | [cc-blueprint-toolkit](https://github.com/croffasia/cc-blueprint-toolkit) | 🏗️  Claude Code Plugin for smart blueprint-driven development | 139 | 2 | 2 |
 | 35 | [claude-code-marketplace](https://github.com/ananddtyagi/claude-code-marketplace) | Marketplace repo for Claude Code Plugins | 130 | 0 | 0 |
 | 36 | [claude-marketplace-elixir](https://github.com/bradleygolden/claude-marketplace-elixir) | Claude Marketplace for Elixir | 129 | 5 | 0 |
-| 37 | [edmunds-claude-code](https://github.com/edmund-io/edmunds-claude-code) |  | 118 | 5 | 1 |
+| 37 | [edmunds-claude-code](https://github.com/edmund-io/edmunds-claude-code) |  | 119 | 5 | 1 |
 | 38 | [claude-equity-research](https://github.com/quant-sentiment-ai/claude-equity-research) | 🔌 Claude Code Plugin for institutional-grade equity research.   Install with /plugin marketplace add. Generates professional   buy/sell recommendations with comprehensive fundamental   analysis, technical indicators, and risk assessment. Educational    use only - not financial advice. | 111 | 4 | 3 |
 | 39 | [sub-agents](https://github.com/Toskysun/sub-agents) | AI Sub-Agents Collection for Claude Code - AI智能代理集合 | 102 | 3 | 2 |
 | 40 | [agent-skill-creator](https://github.com/FrancyJGLisboa/agent-skill-creator) | Meta-skill that teaches Claude Code to create complete agents with Claude Skills in a fully autonomous way! | 99 | 3 | 1 |
