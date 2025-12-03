@@ -17,18 +17,31 @@ export default function Home() {
   }, []);
 
   return (
-    <main>
-      <h1>Welcome to the Dinosaur app</h1>
-      <p>Click on a dinosaur below to learn more.</p>
-      {dinosaurs.map((dinosaur: Dino) => {
-        return (
-          <Button key={dinosaur.name} asChild>
-            <Link href={`/${dinosaur.name.toLowerCase()}`}>
-              {dinosaur.name}
-            </Link>
-          </Button>
-        );
-      })}
+    <main className="flex min-h-screen flex-col items-center justify-center p-8">
+      <div className="w-full max-w-2xl space-y-8">
+        <div className="space-y-2 text-center">
+          <h1 className="text-4xl font-bold tracking-tight text-foreground">
+            Welcome to the Dinosaur App
+          </h1>
+          <p className="text-muted-foreground">
+            Click on a dinosaur below to learn more.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          {dinosaurs.map((dinosaur: Dino) => (
+            <Button
+              key={dinosaur.name}
+              asChild
+              variant="outline"
+              className="h-auto py-4 hover:bg-accent hover:text-accent-foreground transition-colors"
+            >
+              <Link href={`/${dinosaur.name.toLowerCase()}`}>
+                {dinosaur.name}
+              </Link>
+            </Button>
+          ))}
+        </div>
+      </div>
     </main>
   );
 }

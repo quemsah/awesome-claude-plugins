@@ -12,11 +12,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <head>
-        <link rel="stylesheet" href="https://demo-styles.deno.deno.net/styles.css" />
-      </head>
-      <body>
+    <html lang="en" className="dark">
+      <body className="min-h-screen">
         {children}
       </body>
     </html>
