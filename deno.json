@@ -17,6 +17,10 @@
         "install": "deno install --allow-scripts",
         "dev": "deno run -A --unstable-detect-cjs npm:next@latest dev",
         "build": "deno run -A --unstable-detect-cjs npm:next@latest build",
-        "start": "deno run -A --unstable-detect-cjs npm:next@latest start"
+        "start": "deno run -A --unstable-detect-cjs npm:next@latest start",
+        "lint": "deno run -A npm:eslint . --ext .ts,.tsx,.js,.jsx"
+    },
+    "imports": {
+        "@/": "./"
     }
 }

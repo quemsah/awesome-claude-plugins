@@ -6,6 +6,7 @@
     "npm:@types/react-dom@19": "19.2.3_@types+react@19.2.7",
     "npm:@types/react@19": "19.2.7",
     "npm:eslint-config-next@16.0.7": "16.0.7_eslint@9.39.1_typescript@5.9.3_eslint-plugin-import@2.32.0__eslint@9.39.1",
+    "npm:eslint@*": "9.39.1",
     "npm:eslint@9": "9.39.1",
     "npm:next@16.0.7": "16.0.7_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:next@latest": "16.0.7_react@19.2.0_react-dom@19.2.0__react@19.2.0",

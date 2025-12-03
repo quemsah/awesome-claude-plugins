@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Dino } from "../types";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 type RouteParams = { params: Promise<{ dinosaur: string }> };
 
@@ -21,7 +22,9 @@ export default function Dinosaur({ params }: RouteParams) {
         <main>
             <h1>{dinosaur.name}</h1>
             <p>{dinosaur.description}</p>
-            <Link href="/" className="btn-secondary">Back to all dinosaurs</Link>
+            <Button asChild variant="secondary">
+                <Link href="/">Back to all dinosaurs</Link>
+            </Button>
         </main>
     );
 }

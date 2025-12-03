@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Dino } from "./types";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 export default function Home() {
   const [dinosaurs, setDinosaurs] = useState<Dino[]>([]);
@@ -21,9 +22,11 @@ export default function Home() {
       <p>Click on a dinosaur below to learn more.</p>
       {dinosaurs.map((dinosaur: Dino) => {
         return (
-          <Link key={dinosaur.name} className="btn-primary" href={`/${dinosaur.name.toLowerCase()}`}>
-            {dinosaur.name}
-          </Link>
+          <Button key={dinosaur.name} asChild>
+            <Link href={`/${dinosaur.name.toLowerCase()}`}>
+              {dinosaur.name}
+            </Link>
+          </Button>
         );
       })}
     </main>
