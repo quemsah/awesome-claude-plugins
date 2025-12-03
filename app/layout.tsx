@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Dinosaur App",
+  title: "Dinosaur App (not really)",
   description: "Run Next.js with Deno",
 };
 

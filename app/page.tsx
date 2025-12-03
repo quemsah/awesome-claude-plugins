@@ -1,46 +1,53 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Dino } from "./types";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { Plugin } from "./types";
+import { PluginCard } from "@/components/PluginCard";
 
 export default function Home() {
-  const [dinosaurs, setDinosaurs] = useState<Dino[]>([]);
+  const [plugins, setPlugins] = useState<Plugin[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
-      const response = await fetch(`/api/dinosaurs`);
-      const allDinosaurs = await response.json() as Dino[];
-      setDinosaurs(allDinosaurs);
+      try {
+        const response = await fetch(`/api/plugins`);
+        const allPlugins = await response.json() as Plugin[];
+        setPlugins(allPlugins);
+      } catch (error) {
+        console.error("Failed to fetch plugins:", error);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      <div className="w-full max-w-2xl space-y-8">
-        <div className="space-y-2 text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-foreground">
-            Welcome to the Dinosaur App
+    <main className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="space-y-2 text-center mb-8">
+          <h1 className="text-4xl font-bold tracking-tight text-gray-900 dark:text-white">
+            Awesome Claude Plugins
           </h1>
-          <p className="text-muted-foreground">
-            Click on a dinosaur below to learn more.
+          <p className="text-gray-600 dark:text-gray-400">
+            Discover and explore Claude Code plugins from the community
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-500">
+            {plugins.length} plugins available
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          {dinosaurs.map((dinosaur: Dino) => (
-            <Button
-              key={dinosaur.name}
-              asChild
-              variant="outline"
-              className="h-auto py-4 hover:bg-accent hover:text-accent-foreground transition-colors"
-            >
-              <Link href={`/${dinosaur.name.toLowerCase()}`}>
-                {dinosaur.name}
-              </Link>
-            </Button>
-          ))}
-        </div>
+
+        {loading ? (
+          <div className="flex justify-center items-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {plugins.map((plugin) => (
+              <PluginCard key={plugin.id} plugin={plugin} />
+            ))}
+          </div>
+        )}
       </div>
     </main>
   );

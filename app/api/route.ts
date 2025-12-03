@@ -1,3 +1,3 @@
 export function GET() {
-    return Response.json("welcome to the dinosaur API");
+    return Response.json("welcome to the API");
 }
