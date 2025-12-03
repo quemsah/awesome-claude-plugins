@@ -2,16 +2,17 @@
   "version": "5",
   "specifiers": {
     "npm:@tailwindcss/postcss@4": "4.1.17",
-    "npm:@types/node@20": "20.19.24",
-    "npm:@types/react-dom@19": "19.2.3_@types+react@19.2.7",
-    "npm:@types/react@19": "19.2.7",
-    "npm:eslint-config-next@16.0.7": "16.0.7_eslint@9.39.1_typescript@5.9.3_eslint-plugin-import@2.32.0__eslint@9.39.1",
+    "npm:@types/node@20": "20.19.1",
+    "npm:@types/react-dom@19": "19.1.5_@types+react@19.1.4",
+    "npm:@types/react@19": "19.1.4",
+    "npm:eslint-config-next@16.0.7": "16.0.7_eslint@9.39.1_typescript@5.8.3_eslint-plugin-import@2.32.0__eslint@9.39.1",
     "npm:eslint@9": "9.39.1",
     "npm:next@16.0.7": "16.0.7_react@19.2.0_react-dom@19.2.0__react@19.2.0",
+    "npm:next@latest": "16.0.7_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:react-dom@19.2.0": "19.2.0_react@19.2.0",
     "npm:react@19.2.0": "19.2.0",
     "npm:tailwindcss@4": "4.1.17",
-    "npm:typescript@5": "5.9.3"
+    "npm:typescript@5": "5.8.3"
   },
   "npm": {
     "@alloc/quick-lru@5.2.0": {
@@ -610,25 +611,25 @@
     "@types/json5@0.0.29": {
       "integrity": "sha512-dRLjCWHYg4oaA77cxO64oO+7JwCwnIzkZPdrrC71jQmQtlhM556pwKo5bUzqvZndkVbeFLIIi+9TC40JNF5hNQ=="
     },
-    "@types/node@20.19.24": {
-      "integrity": "sha512-FE5u0ezmi6y9OZEzlJfg37mqqf6ZDSF2V/NLjUyGrR9uTZ7Sb9F7bLNZ03S4XVUNRWGA7Ck4c1kK+YnuWjl+DA==",
+    "@types/node@20.19.1": {
+      "integrity": "sha512-jJD50LtlD2dodAEO653i3YF04NWak6jN3ky+Ri3Em3mGR39/glWiboM/IePaRbgwSfqM1TpGXfAg8ohn/4dTgA==",
       "dependencies": [
         "undici-types"
       ]
     },
-    "@types/react-dom@19.2.3_@types+react@19.2.7": {
-      "integrity": "sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==",
+    "@types/react-dom@19.1.5_@types+react@19.1.4": {
+      "integrity": "sha512-CMCjrWucUBZvohgZxkjd6S9h0nZxXjzus6yDfUb+xLxYM7VvjKNH1tQrE9GWLql1XoOP4/Ds3bwFqShHUYraGg==",
       "dependencies": [
         "@types/react"
       ]
     },
-    "@types/react@19.2.7": {
-      "integrity": "sha512-MWtvHrGZLFttgeEj28VXHxpmwYbor/ATPYbBfSFZEIRK0ecCFLl2Qo55z52Hss+UV9CRN7trSeq1zbgx7YDWWg==",
+    "@types/react@19.1.4": {
+      "integrity": "sha512-EB1yiiYdvySuIITtD5lhW4yPyJ31RkJkkDw794LaQYrxCSaQV/47y5o1FMC4zF9ZyjUjzJMZwbovEnT5yHTW6g==",
       "dependencies": [
         "csstype"
       ]
     },
-    "@typescript-eslint/eslint-plugin@8.48.0_@typescript-eslint+parser@8.48.0__eslint@9.39.1__typescript@5.9.3_eslint@9.39.1_typescript@5.9.3": {
+    "@typescript-eslint/eslint-plugin@8.48.0_@typescript-eslint+parser@8.48.0__eslint@9.39.1__typescript@5.8.3_eslint@9.39.1_typescript@5.8.3": {
       "integrity": "sha512-XxXP5tL1txl13YFtrECECQYeZjBZad4fyd3cFV4a19LkAY/bIp9fev3US4S5fDVV2JaYFiKAZ/GRTOLer+mbyQ==",
       "dependencies": [
         "@eslint-community/regexpp",
@@ -645,7 +646,7 @@
         "typescript"
       ]
     },
-    "@typescript-eslint/parser@8.48.0_eslint@9.39.1_typescript@5.9.3": {
+    "@typescript-eslint/parser@8.48.0_eslint@9.39.1_typescript@5.8.3": {
       "integrity": "sha512-jCzKdm/QK0Kg4V4IK/oMlRZlY+QOcdjv89U2NgKHZk1CYTj82/RVSx1mV/0gqCVMJ/DA+Zf/S4NBWNF8GQ+eqQ==",
       "dependencies": [
         "@typescript-eslint/scope-manager",
@@ -657,7 +658,7 @@
         "typescript"
       ]
     },
-    "@typescript-eslint/project-service@8.48.0_typescript@5.9.3": {
+    "@typescript-eslint/project-service@8.48.0_typescript@5.8.3": {
       "integrity": "sha512-Ne4CTZyRh1BecBf84siv42wv5vQvVmgtk8AuiEffKTUo3DrBaGYZueJSxxBZ8fjk/N3DrgChH4TOdIOwOwiqqw==",
       "dependencies": [
         "@typescript-eslint/tsconfig-utils",
@@ -673,13 +674,13 @@
         "@typescript-eslint/visitor-keys"
       ]
     },
-    "@typescript-eslint/tsconfig-utils@8.48.0_typescript@5.9.3": {
+    "@typescript-eslint/tsconfig-utils@8.48.0_typescript@5.8.3": {
       "integrity": "sha512-WNebjBdFdyu10sR1M4OXTt2OkMd5KWIL+LLfeH9KhgP+jzfDV/LI3eXzwJ1s9+Yc0Kzo2fQCdY/OpdusCMmh6w==",
       "dependencies": [
         "typescript"
       ]
     },
-    "@typescript-eslint/type-utils@8.48.0_eslint@9.39.1_typescript@5.9.3": {
+    "@typescript-eslint/type-utils@8.48.0_eslint@9.39.1_typescript@5.8.3": {
       "integrity": "sha512-zbeVaVqeXhhab6QNEKfK96Xyc7UQuoFWERhEnj3mLVnUWrQnv15cJNseUni7f3g557gm0e46LZ6IJ4NJVOgOpw==",
       "dependencies": [
         "@typescript-eslint/types",
@@ -694,7 +695,7 @@
     "@typescript-eslint/types@8.48.0": {
       "integrity": "sha512-cQMcGQQH7kwKoVswD1xdOytxQR60MWKM1di26xSUtxehaDs/32Zpqsu5WJlXTtTTqyAVK8R7hvsUnIXRS+bjvA=="
     },
-    "@typescript-eslint/typescript-estree@8.48.0_typescript@5.9.3": {
+    "@typescript-eslint/typescript-estree@8.48.0_typescript@5.8.3": {
       "integrity": "sha512-ljHab1CSO4rGrQIAyizUS6UGHHCiAYhbfcIZ1zVJr5nMryxlXMVWS3duFPSKvSUbFPwkXMFk1k0EMIjub4sRRQ==",
       "dependencies": [
         "@typescript-eslint/project-service",
@@ -709,7 +710,7 @@
         "typescript"
       ]
     },
-    "@typescript-eslint/utils@8.48.0_eslint@9.39.1_typescript@5.9.3": {
+    "@typescript-eslint/utils@8.48.0_eslint@9.39.1_typescript@5.8.3": {
       "integrity": "sha512-yTJO1XuGxCsSfIVt1+1UrLHtue8xz16V8apzPYI06W0HbEbEWHxHXgZaAgavIkoh+GeV6hKKd5jm0sS6OYxWXQ==",
       "dependencies": [
         "@eslint-community/eslint-utils",
@@ -1055,8 +1056,8 @@
         "which"
       ]
     },
-    "csstype@3.2.3": {
-      "integrity": "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ=="
+    "csstype@3.1.3": {
+      "integrity": "sha512-M1uQkMl8rQK/szD0LNhtqxIPLpimGm8sOBwU7lLnCpSbTyY3yeU1Vc7l4KT5zT4s/yOxHH5O7tIuuLOCnLADRw=="
     },
     "damerau-levenshtein@1.0.8": {
       "integrity": "sha512-sdQSFB7+llfUcQHUQO3+B8ERRj0Oa4w9POWMI/puGtuf7gFywGmkaLCElnudfTiKZV+NvHqL0ifzdrI8Ro7ESA=="
@@ -1267,7 +1268,7 @@
     "escape-string-regexp@4.0.0": {
       "integrity": "sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA=="
     },
-    "eslint-config-next@16.0.7_eslint@9.39.1_typescript@5.9.3_eslint-plugin-import@2.32.0__eslint@9.39.1": {
+    "eslint-config-next@16.0.7_eslint@9.39.1_typescript@5.8.3_eslint-plugin-import@2.32.0__eslint@9.39.1": {
       "integrity": "sha512-WubFGLFHfk2KivkdRGfx6cGSFhaQqhERRfyO8BRx+qiGPGp7WLKcPvYC4mdx1z3VhVRcrfFzczjjTrbJZOpnEQ==",
       "dependencies": [
         "@next/eslint-plugin-next",
@@ -2595,7 +2596,7 @@
         "is-number"
       ]
     },
-    "ts-api-utils@2.1.0_typescript@5.9.3": {
+    "ts-api-utils@2.1.0_typescript@5.8.3": {
       "integrity": "sha512-CUgTZL1irw8u29bzrOD/nH85jqyc74D6SshFgujOIA7osm2Rz7dYH77agkx7H4FBNxDq7Cjf+IjaX/8zwFW+ZQ==",
       "dependencies": [
         "typescript"
@@ -2660,7 +2661,7 @@
         "reflect.getprototypeof"
       ]
     },
-    "typescript-eslint@8.48.0_eslint@9.39.1_typescript@5.9.3_@typescript-eslint+parser@8.48.0__eslint@9.39.1__typescript@5.9.3": {
+    "typescript-eslint@8.48.0_eslint@9.39.1_typescript@5.8.3_@typescript-eslint+parser@8.48.0__eslint@9.39.1__typescript@5.8.3": {
       "integrity": "sha512-fcKOvQD9GUn3Xw63EgiDqhvWJ5jsyZUaekl3KVpGsDJnN46WJTe3jWxtQP9lMZm1LJNkFLlTaWAxK2vUQR+cqw==",
       "dependencies": [
         "@typescript-eslint/eslint-plugin",
@@ -2671,8 +2672,8 @@
         "typescript"
       ]
     },
-    "typescript@5.9.3": {
-      "integrity": "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==",
+    "typescript@5.8.3": {
+      "integrity": "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ==",
       "bin": true
     },
     "unbox-primitive@1.1.0": {

@@ -1,0 +1,21 @@
+{
+    "nodeModulesDir": "auto",
+    "unstable": [
+        "unsafe-proto",
+        "sloppy-imports"
+    ],
+    "compilerOptions": {
+        "lib": [
+            "dom",
+            "dom.iterable",
+            "esnext"
+        ],
+        "strict": true,
+        "jsx": "preserve"
+    },
+    "tasks": {
+        "dev": "deno run -A --unstable-detect-cjs npm:next@latest dev",
+        "build": "deno run -A --unstable-detect-cjs npm:next@latest build",
+        "start": "deno run -A --unstable-detect-cjs npm:next@latest start"
+    }
+}
