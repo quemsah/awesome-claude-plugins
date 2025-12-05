@@ -9,8 +9,10 @@
     "npm:@types/node@20": "20.19.25",
     "npm:@types/react-dom@19": "19.2.3_@types+react@19.2.7",
     "npm:@types/react@19": "19.2.7",
+    "npm:class-variance-authority@~0.7.1": "0.7.1",
     "npm:clsx@^2.1.1": "2.1.1",
     "npm:next@16.0.7": "16.0.7_react@19.2.0_react-dom@19.2.0__react@19.2.0",
+    "npm:next@latest": "16.0.7_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:react-dom@19.2.0": "19.2.0_react@19.2.0",
     "npm:react@19.2.0": "19.2.0",
     "npm:tailwind-merge@^3.4.0": "3.4.0",
@@ -539,6 +541,12 @@
     "caniuse-lite@1.0.30001759": {
       "integrity": "sha512-Pzfx9fOKoKvevQf8oCXoyNRQ5QyxJj+3O0Rqx2V5oxT61KGx8+n6hV/IUyJeifUci2clnmmKVpvtiqRzgiWjSw=="
     },
+    "class-variance-authority@0.7.1": {
+      "integrity": "sha512-Ka+9Trutv7G8M6WT6SeiRWz792K5qEqIGEGzXKhAE6xOWAY6pPH8U+9IY3oCMv6kqTmLsv7Xh/2w2RigkePMsg==",
+      "dependencies": [
+        "clsx"
+      ]
+    },
     "client-only@0.0.1": {
       "integrity": "sha512-IV3Ou0jSMzZrd3pZ48nLkT9DA7Ag1pnPzaiQhpW7c3RbcqqzvzzVu+L8gfqMp/8IM2MQtSiqaCxrrcfu8I8rMA=="
     },
@@ -791,6 +799,7 @@
         "npm:@types/node@20",
         "npm:@types/react-dom@19",
         "npm:@types/react@19",
+        "npm:class-variance-authority@~0.7.1",
         "npm:clsx@^2.1.1",
         "npm:next@16.0.7",
         "npm:react-dom@19.2.0",
