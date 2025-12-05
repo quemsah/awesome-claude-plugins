@@ -1,34 +1,51 @@
 {
 	"$schema": "https://biomejs.dev/schemas/2.3.8/schema.json",
-	"vcs": {
-		"enabled": true,
-		"clientKind": "git",
-		"useIgnoreFile": true
-	},
-	"files": {
-		"ignoreUnknown": false
-	},
+	"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+	"files": { "ignoreUnknown": false },
 	"formatter": {
 		"enabled": true,
-		"indentStyle": "tab"
+		"formatWithErrors": false,
+		"indentStyle": "space",
+		"indentWidth": 2,
+		"lineEnding": "lf",
+		"lineWidth": 140,
+		"attributePosition": "auto",
+		"bracketSameLine": false,
+		"bracketSpacing": true,
+		"expand": "auto",
+		"useEditorconfig": true
 	},
-	"linter": {
-		"enabled": true,
-		"rules": {
-			"recommended": true
-		}
-	},
+	"linter": { "enabled": true, "rules": { "recommended": true } },
 	"javascript": {
 		"formatter": {
-			"quoteStyle": "double"
+			"jsxQuoteStyle": "double",
+			"quoteProperties": "asNeeded",
+			"trailingCommas": "es5",
+			"semicolons": "asNeeded",
+			"arrowParentheses": "always",
+			"bracketSameLine": false,
+			"quoteStyle": "single",
+			"attributePosition": "auto",
+			"bracketSpacing": true
 		}
 	},
+	"html": {
+		"formatter": {
+			"indentScriptAndStyle": false,
+			"selfCloseVoidElements": "always"
+		}
+	},
+	"overrides": [
+		{ "includes": ["*.js"] },
+		{ "includes": ["*.ts"] },
+		{ "includes": ["*.json", ".prettierrc", ".stylelintrc"] },
+		{ "includes": ["*.less"] },
+		{ "includes": ["*.scss"] },
+		{ "includes": ["*.html"] },
+		{ "includes": ["*.component.html", "*.template.html"] }
+	],
 	"assist": {
 		"enabled": true,
-		"actions": {
-			"source": {
-				"organizeImports": "on"
-			}
-		}
+		"actions": { "source": { "organizeImports": "on" } }
 	}
 }
