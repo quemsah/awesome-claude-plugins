@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import pluginsData from "@/data/plugins.json" with { type: "json" };
 import { Plugin } from "../../types.ts";
 
-export async function GET() {
+export function GET() {
   // Extract the plugin data from the json structure
   const plugins: Plugin[] = pluginsData.map((item: { json: Plugin }) => item.json);
   
