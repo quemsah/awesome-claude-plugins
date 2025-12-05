@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plugin } from "./types";
-import { PluginCard } from "@/components/PluginCard";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Plugin } from "./types.ts";
+import { PluginCard } from "../components/PluginCard.tsx";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card.tsx";
+import { Separator } from "../components/ui/separator.tsx";
+import { Skeleton } from "../components/ui/skeleton.tsx";
 
 export default function Home() {
   const [plugins, setPlugins] = useState<Plugin[]>([]);
