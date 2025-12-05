@@ -10,6 +10,7 @@
     "npm:@types/react@19": "19.2.7",
     "npm:clsx@^2.1.1": "2.1.1",
     "npm:eslint-config-next@16.0.7": "16.0.7_eslint@9.39.1_typescript@5.9.3_eslint-plugin-import@2.32.0__eslint@9.39.1",
+    "npm:eslint-config-prettier@*": "10.1.8_eslint@9.39.1",
     "npm:eslint@*": "9.39.1",
     "npm:eslint@9": "9.39.1",
     "npm:next@16.0.7": "16.0.7_react@19.2.0_react-dom@19.2.0__react@19.2.0",
@@ -1403,6 +1404,13 @@
       "optionalPeers": [
         "typescript"
       ]
+    },
+    "eslint-config-prettier@10.1.8_eslint@9.39.1": {
+      "integrity": "sha512-82GZUjRS0p/jganf6q1rEO25VSoHH0hKPCTrgillPjdI/3bgBhAE1QzHrHTizjpRvy6pGAvKjDJtk2pF9NDq8w==",
+      "dependencies": [
+        "eslint"
+      ],
+      "bin": true
     },
     "eslint-import-resolver-node@0.3.9": {
       "integrity": "sha512-WFj2isz22JahUv+B788TlO3N6zL3nNJGU8CcZbPZvVEkBPaJdCV4vy5wyghty5ROFbCRnm132v8BScu5/1BQ8g==",
@@ -2933,6 +2941,9 @@
     }
   },
   "workspace": {
+    "dependencies": [
+      "npm:eslint-config-prettier@*"
+    ],
     "packageJson": {
       "dependencies": [
         "npm:@radix-ui/react-avatar@^1.1.11",
