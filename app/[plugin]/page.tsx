@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, use } from 'react'
-import { Plugin } from '../types.ts'
+import type { Plugin } from '../types.ts'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card.tsx'
 import { Button } from '../../components/ui/button.tsx'

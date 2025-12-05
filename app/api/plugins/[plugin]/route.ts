@@ -1,5 +1,5 @@
 import pluginsData from '@/data/plugins.json' with { type: 'json' }
-import { Plugin } from '../../../types.ts'
+import type { Plugin } from '../../../types.ts'
 
 type RouteParams = { params: Promise<{ plugin: string }> }
 

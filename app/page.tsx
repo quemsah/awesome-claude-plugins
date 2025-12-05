@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plugin } from './types.ts'
+import type { Plugin } from './types.ts'
 import { PluginCard } from '../components/PluginCard.tsx'
 import { Card, CardContent, CardHeader } from '../components/ui/card.tsx'
 import { Separator } from '../components/ui/separator.tsx'
