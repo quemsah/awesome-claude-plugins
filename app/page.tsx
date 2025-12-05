@@ -1,45 +1,41 @@
-"use client";
+'use client'
 
-import { useEffect, useState } from "react";
-import { Plugin } from "./types.ts";
-import { PluginCard } from "../components/PluginCard.tsx";
-import { Card, CardContent, CardHeader } from "../components/ui/card.tsx";
-import { Separator } from "../components/ui/separator.tsx";
-import { Skeleton } from "../components/ui/skeleton.tsx";
+import { useEffect, useState } from 'react'
+import { Plugin } from './types.ts'
+import { PluginCard } from '../components/PluginCard.tsx'
+import { Card, CardContent, CardHeader } from '../components/ui/card.tsx'
+import { Separator } from '../components/ui/separator.tsx'
+import { Skeleton } from '../components/ui/skeleton.tsx'
 
 export default function Home() {
-  const [plugins, setPlugins] = useState<Plugin[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [plugins, setPlugins] = useState<Plugin[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    (async () => {
+    ;(async () => {
       try {
-        const response = await fetch(`/api/plugins`);
-        const allPlugins = await response.json() as Plugin[];
-        setPlugins(allPlugins);
+        const response = await fetch(`/api/plugins`)
+        const allPlugins = (await response.json()) as Plugin[]
+        setPlugins(allPlugins)
       } catch (error) {
-        console.error("Failed to fetch plugins:", error);
+        console.error('Failed to fetch plugins:', error)
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
-    })();
-  }, []);
+    })()
+  }, [])
 
   if (loading) {
     return (
       <main className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
           <div className="space-y-2 text-center mb-8">
-            <h1 className="text-4xl font-bold tracking-tight text-foreground">
-              Awesome Claude Plugins
-            </h1>
-            <p className="text-muted-foreground">
-              Discover and explore Claude Code plugins from the community
-            </p>
+            <h1 className="text-4xl font-bold tracking-tight text-foreground">Awesome Claude Plugins</h1>
+            <p className="text-muted-foreground">Discover and explore Claude Code plugins from the community</p>
           </div>
-          
+
           <Separator className="mb-8" />
-          
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 8 }).map((_, i) => (
               <Card key={i} className="h-full">
@@ -60,22 +56,16 @@ export default function Home() {
           </div>
         </div>
       </main>
-    );
+    )
   }
 
   return (
     <main className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
         <div className="space-y-2 text-center mb-8">
-          <h1 className="text-4xl font-bold tracking-tight text-foreground">
-            Awesome Claude Plugins
-          </h1>
-          <p className="text-muted-foreground">
-            Discover and explore Claude Code plugins from the community
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {plugins.length} plugins available
-          </p>
+          <h1 className="text-4xl font-bold tracking-tight text-foreground">Awesome Claude Plugins</h1>
+          <p className="text-muted-foreground">Discover and explore Claude Code plugins from the community</p>
+          <p className="text-sm text-muted-foreground">{plugins.length} plugins available</p>
         </div>
 
         <Separator className="mb-8" />
@@ -95,5 +85,5 @@ export default function Home() {
         )}
       </div>
     </main>
-  );
+  )
 }

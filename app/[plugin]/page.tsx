@@ -1,39 +1,39 @@
-"use client";
+'use client'
 
-import { useEffect, useState, use } from "react";
-import { Plugin } from "../types.ts";
-import Link from "next/link";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card.tsx";
-import { Button } from "../../components/ui/button.tsx";
-import { Badge } from "../../components/ui/badge.tsx";
-import { Separator } from "../../components/ui/separator.tsx";
-import { StarIcon, ForkIcon, EyeIcon, ExternalLinkIcon } from "../../components/Icons.tsx";
+import { useEffect, useState, use } from 'react'
+import { Plugin } from '../types.ts'
+import Link from 'next/link'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card.tsx'
+import { Button } from '../../components/ui/button.tsx'
+import { Badge } from '../../components/ui/badge.tsx'
+import { Separator } from '../../components/ui/separator.tsx'
+import { StarIcon, ForkIcon, EyeIcon, ExternalLinkIcon } from '../../components/Icons.tsx'
 
-type RouteParams = { params: Promise<{ plugin: string }> };
+type RouteParams = { params: Promise<{ plugin: string }> }
 
 export default function PluginPage({ params }: RouteParams) {
-  const resolvedParams = use(params);
-  const [plugin, setPlugin] = useState<Plugin | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const resolvedParams = use(params)
+  const [plugin, setPlugin] = useState<Plugin | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    (async () => {
+    ;(async () => {
       try {
-        const resp = await fetch(`/api/plugins/${resolvedParams.plugin}`);
+        const resp = await fetch(`/api/plugins/${resolvedParams.plugin}`)
         if (!resp.ok) {
-          setError("Plugin not found");
-          return;
+          setError('Plugin not found')
+          return
         }
-        const data = await resp.json() as Plugin;
-        setPlugin(data);
+        const data = (await resp.json()) as Plugin
+        setPlugin(data)
       } catch {
-        setError("Failed to load plugin");
+        setError('Failed to load plugin')
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
-    })();
-  }, [resolvedParams.plugin]);
+    })()
+  }, [resolvedParams.plugin])
 
   if (loading) {
     return (
@@ -43,7 +43,7 @@ export default function PluginPage({ params }: RouteParams) {
           <p className="text-muted-foreground mt-2">Loading plugin...</p>
         </div>
       </main>
-    );
+    )
   }
 
   if (error || !plugin) {
@@ -51,7 +51,7 @@ export default function PluginPage({ params }: RouteParams) {
       <main className="min-h-screen bg-background flex items-center justify-center">
         <Card className="text-center p-8">
           <CardHeader>
-            <CardTitle>{error || "Plugin not found"}</CardTitle>
+            <CardTitle>{error || 'Plugin not found'}</CardTitle>
           </CardHeader>
           <CardContent>
             <Button asChild>
@@ -60,17 +60,17 @@ export default function PluginPage({ params }: RouteParams) {
           </CardContent>
         </Card>
       </main>
-    );
+    )
   }
 
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return "Unknown";
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  };
+    if (!dateString) return 'Unknown'
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })
+  }
 
   return (
     <main className="min-h-screen bg-background">
@@ -86,7 +86,7 @@ export default function PluginPage({ params }: RouteParams) {
                 <CardTitle className="text-3xl mb-2">{plugin.repo_name}</CardTitle>
                 <CardDescription className="text-lg">
                   <a
-                    href={plugin.owner_url || "#"}
+                    href={plugin.owner_url || '#'}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="hover:text-primary transition-colors"
@@ -96,11 +96,7 @@ export default function PluginPage({ params }: RouteParams) {
                 </CardDescription>
               </div>
               <Button asChild>
-                <a
-                  href={plugin.html_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
+                <a href={plugin.html_url} target="_blank" rel="noopener noreferrer">
                   <ExternalLinkIcon />
                   View on GitHub
                 </a>
@@ -109,11 +105,7 @@ export default function PluginPage({ params }: RouteParams) {
           </CardHeader>
 
           <CardContent className="p-0">
-            {plugin.description && (
-              <p className="text-lg mb-6 text-muted-foreground">
-                {plugin.description}
-              </p>
-            )}
+            {plugin.description && <p className="text-lg mb-6 text-muted-foreground">{plugin.description}</p>}
 
             <div className="flex flex-wrap gap-4 mb-6">
               <Badge variant="secondary" className="gap-2">
@@ -149,5 +141,5 @@ export default function PluginPage({ params }: RouteParams) {
         </Card>
       </div>
     </main>
-  );
+  )
 }
