@@ -21,7 +21,6 @@
         "lint": "deno lint --fix; deno run -A npm:eslint . --ext .ts,.tsx,.js,.jsx --fix"
     },
     "imports": {
-        "@/": "./",
-        "eslint-config-prettier/flat": "npm:eslint-config-prettier/flat"
+        "@/": "./"
     }
 }
