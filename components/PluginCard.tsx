@@ -29,7 +29,6 @@ export function PluginCard({ plugin }: PluginCardProps) {
               <span className="text-sm">{plugin.forks_count?.toLocaleString() ?? 0}</span>
             </div>
           </div>
-          <Badge variant="secondary">Plugin</Badge>
         </div>
         <div className="mt-4">
           <a href={`/${plugin.owner}/${plugin.repo_name}`} className="text-primary hover:underline">
