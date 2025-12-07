@@ -15,6 +15,8 @@
     "npm:@types/react@19": "19.2.7",
     "npm:class-variance-authority@~0.7.1": "0.7.1",
     "npm:clsx@^2.1.1": "2.1.1",
+    "npm:husky@*": "9.1.7",
+    "npm:husky@^9.1.7": "9.1.7",
     "npm:next-themes@0.4.6": "0.4.6_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:next@16.0.7": "16.0.7_react@19.2.0_react-dom@19.2.0__react@19.2.0",
     "npm:next@latest": "16.0.7_react@19.2.0_react-dom@19.2.0__react@19.2.0",
@@ -956,6 +958,10 @@
     "graceful-fs@4.2.11": {
       "integrity": "sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ=="
     },
+    "husky@9.1.7": {
+      "integrity": "sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA==",
+      "bin": true
+    },
     "jiti@2.6.1": {
       "integrity": "sha512-ekilCSN1jwRvIbgeg/57YFh8qQDNbwDb9xT/qu2DAHbFFZUicIl4ygVaAvzveMhMVr3LnpSKTNnwt8PoOfmKhQ==",
       "bin": true
@@ -1262,6 +1268,7 @@
         "npm:@types/react@19",
         "npm:class-variance-authority@~0.7.1",
         "npm:clsx@^2.1.1",
+        "npm:husky@^9.1.7",
         "npm:next-themes@0.4.6",
         "npm:next@16.0.7",
         "npm:react-dom@19.2.0",
