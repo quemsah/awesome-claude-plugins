@@ -1,0 +1,20 @@
+{
+  "nodeModulesDir": "auto",
+  "unstable": ["unsafe-proto", "sloppy-imports"],
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "strict": true,
+    "jsx": "preserve"
+  },
+  "tasks": {
+    "install": "deno install --allow-scripts",
+    "dev": "deno run -A --unstable-detect-cjs npm:next@latest dev",
+    "build": "deno run -A --unstable-detect-cjs npm:next@latest build",
+    "start": "deno run -A --unstable-detect-cjs npm:next@latest start",
+    "style": "deno run -A npm:@biomejs/biome format --write .; deno lint --fix; deno run -A npm:@biomejs/biome lint --write ."
+  },
+  "imports": {
+    "@/": "./",
+    "@octokit/openapi-types": "npm:@octokit/openapi-types@^20.0.0"
+  }
+}
