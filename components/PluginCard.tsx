@@ -1,6 +1,5 @@
 import type { Plugin } from '../app/types/plugin.type.ts'
-import { ForkIcon, StarIcon } from './icons.tsx'
-import { Badge } from './ui/badge.tsx'
+import { ForkIcon, StarIcon } from './Icons.tsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card.tsx'
 
 interface PluginCardProps {

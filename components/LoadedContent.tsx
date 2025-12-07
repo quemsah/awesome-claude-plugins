@@ -1,5 +1,5 @@
 import type { Plugin } from '../app/types/plugin.type.ts'
-import { PluginCard } from './plugin-card.tsx'
+import { PluginCard } from './PluginCard.tsx'
 import { Card, CardContent } from './ui/card.tsx'
 
 interface LoadedContentProps {

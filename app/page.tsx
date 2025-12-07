@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Header } from '../components/header.tsx'
-import { LoadedContent } from '../components/loaded-content.tsx'
-import { LoadingContent } from '../components/loading-content.tsx'
-import { TitleSection } from '../components/title-section.tsx'
+import { Header } from '../components/Header.tsx'
+import { LoadedContent } from '../components/LoadedContent.tsx'
+import { LoadingContent } from '../components/LoadingContent.tsx'
+import { TitleSection } from '../components/TitleSection.tsx'
 import type { Plugin } from './types/plugin.type.ts'
 
 export default function Home() {

@@ -3,8 +3,8 @@
 import type { components } from '@octokit/openapi-types'
 import Link from 'next/link'
 import { use, useEffect, useState } from 'react'
-import { Header } from '../../components/header.tsx'
-import { CodeIcon, ExternalLinkIcon, EyeIcon, ForkIcon, IssueIcon, LicenseIcon, StarIcon } from '../../components/icons.tsx'
+import { Header } from '../../components/Header.tsx'
+import { CodeIcon, ExternalLinkIcon, EyeIcon, ForkIcon, IssueIcon, LicenseIcon, StarIcon } from '../../components/Icons.tsx'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar.tsx'
 import { Badge } from '../../components/ui/badge.tsx'
 import { Button } from '../../components/ui/button.tsx'
@@ -93,128 +93,127 @@ export default function PluginPage({ params }: RouteParams) {
       <Header />
       <main className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <Button variant="ghost" asChild className="mb-6">
-          <Link href="/">← Back to all plugins</Link>
-        </Button>
+          <Button variant="ghost" asChild className="mb-6">
+            <Link href="/">← Back to all plugins</Link>
+          </Button>
 
-        <Card className="p-8">
-          <CardHeader className="p-0 mb-6">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <Avatar className="h-16 w-16">
-                  <AvatarImage src={plugin.owner.avatar_url} alt={plugin.owner.login} />
-                  <AvatarFallback>{plugin.owner.login.slice(0, 2).toUpperCase()}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <CardTitle className="text-3xl mb-2">{plugin.name}</CardTitle>
-                  <CardDescription className="text-lg">
-                    <a
-                      href={plugin.owner.html_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:text-primary transition-colors"
-                    >
-                      by {plugin.owner.login}
-                    </a>
-                  </CardDescription>
+          <Card className="p-8">
+            <CardHeader className="p-0 mb-6">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <Avatar className="h-16 w-16">
+                    <AvatarImage src={plugin.owner.avatar_url} alt={plugin.owner.login} />
+                    <AvatarFallback>{plugin.owner.login.slice(0, 2).toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <CardTitle className="text-3xl mb-2">{plugin.name}</CardTitle>
+                    <CardDescription className="text-lg">
+                      <a
+                        href={plugin.owner.html_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:text-primary transition-colors"
+                      >
+                        by {plugin.owner.login}
+                      </a>
+                    </CardDescription>
+                  </div>
                 </div>
-              </div>
-              <div className="flex gap-2">
-                {plugin.homepage && (
-                  <Button variant="outline" asChild>
-                    <a href={plugin.homepage} target="_blank" rel="noopener noreferrer">
+                <div className="flex gap-2">
+                  {plugin.homepage && (
+                    <Button variant="outline" asChild>
+                      <a href={plugin.homepage} target="_blank" rel="noopener noreferrer">
+                        <ExternalLinkIcon />
+                        Homepage
+                      </a>
+                    </Button>
+                  )}
+                  <Button asChild>
+                    <a href={plugin.html_url} target="_blank" rel="noopener noreferrer">
                       <ExternalLinkIcon />
-                      Homepage
+                      View on GitHub
                     </a>
                   </Button>
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-0">
+              {plugin.description && <p className="text-lg mb-6 text-muted-foreground">{plugin.description}</p>}
+
+              <div className="flex flex-wrap gap-4 mb-6">
+                <Badge variant="secondary" className="gap-2">
+                  <StarIcon />
+                  <span className="font-semibold">{plugin.stargazers_count?.toLocaleString() ?? 0}</span>
+                  <span>stars</span>
+                </Badge>
+                <Badge variant="secondary" className="gap-2">
+                  <ForkIcon />
+                  <span className="font-semibold">{plugin.forks_count?.toLocaleString() ?? 0}</span>
+                  <span>forks</span>
+                </Badge>
+                <Badge variant="secondary" className="gap-2">
+                  <EyeIcon />
+                  <span className="font-semibold">{plugin.watchers_count?.toLocaleString() ?? 0}</span>
+                  <span>watchers</span>
+                </Badge>
+                <Badge variant="secondary" className="gap-2">
+                  <IssueIcon />
+                  <span className="font-semibold">{plugin.open_issues_count?.toLocaleString() ?? 0}</span>
+                  <span>issues</span>
+                </Badge>
+              </div>
+
+              {plugin.topics && plugin.topics.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-6">
+                  {plugin.topics.map((topic) => (
+                    <Badge key={topic} variant="outline">
+                      {topic}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {plugin.language && (
+                  <div>
+                    <dt className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                      <CodeIcon />
+                      Language
+                    </dt>
+                    <dd className="text-foreground">{plugin.language}</dd>
+                  </div>
                 )}
-                <Button asChild>
-                  <a href={plugin.html_url} target="_blank" rel="noopener noreferrer">
-                    <ExternalLinkIcon />
-                    View on GitHub
-                  </a>
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent className="p-0">
-            {plugin.description && <p className="text-lg mb-6 text-muted-foreground">{plugin.description}</p>}
-
-            <div className="flex flex-wrap gap-4 mb-6">
-              <Badge variant="secondary" className="gap-2">
-                <StarIcon />
-                <span className="font-semibold">{plugin.stargazers_count?.toLocaleString() ?? 0}</span>
-                <span>stars</span>
-              </Badge>
-              <Badge variant="secondary" className="gap-2">
-                <ForkIcon />
-                <span className="font-semibold">{plugin.forks_count?.toLocaleString() ?? 0}</span>
-                <span>forks</span>
-              </Badge>
-              <Badge variant="secondary" className="gap-2">
-                <EyeIcon />
-                <span className="font-semibold">{plugin.watchers_count?.toLocaleString() ?? 0}</span>
-                <span>watchers</span>
-              </Badge>
-              <Badge variant="secondary" className="gap-2">
-                <IssueIcon />
-                <span className="font-semibold">{plugin.open_issues_count?.toLocaleString() ?? 0}</span>
-                <span>issues</span>
-              </Badge>
-            </div>
-
-            {plugin.topics && plugin.topics.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-6">
-                {plugin.topics.map((topic) => (
-                  <Badge key={topic} variant="outline">
-                    {topic}
-                  </Badge>
-                ))}
-              </div>
-            )}
-
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {plugin.language && (
+                {plugin.license && (
+                  <div>
+                    <dt className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                      <LicenseIcon />
+                      License
+                    </dt>
+                    <dd className="text-foreground">{plugin.license.name}</dd>
+                  </div>
+                )}
                 <div>
-                  <dt className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <CodeIcon />
-                    Language
-                  </dt>
-                  <dd className="text-foreground">{plugin.language}</dd>
+                  <dt className="text-sm font-medium text-muted-foreground">Size</dt>
+                  <dd className="text-foreground">{formatSize(plugin.size)}</dd>
                 </div>
-              )}
-              {plugin.license && (
                 <div>
-                  <dt className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <LicenseIcon />
-                    License
-                  </dt>
-                  <dd className="text-foreground">{plugin.license.name}</dd>
+                  <dt className="text-sm font-medium text-muted-foreground">Created</dt>
+                  <dd className="text-foreground">{formatDate(plugin.created_at)}</dd>
                 </div>
-              )}
-              <div>
-                <dt className="text-sm font-medium text-muted-foreground">Size</dt>
-                <dd className="text-foreground">{formatSize(plugin.size)}</dd>
+                <div>
+                  <dt className="text-sm font-medium text-muted-foreground">Last Updated</dt>
+                  <dd className="text-foreground">{formatDate(plugin.updated_at)}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-muted-foreground">Last Pushed</dt>
+                  <dd className="text-foreground">{formatDate(plugin.pushed_at)}</dd>
+                </div>
               </div>
-              <div>
-                <dt className="text-sm font-medium text-muted-foreground">Created</dt>
-                <dd className="text-foreground">{formatDate(plugin.created_at)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-muted-foreground">Last Updated</dt>
-                <dd className="text-foreground">{formatDate(plugin.updated_at)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-muted-foreground">Last Pushed</dt>
-                <dd className="text-foreground">{formatDate(plugin.pushed_at)}</dd>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </main>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
     </>
   )
 }
