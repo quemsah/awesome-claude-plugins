@@ -1,5 +1,5 @@
 import type { Plugin } from '../app/types/plugin.type.ts'
-import { ForkIcon, PluginIcon, StarIcon } from './Icons.tsx'
+import { ExternalLinkIcon, ForkIcon, PluginIcon, StarIcon } from './Icons.tsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card.tsx'
 
 interface PluginCardProps {
@@ -34,10 +34,11 @@ export function PluginCard({ plugin }: PluginCardProps) {
               </div>
             )}
           </div>
-        </div>
-        <div className="mt-4">
-          <a href={`/${plugin.owner}/${plugin.repo_name}`} className="text-primary hover:underline">
-            View Details
+          <a
+            href={`/${plugin.owner}/${plugin.repo_name}`}
+            className="text-sm px-3 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors flex items-center gap-1"
+          >
+            <ExternalLinkIcon />
           </a>
         </div>
       </CardContent>
