@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import pluginsData from '@/data/plugins.json' with { type: 'json' }
-import type { Plugin } from '../../types.ts'
+import type { Plugin } from '../../types/plugin.type.ts'
 
 export function GET() {
   // Extract the plugin data from the json structure

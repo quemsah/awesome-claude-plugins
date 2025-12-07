@@ -3,8 +3,8 @@ import './globals.css'
 import { Providers } from '../providers/providers.tsx'
 
 export const metadata: Metadata = {
-  title: 'Dinosaur App (not really)',
-  description: 'Run Next.js with Deno',
+  title: 'awesome-claude-plugins',
+  description: 'Automated collection of Claude Code plugin adoption metrics across GitHub repositories using n8n workflows'
 }
 
 export default function RootLayout({
