@@ -11,9 +11,9 @@ export function PluginCard({ plugin }: PluginCardProps) {
   if (!plugin.repo_name) return null
 
   return (
-    <Card className="h-full transition-all hover:shadow-lg hover:scale-105 cursor-pointer group">
+    <Card className="h-full cursor-pointer group">
       <CardHeader>
-        <CardTitle className="text-lg group-hover:text-primary transition-colors">{plugin.repo_name}</CardTitle>
+        <CardTitle className="text-lg">{plugin.repo_name}</CardTitle>
         <CardDescription>by {plugin.owner}</CardDescription>
       </CardHeader>
       <CardContent>
