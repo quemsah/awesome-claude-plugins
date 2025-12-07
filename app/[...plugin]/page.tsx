@@ -9,7 +9,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar.
 import { Badge } from '../../components/ui/badge.tsx'
 import { Button } from '../../components/ui/button.tsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card.tsx'
-import { Separator } from '../../components/ui/separator.tsx'
 
 type RouteParams = { params: Promise<{ plugin: string[] }> }
 type Repository = components['schemas']['repository']
@@ -175,7 +174,6 @@ export default function PluginPage({ params }: RouteParams) {
               </div>
             )}
 
-            <Separator className="mb-6" />
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {plugin.language && (

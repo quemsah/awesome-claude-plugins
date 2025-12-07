@@ -5,7 +5,6 @@ import { Header } from '../components/Header.tsx'
 import { LoadedContent } from '../components/LoadedContent.tsx'
 import { LoadingContent } from '../components/LoadingContent.tsx'
 import { TitleSection } from '../components/TitleSection.tsx'
-import { Separator } from '../components/ui/separator.tsx'
 import type { Plugin } from './types.ts'
 
 export default function Home() {
@@ -31,7 +30,6 @@ export default function Home() {
       <Header />
       <div className="container mx-auto px-4 py-8">
         <TitleSection pluginsLength={loading ? undefined : plugins.length} />
-        <Separator className="mb-8" />
         {loading ? <LoadingContent /> : <LoadedContent plugins={plugins} />}
       </div>
     </main>
