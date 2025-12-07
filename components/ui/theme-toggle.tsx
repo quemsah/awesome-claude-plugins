@@ -1,6 +1,7 @@
 'use client'
 
 import { useTheme } from 'next-themes'
+import { useEffect, useState } from 'react'
 
 import { Button } from './button.tsx'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './dropdown-menu.tsx'
@@ -26,16 +27,23 @@ function MoonIcon({ className }: { className?: string }) {
 
 export function ThemeToggle() {
   const { setTheme, resolvedTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const isDark = mounted ? resolvedTheme === 'dark' : false
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="icon" className="relative">
           <SunIcon
-            className={`h-[1.2rem] w-[1.2rem] transition-all ${resolvedTheme === 'dark' ? 'rotate-90 scale-0' : 'rotate-0 scale-100'}`}
+            className={`h-[1.2rem] w-[1.2rem] transition-all ${isDark ? 'rotate-90 scale-0' : 'rotate-0 scale-100'}`}
           />
           <MoonIcon
-            className={`absolute inset-0 h-[1.2rem] w-[1.2rem] m-auto transition-all ${resolvedTheme === 'dark' ? 'rotate-0 scale-100' : 'rotate-90 scale-0'}`}
+            className={`absolute inset-0 h-[1.2rem] w-[1.2rem] m-auto transition-all ${isDark ? 'rotate-0 scale-100' : 'rotate-90 scale-0'}`}
           />
           <span className="sr-only">Toggle theme</span>
         </Button>

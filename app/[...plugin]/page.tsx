@@ -3,6 +3,7 @@
 import type { components } from '@octokit/openapi-types'
 import Link from 'next/link'
 import { use, useEffect, useState } from 'react'
+import { Header } from '../../components/Header.tsx'
 import { CodeIcon, ExternalLinkIcon, EyeIcon, ForkIcon, IssueIcon, LicenseIcon, StarIcon } from '../../components/Icons.tsx'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar.tsx'
 import { Badge } from '../../components/ui/badge.tsx'
@@ -89,8 +90,10 @@ export default function PluginPage({ params }: RouteParams) {
   }
 
   return (
-    <main className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
+    <>
+      <Header />
+      <main className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8 max-w-4xl">
         <Button variant="ghost" asChild className="mb-6">
           <Link href="/">← Back to all plugins</Link>
         </Button>
@@ -214,5 +217,6 @@ export default function PluginPage({ params }: RouteParams) {
         </Card>
       </div>
     </main>
+    </>
   )
 }
