@@ -5,6 +5,7 @@ import { PluginCard } from '../components/PluginCard.tsx'
 import { Card, CardContent, CardHeader } from '../components/ui/card.tsx'
 import { Separator } from '../components/ui/separator.tsx'
 import { Skeleton } from '../components/ui/skeleton.tsx'
+import { ThemeToggle } from '../components/ui/theme-toggle.tsx'
 import type { Plugin } from './types.ts'
 
 export default function Home() {
@@ -28,6 +29,12 @@ export default function Home() {
   if (loading) {
     return (
       <main className="min-h-screen bg-background">
+        <header className="sticky top-0 z-50 border-b backdrop-blur px-4 py-4">
+          <div className="container mx-auto flex items-center justify-between">
+            <div></div>
+            <ThemeToggle />
+          </div>
+        </header>
         <div className="container mx-auto px-4 py-8">
           <div className="space-y-2 text-center mb-8">
             <h1 className="text-4xl font-bold tracking-tight text-foreground">Awesome Claude Plugins</h1>
@@ -61,6 +68,12 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-background">
+      <header className="sticky top-0 z-50 border-b backdrop-blur px-4 py-4">
+        <div className="container mx-auto flex items-center justify-between">
+          <div></div>
+          <ThemeToggle />
+        </div>
+      </header>
       <div className="container mx-auto px-4 py-8">
         <div className="space-y-2 text-center mb-8">
           <h1 className="text-4xl font-bold tracking-tight text-foreground">Awesome Claude Plugins</h1>
