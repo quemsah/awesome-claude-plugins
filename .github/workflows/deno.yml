@@ -1,0 +1,29 @@
+name: Deno
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  style:
+    name: style
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          cache: true
+
+      - name: Run install step
+        run: "deno install"
+
+      - name: Run linter
+        run: deno task style
