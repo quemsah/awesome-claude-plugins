@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  style:
     runs-on: ubuntu-latest
 
     steps:

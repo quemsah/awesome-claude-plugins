@@ -1,5 +1,5 @@
 {
-  "nodeModulesDir": "auto",
+  "nodeModulesDir": "manual",
   "unstable": ["unsafe-proto", "sloppy-imports"],
   "compilerOptions": {
     "lib": ["dom", "dom.iterable", "esnext"],
