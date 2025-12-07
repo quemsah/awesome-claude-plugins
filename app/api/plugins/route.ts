@@ -3,10 +3,8 @@ import pluginsData from '@/data/plugins.json' with { type: 'json' }
 import type { Plugin } from '../../types/plugin.type.ts'
 
 export function GET() {
-  // Extract the plugin data from the json structure
   const plugins: Plugin[] = pluginsData.map((item: { json: Plugin }) => item.json)
 
-  // Filter out plugins with null repo_name and sort by stars
   const validPlugins = plugins
     .filter((plugin) => plugin.repo_name !== null)
     .sort((a, b) => (b.stargazers_count || 0) - (a.stargazers_count || 0))
