@@ -3,7 +3,7 @@ import pluginsData from '@/data/plugins.json' with { type: 'json' }
 import type { Plugin } from '../../types/plugin.type.ts'
 
 export function GET() {
-  const plugins: Plugin[] = pluginsData.map((item: { json: Plugin }) => item.json)
+  const plugins: Plugin[] = pluginsData as Plugin[]
 
   const validPlugins = plugins
     .filter((plugin) => plugin.repo_name !== null)

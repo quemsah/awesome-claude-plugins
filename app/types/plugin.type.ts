@@ -7,8 +7,6 @@ export type Plugin = {
   owner: string | null
   owner_url: string | null
   repo_name: string | null
-  repo_updated: string | null
+  plugins_count: number | null
   id: number
-  createdAt: string
-  updatedAt: string
 }
