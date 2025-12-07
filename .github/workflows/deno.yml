@@ -6,8 +6,8 @@ on:
     branches: [main]
 
 jobs:
-  deploy:
-    name: Deploy
+  style:
+    name: style
     runs-on: ubuntu-latest
 
     permissions:
@@ -21,6 +21,9 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           cache: true
+
+      - name: Run install step
+        run: "deno install"
 
       - name: Run linter
         run: deno task style
