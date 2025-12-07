@@ -1,5 +1,5 @@
 import type { Plugin } from '../app/types/plugin.type.ts'
-import { ForkIcon, StarIcon } from './Icons.tsx'
+import { ForkIcon, PluginIcon, StarIcon } from './Icons.tsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card.tsx'
 
 interface PluginCardProps {
@@ -27,6 +27,12 @@ export function PluginCard({ plugin }: PluginCardProps) {
               <ForkIcon />
               <span className="text-sm">{plugin.forks_count?.toLocaleString() ?? 0}</span>
             </div>
+            {plugin.plugins_count !== null && (
+              <div className="flex items-center gap-1">
+                <PluginIcon />
+                <span className="text-sm">{plugin.plugins_count?.toLocaleString() ?? 0}</span>
+              </div>
+            )}
           </div>
         </div>
         <div className="mt-4">
