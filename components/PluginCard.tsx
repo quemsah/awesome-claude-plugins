@@ -1,7 +1,7 @@
 import type { Plugin } from '../app/types.ts'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card.tsx'
+import { ForkIcon, StarIcon } from './Icons.tsx'
 import { Badge } from './ui/badge.tsx'
-import { StarIcon, ForkIcon } from './Icons.tsx'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card.tsx'
 
 interface PluginCardProps {
   plugin: Plugin
@@ -32,7 +32,7 @@ export function PluginCard({ plugin }: PluginCardProps) {
           <Badge variant="secondary">Plugin</Badge>
         </div>
         <div className="mt-4">
-          <a href={`/${plugin.repo_name.toLowerCase()}`} className="text-primary hover:underline">
+          <a href={`/${plugin.owner}/${plugin.repo_name}`} className="text-primary hover:underline">
             View Details
           </a>
         </div>

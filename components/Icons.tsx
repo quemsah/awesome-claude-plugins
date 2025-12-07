@@ -44,3 +44,41 @@ export function ExternalLinkIcon() {
     </svg>
   )
 }
+
+export function IssueIcon() {
+  return (
+    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 16 16">
+      <title>Issues</title>
+      <path d="M8 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
+      <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z" />
+    </svg>
+  )
+}
+
+export function LicenseIcon() {
+  return (
+    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 16 16">
+      <title>License</title>
+      <path d="M8.5 4.5a.5.5 0 0 0-1 0v5.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3a.5.5 0 0 0 .708 0l3-3a.5.5 0 1 0-.708-.708L8.5 10.293V4.5Z" />
+      <path d="M14 14V5.5L9.5 1H4a1.5 1.5 0 0 0-1.5 1.5v11A1.5 1.5 0 0 0 4 15h10a.5.5 0 0 0 0-1Zm-1 0H4a.5.5 0 0 1-.5-.5v-11A.5.5 0 0 1 4 2h5.5L13 5.5V13.5a.5.5 0 0 1-.5.5Z" />
+    </svg>
+  )
+}
+
+export function CodeIcon() {
+  return (
+    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 16 16">
+      <title>Code</title>
+      <path d="m11.28 3.22 4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734L13.94 8l-3.72-3.72a.749.749 0 0 1 .326-1.275.749.749 0 0 1 .734.215Zm-6.56 0a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L2.06 8l3.72 3.72a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L.47 8.53a.75.75 0 0 0 0-1.06Z" />
+    </svg>
+  )
+}
+
+export function UserIcon() {
+  return (
+    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 16 16">
+      <title>Subscribers</title>
+      <path d="M10.5 5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Zm.061 3.073a4 4 0 1 0-5.123 0 6.004 6.004 0 0 0-3.431 5.142.75.75 0 0 0 1.498.07 4.502 4.502 0 0 1 8.99 0 .75.75 0 1 0 1.498-.07 6.005 6.005 0 0 0-3.432-5.142Z" />
+    </svg>
+  )
+}

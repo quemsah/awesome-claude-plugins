@@ -1,11 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { Plugin } from './types.ts'
 import { PluginCard } from '../components/PluginCard.tsx'
 import { Card, CardContent, CardHeader } from '../components/ui/card.tsx'
 import { Separator } from '../components/ui/separator.tsx'
 import { Skeleton } from '../components/ui/skeleton.tsx'
+import type { Plugin } from './types.ts'
 
 export default function Home() {
   const [plugins, setPlugins] = useState<Plugin[]>([])

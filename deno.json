@@ -14,6 +14,7 @@
     "style": "deno run -A npm:@biomejs/biome format --write .; deno lint --fix; deno run -A npm:@biomejs/biome lint --write ."
   },
   "imports": {
-    "@/": "./"
+    "@/": "./",
+    "@octokit/openapi-types": "npm:@octokit/openapi-types@^20.0.0"
   }
 }
