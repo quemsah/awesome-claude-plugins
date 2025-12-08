@@ -90,7 +90,9 @@ export default function Home() {
             <Sort sortOption={sortOption} onSortChange={setSortOption} />
           </div>
           <div className="text-sm text-muted-foreground">
-            {loading ? 'Loading...' : `${filteredPluginCount} plugins available across ${filteredRepos.length} repositories`}
+            {loading
+              ? 'Loading...'
+              : `${filteredPluginCount} ${filteredPluginCount === 1 ? 'plugin' : 'plugins'} available across ${filteredRepos.length} ${filteredRepos.length === 1 ? 'repository' : 'repositories'}`}
           </div>
         </div>
 

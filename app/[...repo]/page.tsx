@@ -1,7 +1,7 @@
 'use client'
 
 import type { components } from '@octokit/openapi-types'
-import { CircleDot, Code, ExternalLink, Eye, FileText, GitFork, Star } from 'lucide-react'
+import { ArrowLeft, CircleDot, Code, ExternalLink, Eye, FileText, GitFork, Star } from 'lucide-react'
 import Link from 'next/link'
 import { use, useEffect, useState } from 'react'
 import { Header } from '../../components/Header.tsx'
@@ -62,7 +62,10 @@ export default function RepoPage({ params }: RouteParams) {
           </CardHeader>
           <CardContent>
             <Button asChild>
-              <Link href="/">← Back to all repositories</Link>
+              <Link href="/">
+                <ArrowLeft className="h-4 w-4" />
+                Back to all repositories
+              </Link>
             </Button>
           </CardContent>
         </Card>
@@ -72,11 +75,11 @@ export default function RepoPage({ params }: RouteParams) {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Unknown'
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    })
+    const date = new Date(dateString)
+    const day = date.getDate().toString().padStart(2, '0')
+    const month = (date.getMonth() + 1).toString().padStart(2, '0')
+    const year = date.getFullYear()
+    return `${day}.${month}.${year}`
   }
 
   const formatSize = (size: number | null) => {
@@ -93,7 +96,10 @@ export default function RepoPage({ params }: RouteParams) {
       <main className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8 max-w-4xl">
           <Button variant="ghost" asChild className="mb-6">
-            <Link href="/">← Back to all repositories</Link>
+            <Link href="/">
+              <ArrowLeft className="h-4 w-4" />
+              Back to all repositories
+            </Link>
           </Button>
 
           <Card className="p-8">
