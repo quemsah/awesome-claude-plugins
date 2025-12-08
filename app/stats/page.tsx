@@ -40,7 +40,7 @@ export default function StatsPage() {
     // Convert to chart data
     const processedData: ChartData[] = sortedData.map((item) => ({
       date: item.date,
-      size: parseInt(item.size, 10),
+      size: parseInt(item.size, 10) || 0,
       formattedDate: formatDate(new Date(item.date)),
     }))
 
