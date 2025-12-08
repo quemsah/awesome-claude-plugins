@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar.
 import { Badge } from '../../components/ui/badge.tsx'
 import { Button } from '../../components/ui/button.tsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card.tsx'
+import { formatDate as formatDateUtil } from '../../lib/utils.ts'
 
 type RouteParams = { params: Promise<{ repo: string[] }> }
 type Repository = components['schemas']['repository']
@@ -75,11 +76,7 @@ export default function RepoPage({ params }: RouteParams) {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Unknown'
-    const date = new Date(dateString)
-    const day = date.getDate().toString().padStart(2, '0')
-    const month = (date.getMonth() + 1).toString().padStart(2, '0')
-    const year = date.getFullYear()
-    return `${day}.${month}.${year}`
+    return formatDateUtil(new Date(dateString))
   }
 
   const formatSize = (size: number | null) => {

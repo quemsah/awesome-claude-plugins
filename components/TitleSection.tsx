@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { formatDate } from '../lib/utils.ts'
 
 interface StatsEntry {
   date: string
@@ -19,10 +20,7 @@ export function TitleSection() {
         if (stats.length > 0) {
           const lastEntry = stats[stats.length - 1]
           const date = new Date(lastEntry.date)
-          const day = date.getDate().toString().padStart(2, '0')
-          const month = (date.getMonth() + 1).toString().padStart(2, '0')
-          const year = date.getFullYear()
-          setLastUpdated(`${day}.${month}.${year}`)
+          setLastUpdated(formatDate(date))
         }
       } catch (error) {
         console.error('Failed to fetch stats:', error)
