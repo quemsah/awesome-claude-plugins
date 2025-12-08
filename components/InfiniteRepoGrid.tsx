@@ -29,7 +29,7 @@ export function InfiniteRepoGrid({ items, sortOption: _sortOption }: InfiniteRep
     }
 
     return () => observer.disconnect()
-  }, [items.length])
+  }, [items])
 
   useEffect(() => {
     setVisibleCount(ITEMS_PER_BATCH)
