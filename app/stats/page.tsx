@@ -5,6 +5,7 @@ import { Area, AreaChart, Tooltip, XAxis, YAxis } from 'recharts'
 import { Header } from '../../components/Header.tsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card.tsx'
 import { ChartContainer, ChartTooltipContent } from '../../components/ui/chart.tsx'
+import { formatDate } from '../../lib/utils.ts'
 
 type StatData = {
   date: string
@@ -16,13 +17,6 @@ type ChartData = {
   date: string
   size: number
   formattedDate: string
-}
-
-const formatDate = (date: Date): string => {
-  const day = date.getDate().toString().padStart(2, '0')
-  const month = (date.getMonth() + 1).toString().padStart(2, '0')
-  const year = date.getFullYear()
-  return `${day}.${month}.${year}`
 }
 
 export default function StatsPage() {
