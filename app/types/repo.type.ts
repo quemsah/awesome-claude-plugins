@@ -1,4 +1,4 @@
-export type Plugin = {
+export type Repo = {
   html_url: string
   stargazers_count: number | null
   forks_count: number | null
