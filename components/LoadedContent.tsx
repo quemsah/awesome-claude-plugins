@@ -1,23 +1,21 @@
-import type { Plugin } from '../app/types/plugin.type.ts'
-import { PluginCard } from './PluginCard.tsx'
+import type { Repo } from '../app/types/repo.type.ts'
+import { InfiniteRepoGrid } from './InfiniteRepoGrid.tsx'
+import type { SortOption } from './Sort.tsx'
 import { Card, CardContent } from './ui/card.tsx'
 
 interface LoadedContentProps {
-  plugins: Plugin[]
+  repos: Repo[]
+  sortOption?: SortOption
 }
 
-export function LoadedContent({ plugins }: LoadedContentProps) {
-  return plugins.length === 0 ? (
+export function LoadedContent({ repos, sortOption }: LoadedContentProps) {
+  return repos.length === 0 ? (
     <Card className="text-center py-12">
       <CardContent>
-        <p className="text-muted-foreground">No plugins found</p>
+        <p className="text-muted-foreground">No repositories found</p>
       </CardContent>
     </Card>
   ) : (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {plugins.map((plugin) => (
-        <PluginCard key={plugin.id} plugin={plugin} />
-      ))}
-    </div>
+    <InfiniteRepoGrid items={repos} sortOption={sortOption} />
   )
 }
