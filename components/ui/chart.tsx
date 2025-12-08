@@ -58,6 +58,9 @@ const ChartTooltipContent = React.forwardRef<
     reverseDirection?: unknown
     useTranslate3d?: unknown
     wrapperStyle?: unknown
+    axisId?: unknown
+    itemSorter?: unknown
+    activeIndex?: unknown
   }
 >(
   (
@@ -80,6 +83,9 @@ const ChartTooltipContent = React.forwardRef<
       reverseDirection: _reverseDirection,
       useTranslate3d: _useTranslate3d,
       wrapperStyle: _wrapperStyle,
+      axisId: _axisId,
+      itemSorter: _itemSorter,
+      activeIndex: _activeIndex,
       ...props
     },
     ref
