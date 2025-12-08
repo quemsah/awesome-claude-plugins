@@ -75,7 +75,7 @@ export default function Home() {
       <div className="container mx-auto px-4 py-8">
         <TitleSection />
 
-        <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+        <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
           <div className="flex items-center gap-4">
             <div className="relative w-[180px]">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4" />
