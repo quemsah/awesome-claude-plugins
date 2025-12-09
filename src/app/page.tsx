@@ -61,13 +61,7 @@ export default function Home() {
     [filteredRepos, sortOption]
   )
 
-  const filteredPluginCount = useMemo(
-    () =>
-      filteredRepos.reduce((total, repo) => {
-        return total + (repo.plugins_count || 0)
-      }, 0),
-    [filteredRepos]
-  )
+  const filteredPluginCount = useMemo(() => filteredRepos.reduce((total, repo) => total + (repo.plugins_count || 0), 0), [filteredRepos])
 
   return (
     <main className="min-h-screen bg-background">

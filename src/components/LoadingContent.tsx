@@ -2,10 +2,11 @@ import { Card, CardContent, CardHeader } from './ui/card.tsx'
 import { Skeleton } from './ui/skeleton.tsx'
 
 export function LoadingContent() {
+  const skeletonKeys = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <Card key={i} className="h-full">
+      {skeletonKeys.map((key) => (
+        <Card key={`loading-${key}`} className="h-full">
           <CardHeader>
             <Skeleton className="h-6 w-3/4" />
             <Skeleton className="h-4 w-1/2" />
