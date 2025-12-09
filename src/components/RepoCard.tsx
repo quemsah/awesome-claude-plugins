@@ -20,7 +20,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
         <CardDescription>by {repo.owner}</CardDescription>
       </CardHeader>
       <CardContent>
-        {repo.description && (
+        {!!repo.description && (
           <p className="text-sm text-muted-foreground opacity-90 group-hover:opacity-100 transition-opacity duration-300 mb-4 line-clamp-2">
             {repo.description}
           </p>

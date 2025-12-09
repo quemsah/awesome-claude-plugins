@@ -47,7 +47,7 @@ export default function RepoPage({ params }: RouteParams) {
     return (
       <main className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
           <p className="text-muted-foreground mt-2">Loading repository...</p>
         </div>
       </main>
@@ -122,7 +122,7 @@ export default function RepoPage({ params }: RouteParams) {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  {repo.homepage && (
+                  {!!repo.homepage && (
                     <Button variant="outline" asChild>
                       <a href={repo.homepage} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="h-4 w-4" />
@@ -141,7 +141,7 @@ export default function RepoPage({ params }: RouteParams) {
             </CardHeader>
 
             <CardContent className="p-0">
-              {repo.description && <p className="text-lg mb-6 text-muted-foreground">{repo.description}</p>}
+              {!!repo.description && <p className="text-lg mb-6 text-muted-foreground">{repo.description}</p>}
 
               <div className="flex flex-wrap gap-4 mb-6">
                 <Badge variant="secondary" className="gap-2">
@@ -166,7 +166,7 @@ export default function RepoPage({ params }: RouteParams) {
                 </Badge>
               </div>
 
-              {repo.topics && repo.topics.length > 0 && (
+              {!!repo.topics && repo.topics.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-6">
                   {repo.topics.map((topic) => (
                     <Badge key={topic} variant="outline">
@@ -177,7 +177,7 @@ export default function RepoPage({ params }: RouteParams) {
               )}
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {repo.language && (
+                {!!repo.language && (
                   <div>
                     <dt className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                       <Code className="h-4 w-4" />
@@ -186,7 +186,7 @@ export default function RepoPage({ params }: RouteParams) {
                     <dd className="text-foreground">{repo.language}</dd>
                   </div>
                 )}
-                {repo.license && (
+                {!!repo.license && (
                   <div>
                     <dt className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                       <FileText className="h-4 w-4" />

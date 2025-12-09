@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/style/useNamingConvention: <n8n> */
 export type Repo = {
   html_url: string
   stargazers_count: number | null

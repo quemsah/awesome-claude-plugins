@@ -24,7 +24,10 @@
   "linter": {
     "enabled": true,
     "domains": {
-      "next": "recommended"
+      "project": "recommended",
+      "next": "recommended",
+      "react": "recommended",
+      "test": "recommended"
     },
     "rules": {
       "recommended": true,
@@ -36,60 +39,72 @@
         "useValidAriaProps": "warn",
         "useValidAriaValues": "warn"
       },
-      "security": {
-        "noDangerouslySetInnerHtmlWithChildren": "error"
+      "complexity": {
+        "noUselessStringConcat": "error",
+        "noVoid": "error",
+        "useSimplifiedLogicExpression": "error"
+      },
+      "correctness": {
+        "noChildrenProp": "error",
+        "noGlobalDirnameFilename": "error",
+        "noNestedComponentDefinitions": "error",
+        "noReactPropAssignments": "error",
+        "noRenderReturnValue": "error",
+        "noUndeclaredDependencies": "error",
+        "noUnusedVariables": "error",
+        "useExhaustiveDependencies": "warn",
+        "useHookAtTopLevel": "error",
+        "useJsxKeyInIterable": "error"
+      },
+      "nursery": {
+        "noEmptySource": "error",
+        "noDuplicatedSpreadProps": "error",
+        "noLeakedRender": "error",
+        "noMultiStr": "error",
+        "noNextAsyncClientComponent": "error",
+        "noUselessCatchBinding": "error",
+        "useArraySortCompare": "error",
+        "useConsistentArrowReturn": "error",
+        "useFind": "error"
       },
       "performance": {
-        "noImgElement": "warn",
+        "noImgElement": "error",
         "noUnwantedPolyfillio": "warn",
-        "useGoogleFontPreconnect": "warn"
+        "useGoogleFontPreconnect": "warn",
+        "useTopLevelRegex": "error"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "error",
+        "noDangerouslySetInnerHtmlWithChildren": "error"
       },
       "style": {
-        "useConst": "error",
         "noCommonJs": "error",
         "noHeadElement": "warn",
         "noNamespace": "error",
         "useArrayLiterals": "error",
-        "useAsConstAssertion": "error"
-      },
-      "correctness": {
-        "noChildrenProp": "error",
-        "useExhaustiveDependencies": "warn",
-        "useHookAtTopLevel": "error",
-        "useJsxKeyInIterable": "error",
-        "noUnusedVariables": "error",
-        "noConstAssign": "off",
-        "noGlobalObjectCalls": "off",
-        "noInvalidBuiltinInstantiation": "off",
-        "noInvalidConstructorSuper": "off",
-        "noSetterReturn": "off",
-        "noUndeclaredVariables": "off",
-        "noUnreachable": "off",
-        "noUnreachableSuper": "off"
+        "useAsConstAssertion": "error",
+        "useConst": "error",
+        "useFilenamingConvention": "error",
+        "useNamingConvention": "error",
+        "useObjectSpread": "error",
+        "useReactFunctionComponents": "warn",
+        "useSelfClosingElements": "error"
       },
       "suspicious": {
         "noCommentText": "error",
-        "noDuplicateJsxProps": "error",
         "noDocumentImportInPage": "error",
+        "noDuplicateJsxProps": "error",
         "noExplicitAny": "error",
         "noExtraNonNullAssertion": "error",
         "noHeadImportInDocument": "error",
         "noMisleadingInstantiator": "error",
+        "noMisplacedAssertion": "error",
         "noNonNullAssertedOptionalChain": "error",
+        "noUnassignedVariables": "error",
         "noUnsafeDeclarationMerging": "error",
-        "useGoogleFontDisplay": "warn",
-        "useNamespaceKeyword": "error",
-        "noClassAssign": "off",
-        "noDuplicateClassMembers": "off",
-        "noDuplicateObjectKeys": "off",
-        "noDuplicateParameters": "off",
-        "noFunctionAssign": "off",
-        "noImportAssign": "off",
-        "noRedeclare": "off",
-        "noUnsafeNegation": "off",
         "noVar": "error",
-        "noWith": "off",
-        "useGetterReturn": "off"
+        "useGoogleFontDisplay": "warn",
+        "useNamespaceKeyword": "error"
       }
     },
     "includes": [
@@ -131,7 +146,9 @@
     "enabled": true,
     "actions": {
       "source": {
-        "organizeImports": "on"
+        "organizeImports": "on",
+        "useSortedAttributes": "on",
+        "useSortedProperties": "on"
       }
     }
   }

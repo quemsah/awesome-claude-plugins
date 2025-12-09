@@ -22,15 +22,13 @@ const ChartContainer = React.forwardRef<
     config?: Record<string, unknown>
     children: React.ComponentProps<typeof ResponsiveContainer>['children']
   }
->(({ className, children, ...props }, ref) => {
-  return (
-    <div ref={ref} className={cn('w-full text-xs', className)}>
-      <ResponsiveContainer width="100%" height="100%" {...props}>
-        {children}
-      </ResponsiveContainer>
-    </div>
-  )
-})
+>(({ className, children, ...props }, ref) => (
+  <div ref={ref} className={cn('w-full text-xs', className)}>
+    <ResponsiveContainer width="100%" height="100%" {...props}>
+      {children}
+    </ResponsiveContainer>
+  </div>
+))
 ChartContainer.displayName = 'ChartContainer'
 
 const ChartTooltip = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
@@ -93,9 +91,9 @@ const ChartTooltipContent = React.forwardRef<
     if (active && payload && payload.length) {
       return (
         <div ref={ref} className={cn('grid gap-2', className)} {...props}>
-          {label && <p className="font-medium">{label}</p>}
+          {!!label && <p className="font-medium">{label}</p>}
           {payload.map((entry, index) => (
-            <p key={index} className="text-sm">
+            <p key={`tooltip-entry-${entry.name}-${index}`} className="text-sm">
               <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: entry.color }} />
               {entry.name}: {entry.value}
             </p>
