@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import GoogleAnalytics from '../components/GoogleAnalytics.tsx'
+import { WebVitals } from '../components/WebVitals.tsx'
 import { Providers } from '../providers/providers.tsx'
 
 export const metadata: Metadata = {
@@ -16,6 +18,8 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen">
         <Providers>{children}</Providers>
+        <GoogleAnalytics />
+        <WebVitals />
       </body>
     </html>
   )

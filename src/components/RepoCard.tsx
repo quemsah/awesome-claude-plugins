@@ -43,8 +43,8 @@ export function RepoCard({ repo, className }: RepoCardProps) {
             )}
           </div>
           <a
-            href={`/${repo.owner}/${repo.repo_name}`}
             className="text-sm px-3 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors flex items-center gap-1"
+            href={`/${repo.owner}/${repo.repo_name}`}
           >
             <ExternalLink className="h-4 w-4" />
           </a>

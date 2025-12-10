@@ -12,7 +12,7 @@ type ChartTooltipPayload = {
 }
 
 const Chart = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn('', className)} {...props} />
+  <div className={cn('', className)} ref={ref} {...props} />
 ))
 Chart.displayName = 'Chart'
 
@@ -23,8 +23,8 @@ const ChartContainer = React.forwardRef<
     children: React.ComponentProps<typeof ResponsiveContainer>['children']
   }
 >(({ className, children, ...props }, ref) => (
-  <div ref={ref} className={cn('w-full text-xs', className)}>
-    <ResponsiveContainer width="100%" height="100%" {...props}>
+  <div className={cn('w-full text-xs', className)} ref={ref}>
+    <ResponsiveContainer height="100%" width="100%" {...props}>
       {children}
     </ResponsiveContainer>
   </div>
@@ -32,7 +32,7 @@ const ChartContainer = React.forwardRef<
 ChartContainer.displayName = 'ChartContainer'
 
 const ChartTooltip = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn('rounded-lg border bg-background p-2 shadow-md', className)} {...props} />
+  <div className={cn('rounded-lg border bg-background p-2 shadow-md', className)} ref={ref} {...props} />
 ))
 ChartTooltip.displayName = 'ChartTooltip'
 
@@ -90,10 +90,10 @@ const ChartTooltipContent = React.forwardRef<
   ) => {
     if (active && payload && payload.length) {
       return (
-        <div ref={ref} className={cn('grid gap-2', className)} {...props}>
+        <div className={cn('grid gap-2', className)} ref={ref} {...props}>
           {!!label && <p className="font-medium">{label}</p>}
           {payload.map((entry, index) => (
-            <p key={`tooltip-entry-${entry.name}-${index}`} className="text-sm">
+            <p className="text-sm" key={`tooltip-entry-${entry.name}-${index}`}>
               <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: entry.color }} />
               {entry.name}: {entry.value}
             </p>
