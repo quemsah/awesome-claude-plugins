@@ -65,7 +65,7 @@ export function trackEvent(event: GaEvent): void {
 }
 
 export function trackPageView(url: string, title?: string): void {
-  if (!isAnalyticsEnabled()) {
+  if (!isAnalyticsEnabled() || typeof window === 'undefined') {
     return
   }
 
