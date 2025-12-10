@@ -13,26 +13,26 @@ export function Header() {
       <div className="flex items-center justify-between px-4 py-4">
         <div className="flex gap-4" style={{ alignItems: 'last baseline' }}>
           <button
-            type="button"
-            onClick={() => router.push('/')}
             className="text-xl font-bold text-foreground hover:text-primary transition-colors"
+            onClick={() => router.push('/')}
+            type="button"
           >
             awesome-claude-plugins
           </button>
 
           <button
-            type="button"
-            onClick={() => router.push('/')}
             className={`flex items-center gap-2 text-sm ${pathname === '/' ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
+            onClick={() => router.push('/')}
+            type="button"
           >
             <Search className="h-4 w-4" />
             Search
           </button>
 
           <button
-            type="button"
-            onClick={() => router.push('/stats')}
             className={`flex items-center gap-2 text-sm ${pathname === '/stats' ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
+            onClick={() => router.push('/stats')}
+            type="button"
           >
             <BarChart3 className="h-4 w-4" />
             Stats

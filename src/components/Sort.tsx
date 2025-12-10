@@ -30,7 +30,7 @@ export function Sort({ sortOption, onSortChange }: SortProps) {
   const selectedOption = sortOptions.find((option) => option.value === sortOption) || sortOptions[0]
 
   return (
-    <Select value={sortOption} onValueChange={(value: string) => onSortChange(value as SortOption)}>
+    <Select onValueChange={(value: string) => onSortChange(value as SortOption)} value={sortOption}>
       <SelectTrigger className="w-[180px]">
         <SelectValue>
           <span className="flex items-center">

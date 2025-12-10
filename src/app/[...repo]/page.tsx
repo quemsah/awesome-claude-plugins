@@ -92,7 +92,7 @@ export default function RepoPage({ params }: RouteParams) {
       <Header />
       <main className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8 max-w-4xl">
-          <Button variant="ghost" asChild className="mb-6">
+          <Button asChild className="mb-6" variant="ghost">
             <Link href="/">
               <ArrowLeft className="h-4 w-4" />
               Back to all repositories
@@ -104,17 +104,17 @@ export default function RepoPage({ params }: RouteParams) {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-4">
                   <Avatar className="h-16 w-16">
-                    <AvatarImage src={repo.owner.avatar_url} alt={repo.owner.login} />
+                    <AvatarImage alt={repo.owner.login} src={repo.owner.avatar_url} />
                     <AvatarFallback>{repo.owner.login.slice(0, 2).toUpperCase()}</AvatarFallback>
                   </Avatar>
                   <div>
                     <CardTitle className="text-3xl mb-2">{repo.name}</CardTitle>
                     <CardDescription className="text-lg">
                       <a
-                        href={repo.owner.html_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
                         className="hover:text-primary transition-colors"
+                        href={repo.owner.html_url}
+                        rel="noopener noreferrer"
+                        target="_blank"
                       >
                         by {repo.owner.login}
                       </a>
@@ -123,15 +123,15 @@ export default function RepoPage({ params }: RouteParams) {
                 </div>
                 <div className="flex gap-2">
                   {!!repo.homepage && (
-                    <Button variant="outline" asChild>
-                      <a href={repo.homepage} target="_blank" rel="noopener noreferrer">
+                    <Button asChild variant="outline">
+                      <a href={repo.homepage} rel="noopener noreferrer" target="_blank">
                         <ExternalLink className="h-4 w-4" />
                         Homepage
                       </a>
                     </Button>
                   )}
                   <Button asChild>
-                    <a href={repo.html_url} target="_blank" rel="noopener noreferrer">
+                    <a href={repo.html_url} rel="noopener noreferrer" target="_blank">
                       <ExternalLink className="h-4 w-4" />
                       View on GitHub
                     </a>
@@ -144,22 +144,22 @@ export default function RepoPage({ params }: RouteParams) {
               {!!repo.description && <p className="text-lg mb-6 text-muted-foreground">{repo.description}</p>}
 
               <div className="flex flex-wrap gap-4 mb-6">
-                <Badge variant="secondary" className="gap-2">
+                <Badge className="gap-2" variant="secondary">
                   <Star className="h-4 w-4" />
                   <span className="font-semibold">{repo.stargazers_count?.toLocaleString() ?? 0}</span>
                   <span>stars</span>
                 </Badge>
-                <Badge variant="secondary" className="gap-2">
+                <Badge className="gap-2" variant="secondary">
                   <GitFork className="h-4 w-4" />
                   <span className="font-semibold">{repo.forks_count?.toLocaleString() ?? 0}</span>
                   <span>forks</span>
                 </Badge>
-                <Badge variant="secondary" className="gap-2">
+                <Badge className="gap-2" variant="secondary">
                   <Eye className="h-4 w-4" />
                   <span className="font-semibold">{repo.watchers_count?.toLocaleString() ?? 0}</span>
                   <span>watchers</span>
                 </Badge>
-                <Badge variant="secondary" className="gap-2">
+                <Badge className="gap-2" variant="secondary">
                   <CircleDot className="h-4 w-4" />
                   <span className="font-semibold">{repo.open_issues_count?.toLocaleString() ?? 0}</span>
                   <span>issues</span>

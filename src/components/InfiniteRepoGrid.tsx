@@ -47,7 +47,7 @@ export function InfiniteRepoGrid({ items, sortOption: _sortOption }: InfiniteRep
 
       {/* Sentinel element for infinite scroll */}
       {visibleCount < items.length && (
-        <div ref={observerTarget} className="h-20 w-full flex items-center justify-center text-muted-foreground text-sm">
+        <div className="h-20 w-full flex items-center justify-center text-muted-foreground text-sm" ref={observerTarget}>
           Loading more repositories...
         </div>
       )}

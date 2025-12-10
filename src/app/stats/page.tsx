@@ -28,10 +28,8 @@ export default function StatsPage() {
   })
 
   const processData = useCallback((data: StatData[]) => {
-    // Sort by date
     const sortedData = data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
-    // Convert to chart data
     const processedData: ChartData[] = sortedData.map((item) => ({
       date: item.date,
       size: parseInt(item.size, 10) || 0,
@@ -40,7 +38,6 @@ export default function StatsPage() {
 
     setChartData(processedData)
 
-    // Calculate trends
     if (processedData.length > 1) {
       const firstSize = processedData[0].size
       const lastSize = processedData[processedData.length - 1].size
@@ -118,31 +115,31 @@ export default function StatsPage() {
           </CardHeader>
           <CardContent>
             <ChartContainer
+              className="h-[400px]"
               config={{
                 size: {
                   label: 'Repository Count',
                 },
               }}
-              className="h-[400px]"
             >
               <AreaChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="fillSize" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="fillSize" x1="0" x2="0" y1="0" y2="1">
                     <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.8} />
                     <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.1} />
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="formattedDate" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(value) => value} />
-                <YAxis tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(value) => `${value}`} />
+                <XAxis axisLine={false} dataKey="formattedDate" tickFormatter={(value) => value} tickLine={false} tickMargin={8} />
+                <YAxis axisLine={false} tickFormatter={(value) => `${value}`} tickLine={false} tickMargin={8} />
                 <Tooltip content={<ChartTooltipContent />} />
                 <Area
                   dataKey="size"
-                  name="Repository Count"
-                  type="monotone"
                   fill="url(#fillSize)"
                   fillOpacity={0.4}
-                  stroke="var(--chart-1)"
+                  name="Repository Count"
                   stackId="a"
+                  stroke="var(--chart-1)"
+                  type="monotone"
                 />
               </AreaChart>
             </ChartContainer>
