@@ -3,8 +3,7 @@ import { sendGAEvent } from '@next/third-parties/google'
 
 export const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-XXXXXXXXXX'
 
-export const isAnalyticsEnabled = (): boolean =>
-  process.env.NODE_ENV === 'production' && GA_MEASUREMENT_ID !== 'G-XXXXXXXXXX'
+export const isAnalyticsEnabled = (): boolean => process.env.NODE_ENV === 'production' && GA_MEASUREMENT_ID !== 'G-XXXXXXXXXX'
 
 export interface WebVitalsMetric {
   id: string
