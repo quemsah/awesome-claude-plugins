@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Repo } from '../../app/types/repo.type.ts'
-import { RepoCard } from '../repo/RepoCard.tsx'
+import { RepoCard } from './RepoCard.tsx'
 import type { SortOption } from './Sort.tsx'
 
 interface InfiniteRepoGridProps {
