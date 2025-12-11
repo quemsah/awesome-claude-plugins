@@ -15,5 +15,9 @@
   },
   "imports": {
     "@/": "./"
+  },
+  "deploy": {
+    "org": "22",
+    "app": "claude-plugins"
   }
 }

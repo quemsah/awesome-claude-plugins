@@ -1,9 +1,15 @@
 import process from 'node:process'
 import { sendGAEvent } from '@next/third-parties/google'
 
+export function logEnvironmentVariables(): void {
+  console.log('Environment Variables:', process.env)
+}
+
+logEnvironmentVariables()
+
 export const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-XXXXXXXXXX'
 
-export const isAnalyticsEnabled = (): boolean => process.env.NODE_ENV === 'production' && GA_MEASUREMENT_ID !== 'G-XXXXXXXXXX'
+export const isAnalyticsEnabled = (): boolean => process.env.DENO_ENV === 'production' && GA_MEASUREMENT_ID !== 'G-XXXXXXXXXX'
 
 export interface WebVitalsMetric {
   id: string
@@ -25,7 +31,7 @@ export interface GaEvent {
 
 export function reportWebVitals(metric: WebVitalsMetric): void {
   if (!isAnalyticsEnabled()) {
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.DENO_ENV === 'development') {
       console.info('Web Vitals (dev):', metric)
     }
     return
