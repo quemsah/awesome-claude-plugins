@@ -2,11 +2,12 @@
 
 import { Search } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Header } from '../components/Header.tsx'
-import { LoadedContent } from '../components/LoadedContent.tsx'
-import { LoadingContent } from '../components/LoadingContent.tsx'
-import { Sort, type SortOption } from '../components/Sort.tsx'
-import { TitleSection } from '../components/TitleSection.tsx'
+import { Header } from '../components/common/Header.tsx'
+import { LoadedContent } from '../components/search/LoadedContent.tsx'
+import { LoadingContent } from '../components/search/LoadingContent.tsx'
+import { Sort, type SortOption } from '../components/search/Sort.tsx'
+import StructuredData from '../components/search/StructuredData.tsx'
+import { TitleSection } from '../components/search/TitleSection.tsx'
 import { Input } from '../components/ui/input.tsx'
 import type { Repo } from './types/repo.type.ts'
 
@@ -65,6 +66,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-background">
+      <StructuredData />
       <Header />
       <div className="container mx-auto px-4 py-8">
         <TitleSection />
@@ -72,12 +74,13 @@ export default function Home() {
         <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
           <div className="flex items-center gap-4">
             <div className="relative w-[180px]">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4" />
+              <Search aria-hidden="true" className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4" />
               <Input
+                aria-label="Search repositories"
                 className="pl-10"
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search..."
-                type="text"
+                placeholder="Search repositories..."
+                type="search"
                 value={searchTerm}
               />
             </div>
@@ -90,7 +93,15 @@ export default function Home() {
           </div>
         </div>
 
-        {loading ? <LoadingContent /> : <LoadedContent repos={sortedRepos} sortOption={sortOption} />}
+        {loading ? (
+          <div aria-busy="true" aria-live="polite">
+            <LoadingContent />
+          </div>
+        ) : (
+          <div aria-live="polite">
+            <LoadedContent repos={sortedRepos} sortOption={sortOption} />
+          </div>
+        )}
       </div>
     </main>
   )

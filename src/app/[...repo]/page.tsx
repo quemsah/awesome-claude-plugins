@@ -4,7 +4,8 @@ import type { components } from '@octokit/openapi-types'
 import { ArrowLeft, CircleDot, Code, ExternalLink, Eye, FileText, GitFork, Star } from 'lucide-react'
 import Link from 'next/link'
 import { use, useEffect, useState } from 'react'
-import { Header } from '../../components/Header.tsx'
+import { Header } from '../../components/common/Header.tsx'
+import RepoStructuredData from '../../components/repo/RepoStructuredData.tsx'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar.tsx'
 import { Badge } from '../../components/ui/badge.tsx'
 import { Button } from '../../components/ui/button.tsx'
@@ -91,10 +92,11 @@ export default function RepoPage({ params }: RouteParams) {
     <>
       <Header />
       <main className="min-h-screen bg-background">
+        {repo ? <RepoStructuredData repo={repo} /> : null}
         <div className="container mx-auto px-4 py-8 max-w-4xl">
-          <Button asChild className="mb-6" variant="ghost">
+          <Button aria-label="Back to all repositories" asChild className="mb-6" variant="ghost">
             <Link href="/">
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft aria-hidden="true" className="h-4 w-4" />
               Back to all repositories
             </Link>
           </Button>
@@ -108,9 +110,10 @@ export default function RepoPage({ params }: RouteParams) {
                     <AvatarFallback>{repo.owner.login.slice(0, 2).toUpperCase()}</AvatarFallback>
                   </Avatar>
                   <div>
-                    <CardTitle className="text-3xl mb-2">{repo.name}</CardTitle>
+                    <h1 className="text-3xl font-bold mb-2">{repo.name}</h1>
                     <CardDescription className="text-lg">
                       <a
+                        aria-label={`View ${repo.owner.login}'s GitHub profile`}
                         className="hover:text-primary transition-colors"
                         href={repo.owner.html_url}
                         rel="noopener noreferrer"
@@ -123,16 +126,16 @@ export default function RepoPage({ params }: RouteParams) {
                 </div>
                 <div className="flex gap-2">
                   {!!repo.homepage && (
-                    <Button asChild variant="outline">
-                      <a href={repo.homepage} rel="noopener noreferrer" target="_blank">
-                        <ExternalLink className="h-4 w-4" />
+                    <Button aria-label="Repository homepage" asChild variant="outline">
+                      <a aria-label="Visit repository homepage" href={repo.homepage} rel="noopener noreferrer" target="_blank">
+                        <ExternalLink aria-hidden="true" className="h-4 w-4" />
                         Homepage
                       </a>
                     </Button>
                   )}
-                  <Button asChild>
-                    <a href={repo.html_url} rel="noopener noreferrer" target="_blank">
-                      <ExternalLink className="h-4 w-4" />
+                  <Button aria-label="View on GitHub" asChild>
+                    <a aria-label="View repository on GitHub" href={repo.html_url} rel="noopener noreferrer" target="_blank">
+                      <ExternalLink aria-hidden="true" className="h-4 w-4" />
                       View on GitHub
                     </a>
                   </Button>
