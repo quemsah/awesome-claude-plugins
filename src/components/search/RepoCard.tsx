@@ -1,5 +1,5 @@
 import { GitFork, Star } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { Repo } from '../../app/types/repo.type.ts'
 import { ClaudeIcon } from '../common/ClaudeIcon.tsx'
 import { Button } from '../ui/button.tsx'
@@ -21,13 +21,21 @@ interface RepoCardProps {
 export function RepoCard({ repo, className }: RepoCardProps) {
   const [isHovered, setIsHovered] = useState(false)
 
+  const handleMouseEnter = useCallback(() => {
+    setIsHovered(true)
+  }, [])
+
+  const handleMouseLeave = useCallback(() => {
+    setIsHovered(false)
+  }, [])
+
   if (!repo.repo_name) return null
 
   return (
     <Card
-      className={`h-full group hover:border-primary/30 hover:bg-gradient-to-tl hover:from-muted hover:to-background transition-all duration-300 relative ${className}`}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      className={`h-full group hover:border-primary/30 hover:bg-linear-to-tl hover:from-muted hover:to-background transition-all duration-300 relative ${className}`}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       <CardHeader className="pr-14 -space-y-2">
         <CardTitle className="text-lg group-hover:text-primary transition-colors duration-300">{repo.repo_name}</CardTitle>
