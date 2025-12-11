@@ -1,5 +1,5 @@
 import { Box, GitFork, Star } from 'lucide-react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select.tsx'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select.tsx'
 
 export type SortOption = 'stars-desc' | 'forks-desc' | 'plugins-desc'
 

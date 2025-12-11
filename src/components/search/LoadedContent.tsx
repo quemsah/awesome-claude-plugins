@@ -1,7 +1,7 @@
-import type { Repo } from '../app/types/repo.type.ts'
+import type { Repo } from '../../app/types/repo.type.ts'
+import { Card, CardContent } from '../ui/card.tsx'
 import { InfiniteRepoGrid } from './InfiniteRepoGrid.tsx'
 import type { SortOption } from './Sort.tsx'
-import { Card, CardContent } from './ui/card.tsx'
 
 interface LoadedContentProps {
   repos: Repo[]

@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
-import type { Repo } from '../app/types/repo.type.ts'
-import { RepoCard } from './RepoCard.tsx'
+'use client'
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { Repo } from '../../app/types/repo.type.ts'
+import { RepoCard } from '../repo/RepoCard.tsx'
 import type { SortOption } from './Sort.tsx'
 
 interface InfiniteRepoGridProps {
@@ -14,22 +16,24 @@ export function InfiniteRepoGrid({ items, sortOption: _sortOption }: InfiniteRep
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_BATCH)
   const observerTarget = useRef<HTMLDivElement>(null)
 
+  const handleIntersection = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      if (entries[0].isIntersecting) {
+        setVisibleCount((prev) => Math.min(prev + ITEMS_PER_BATCH, items.length))
+      }
+    },
+    [items.length]
+  )
+
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          setVisibleCount((prev) => Math.min(prev + ITEMS_PER_BATCH, items.length))
-        }
-      },
-      { threshold: 0.1 }
-    )
+    const observer = new IntersectionObserver(handleIntersection, { threshold: 0.1 })
 
     if (observerTarget.current) {
       observer.observe(observerTarget.current)
     }
 
     return () => observer.disconnect()
-  }, [items])
+  }, [handleIntersection])
 
   useEffect(() => {
     setVisibleCount(ITEMS_PER_BATCH)
@@ -45,7 +49,6 @@ export function InfiniteRepoGrid({ items, sortOption: _sortOption }: InfiniteRep
         ))}
       </div>
 
-      {/* Sentinel element for infinite scroll */}
       {visibleCount < items.length && (
         <div className="h-20 w-full flex items-center justify-center text-muted-foreground text-sm" ref={observerTarget}>
           Loading more repositories...

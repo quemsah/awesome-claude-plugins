@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Area, AreaChart, Tooltip, XAxis, YAxis } from 'recharts'
-import { Header } from '../../components/Header.tsx'
+import { Header } from '../../components/common/Header.tsx'
+import StatsStructuredData from '../../components/stats/StatsStructuredData.tsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card.tsx'
 import { ChartContainer, ChartTooltipContent } from '../../components/ui/chart.tsx'
 import { formatDate } from '../../lib/utils.ts'
@@ -77,8 +78,12 @@ export default function StatsPage() {
     )
   }
 
+  const startDate = chartData.length > 0 ? chartData[0].date : undefined
+  const endDate = chartData.length > 0 ? chartData[chartData.length - 1].date : undefined
+
   return (
     <main className="min-h-screen bg-background">
+      <StatsStructuredData endDate={endDate} startDate={startDate} />
       <Header />
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
@@ -115,6 +120,7 @@ export default function StatsPage() {
           </CardHeader>
           <CardContent>
             <ChartContainer
+              aria-label="Repository growth chart showing daily repository count over time"
               className="h-[400px]"
               config={{
                 size: {
@@ -122,17 +128,31 @@ export default function StatsPage() {
                 },
               }}
             >
-              <AreaChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+              <AreaChart aria-label="Repository growth over time" data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="fillSize" x1="0" x2="0" y1="0" y2="1">
                     <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.8} />
                     <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.1} />
                   </linearGradient>
                 </defs>
-                <XAxis axisLine={false} dataKey="formattedDate" tickFormatter={(value) => value} tickLine={false} tickMargin={8} />
-                <YAxis axisLine={false} tickFormatter={(value) => `${value}`} tickLine={false} tickMargin={8} />
+                <XAxis
+                  aria-label="Date"
+                  axisLine={false}
+                  dataKey="formattedDate"
+                  tickFormatter={(value) => value}
+                  tickLine={false}
+                  tickMargin={8}
+                />
+                <YAxis
+                  aria-label="Repository count"
+                  axisLine={false}
+                  tickFormatter={(value) => `${value}`}
+                  tickLine={false}
+                  tickMargin={8}
+                />
                 <Tooltip content={<ChartTooltipContent />} />
                 <Area
+                  aria-label="Repository count trend"
                   dataKey="size"
                   fill="url(#fillSize)"
                   fillOpacity={0.4}

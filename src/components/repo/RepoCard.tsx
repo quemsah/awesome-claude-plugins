@@ -1,7 +1,7 @@
 import { ExternalLink, GitFork, Star } from 'lucide-react'
-import type { Repo } from '../app/types/repo.type.ts'
-import { PluginIcon } from './PluginIcon.tsx'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card.tsx'
+import type { Repo } from '../../app/types/repo.type.ts'
+import { ClaudeIcon } from '../common/ClaudeIcon.tsx'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card.tsx'
 
 interface RepoCardProps {
   repo: Repo
@@ -37,7 +37,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
             </div>
             {repo.plugins_count !== null && (
               <div className="flex items-center gap-1">
-                <PluginIcon />
+                <ClaudeIcon />
                 <span className="text-sm">{repo.plugins_count?.toLocaleString() ?? 0}</span>
               </div>
             )}
