@@ -9,7 +9,7 @@ logEnvironmentVariables()
 
 export const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-XXXXXXXXXX'
 
-export const isAnalyticsEnabled = (): boolean => process.env.DENO_ENV === 'production' && GA_MEASUREMENT_ID !== 'G-XXXXXXXXXX'
+export const isAnalyticsEnabled = (): boolean => process.env.NODE_ENV === 'production' && GA_MEASUREMENT_ID !== 'G-XXXXXXXXXX'
 
 export interface WebVitalsMetric {
   id: string
@@ -31,7 +31,7 @@ export interface GaEvent {
 
 export function reportWebVitals(metric: WebVitalsMetric): void {
   if (!isAnalyticsEnabled()) {
-    if (process.env.DENO_ENV === 'development') {
+    if (process.env.NODE_ENV === 'development') {
       console.info('Web Vitals (dev):', metric)
     }
     return
