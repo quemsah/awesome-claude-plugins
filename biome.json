@@ -74,7 +74,7 @@
         "useTopLevelRegex": "error"
       },
       "security": {
-        "noDangerouslySetInnerHtml": "off",
+        "noDangerouslySetInnerHtml": "error",
         "noDangerouslySetInnerHtmlWithChildren": "error"
       },
       "style": {

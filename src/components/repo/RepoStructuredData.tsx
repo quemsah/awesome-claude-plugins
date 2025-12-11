@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/security/noDangerouslySetInnerHtml: <Used to inject ld+json> */
 import type { components } from '@octokit/openapi-types'
 
 type Repository = components['schemas']['repository']

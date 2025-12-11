@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import process from 'node:process'
 import GoogleAnalytics from '../components/common/GoogleAnalytics.tsx'
 import { WebVitals } from '../components/common/WebVitals.tsx'
 import { Providers } from '../providers/providers.tsx'
@@ -84,7 +85,7 @@ export function generateMetadata(): Metadata {
       canonical: baseUrl,
     },
     verification: {
-      google: 'google-site-verification=your-google-verification-code',
+      google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION_CODE,
     },
   }
 }

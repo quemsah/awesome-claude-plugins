@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/security/noDangerouslySetInnerHtml: <Used to inject ld+json> */
 interface StatsStructuredDataProps {
   startDate?: string
   endDate?: string
@@ -5,9 +6,7 @@ interface StatsStructuredDataProps {
 
 export default function StatsStructuredData({ startDate, endDate }: StatsStructuredDataProps) {
   const temporalCoverage =
-    startDate && endDate
-      ? `${new Date(startDate).toISOString().split('T')[0]}/${new Date(endDate).toISOString().split('T')[0]}`
-      : '2026'
+    startDate && endDate ? `${new Date(startDate).toISOString().split('T')[0]}/${new Date(endDate).toISOString().split('T')[0]}` : '2026'
 
   const structuredData = {
     '@context': 'https://schema.org',

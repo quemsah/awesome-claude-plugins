@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/security/noDangerouslySetInnerHtml: <Used to inject ld+json> */
 export default function StructuredData() {
   const structuredData = {
     '@context': 'https://schema.org',
@@ -27,13 +28,6 @@ export default function StructuredData() {
       priceCurrency: 'EUR',
       availability: 'https://schema.org/InStock',
       url: 'https://claude-plugins.22.deno.net',
-    },
-    aggregateRating: {
-      '@type': 'AggregateRating',
-      ratingValue: '4.7',
-      ratingCount: '100',
-      bestRating: '5',
-      worstRating: '1',
     },
     featureList: ['Plugin discovery', 'Repository browsing', 'Search functionality', 'Sorting options', 'Statistics tracking'],
     applicationSubCategory: 'AI Development Tools',
