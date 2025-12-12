@@ -26,7 +26,7 @@ export interface GaEvent {
 }
 
 export function reportWebVitals(metric: WebVitalsMetric): void {
-  if (!isAnalyticsEnabled()) {
+  if (!(isGaEnabled() || isGtmEnabled())) {
     if (process.env.NODE_ENV === 'development') {
       console.info('Web Vitals (dev):', metric)
     }
@@ -39,42 +39,48 @@ export function reportWebVitals(metric: WebVitalsMetric): void {
 
   const value = Math.round(metric.name === 'CLS' ? metric.value * 1000 : metric.value)
 
-  sendGAEvent({
-    eventName: 'web_vitals',
-    eventCategory: 'Web Vitals',
-    eventLabel: metric.name,
-    value: value,
-    metricId: metric.id,
-    metricRating: metric.rating,
-    metricDelta: metric.delta,
-    customParameters: metric.attribution || {},
-  })
+  if (isGaEnabled()) {
+    sendGAEvent({
+      eventName: 'web_vitals',
+      eventCategory: 'Web Vitals',
+      eventLabel: metric.name,
+      value: value,
+      metricId: metric.id,
+      metricRating: metric.rating,
+      metricDelta: metric.delta,
+      customParameters: metric.attribution || {},
+    })
+  }
 }
 
 export function trackEvent(event: GaEvent): void {
-  if (!isAnalyticsEnabled()) {
+  if (!(isGaEnabled() || isGtmEnabled())) {
     return
   }
 
-  sendGAEvent({
-    eventName: event.action,
-    eventCategory: event.category || 'engagement',
-    eventLabel: event.label,
-    value: event.value,
-    customParameters: event.customParameters,
-  })
+  if (isGaEnabled()) {
+    sendGAEvent({
+      eventName: event.action,
+      eventCategory: event.category || 'engagement',
+      eventLabel: event.label,
+      value: event.value,
+      customParameters: event.customParameters,
+    })
+  }
 }
 
 export function trackPageView(url: string, title?: string): void {
-  if (!isAnalyticsEnabled() || typeof window === 'undefined') {
+  if (!(isGaEnabled() || isGtmEnabled()) || typeof window === 'undefined') {
     return
   }
 
-  sendGAEvent({
-    eventName: 'page_view',
-    pageLocation: url,
-    pageTitle: title || document.title,
-  })
+  if (isGaEnabled()) {
+    sendGAEvent({
+      eventName: 'page_view',
+      pageLocation: url,
+      pageTitle: title || document.title,
+    })
+  }
 }
 
 declare global {
