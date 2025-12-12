@@ -19,7 +19,7 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
   }
 
   const formatSize = (size: number | null) => {
-    if (!size) return 'Unknown'
+    if (size === null || size === undefined) return 'Unknown'
     const kb = size
     if (kb < 1024) return `${kb} KB`
     const mb = kb / 1024
