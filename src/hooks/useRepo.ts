@@ -9,9 +9,13 @@ export function useRepo(repoPath: string) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    const controller = new AbortController()
+
     ;(async () => {
       try {
-        const resp = await fetch(`https://api.github.com/repos/${repoPath}`)
+        const resp = await fetch(`https://api.github.com/repos/${repoPath}`, {
+          signal: controller.signal,
+        })
         if (!resp.ok) {
           if (resp.status === 404) {
             setError('Repository not found')
@@ -22,12 +26,17 @@ export function useRepo(repoPath: string) {
         }
         const data = (await resp.json()) as Repository
         setRepo(data)
-      } catch {
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return
+        }
         setError('Failed to load repository')
       } finally {
         setLoading(false)
       }
     })()
+
+    return () => controller.abort()
   }, [repoPath])
 
   return { repo, loading, error }

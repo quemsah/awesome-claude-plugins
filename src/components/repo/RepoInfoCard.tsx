@@ -53,14 +53,14 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
           </div>
           <div className="flex flex-wrap gap-3 sm:flex-nowrap sm:ml-4">
             {!!repo.homepage && (
-              <Button aria-label="Repository homepage" asChild className="flex-1  sm:w-auto justify-center" variant="outline">
+              <Button aria-label="Repository homepage" asChild className="flex-1 sm:w-auto justify-center" variant="outline">
                 <a aria-label="Visit repository homepage" href={repo.homepage} rel="noopener noreferrer" target="_blank">
                   <ExternalLink aria-hidden="true" className="h-4 w-4" />
                   Homepage
                 </a>
               </Button>
             )}
-            <Button aria-label="View on GitHub" asChild className="flex-1  sm:w-auto justify-center">
+            <Button aria-label="View on GitHub" asChild className="flex-1 sm:w-auto justify-center">
               <a aria-label="View repository on GitHub" href={repo.html_url} rel="noopener noreferrer" target="_blank">
                 <ExternalLink aria-hidden="true" className="h-4 w-4" />
                 View on GitHub
@@ -106,7 +106,7 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {!!repo.language && (
             <div>
               <dt className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -141,7 +141,7 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
             <dt className="text-sm font-medium text-muted-foreground">Last Pushed</dt>
             <dd className="text-foreground">{formatDate(repo.pushed_at)}</dd>
           </div>
-        </div>
+        </dl>
       </CardContent>
     </Card>
   )

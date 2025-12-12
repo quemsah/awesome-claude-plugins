@@ -1,6 +1,7 @@
 'use client'
 
 import type { components } from '@octokit/openapi-types'
+import type { Plugin } from '../../app/types/plugin.type.ts'
 import { Card, CardContent } from '../ui/card.tsx'
 import { InstallCommand } from './InstallCommand.tsx'
 import { PluginAuthor } from './PluginAuthor.tsx'
@@ -12,27 +13,6 @@ import { PluginList } from './PluginList.tsx'
 import { PluginSource } from './PluginSource.tsx'
 
 type Repository = components['schemas']['repository']
-
-type PluginAuthorType = {
-  name?: string
-  email?: string
-}
-
-type Plugin = {
-  name?: string
-  description?: string
-  version?: string
-  id?: string
-  source?: string
-  category?: string
-  author?: PluginAuthorType
-  license?: string
-  keywords?: string[]
-  strict?: boolean
-  commands?: string[]
-  agents?: string[]
-  mcpServers?: string[]
-}
 
 type PluginCardProps = {
   plugin: Plugin

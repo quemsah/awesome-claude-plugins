@@ -2,6 +2,8 @@ import { GitFork, Star } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import type { Repo } from '../../app/types/repo.type.ts'
 import { ClaudeIcon } from '../common/ClaudeIcon.tsx'
+import { CopiedIcon } from '../common/CopiedIcon.tsx'
+import { CopyIcon } from '../common/CopyIcon.tsx'
 import { Button } from '../ui/button.tsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card.tsx'
 import { AnimatedGithubIcon } from './AnimatedGithubIcon.tsx'
@@ -98,40 +100,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
                 title={isCopied ? 'Marketplace command copied' : 'Copy marketplace command'}
                 type="button"
               >
-                {isCopied ? (
-                  <svg
-                    aria-hidden="true"
-                    fill="none"
-                    height="16"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    viewBox="0 0 24 24"
-                    width="16"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <title>Copied</title>
-                    <polyline points="20,6 9,17 4,12" />
-                  </svg>
-                ) : (
-                  <svg
-                    aria-hidden="true"
-                    fill="none"
-                    height="16"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    viewBox="0 0 24 24"
-                    width="16"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <title>Copy</title>
-                    <rect height="13" rx="2" ry="2" width="13" x="9" y="9" />
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                  </svg>
-                )}
+                {isCopied ? <CopiedIcon /> : <CopyIcon />}
               </button>
             </div>
           </div>

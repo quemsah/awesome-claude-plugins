@@ -67,7 +67,6 @@ export default function RepoPage({ params }: RouteParams) {
 
           <RepoInfoCard repo={repo} />
 
-          {/* Plugins Section */}
           {!pluginsError && (
             <Card className="mt-8 p-6">
               <CardHeader className="p-0 mb-4">

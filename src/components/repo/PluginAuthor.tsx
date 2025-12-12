@@ -1,14 +1,12 @@
-type PluginAuthor = {
-  name?: string
-  email?: string
-}
+import type { PluginAuthor as PluginAuthorType } from '../../app/types/plugin.type.ts'
 
 interface PluginAuthorProps {
-  author?: PluginAuthor
+  author?: PluginAuthorType
 }
 
 export function PluginAuthor({ author }: PluginAuthorProps) {
   if (!author) return null
+  if (!(author.name || author.email)) return null
 
   return (
     <div>

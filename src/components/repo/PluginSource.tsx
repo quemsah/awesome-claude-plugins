@@ -4,7 +4,7 @@ interface PluginSourceProps {
   defaultBranch?: string
 }
 
-export function PluginSource({ source, repoPath, defaultBranch }: PluginSourceProps) {
+export function PluginSource({ source, repoPath, defaultBranch = 'main' }: PluginSourceProps) {
   if (!source) return null
 
   return (
