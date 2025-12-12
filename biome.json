@@ -91,6 +91,7 @@
         "useSelfClosingElements": "error"
       },
       "suspicious": {
+        "noArrayIndexKey": "off",
         "noCommentText": "error",
         "noDocumentImportInPage": "error",
         "noDuplicateJsxProps": "error",

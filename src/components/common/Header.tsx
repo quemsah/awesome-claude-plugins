@@ -17,7 +17,7 @@ export function Header() {
           <div className="flex gap-4" style={{ alignItems: 'last baseline' }}>
             <button
               aria-label="Home"
-              className="text-lg font-medium text-foreground hover:text-primary transition-colors"
+              className="hidden md:block text-lg font-medium text-foreground hover:text-primary transition-colors"
               onClick={() => router.push('/')}
               type="button"
             >
@@ -63,7 +63,7 @@ export function Header() {
               rel="noopener noreferrer"
               target="_blank"
             >
-              <Github strokeWidth={1} />
+              <Github />
             </a>
           </Button>
           <ThemeToggle />

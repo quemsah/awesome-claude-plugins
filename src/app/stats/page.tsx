@@ -91,7 +91,7 @@ export default function StatsPage() {
           <p className="text-muted-foreground">The growth of repositories over time</p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2 mb-8">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2 mb-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Repositories</CardTitle>

@@ -2,6 +2,8 @@ import { GitFork, Star } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import type { Repo } from '../../app/types/repo.type.ts'
 import { ClaudeIcon } from '../common/ClaudeIcon.tsx'
+import { CopiedIcon } from '../common/CopiedIcon.tsx'
+import { CopyIcon } from '../common/CopyIcon.tsx'
 import { Button } from '../ui/button.tsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card.tsx'
 import { AnimatedGithubIcon } from './AnimatedGithubIcon.tsx'
@@ -20,6 +22,8 @@ interface RepoCardProps {
 
 export function RepoCard({ repo, className }: RepoCardProps) {
   const [isHovered, setIsHovered] = useState(false)
+  const [isCopied, setIsCopied] = useState(false)
+  const hasValidRepoInfo = Boolean(repo.owner && repo.repo_name)
 
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true)
@@ -28,6 +32,16 @@ export function RepoCard({ repo, className }: RepoCardProps) {
   const handleMouseLeave = useCallback(() => {
     setIsHovered(false)
   }, [])
+
+  const getMarketplaceCommand = useCallback(() => `/plugin marketplace add ${repo.owner}/${repo.repo_name}`, [repo.owner, repo.repo_name])
+
+  const handleCopyClick = useCallback(() => {
+    if (repo.owner && repo.repo_name) {
+      navigator.clipboard.writeText(getMarketplaceCommand())
+      setIsCopied(true)
+      setTimeout(() => setIsCopied(false), 500)
+    }
+  }, [repo.owner, repo.repo_name, getMarketplaceCommand])
 
   if (!repo.repo_name) return null
 
@@ -75,6 +89,22 @@ export function RepoCard({ repo, className }: RepoCardProps) {
             <a href={`/${repo.owner}/${repo.repo_name}`}>Details</a>
           </Button>
         </div>
+        {hasValidRepoInfo ? (
+          <div className="mt-3 border-t border-muted/20">
+            <div className="bg-muted/50 rounded-md p-2 text-xs flex items-center gap-2">
+              <code className="font-mono break-all flex-grow">{getMarketplaceCommand()}</code>
+              <button
+                aria-label={isCopied ? 'Marketplace command copied' : 'Copy marketplace command'}
+                className={`p-1 rounded-md transition-colors flex-shrink-0 ${isCopied ? 'bg-green-500/20 text-green-600' : 'hover:bg-muted'}`}
+                onClick={handleCopyClick}
+                title={isCopied ? 'Marketplace command copied' : 'Copy marketplace command'}
+                type="button"
+              >
+                {isCopied ? <CopiedIcon /> : <CopyIcon />}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </CardContent>
       <Button asChild className="absolute top-6 right-6 h-8 w-8" size="icon" variant="outline">
         <a href={repo.html_url} rel="noopener noreferrer" target="_blank">
