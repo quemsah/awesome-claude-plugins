@@ -1,6 +1,6 @@
-export const dynamic = 'force-static';
+export const dynamic = 'force-static'
 
-export async function GET() {
+export function GET() {
   const llmsContent = `# Awesome Claude Plugins
 
 > A comprehensive directory of Claude AI plugins that helps developers discover, evaluate, and integrate high-quality plugins for their AI applications.
@@ -57,12 +57,12 @@ This website is updated regularly with new plugins, performance data, and docume
 ## Optional Resources
 
 - [Claude AI Documentation](https://www.anthropic.com/claude): Official Claude AI documentation
-- [Next.js Official Docs](https://nextjs.org/docs): Framework documentation and best practices`;
+- [Next.js Official Docs](https://nextjs.org/docs): Framework documentation and best practices`
 
   return new Response(llmsContent, {
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'public, max-age=3600',
     },
-  });
+  })
 }

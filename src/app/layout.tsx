@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import process from 'node:process'
-import GoogleAnalytics from '../components/common/GoogleAnalytics.tsx'
+import Google from '../components/common/Google.tsx'
 import { WebVitals } from '../components/common/WebVitals.tsx'
 import { Providers } from '../providers/providers.tsx'
 
@@ -10,7 +10,7 @@ export function generateMetadata(): Metadata {
   return {
     metadataBase: new URL(baseUrl),
     title: {
-      default: 'Awesome Claude Plugins | AI Development Tools & Extensions',
+      default: 'Awesome Claude Plugins',
       template: '%s | Awesome Claude Plugins',
     },
     description:
@@ -49,7 +49,7 @@ export function generateMetadata(): Metadata {
       type: 'website',
       locale: 'en_US',
       url: 'https://claude-plugins.22.deno.net',
-      title: 'Awesome Claude Plugins | AI Development Tools & Extensions',
+      title: 'Awesome Claude Plugins',
       description:
         'Explore the ultimate collection of Claude Code plugins. Discover powerful AI development tools, productivity extensions, and innovative integrations for Claude AI across GitHub repositories.',
       siteName: 'Awesome Claude Plugins',
@@ -58,7 +58,7 @@ export function generateMetadata(): Metadata {
           url: '/android-chrome-512x512.png',
           width: 512,
           height: 512,
-          alt: 'Awesome Claude Plugins - AI Development Tools & Extensions',
+          alt: 'Awesome Claude Plugins',
         },
       ],
     },
@@ -96,10 +96,10 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en-US" suppressHydrationWarning>
       <body className="min-h-screen">
         <Providers>{children}</Providers>
-        <GoogleAnalytics />
+        <Google />
         <WebVitals />
       </body>
     </html>

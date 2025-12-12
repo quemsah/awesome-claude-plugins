@@ -20,6 +20,8 @@ interface RepoCardProps {
 
 export function RepoCard({ repo, className }: RepoCardProps) {
   const [isHovered, setIsHovered] = useState(false)
+  const [isCopied, setIsCopied] = useState(false)
+  const hasValidRepoInfo = Boolean(repo.owner && repo.repo_name)
 
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true)
@@ -28,6 +30,16 @@ export function RepoCard({ repo, className }: RepoCardProps) {
   const handleMouseLeave = useCallback(() => {
     setIsHovered(false)
   }, [])
+
+  const getMarketplaceCommand = useCallback(() => `/plugin marketplace add ${repo.owner}/${repo.repo_name}`, [repo.owner, repo.repo_name])
+
+  const handleCopyClick = useCallback(() => {
+    if (repo.owner && repo.repo_name) {
+      navigator.clipboard.writeText(getMarketplaceCommand())
+      setIsCopied(true)
+      setTimeout(() => setIsCopied(false), 500)
+    }
+  }, [repo.owner, repo.repo_name, getMarketplaceCommand])
 
   if (!repo.repo_name) return null
 
@@ -75,6 +87,55 @@ export function RepoCard({ repo, className }: RepoCardProps) {
             <a href={`/${repo.owner}/${repo.repo_name}`}>Details</a>
           </Button>
         </div>
+        {hasValidRepoInfo ? (
+          <div className="mt-3 border-t border-muted/20">
+            <div className="bg-muted/50 rounded-md p-2 text-xs flex items-center gap-2">
+              <code className="font-mono break-all flex-grow">{getMarketplaceCommand()}</code>
+              <button
+                aria-label={isCopied ? 'Marketplace command copied' : 'Copy marketplace command'}
+                className={`p-1 rounded-md transition-colors flex-shrink-0 ${isCopied ? 'bg-green-500/20 text-green-600' : 'hover:bg-muted'}`}
+                onClick={handleCopyClick}
+                title={isCopied ? 'Marketplace command copied' : 'Copy marketplace command'}
+                type="button"
+              >
+                {isCopied ? (
+                  <svg
+                    aria-hidden="true"
+                    fill="none"
+                    height="16"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    width="16"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <title>Copied</title>
+                    <polyline points="20,6 9,17 4,12" />
+                  </svg>
+                ) : (
+                  <svg
+                    aria-hidden="true"
+                    fill="none"
+                    height="16"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    width="16"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <title>Copy</title>
+                    <rect height="13" rx="2" ry="2" width="13" x="9" y="9" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </CardContent>
       <Button asChild className="absolute top-6 right-6 h-8 w-8" size="icon" variant="outline">
         <a href={repo.html_url} rel="noopener noreferrer" target="_blank">

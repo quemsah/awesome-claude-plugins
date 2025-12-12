@@ -1,0 +1,60 @@
+'use client'
+
+import type { components } from '@octokit/openapi-types'
+import { Card, CardContent } from '../ui/card.tsx'
+import { InstallCommand } from './InstallCommand.tsx'
+import { PluginAuthor } from './PluginAuthor.tsx'
+import { PluginDescription } from './PluginDescription.tsx'
+import { PluginHeader } from './PluginHeader.tsx'
+import { PluginId } from './PluginId.tsx'
+import { PluginKeywords } from './PluginKeywords.tsx'
+import { PluginList } from './PluginList.tsx'
+import { PluginSource } from './PluginSource.tsx'
+
+type Repository = components['schemas']['repository']
+
+type PluginAuthorType = {
+  name?: string
+  email?: string
+}
+
+type Plugin = {
+  name?: string
+  description?: string
+  version?: string
+  id?: string
+  source?: string
+  category?: string
+  author?: PluginAuthorType
+  license?: string
+  keywords?: string[]
+  strict?: boolean
+  commands?: string[]
+  agents?: string[]
+  mcpServers?: string[]
+}
+
+type PluginCardProps = {
+  plugin: Plugin
+  repoPath: string
+  repo?: Repository | null
+}
+
+export function PluginCard({ plugin, repoPath, repo }: PluginCardProps) {
+  return (
+    <Card className="hover:border-primary/30 hover:bg-gradient-to-tl hover:from-muted hover:to-background transition-all duration-300 w-full group">
+      <PluginHeader category={plugin.category} name={plugin.name} version={plugin.version} />
+      {plugin.name ? <InstallCommand pluginId={plugin.id} pluginName={plugin.name} repoPath={repoPath} /> : null}
+      <CardContent className="space-y-2 pt-1">
+        <PluginDescription description={plugin.description} />
+        <PluginSource defaultBranch={repo?.default_branch} repoPath={repoPath} source={plugin.source} />
+        <PluginAuthor author={plugin.author} />
+        <PluginId id={plugin.id} />
+        <PluginKeywords keywords={plugin.keywords} />
+        <PluginList defaultBranch={repo?.default_branch} items={plugin.commands} repoPath={repoPath} title="Commands" />
+        <PluginList defaultBranch={repo?.default_branch} items={plugin.agents} repoPath={repoPath} title="Agents" />
+        <PluginList defaultBranch={repo?.default_branch} items={plugin.mcpServers} repoPath={repoPath} title="MCP Servers" />
+      </CardContent>
+    </Card>
+  )
+}

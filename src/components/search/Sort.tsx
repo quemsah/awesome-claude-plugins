@@ -31,7 +31,7 @@ export function Sort({ sortOption, onSortChange }: SortProps) {
 
   return (
     <Select onValueChange={(value: string) => onSortChange(value as SortOption)} value={sortOption}>
-      <SelectTrigger className="w-[180px]">
+      <SelectTrigger className="w-full sm:w-45">
         <SelectValue>
           <span className="flex items-center">
             {selectedOption.icon}
