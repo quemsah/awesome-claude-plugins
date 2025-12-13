@@ -4,13 +4,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="flex min-h-screen items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-4xl font-bold text-muted-foreground">404</CardTitle>
+          <CardTitle className="font-bold text-4xl text-muted-foreground">404</CardTitle>
           <CardDescription className="text-lg">Page Not Found</CardDescription>
         </CardHeader>
-        <CardContent className="text-center space-y-4">
+        <CardContent className="space-y-4 text-center">
           <p className="text-muted-foreground">Sorry, we couldn't find the page you're looking for.</p>
           <div className="flex justify-center">
             <Link href="/">

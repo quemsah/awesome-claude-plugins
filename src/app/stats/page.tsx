@@ -87,25 +87,25 @@ export default function StatsPage() {
       <Header />
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Repositories Statistics</h1>
+          <h1 className="mb-2 font-bold text-3xl">Repositories Statistics</h1>
           <p className="text-muted-foreground">The growth of repositories over time</p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2 mb-6">
+        <div className="mb-6 grid gap-6 md:grid-cols-2 lg:grid-cols-2">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Repositories</CardTitle>
+              <CardTitle className="font-medium text-sm">Total Repositories</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{chartData.length > 0 ? chartData[chartData.length - 1].size : 0}</div>
+              <div className="font-bold text-2xl">{chartData.length > 0 ? chartData[chartData.length - 1].size : 0}</div>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Avg Daily Increase</CardTitle>
+              <CardTitle className="font-medium text-sm">Avg Daily Increase</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">+{trends.averageDailyIncrease}</div>
+              <div className="font-bold text-2xl">+{trends.averageDailyIncrease}</div>
             </CardContent>
           </Card>
         </div>

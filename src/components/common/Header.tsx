@@ -17,7 +17,7 @@ export function Header() {
           <div className="flex gap-4" style={{ alignItems: 'last baseline' }}>
             <button
               aria-label="Home"
-              className="hidden md:block text-lg font-medium text-foreground hover:text-primary transition-colors"
+              className="hidden font-medium text-foreground text-lg transition-colors hover:text-primary md:block"
               onClick={() => router.push('/')}
               type="button"
             >
@@ -26,7 +26,7 @@ export function Header() {
 
             <button
               aria-label="Search repositories"
-              className={`flex items-center gap-2 text-sm ${pathname === '/' ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
+              className={`flex items-center gap-2 text-sm ${pathname === '/' ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
               onClick={() => router.push('/')}
               type="button"
             >
@@ -36,7 +36,7 @@ export function Header() {
 
             <button
               aria-label="View statistics"
-              className={`flex items-center gap-2 text-sm ${pathname === '/stats' ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
+              className={`flex items-center gap-2 text-sm ${pathname === '/stats' ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
               onClick={() => router.push('/stats')}
               type="button"
             >

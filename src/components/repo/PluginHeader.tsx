@@ -9,10 +9,10 @@ interface PluginHeaderProps {
 
 export function PluginHeader({ name, version, category }: PluginHeaderProps) {
   return (
-    <CardHeader className="pb-3 -space-y-2">
-      <div className="flex justify-between items-start">
+    <CardHeader className="-space-y-2 pb-3">
+      <div className="flex items-start justify-between">
         <div>
-          <CardTitle className="text-lg font-bold group-hover:text-primary transition-colors duration-300">
+          <CardTitle className="font-bold text-lg transition-colors duration-300 group-hover:text-primary">
             {name || 'Unnamed Plugin'}
             {version ? <span className="text-muted-foreground">@{version}</span> : null}
           </CardTitle>

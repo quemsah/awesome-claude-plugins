@@ -23,10 +23,10 @@ export default function RepoPage({ params }: RouteParams) {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-background flex items-center justify-center">
+      <main className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
-          <p className="text-muted-foreground mt-2">Loading repository...</p>
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-primary border-b-2" />
+          <p className="mt-2 text-muted-foreground">Loading repository...</p>
         </div>
       </main>
     )
@@ -34,8 +34,8 @@ export default function RepoPage({ params }: RouteParams) {
 
   if (error || !repo) {
     return (
-      <main className="min-h-screen bg-background flex items-center justify-center">
-        <Card className="text-center p-8">
+      <main className="flex min-h-screen items-center justify-center bg-background">
+        <Card className="p-8 text-center">
           <CardHeader>
             <CardTitle>{error || 'Repository not found'}</CardTitle>
           </CardHeader>
@@ -57,7 +57,7 @@ export default function RepoPage({ params }: RouteParams) {
       <Header />
       <main className="min-h-screen bg-background">
         {repo ? <RepoStructuredData repo={repo} /> : null}
-        <div className="container mx-auto px-4 py-8 max-w-4xl">
+        <div className="container mx-auto max-w-4xl px-4 py-8">
           <Button aria-label="Back to all repositories" asChild className="mb-6" variant="ghost">
             <Link href="/">
               <ArrowLeft aria-hidden="true" className="h-4 w-4" />
@@ -69,14 +69,14 @@ export default function RepoPage({ params }: RouteParams) {
 
           {!pluginsError && (
             <Card className="mt-8 p-6">
-              <CardHeader className="p-0 mb-4">
+              <CardHeader className="mb-4 p-0">
                 <CardTitle className="text-2xl">Available Plugins</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 {pluginsLoading ? (
-                  <div className="text-center py-8">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto" />
-                    <p className="text-muted-foreground mt-2">Loading plugins...</p>
+                  <div className="py-8 text-center">
+                    <div className="mx-auto h-6 w-6 animate-spin rounded-full border-primary border-b-2" />
+                    <p className="mt-2 text-muted-foreground">Loading plugins...</p>
                   </div>
                 ) : plugins.length > 0 ? (
                   <div className="space-y-4">
@@ -90,7 +90,7 @@ export default function RepoPage({ params }: RouteParams) {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-muted-foreground text-center py-4">No plugins found in this repository.</p>
+                  <p className="py-4 text-center text-muted-foreground">No plugins found in this repository.</p>
                 )}
               </CardContent>
             </Card>

@@ -9,10 +9,10 @@ export function PluginSource({ source, repoPath, defaultBranch = 'main' }: Plugi
 
   return (
     <div>
-      <h3 className="font-medium text-sm mb-0.5">Source</h3>
-      <p className="text-muted-foreground text-sm break-all">
+      <h3 className="mb-0.5 font-medium text-sm">Source</h3>
+      <p className="break-all text-muted-foreground text-sm">
         <a
-          className="hover:text-primary hover:underline underline-offset-4 transition-colors group-hover:text-primary"
+          className="underline-offset-4 transition-colors hover:text-primary hover:underline group-hover:text-primary"
           href={`https://github.com/${repoPath}/blob/${defaultBranch}/${source}`}
           rel="noopener noreferrer"
           target="_blank"

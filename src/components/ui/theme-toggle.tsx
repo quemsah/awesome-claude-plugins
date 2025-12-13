@@ -23,7 +23,7 @@ export function ThemeToggle() {
         <Button className="relative" size="icon" variant="outline">
           <Sun className={`h-[1.2rem] w-[1.2rem] transition-all ${isDark ? 'rotate-90 scale-0' : 'rotate-0 scale-100'}`} />
           <Moon
-            className={`absolute inset-0 h-[1.2rem] w-[1.2rem] m-auto transition-all ${isDark ? 'rotate-0 scale-100' : 'rotate-90 scale-0'}`}
+            className={`absolute inset-0 m-auto h-[1.2rem] w-[1.2rem] transition-all ${isDark ? 'rotate-0 scale-100' : 'rotate-90 scale-0'}`}
           />
           <span className="sr-only">Toggle theme</span>
         </Button>

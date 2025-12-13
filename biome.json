@@ -57,15 +57,16 @@
         "useJsxKeyInIterable": "error"
       },
       "nursery": {
-        "noEmptySource": "error",
         "noDuplicatedSpreadProps": "error",
+        "noEmptySource": "error",
         "noLeakedRender": "error",
         "noMultiStr": "error",
         "noNextAsyncClientComponent": "error",
         "noUselessCatchBinding": "error",
         "useArraySortCompare": "error",
         "useConsistentArrowReturn": "error",
-        "useFind": "error"
+        "useFind": "error",
+        "useSortedClasses": "error"
       },
       "performance": {
         "noImgElement": "error",

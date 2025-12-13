@@ -47,23 +47,23 @@ export function RepoCard({ repo, className }: RepoCardProps) {
 
   return (
     <Card
-      className={`h-full group hover:border-primary/30 hover:bg-linear-to-tl hover:from-muted hover:to-background transition-all duration-300 relative ${className}`}
+      className={`group relative h-full transition-all duration-300 hover:border-primary/30 hover:bg-linear-to-tl hover:from-muted hover:to-background ${className}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <CardHeader className="pr-14 -space-y-2">
-        <CardTitle className="text-lg group-hover:text-primary transition-colors duration-300">{repo.repo_name}</CardTitle>
+      <CardHeader className="-space-y-2 pr-14">
+        <CardTitle className="text-lg transition-colors duration-300 group-hover:text-primary">{repo.repo_name}</CardTitle>
         <CardDescription className="text-muted-foreground text-sm">
           by{' '}
-          <a className="hover:text-primary hover:underline underline-offset-4" href={`https://github.com/${repo.owner}`}>
+          <a className="underline-offset-4 hover:text-primary hover:underline" href={`https://github.com/${repo.owner}`}>
             {repo.owner}
           </a>
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col h-full">
+      <CardContent className="flex h-full flex-col">
         <div className="flex-grow">
           {!!repo.description && (
-            <p className="text-sm text-muted-foreground opacity-90 group-hover:opacity-100 transition-opacity duration-300 mb-4 line-clamp-2">
+            <p className="mb-4 line-clamp-2 text-muted-foreground text-sm opacity-90 transition-opacity duration-300 group-hover:opacity-100">
               {repo.description}
             </p>
           )}
@@ -90,12 +90,12 @@ export function RepoCard({ repo, className }: RepoCardProps) {
           </Button>
         </div>
         {hasValidRepoInfo ? (
-          <div className="mt-3 border-t border-muted/20">
-            <div className="bg-muted/50 rounded-md p-2 text-xs flex items-center gap-2">
-              <code className="font-mono break-all flex-grow">{getMarketplaceCommand()}</code>
+          <div className="mt-3 border-muted/20 border-t">
+            <div className="flex items-center gap-2 rounded-md bg-muted/50 p-2 text-xs">
+              <code className="flex-grow break-all font-mono">{getMarketplaceCommand()}</code>
               <button
                 aria-label={isCopied ? 'Marketplace command copied' : 'Copy marketplace command'}
-                className={`p-1 rounded-md transition-colors flex-shrink-0 ${isCopied ? 'bg-green-500/20 text-green-600' : 'hover:bg-muted'}`}
+                className={`flex-shrink-0 rounded-md p-1 transition-colors ${isCopied ? 'bg-green-500/20 text-green-600' : 'hover:bg-muted'}`}
                 onClick={handleCopyClick}
                 title={isCopied ? 'Marketplace command copied' : 'Copy marketplace command'}
                 type="button"

@@ -10,7 +10,7 @@ interface LoadedContentProps {
 
 export function LoadedContent({ repos, sortOption }: LoadedContentProps) {
   return repos.length === 0 ? (
-    <Card className="text-center py-12">
+    <Card className="py-12 text-center">
       <CardContent>
         <p className="text-muted-foreground">No repositories found</p>
       </CardContent>

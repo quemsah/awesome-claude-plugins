@@ -94,7 +94,7 @@ const ChartTooltipContent = React.forwardRef<
           {!!label && <p className="font-medium">{label}</p>}
           {payload.map((entry, index) => (
             <p className="text-sm" key={`tooltip-entry-${entry.name}-${index}`}>
-              <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: entry.color }} />
+              <span className="mr-2 inline-block h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
               {entry.name}: {entry.value}
             </p>
           ))}

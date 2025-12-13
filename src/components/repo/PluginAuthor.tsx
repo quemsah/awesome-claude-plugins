@@ -10,7 +10,7 @@ export function PluginAuthor({ author }: PluginAuthorProps) {
 
   return (
     <div>
-      <h3 className="font-medium text-sm mb-0.5">Author</h3>
+      <h3 className="mb-0.5 font-medium text-sm">Author</h3>
       <div className="text-muted-foreground text-sm">
         {author.name ? (
           <p className="font-medium">
