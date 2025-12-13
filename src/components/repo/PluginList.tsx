@@ -10,16 +10,16 @@ export function PluginList({ title, items, repoPath, defaultBranch }: PluginList
 
   return (
     <div>
-      <h3 className="font-medium text-sm mb-0.5">
+      <h3 className="mb-0.5 font-medium text-sm">
         {title} ({items.length})
       </h3>
-      <ul className="text-muted-foreground text-sm list-disc list-inside space-y-0.5">
+      <ul className="list-inside list-disc space-y-0.5 text-muted-foreground text-sm">
         {items.map((item) => {
           const fileUrl = `https://github.com/${repoPath}/blob/${defaultBranch || 'main'}/${item}`
           return (
             <li className="break-all" key={item}>
               <a
-                className="hover:text-primary hover:underline underline-offset-4 transition-colors group-hover:text-primary"
+                className="underline-offset-4 transition-colors hover:text-primary hover:underline group-hover:text-primary"
                 href={fileUrl}
                 rel="noopener noreferrer"
                 target="_blank"

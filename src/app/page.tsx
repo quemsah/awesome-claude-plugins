@@ -71,13 +71,13 @@ export default function Home() {
       <div className="container mx-auto px-4 py-8">
         <TitleSection />
 
-        <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
-          <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
+        <div className="mb-4 flex flex-col items-center justify-between gap-4 md:flex-row">
+          <div className="flex w-full flex-col items-center gap-4 sm:w-auto sm:flex-row">
             <div className="relative w-full sm:w-48">
-              <Search aria-hidden="true" className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4" />
+              <Search aria-hidden="true" className="-translate-y-1/2 absolute top-1/2 left-3 h-4 w-4 transform" />
               <Input
                 aria-label="Search repositories"
-                className="pl-10 w-full"
+                className="w-full pl-10"
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search repositories..."
                 type="search"
@@ -88,7 +88,7 @@ export default function Home() {
               <Sort onSortChange={setSortOption} sortOption={sortOption} />
             </div>
           </div>
-          <div className="text-sm text-muted-foreground">
+          <div className="text-muted-foreground text-sm">
             {loading
               ? 'Loading...'
               : `${filteredPluginCount} ${filteredPluginCount === 1 ? 'plugin' : 'plugins'} available across ${filteredRepos.length} ${filteredRepos.length === 1 ? 'repository' : 'repositories'}`}

@@ -7,8 +7,8 @@ export function PluginId({ id }: PluginIdProps) {
 
   return (
     <div>
-      <h3 className="font-medium text-sm mb-0.5">Plugin ID</h3>
-      <p className="text-muted-foreground text-sm break-all">{id}</p>
+      <h3 className="mb-0.5 font-medium text-sm">Plugin ID</h3>
+      <p className="break-all text-muted-foreground text-sm">{id}</p>
     </div>
   )
 }

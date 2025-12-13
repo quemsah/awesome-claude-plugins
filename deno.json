@@ -11,7 +11,7 @@
     "dev": "deno run -A --unstable-detect-cjs npm:next@16.0.10 dev",
     "build": "deno run -A --unstable-detect-cjs npm:next@16.0.10 build",
     "start": "deno run -A --unstable-detect-cjs npm:next@16.0.10 start",
-    "style": "deno lint --fix; deno run -A npm:@biomejs/biome check --write ."
+    "style": "deno lint --fix; deno run -A npm:@biomejs/biome check --write --unsafe ."
   },
   "imports": {
     "@/": "./"

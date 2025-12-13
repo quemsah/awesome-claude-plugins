@@ -16,7 +16,7 @@ export function LoadingContent() {
             <Skeleton className="h-3 w-full" />
             <Skeleton className="h-3 w-5/6" />
             <Skeleton className="h-3 w-4/6" />
-            <div className="flex justify-between items-center pt-4">
+            <div className="flex items-center justify-between pt-4">
               <Skeleton className="h-4 w-16" />
               <Skeleton className="h-6 w-12 rounded-md" />
             </div>

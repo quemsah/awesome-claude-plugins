@@ -7,17 +7,17 @@ const sortOptions = [
   {
     value: 'stars-desc',
     label: 'Stars',
-    icon: <Star className="h-4 w-4 mr-2" />,
+    icon: <Star className="mr-2 h-4 w-4" />,
   },
   {
     value: 'forks-desc',
     label: 'Forks',
-    icon: <GitFork className="h-4 w-4 mr-2" />,
+    icon: <GitFork className="mr-2 h-4 w-4" />,
   },
   {
     value: 'plugins-desc',
     label: 'Plugins',
-    icon: <Box className="h-4 w-4 mr-2" />,
+    icon: <Box className="mr-2 h-4 w-4" />,
   },
 ] as const
 
