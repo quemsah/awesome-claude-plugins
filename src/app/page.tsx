@@ -71,9 +71,9 @@ export default function Home() {
       <div className="container mx-auto px-4 py-8">
         <TitleSection />
 
-        <div className="flex flex-col justify-between items-center mb-4 gap-4">
-          <div className="flex flex-col sm:flex-row items-center gap-4 w-full">
-            <div className="relative w-full sm:w-[180px]">
+        <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+          <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
+            <div className="relative w-full sm:w-48">
               <Search aria-hidden="true" className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4" />
               <Input
                 aria-label="Search repositories"
