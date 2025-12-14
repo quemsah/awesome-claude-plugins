@@ -3,8 +3,8 @@
 import { BarChart3, Github, Search } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { Button } from '../ui/button.tsx'
-import { ThemeToggle } from '../ui/theme-toggle.tsx'
 import { ClaudeIcon } from './ClaudeIcon.tsx'
+import { ThemeToggle } from './ThemeToggle.tsx'
 
 export function Header() {
   const router = useRouter()
