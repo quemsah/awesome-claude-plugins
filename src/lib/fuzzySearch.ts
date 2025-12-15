@@ -1,10 +1,10 @@
 import Fuse from 'fuse.js'
 import type { Repo } from '../app/types/repo.type.ts'
 
-const fuseOptions = {
+export const fuseOptions = {
   keys: ['repo_name', 'description'],
   includeScore: true,
-  threshold: 0.4,
+  threshold: 0.2,
   ignoreLocation: true,
   includeMatches: true,
   minMatchCharLength: 2,
@@ -12,15 +12,21 @@ const fuseOptions = {
   useExtendedSearch: true,
 }
 
-function createFuseIndex(repos: Repo[]): Fuse<Repo> {
-  return new Fuse(repos, fuseOptions)
+let fuseCache: WeakMap<Repo[], Fuse<Repo>> | null = null
+
+function getCachedFuseIndex(repos: Repo[]): Fuse<Repo> {
+  if (!fuseCache) {
+    fuseCache = new WeakMap()
+  }
+
+  let fuse = fuseCache.get(repos)
+  if (!fuse) {
+    fuse = new Fuse(repos, fuseOptions)
+    fuseCache.set(repos, fuse)
+  }
+  return fuse
 }
 
-export function fuzzySearchRepos(repos: Repo[], searchTerm: string): Repo[] {
-  if (!searchTerm.trim()) return repos
-
-  const fuse = createFuseIndex(repos)
-  const results = fuse.search(searchTerm)
-
-  return results.map((result) => result.item)
+export function createFuseIndex(repos: Repo[]): Fuse<Repo> {
+  return getCachedFuseIndex(repos)
 }
