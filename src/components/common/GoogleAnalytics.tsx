@@ -2,7 +2,6 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import Script from 'next/script'
 import { useEffect } from 'react'
 import { GA_ID, isAnalyticsEnabled } from '../../lib/analytics.ts'
 
@@ -24,21 +23,19 @@ export default function GoogleAnalytics() {
   if (!isAnalyticsEnabled()) {
     return null
   }
+
   return (
     <>
-      <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
-      <Script
+      <script async src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} />
+      <script
         // biome-ignore lint/security/noDangerouslySetInnerHtml: <ga>
         dangerouslySetInnerHTML={{
           __html: `
             window.dataLayer = window.dataLayer || [];
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());
-            gtag('config', '${GA_ID}');
           `,
         }}
-        id="gtag-init"
-        strategy="afterInteractive"
       />
     </>
   )

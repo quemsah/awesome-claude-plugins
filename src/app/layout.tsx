@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import process from 'node:process'
 import GoogleAnalytics from '../components/common/GoogleAnalytics.tsx'
+import { GA_ID, isAnalyticsEnabled } from '../lib/analytics.ts'
 import { Providers } from '../providers/providers.tsx'
 
 export function generateMetadata(): Metadata {
@@ -96,6 +97,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en-US" suppressHydrationWarning>
+      <head>
+        {isAnalyticsEnabled() && (
+          <link as="script" crossOrigin="anonymous" href={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} rel="preload" />
+        )}
+      </head>
       <body className="min-h-screen">
         <Providers>{children}</Providers>
         <GoogleAnalytics />
