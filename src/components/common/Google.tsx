@@ -1,7 +1,7 @@
+/** biome-ignore-all lint/security/noDangerouslySetInnerHtml: <ga> */
 'use client'
 
-import { GoogleAnalytics, GoogleTagManager } from '@next/third-parties/google'
-import { GA_ID, GTM_ID, isAnalyticsEnabled } from '../../lib/analytics.ts'
+import { GA_ID, isAnalyticsEnabled } from '../../lib/analytics.ts'
 
 export { reportWebVitals, trackEvent, trackPageView } from '../../lib/analytics.ts'
 
@@ -11,8 +11,18 @@ export default function Google() {
   }
   return (
     <>
-      <GoogleAnalytics gaId={GA_ID} />
-      <GoogleTagManager gtmId={GTM_ID} />
+      <script async data-strategy="afterInteractive" src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} />
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '${GA_ID}');
+              `,
+        }}
+        data-strategy="afterInteractive"
+      />
     </>
   )
 }

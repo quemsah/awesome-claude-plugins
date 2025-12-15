@@ -2,10 +2,7 @@ import process from 'node:process'
 import { sendGAEvent } from '@next/third-parties/google'
 
 export const GA_ID = process.env.NEXT_PUBLIC_GA_ID || 'G-XXXXXXXXXX'
-export const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID || 'GTM-XXXXXXXX'
-export const isGaEnabled = (): boolean => process.env.NODE_ENV === 'production' && GA_ID !== 'G-XXXXXXXXXX'
-export const isGtmEnabled = (): boolean => process.env.NODE_ENV === 'production' && GTM_ID !== 'GTM-XXXXXXXX'
-export const isAnalyticsEnabled = (): boolean => isGaEnabled() || isGtmEnabled()
+export const isAnalyticsEnabled = (): boolean => process.env.NODE_ENV === 'production' && GA_ID !== 'G-XXXXXXXXXX'
 
 export interface WebVitalsMetric {
   id: string
@@ -26,7 +23,7 @@ export interface GaEvent {
 }
 
 export function reportWebVitals(metric: WebVitalsMetric): void {
-  if (!(isGaEnabled() || isGtmEnabled())) {
+  if (!isAnalyticsEnabled()) {
     if (process.env.NODE_ENV === 'development') {
       console.info('Web Vitals (dev):', metric)
     }
@@ -39,7 +36,7 @@ export function reportWebVitals(metric: WebVitalsMetric): void {
 
   const value = Math.round(metric.name === 'CLS' ? metric.value * 1000 : metric.value)
 
-  if (isGaEnabled()) {
+  if (isAnalyticsEnabled()) {
     sendGAEvent({
       eventName: 'web_vitals',
       eventCategory: 'Web Vitals',
@@ -54,11 +51,11 @@ export function reportWebVitals(metric: WebVitalsMetric): void {
 }
 
 export function trackEvent(event: GaEvent): void {
-  if (!(isGaEnabled() || isGtmEnabled())) {
+  if (!isAnalyticsEnabled()) {
     return
   }
 
-  if (isGaEnabled()) {
+  if (isAnalyticsEnabled()) {
     sendGAEvent({
       eventName: event.action,
       eventCategory: event.category || 'engagement',
@@ -70,11 +67,11 @@ export function trackEvent(event: GaEvent): void {
 }
 
 export function trackPageView(url: string, title?: string): void {
-  if (!(isGaEnabled() || isGtmEnabled()) || typeof window === 'undefined') {
+  if (!isAnalyticsEnabled() || typeof window === 'undefined') {
     return
   }
 
-  if (isGaEnabled()) {
+  if (isAnalyticsEnabled()) {
     sendGAEvent({
       eventName: 'page_view',
       pageLocation: url,
