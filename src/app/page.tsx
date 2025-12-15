@@ -9,6 +9,7 @@ import { Sort, type SortOption } from '../components/search/Sort.tsx'
 import StructuredData from '../components/search/StructuredData.tsx'
 import { TitleSection } from '../components/search/TitleSection.tsx'
 import { Input } from '../components/ui/input.tsx'
+import { useFuzzySearch } from '../hooks/useFuzzySearch.ts'
 import type { Repo } from './types/repo.type.ts'
 
 export default function Home() {
@@ -31,19 +32,7 @@ export default function Home() {
     })()
   }, [])
 
-  const filteredRepos = useMemo(
-    () =>
-      repos.filter((repo) => {
-        if (!searchTerm) return true
-
-        const searchLower = searchTerm.toLowerCase()
-        const nameMatch = repo.repo_name?.toLowerCase().includes(searchLower) ?? false
-        const descriptionMatch = repo.description?.toLowerCase().includes(searchLower) ?? false
-
-        return nameMatch || descriptionMatch
-      }),
-    [repos, searchTerm]
-  )
+  const filteredRepos = useFuzzySearch(repos, searchTerm)
 
   const sortedRepos = useMemo(
     () =>
