@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import './globals.css'
 import process from 'node:process'
 import GoogleAnalytics from '../components/common/GoogleAnalytics.tsx'
-import { WebVitals } from '../components/common/WebVitals.tsx'
 import { Providers } from '../providers/providers.tsx'
 
 export function generateMetadata(): Metadata {
@@ -100,7 +99,6 @@ export default function RootLayout({
       <body className="min-h-screen">
         <Providers>{children}</Providers>
         <GoogleAnalytics />
-        <WebVitals />
       </body>
     </html>
   )
