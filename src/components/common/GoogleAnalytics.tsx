@@ -1,4 +1,4 @@
-/** biome-ignore-all lint/security/noDangerouslySetInnerHtml: <ga> */
+/** biome-ignore-all lint/style/useNamingConvention: <ga> */
 'use client'
 
 import { usePathname } from 'next/navigation'
@@ -17,8 +17,8 @@ export default function GoogleAnalytics() {
 
   useEffect(() => {
     if (!isAnalyticsEnabled()) return
-    // biome-ignore lint/style/useNamingConvention: GA parameter name
-    globalThis.gtag('config', GA_ID, { page_path: pathname })
+    // deno-lint-ignore no-window
+    window.gtag('config', GA_ID, { page_path: pathname })
   }, [pathname])
 
   if (!isAnalyticsEnabled()) {
@@ -28,6 +28,7 @@ export default function GoogleAnalytics() {
     <>
       <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
       <Script
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: <ga>
         dangerouslySetInnerHTML={{
           __html: `
             window.dataLayer = window.dataLayer || [];
