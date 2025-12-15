@@ -9,7 +9,6 @@ export const fuseOptions = {
   includeMatches: true,
   minMatchCharLength: 2,
   findAllMatches: true,
-  useExtendedSearch: true,
 }
 
 let fuseCache: WeakMap<Repo[], Fuse<Repo>> | null = null
