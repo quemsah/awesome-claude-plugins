@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import process from 'node:process'
+import Script from 'next/script'
 import { Providers } from '../providers/providers.tsx'
 
 export function generateMetadata(): Metadata {
@@ -98,6 +99,7 @@ export default function RootLayout({
       <body className="min-h-screen">
         <Providers>{children}</Providers>
       </body>
+      <Script src="https://scripts.simpleanalyticscdn.com/latest.js" />
     </html>
   )
 }
