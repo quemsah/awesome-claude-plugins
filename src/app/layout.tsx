@@ -1,8 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import process from 'node:process'
-import Google from '../components/common/Google.tsx'
-import { WebVitals } from '../components/common/WebVitals.tsx'
+import GoogleAnalytics from '../components/common/GoogleAnalytics.tsx'
 import { Providers } from '../providers/providers.tsx'
 
 export function generateMetadata(): Metadata {
@@ -99,8 +98,7 @@ export default function RootLayout({
     <html lang="en-US" suppressHydrationWarning>
       <body className="min-h-screen">
         <Providers>{children}</Providers>
-        <Google />
-        <WebVitals />
+        <GoogleAnalytics />
       </body>
     </html>
   )
