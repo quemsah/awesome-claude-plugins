@@ -39,8 +39,7 @@ export function GET() {
     return new NextResponse(
       JSON.stringify({
         error: 'Internal server error',
-        message: 'An unexpected error occurred while processing repositories',
-        details: error instanceof Error ? error.message : String(error),
+        message: 'An unexpected error occurred while processing repositories'
       }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     )
