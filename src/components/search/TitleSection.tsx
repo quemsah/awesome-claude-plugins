@@ -15,10 +15,12 @@ export function TitleSection() {
   useEffect(() => {
     ;(async () => {
       try {
-        const response = await fetch('/api/stats')
-        const stats = (await response.json()) as StatsEntry[]
-        if (stats.length > 0) {
-          const lastEntry = stats[stats.length - 1]
+        const response = await fetch('/api/stats/last-updated')
+        if (!response.ok) {
+          throw new Error('Network response was not ok')
+        }
+        const lastEntry = (await response.json()) as StatsEntry | null
+        if (lastEntry) {
           const date = new Date(lastEntry.date)
           setLastUpdated(formatDate(date))
         }
