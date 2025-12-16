@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Repo } from '../../app/types/repo.type.ts'
+import type { Repo } from '../../schemas/repo.schema.ts'
 import { RepoCard } from './RepoCard.tsx'
 import type { SortOption } from './Sort.tsx'
 

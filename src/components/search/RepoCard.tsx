@@ -1,6 +1,6 @@
 import { GitFork, Star } from 'lucide-react'
 import { useCallback, useState } from 'react'
-import type { Repo } from '../../app/types/repo.type.ts'
+import type { Repo } from '../../schemas/repo.schema.ts'
 import { ClaudeIcon } from '../common/ClaudeIcon.tsx'
 import { CopiedIcon } from '../common/CopiedIcon.tsx'
 import { CopyIcon } from '../common/CopyIcon.tsx'

@@ -1,4 +1,4 @@
-import type { Repo } from '../../app/types/repo.type.ts'
+import type { Repo } from '../../schemas/repo.schema.ts'
 import { Card, CardContent } from '../ui/card.tsx'
 import { InfiniteRepoGrid } from './InfiniteRepoGrid.tsx'
 import type { SortOption } from './Sort.tsx'

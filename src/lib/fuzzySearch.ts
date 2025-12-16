@@ -1,5 +1,5 @@
 import Fuse from 'fuse.js'
-import type { Repo } from '../app/types/repo.type.ts'
+import type { Repo } from '../schemas/repo.schema.ts'
 
 export const fuseOptions = {
   keys: ['repo_name', 'description'],
