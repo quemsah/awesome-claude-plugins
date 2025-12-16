@@ -51,7 +51,7 @@ export default function StatsPage() {
   }, [])
 
   useEffect(() => {
-    ; (async () => {
+    ;(async () => {
       try {
         const response = await fetch('/api/stats')
         const rawData = await response.json()

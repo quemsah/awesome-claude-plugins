@@ -11,7 +11,7 @@ import { TitleSection } from '../components/search/TitleSection.tsx'
 import { Input } from '../components/ui/input.tsx'
 import { useFuzzySearch } from '../hooks/useFuzzySearch.ts'
 import { trackValidationError } from '../lib/validation.ts'
-import { ReposArraySchema, type Repo } from '../schemas/repo.schema.ts'
+import { type Repo, ReposArraySchema } from '../schemas/repo.schema.ts'
 
 export default function Home() {
   const [repos, setRepos] = useState<Repo[]>([])
@@ -20,7 +20,7 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState('')
 
   useEffect(() => {
-    ; (async () => {
+    ;(async () => {
       try {
         const response = await fetch(`/api/repos`)
 

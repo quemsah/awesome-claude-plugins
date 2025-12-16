@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import reposData from '../../../data/repos.json' with { type: 'json' }
 import { trackValidationError } from '../../../lib/validation.ts'
-import { ReposArraySchema, type Repo } from '../../../schemas/repo.schema.ts'
+import { type Repo, ReposArraySchema } from '../../../schemas/repo.schema.ts'
 
 export function GET() {
   try {
