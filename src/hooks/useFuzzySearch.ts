@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { Repo } from '../app/types/repo.type.ts'
+import type { Repo } from '../schemas/repo.schema.ts'
 import { createFuseIndex } from '../lib/fuzzySearch.ts'
 
 export function useFuzzySearch(repos: Repo[], searchTerm: string): Repo[] {

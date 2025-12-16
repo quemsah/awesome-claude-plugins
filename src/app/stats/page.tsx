@@ -8,11 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { ChartContainer, ChartTooltipContent } from '../../components/ui/chart.tsx'
 import { formatDate } from '../../lib/utils.ts'
 
-type StatData = {
-  date: string
-  size: string
-  id: number
-}
+import { trackValidationError } from '../../lib/validation.ts'
+import { StatsArraySchema, type StatsItem } from '../../schemas/stats.schema.ts'
 
 type ChartData = {
   date: string
@@ -28,7 +25,7 @@ export default function StatsPage() {
     totalDays: 0,
   })
 
-  const processData = useCallback((data: StatData[]) => {
+  const processData = useCallback((data: StatsItem[]) => {
     const sortedData = data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
     const processedData: ChartData[] = sortedData.map((item) => ({
@@ -54,11 +51,17 @@ export default function StatsPage() {
   }, [])
 
   useEffect(() => {
-    ;(async () => {
+    ; (async () => {
       try {
         const response = await fetch('/api/stats')
-        const data: StatData[] = await response.json()
-        processData(data)
+        const rawData = await response.json()
+        const validationResult = StatsArraySchema.safeParse(rawData)
+
+        if (validationResult.success) {
+          processData(validationResult.data)
+        } else {
+          trackValidationError(validationResult.error, 'Stats Fetch')
+        }
       } catch (error) {
         console.error('Failed to fetch stats:', error)
       } finally {

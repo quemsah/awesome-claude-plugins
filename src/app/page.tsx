@@ -10,7 +10,8 @@ import StructuredData from '../components/search/StructuredData.tsx'
 import { TitleSection } from '../components/search/TitleSection.tsx'
 import { Input } from '../components/ui/input.tsx'
 import { useFuzzySearch } from '../hooks/useFuzzySearch.ts'
-import type { Repo } from './types/repo.type.ts'
+import { trackValidationError } from '../lib/validation.ts'
+import { ReposArraySchema, type Repo } from '../schemas/repo.schema.ts'
 
 export default function Home() {
   const [repos, setRepos] = useState<Repo[]>([])
@@ -19,13 +20,31 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState('')
 
   useEffect(() => {
-    ;(async () => {
+    ; (async () => {
       try {
         const response = await fetch(`/api/repos`)
-        const allRepos = (await response.json()) as Repo[]
-        setRepos(allRepos)
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          console.error('API Error:', errorData)
+          setRepos([])
+          return
+        }
+
+        const data = await response.json()
+
+        const validationResult = ReposArraySchema.safeParse(data)
+
+        if (validationResult.success) {
+          setRepos(validationResult.data)
+        } else {
+          console.error('Invalid data format: Validation failed')
+          trackValidationError(validationResult.error, 'Repos Fetch')
+          setRepos([])
+        }
       } catch (error) {
         console.error('Failed to fetch repos:', error)
+        setRepos([])
       } finally {
         setLoading(false)
       }
@@ -63,7 +82,7 @@ export default function Home() {
         <div className="mb-4 flex flex-col items-center justify-between gap-4 md:flex-row">
           <div className="flex w-full flex-col items-center gap-4 sm:w-auto sm:flex-row">
             <div className="relative w-full sm:w-48">
-              <Search aria-hidden="true" className="-translate-y-1/2 absolute top-1/2 left-3 h-4 w-4 transform" />
+              <Search aria-hidden="true" className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 transform" />
               <Input
                 aria-label="Search repositories"
                 className="w-full pl-10"
@@ -88,9 +107,15 @@ export default function Home() {
           <div aria-busy="true" aria-live="polite">
             <LoadingContent />
           </div>
-        ) : (
+        ) : sortedRepos.length > 0 ? (
           <div aria-live="polite">
             <LoadedContent repos={sortedRepos} sortOption={sortOption} />
+          </div>
+        ) : (
+          <div className="py-8 text-center">
+            <p className="text-muted-foreground">
+              {repos.length === 0 ? 'Failed to load repositories. Please try again later.' : 'No repositories match your search.'}
+            </p>
           </div>
         )}
       </div>
