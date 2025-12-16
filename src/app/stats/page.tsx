@@ -54,6 +54,13 @@ export default function StatsPage() {
     ;(async () => {
       try {
         const response = await fetch('/api/stats')
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}))
+          console.error('Failed to fetch stats:', errorData)
+          return
+        }
+
         const rawData = await response.json()
         const validationResult = StatsArraySchema.safeParse(rawData)
 
