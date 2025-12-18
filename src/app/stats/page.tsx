@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Area, AreaChart, Tooltip, XAxis, YAxis } from 'recharts'
 import { Header } from '../../components/common/Header.tsx'
 import StatsStructuredData from '../../components/stats/StatsStructuredData.tsx'
@@ -17,6 +17,14 @@ type ChartData = {
   formattedDate: string
 }
 
+const removeTitleTag = (container: HTMLElement | null) => {
+  if (!container) return
+  const titleTags = container.querySelectorAll('.recharts-wrapper title')
+  titleTags.forEach((tag) => {
+    tag.remove()
+  })
+}
+
 export default function StatsPage() {
   const [chartData, setChartData] = useState<ChartData[]>([])
   const [loading, setLoading] = useState(true)
@@ -24,6 +32,7 @@ export default function StatsPage() {
     averageDailyIncrease: 0,
     totalDays: 0,
   })
+  const chartRef = useRef<HTMLDivElement>(null)
 
   const processData = useCallback((data: StatsItem[]) => {
     const sortedData = data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
@@ -77,12 +86,33 @@ export default function StatsPage() {
     })()
   }, [processData])
 
+  useEffect(() => {
+    if (!chartRef.current) {
+      return
+    }
+
+    const observer = new MutationObserver(() => {
+      removeTitleTag(chartRef.current)
+    })
+
+    observer.observe(chartRef.current, {
+      childList: true,
+      subtree: true,
+    })
+
+    removeTitleTag(chartRef.current)
+
+    return () => observer.disconnect()
+  }, [])
+
   if (loading) {
     return (
       <main className="min-h-screen bg-background">
         <Header />
         <div className="container mx-auto px-4 py-8">
-          <div className="text-center">Loading stats...</div>
+          <div aria-busy="true" aria-live="polite" className="text-center">
+            Loading stats...
+          </div>
         </div>
       </main>
     )
@@ -104,7 +134,9 @@ export default function StatsPage() {
         <div className="mb-6 grid gap-6 md:grid-cols-2 lg:grid-cols-2">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="font-medium text-sm">Total Repositories</CardTitle>
+              <CardTitle className="font-medium text-sm">
+                <h3>Total Repositories</h3>
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="font-bold text-2xl">{chartData.length > 0 ? chartData[chartData.length - 1].size : 0}</div>
@@ -112,7 +144,9 @@ export default function StatsPage() {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="font-medium text-sm">Avg Daily Increase</CardTitle>
+              <CardTitle className="font-medium text-sm">
+                <h3>Avg Daily Increase</h3>
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="font-bold text-2xl">+{trends.averageDailyIncrease}</div>
@@ -131,12 +165,13 @@ export default function StatsPage() {
           <CardContent>
             <ChartContainer
               aria-label="Repository growth chart showing daily repository count over time"
-              className="h-[400px]"
+              className="h-100"
               config={{
                 size: {
                   label: 'Repository Count',
                 },
               }}
+              ref={chartRef}
             >
               <AreaChart aria-label="Repository growth over time" data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                 <defs>

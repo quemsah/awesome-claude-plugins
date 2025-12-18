@@ -14,7 +14,9 @@ export default function NotFound() {
           <p className="text-muted-foreground">Sorry, we couldn't find the page you're looking for.</p>
           <div className="flex justify-center">
             <Link href="/">
-              <Button className="w-auto">Go Home</Button>
+              <Button aria-label="Go to home page" className="w-auto">
+                Go Home
+              </Button>
             </Link>
           </div>
         </CardContent>

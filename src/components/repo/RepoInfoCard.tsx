@@ -36,8 +36,8 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
               <AvatarFallback>{repo.owner.login.slice(0, 2).toUpperCase()}</AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <h1 className="mb-2 break-words font-bold text-3xl">{repo.name}</h1>
-              <CardDescription className="break-words text-lg">
+              <h1 className="wrap-break-word mb-2 font-bold text-3xl">{repo.name}</h1>
+              <CardDescription className="wrap-break-word text-lg">
                 by{' '}
                 <a
                   aria-label={`View ${repo.owner.login}'s GitHub profile`}

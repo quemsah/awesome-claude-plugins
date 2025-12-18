@@ -42,18 +42,20 @@ export function InfiniteRepoGrid({ items, sortOption: _sortOption }: InfiniteRep
   const visibleItems = items.slice(0, visibleCount)
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <section aria-label="Claude plugins">
+      <ul className="m-0 grid list-none grid-cols-1 gap-4 p-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {visibleItems.map((repo) => (
-          <RepoCard key={repo.id} repo={repo} />
+          <li className="m-0 list-none p-0" key={repo.id}>
+            <RepoCard repo={repo} />
+          </li>
         ))}
-      </div>
+      </ul>
 
       {visibleCount < items.length && (
         <div className="flex h-20 w-full items-center justify-center text-muted-foreground text-sm" ref={observerTarget}>
           Loading more repositories...
         </div>
       )}
-    </div>
+    </section>
   )
 }

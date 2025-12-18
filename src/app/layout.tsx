@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import process from 'node:process'
-import Script from 'next/script'
 import { Providers } from '../providers/providers.tsx'
 
 export function generateMetadata(): Metadata {
@@ -13,7 +12,7 @@ export function generateMetadata(): Metadata {
       template: '%s | Awesome Claude Plugins',
     },
     description:
-      'Explore the ultimate collection of Claude Code plugins. Discover powerful AI development tools, productivity extensions, and innovative integrations for Claude AI across GitHub repositories.',
+      'Explore the ultimate collection of Claude Code plugins. Discover powerful AI tools, extensions, and integrations across GitHub repositories.',
     keywords: [
       'Claude Code plugins',
       'Claude AI tools',
@@ -50,7 +49,7 @@ export function generateMetadata(): Metadata {
       url: 'https://claude-plugins.22.deno.net',
       title: 'Awesome Claude Plugins',
       description:
-        'Explore the ultimate collection of Claude Code plugins. Discover powerful AI development tools, productivity extensions, and innovative integrations for Claude AI across GitHub repositories.',
+        'Explore the ultimate collection of Claude Code plugins. Discover powerful AI tools, extensions, and integrations across GitHub repositories.',
       siteName: 'Awesome Claude Plugins',
       images: [
         {
@@ -98,8 +97,16 @@ export default function RootLayout({
     <html lang="en-US" suppressHydrationWarning>
       <body className="min-h-screen">
         <Providers>{children}</Providers>
+        <script async data-collect-dnt="true" src="https://scripts.simpleanalyticscdn.com/latest.js" />
+        <noscript>
+          {/** biome-ignore lint/performance/noImgElement: <simpleanalyticscdn> */}
+          <img
+            alt=""
+            referrerPolicy="no-referrer-when-downgrade"
+            src="https://queue.simpleanalyticscdn.com/noscript.gif?collect-dnt=true"
+          />
+        </noscript>
       </body>
-      <Script src="https://scripts.simpleanalyticscdn.com/latest.js" />
     </html>
   )
 }

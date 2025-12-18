@@ -70,16 +70,18 @@ export default function RepoPage({ params }: RouteParams) {
           {!pluginsError && (
             <Card className="mt-8 p-6">
               <CardHeader className="mb-4 p-0">
-                <CardTitle className="text-2xl">Available Plugins</CardTitle>
+                <CardTitle className="text-2xl">
+                  <h2>Available Plugins</h2>
+                </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 {pluginsLoading ? (
-                  <div className="py-8 text-center">
+                  <div aria-busy="true" aria-live="polite" className="py-8 text-center">
                     <div className="mx-auto h-6 w-6 animate-spin rounded-full border-primary border-b-2" />
                     <p className="mt-2 text-muted-foreground">Loading plugins...</p>
                   </div>
                 ) : plugins.length > 0 ? (
-                  <div className="space-y-4">
+                  <div aria-atomic="true" aria-live="polite" className="space-y-4">
                     {plugins.map((plugin, index) => (
                       <PluginCard
                         key={`${plugin.id || ''}-${plugin.name || ''}-${index}`}
@@ -90,7 +92,9 @@ export default function RepoPage({ params }: RouteParams) {
                     ))}
                   </div>
                 ) : (
-                  <p className="py-4 text-center text-muted-foreground">No plugins found in this repository.</p>
+                  <p aria-live="polite" className="py-4 text-center text-muted-foreground">
+                    No plugins found in this repository.
+                  </p>
                 )}
               </CardContent>
             </Card>

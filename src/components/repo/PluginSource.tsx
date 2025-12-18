@@ -9,7 +9,7 @@ export function PluginSource({ source, repoPath, defaultBranch = 'main' }: Plugi
 
   return (
     <div>
-      <h3 className="mb-0.5 font-medium text-sm">Source</h3>
+      <h6 className="mb-0.5 font-medium text-sm">Source</h6>
       <p className="break-all text-muted-foreground text-sm">
         <a
           className="underline-offset-4 transition-colors hover:text-primary hover:underline group-hover:text-primary"

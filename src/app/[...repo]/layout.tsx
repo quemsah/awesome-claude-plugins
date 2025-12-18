@@ -10,7 +10,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   return {
     title: `${repoName}`,
-    description: `View detailed information about the ${repoName} repository and its Claude Code plugin adoption. Explore repository metrics, plugin usage, and development statistics.`,
+    description: `View detailed information about the ${repoName} repository and its Claude Code plugins.`,
     keywords: [
       'GitHub repository details',
       'Claude Code plugin adoption',
@@ -22,13 +22,22 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ],
     openGraph: {
       title: `${repoName}`,
-      description: `View detailed information about the ${repoName} repository and its Claude Code plugin adoption. Explore repository metrics and development statistics.`,
+      description: `View detailed information about the ${repoName} repository and its Claude Code plugins.`,
       type: 'website',
+      images: [
+        {
+          url: '/android-chrome-512x512.png',
+          width: 512,
+          height: 512,
+          alt: repoName,
+        },
+      ],
     },
     twitter: {
       card: 'summary_large_image',
       title: `${repoName}`,
-      description: `View detailed information about the ${repoName} repository and its Claude Code plugin adoption.`,
+      description: `View detailed information about the ${repoName} repository and its Claude Code plugins.`,
+      images: ['/android-chrome-512x512.png'],
     },
   }
 }

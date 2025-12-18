@@ -22,7 +22,7 @@ type PluginCardProps = {
 
 export function PluginCard({ plugin, repoPath, repo }: PluginCardProps) {
   return (
-    <Card className="group w-full transition-all duration-300 hover:border-primary/30 hover:bg-gradient-to-tl hover:from-muted hover:to-background">
+    <Card className="group w-full transition-all duration-300 hover:border-primary/30 hover:bg-linear-to-tl hover:from-muted hover:to-background">
       <PluginHeader category={plugin.category} name={plugin.name} version={plugin.version} />
       {plugin.name ? <InstallCommand pluginId={plugin.id} pluginName={plugin.name} repoPath={repoPath} /> : null}
       <CardContent className="space-y-2 pt-1">
