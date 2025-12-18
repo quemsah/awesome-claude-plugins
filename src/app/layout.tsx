@@ -102,7 +102,7 @@ export default function RootLayout({
           {/** biome-ignore lint/performance/noImgElement: <simpleanalyticscdn> */}
           <img
             alt=""
-            referrerpolicy="no-referrer-when-downgrade"
+            referrerPolicy="no-referrer-when-downgrade"
             src="https://queue.simpleanalyticscdn.com/noscript.gif?collect-dnt=true"
           />
         </noscript>
