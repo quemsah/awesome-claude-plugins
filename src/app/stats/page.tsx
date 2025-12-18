@@ -103,7 +103,7 @@ export default function StatsPage() {
     removeTitleTag(chartRef.current)
 
     return () => observer.disconnect()
-  }, [])
+  }, [chartData.length])
 
   if (loading) {
     return (
