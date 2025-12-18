@@ -52,7 +52,9 @@ export function RepoCard({ repo, className }: RepoCardProps) {
       onMouseLeave={handleMouseLeave}
     >
       <CardHeader className="-space-y-2 pr-14">
-        <CardTitle className="text-lg transition-colors duration-300 group-hover:text-primary">{repo.repo_name}</CardTitle>
+        <CardTitle className="text-lg transition-colors duration-300 group-hover:text-primary">
+          <h3>{repo.repo_name}</h3>
+        </CardTitle>
         <CardDescription className="text-muted-foreground text-sm">
           by{' '}
           <a className="underline-offset-4 hover:text-primary hover:underline" href={`https://github.com/${repo.owner}`}>
@@ -61,12 +63,8 @@ export function RepoCard({ repo, className }: RepoCardProps) {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex h-full flex-col">
-        <div className="flex-grow">
-          {!!repo.description && (
-            <p className="mb-4 line-clamp-2 text-muted-foreground text-sm opacity-90 transition-opacity duration-300 group-hover:opacity-100">
-              {repo.description}
-            </p>
-          )}
+        <div className="grow">
+          {!!repo.description && <p className="mb-4 line-clamp-2 text-muted-foreground text-sm">{repo.description}</p>}
         </div>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -85,17 +83,19 @@ export function RepoCard({ repo, className }: RepoCardProps) {
               </div>
             )}
           </div>
-          <Button asChild className="h-8 flex-shrink-0">
-            <a href={`/${repo.owner}/${repo.repo_name}`}>Details</a>
+          <Button asChild className="h-8 shrink-0">
+            <a aria-label={`View details for ${repo.owner}/${repo.repo_name}`} href={`/${repo.owner}/${repo.repo_name}`}>
+              Details
+            </a>
           </Button>
         </div>
         {hasValidRepoInfo ? (
           <div className="mt-3 border-muted/20 border-t">
             <div className="flex items-center gap-2 rounded-md bg-muted/50 p-2 text-xs">
-              <code className="flex-grow break-all font-mono">{getMarketplaceCommand()}</code>
+              <code className="grow break-all font-mono">{getMarketplaceCommand()}</code>
               <button
                 aria-label={isCopied ? 'Marketplace command copied' : 'Copy marketplace command'}
-                className={`flex-shrink-0 rounded-md p-1 transition-colors ${isCopied ? 'bg-green-500/20 text-green-600' : 'hover:bg-muted'}`}
+                className={`shrink-0 rounded-md p-1 transition-colors ${isCopied ? 'bg-green-500/20 text-green-600' : 'hover:bg-muted'}`}
                 onClick={handleCopyClick}
                 title={isCopied ? 'Marketplace command copied' : 'Copy marketplace command'}
                 type="button"

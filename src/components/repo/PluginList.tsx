@@ -10,9 +10,9 @@ export function PluginList({ title, items, repoPath, defaultBranch }: PluginList
 
   return (
     <div>
-      <h3 className="mb-0.5 font-medium text-sm">
+      <h6 className="mb-0.5 font-medium text-sm">
         {title} ({items.length})
-      </h3>
+      </h6>
       <ul className="list-inside list-disc space-y-0.5 text-muted-foreground text-sm">
         {items.map((item) => {
           const fileUrl = `https://github.com/${repoPath}/blob/${defaultBranch || 'main'}/${item}`

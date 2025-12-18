@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import process from 'node:process'
-import Script from 'next/script'
 import { Providers } from '../providers/providers.tsx'
 
 export function generateMetadata(): Metadata {
@@ -13,7 +12,7 @@ export function generateMetadata(): Metadata {
       template: '%s | Awesome Claude Plugins',
     },
     description:
-      'Explore the ultimate collection of Claude Code plugins. Discover powerful AI development tools, productivity extensions, and innovative integrations for Claude AI across GitHub repositories.',
+      'Explore the ultimate collection of Claude Code plugins. Discover powerful AI tools, extensions, and integrations across GitHub repositories.',
     keywords: [
       'Claude Code plugins',
       'Claude AI tools',
@@ -50,7 +49,7 @@ export function generateMetadata(): Metadata {
       url: 'https://claude-plugins.22.deno.net',
       title: 'Awesome Claude Plugins',
       description:
-        'Explore the ultimate collection of Claude Code plugins. Discover powerful AI development tools, productivity extensions, and innovative integrations for Claude AI across GitHub repositories.',
+        'Explore the ultimate collection of Claude Code plugins. Discover powerful AI tools, extensions, and integrations across GitHub repositories.',
       siteName: 'Awesome Claude Plugins',
       images: [
         {
@@ -99,7 +98,7 @@ export default function RootLayout({
       <body className="min-h-screen">
         <Providers>{children}</Providers>
       </body>
-      <Script src="https://scripts.simpleanalyticscdn.com/latest.js" />
+      <script async data-collect-dnt="true" defer src="https://scripts.simpleanalyticscdn.com/latest.js" />
     </html>
   )
 }
