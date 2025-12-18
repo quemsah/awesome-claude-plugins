@@ -107,7 +107,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
         ) : null}
       </CardContent>
       <Button asChild className="absolute top-6 right-6 h-8 w-8" size="icon" variant="outline">
-        <a href={repo.html_url} rel="noopener noreferrer" target="_blank">
+        <a aria-label="View repository on GitHub" href={repo.html_url} rel="noopener noreferrer" target="_blank">
           <AnimatedGithubIcon isHovered={isHovered} />
         </a>
       </Button>

@@ -17,10 +17,11 @@ type ChartData = {
   formattedDate: string
 }
 
-const removeTitleTag = () => {
-  const titleTags = document.querySelectorAll('title')
+const removeTitleTag = (container: HTMLElement | null) => {
+  if (!container) return
+  const titleTags = container.querySelectorAll('.recharts-wrapper title')
   titleTags.forEach((tag) => {
-    if (tag.parentElement?.closest('.recharts-wrapper')) tag.remove()
+    tag.remove()
   })
 }
 
@@ -86,13 +87,23 @@ export default function StatsPage() {
   }, [processData])
 
   useEffect(() => {
-    if (chartData.length > 0 && chartRef.current) {
-      const timer = setTimeout(() => {
-        removeTitleTag()
-      }, 100)
-      return () => clearTimeout(timer)
+    if (!chartRef.current) {
+      return
     }
-  }, [chartData])
+
+    const observer = new MutationObserver(() => {
+      removeTitleTag(chartRef.current)
+    })
+
+    observer.observe(chartRef.current, {
+      childList: true,
+      subtree: true,
+    })
+
+    removeTitleTag(chartRef.current)
+
+    return () => observer.disconnect()
+  }, [])
 
   if (loading) {
     return (

@@ -97,7 +97,7 @@ export default function RootLayout({
     <html lang="en-US" suppressHydrationWarning>
       <body className="min-h-screen">
         <Providers>{children}</Providers>
-         <script async data-collect-dnt="true" defer src="https://scripts.simpleanalyticscdn.com/latest.js" />
+        <script async data-collect-dnt="true" src="https://scripts.simpleanalyticscdn.com/latest.js" />
       </body>
     </html>
   )
