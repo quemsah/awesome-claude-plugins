@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import process from 'node:process'
+import Script from 'next/script'
 import { Providers } from '../providers/providers.tsx'
 
 export function generateMetadata(): Metadata {
@@ -97,14 +98,10 @@ export default function RootLayout({
     <html lang="en-US" suppressHydrationWarning>
       <body className="min-h-screen">
         <Providers>{children}</Providers>
-        <script async data-collect-dnt="true" src="https://scripts.simpleanalyticscdn.com/latest.js" />
+        <Script data-collect-dnt="true" src="https://scripts.simpleanalyticscdn.com/latest.js" />
         <noscript>
-          {/** biome-ignore lint/performance/noImgElement: <simpleanalyticscdn> */}
-          <img
-            alt=""
-            referrerPolicy="no-referrer-when-downgrade"
-            src="https://queue.simpleanalyticscdn.com/noscript.gif?collect-dnt=true"
-          />
+          {/** biome-ignore lint/performance/noImgElement: <sa> */}
+          <img alt="" referrerPolicy="no-referrer-when-downgrade" src="https://queue.simpleanalyticscdn.com/noscript.gif" />
         </noscript>
       </body>
     </html>
