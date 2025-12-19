@@ -6,7 +6,8 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignoreUnknown": false
+    "ignoreUnknown": false,
+    "includes": ["**", "!.next", "!build", "!next-env.d.ts", "!out", "!src/data", "**"]
   },
   "formatter": {
     "enabled": true,
@@ -19,7 +20,8 @@
     "bracketSameLine": false,
     "bracketSpacing": true,
     "expand": "auto",
-    "useEditorconfig": true
+    "useEditorconfig": true,
+    "includes": ["!src/data"]
   },
   "linter": {
     "enabled": true,
@@ -109,21 +111,7 @@
         "useNamespaceKeyword": "error"
       }
     },
-    "includes": [
-      "**",
-      "!.next/**",
-      "!out/**",
-      "!build/**",
-      "!next-env.d.ts",
-      "!.next/**",
-      "!out/**",
-      "!build/**",
-      "!next-env.d.ts",
-      "!.next/**",
-      "!out/**",
-      "!build/**",
-      "!next-env.d.ts"
-    ]
+    "includes": ["!src/data"]
   },
   "javascript": {
     "formatter": {
