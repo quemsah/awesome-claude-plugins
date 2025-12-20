@@ -53,15 +53,20 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
           </div>
           <div className="flex flex-wrap gap-3 sm:ml-4 sm:flex-nowrap">
             {!!repo.homepage && (
-              <Button aria-label="Repository homepage" asChild className="flex-1 justify-center sm:w-auto" variant="outline">
+              <Button asChild className="flex-1 justify-center sm:w-auto" variant="outline">
                 <a aria-label="Visit repository homepage" href={repo.homepage} rel="noopener noreferrer" target="_blank">
                   <ExternalLink aria-hidden="true" className="h-4 w-4" />
                   Homepage
                 </a>
               </Button>
             )}
-            <Button aria-label="View on GitHub" asChild className="flex-1 justify-center sm:w-auto">
-              <a aria-label="View repository on GitHub" href={repo.html_url} rel="noopener noreferrer" target="_blank">
+            <Button asChild className="flex-1 justify-center sm:w-auto">
+              <a
+                aria-label={`View ${repo.owner.login}/${repo.name} on GitHub`}
+                href={repo.html_url}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
                 <ExternalLink aria-hidden="true" className="h-4 w-4" />
                 View on GitHub
               </a>
@@ -75,22 +80,22 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
 
         <div className="mb-6 flex flex-wrap gap-4">
           <Badge className="gap-2 text-sm" variant="secondary">
-            <Star className="h-5 w-5" />
+            <Star aria-hidden="true" className="h-5 w-5" />
             <span className="font-semibold">{repo.stargazers_count?.toLocaleString() ?? 0}</span>
             <span>stars</span>
           </Badge>
           <Badge className="gap-2 text-sm" variant="secondary">
-            <GitFork className="h-5 w-5" />
+            <GitFork aria-hidden="true" className="h-5 w-5" />
             <span className="font-semibold">{repo.forks_count?.toLocaleString() ?? 0}</span>
             <span>forks</span>
           </Badge>
           <Badge className="gap-2 text-sm" variant="secondary">
-            <Eye className="h-5 w-5" />
+            <Eye aria-hidden="true" className="h-5 w-5" />
             <span className="font-semibold">{repo.watchers_count?.toLocaleString() ?? 0}</span>
             <span>watchers</span>
           </Badge>
           <Badge className="gap-2 text-sm" variant="secondary">
-            <CircleDot className="h-5 w-5" />
+            <CircleDot aria-hidden="true" className="h-5 w-5" />
             <span className="font-semibold">{repo.open_issues_count?.toLocaleString() ?? 0}</span>
             <span>issues</span>
           </Badge>

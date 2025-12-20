@@ -69,16 +69,16 @@ export function RepoCard({ repo, className }: RepoCardProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1">
-              <Star className="h-4 w-4" />
+              <Star aria-hidden="true" className="h-4 w-4" />
               <span className="text-xs">{formatNumber(repo.stargazers_count ?? 0)}</span>
             </div>
             <div className="flex items-center gap-1">
-              <GitFork className="h-4 w-4" />
+              <GitFork aria-hidden="true" className="h-4 w-4" />
               <span className="text-xs">{formatNumber(repo.forks_count ?? 0)}</span>
             </div>
             {repo.plugins_count !== null && (
               <div className="flex items-center gap-1">
-                <ClaudeIcon />
+                <ClaudeIcon aria-hidden="true" />
                 <span className="text-xs">{formatNumber(repo.plugins_count ?? 0)}</span>
               </div>
             )}
@@ -107,7 +107,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
         ) : null}
       </CardContent>
       <Button asChild className="absolute top-6 right-6 h-8 w-8" size="icon" variant="outline">
-        <a aria-label="View repository on GitHub" href={repo.html_url} rel="noopener noreferrer" target="_blank">
+        <a aria-label={`View ${repo.owner}/${repo.repo_name} on GitHub`} href={repo.html_url} rel="noopener noreferrer" target="_blank">
           <AnimatedGithubIcon isHovered={isHovered} />
         </a>
       </Button>

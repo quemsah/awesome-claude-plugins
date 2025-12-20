@@ -21,7 +21,7 @@
     "bracketSpacing": true,
     "expand": "auto",
     "useEditorconfig": true,
-    "includes": ["!src/data"]
+    "includes": ["**", "!.next", "!build", "!next-env.d.ts", "!out", "!src/data", "**"]
   },
   "linter": {
     "enabled": true,
@@ -111,7 +111,7 @@
         "useNamespaceKeyword": "error"
       }
     },
-    "includes": ["!src/data"]
+    "includes": ["**", "!.next", "!build", "!next-env.d.ts", "!out", "!src/data", "**"]
   },
   "javascript": {
     "formatter": {

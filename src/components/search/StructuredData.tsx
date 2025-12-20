@@ -1,5 +1,11 @@
 /** biome-ignore-all lint/security/noDangerouslySetInnerHtml: <Used to inject ld+json> */
-export default function StructuredData() {
+import type { Repo } from '../../schemas/repo.schema.ts'
+
+interface StructuredDataProps {
+  repos: Repo[]
+}
+
+export default function StructuredData({ repos }: StructuredDataProps) {
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
@@ -12,6 +18,18 @@ export default function StructuredData() {
       name: 'Awesome Claude Plugins',
       url: 'https://claude-plugins.22.deno.net',
     },
+  }
+
+  const itemList = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    itemListElement: repos.slice(0, 16).map((repo, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: repo.repo_name,
+      ...(repo.description && { description: repo.description }),
+      url: `https://github.com/${repo.owner}/${repo.repo_name}`,
+    })),
   }
 
   const softwareApplication = {
@@ -43,6 +61,7 @@ export default function StructuredData() {
   return (
     <>
       <script dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} type="application/ld+json" />
+      <script dangerouslySetInnerHTML={{ __html: JSON.stringify(itemList) }} type="application/ld+json" />
       <script dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplication) }} type="application/ld+json" />
     </>
   )
