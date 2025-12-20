@@ -61,7 +61,12 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
               </Button>
             )}
             <Button asChild className="flex-1 justify-center sm:w-auto">
-              <a aria-label={`View ${repo.owner.login}/${repo.name} on GitHub`} href={repo.html_url} rel="noopener noreferrer" target="_blank">
+              <a
+                aria-label={`View ${repo.owner.login}/${repo.name} on GitHub`}
+                href={repo.html_url}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
                 <ExternalLink aria-hidden="true" className="h-4 w-4" />
                 View on GitHub
               </a>
