@@ -99,6 +99,7 @@ export default function RootLayout({
       <body className="min-h-screen">
         <Providers>{children}</Providers>
         <Script data-collect-dnt="true" src="https://scripts.simpleanalyticscdn.com/latest.js" />
+        <Script src="https://scripts.simpleanalyticscdn.com/auto-events.js"></Script>
         <noscript>
           {/** biome-ignore lint/performance/noImgElement: <sa> */}
           <img alt="" referrerPolicy="no-referrer-when-downgrade" src="https://queue.simpleanalyticscdn.com/noscript.gif" />
