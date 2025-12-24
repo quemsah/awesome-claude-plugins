@@ -1,34 +1,23 @@
-'use client'
-
-import { useEffect, useState } from 'react'
+import statsData from '../../data/stats.json' with { type: 'json' }
 import { formatDate } from '../../lib/utils.ts'
-
-interface StatsEntry {
-  date: string
-  size: string
-  id: number
-}
+import { StatsItemSchema } from '../../schemas/stats.schema.ts'
 
 export function TitleSection() {
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null)
+  let lastUpdated: string | null = null
 
-  useEffect(() => {
-    ;(async () => {
-      try {
-        const response = await fetch('/api/stats/last-updated')
-        if (!response.ok) {
-          throw new Error('Network response was not ok')
-        }
-        const lastEntry = (await response.json()) as StatsEntry | null
-        if (lastEntry) {
-          const date = new Date(lastEntry.date)
-          setLastUpdated(formatDate(date))
-        }
-      } catch (error) {
-        console.error('Failed to fetch stats:', error)
+  try {
+    if (Array.isArray(statsData) && statsData.length > 0) {
+      const lastEntryRaw = statsData[statsData.length - 1]
+      const validationResult = StatsItemSchema.safeParse(lastEntryRaw)
+
+      if (validationResult.success) {
+        const date = new Date(validationResult.data.date)
+        lastUpdated = formatDate(date)
       }
-    })()
-  }, [])
+    }
+  } catch (error) {
+    console.error('Failed to get last updated stats:', error)
+  }
 
   return (
     <div className="mb-8 space-y-2 text-center">
