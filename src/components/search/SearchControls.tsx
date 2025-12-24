@@ -1,0 +1,47 @@
+'use client'
+
+import { Search } from 'lucide-react'
+import { Input } from '../ui/input.tsx'
+import { Sort, type SortOption } from './Sort.tsx'
+
+interface SearchControlsProps {
+  searchTerm: string
+  onSearchChange: (value: string) => void
+  sortOption: SortOption
+  onSortChange: (option: SortOption) => void
+  filteredPluginCount: number
+  filteredRepoCount: number
+}
+
+export function SearchControls({
+  searchTerm,
+  onSearchChange,
+  sortOption,
+  onSortChange,
+  filteredPluginCount,
+  filteredRepoCount,
+}: SearchControlsProps) {
+  return (
+    <div className="mb-4 flex flex-col items-center justify-between gap-4 md:flex-row">
+      <div className="flex w-full flex-col items-center gap-4 sm:w-auto sm:flex-row">
+        <div className="relative w-full sm:w-48">
+          <Search aria-hidden="true" className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 transform" />
+          <Input
+            aria-label="Search repositories"
+            className="w-full pl-10"
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search repositories..."
+            type="search"
+            value={searchTerm}
+          />
+        </div>
+        <div className="w-full sm:w-auto">
+          <Sort onSortChange={onSortChange} sortOption={sortOption} />
+        </div>
+      </div>
+      <div className="text-muted-foreground text-sm">
+        {`${filteredPluginCount} ${filteredPluginCount === 1 ? 'plugin' : 'plugins'} available across ${filteredRepoCount} ${filteredRepoCount === 1 ? 'repository' : 'repositories'}`}
+      </div>
+    </div>
+  )
+}
