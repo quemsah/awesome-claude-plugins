@@ -1,20 +1,12 @@
 'use client'
 
-import { useState } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select.tsx'
 
-export function TimeFilter({ onTimeRangeChange }: { onTimeRangeChange: (range: string) => void }) {
-  const [timeRange, setTimeRange] = useState('all')
-
-  const handleTimeRangeChange = (value: string) => {
-    setTimeRange(value)
-    onTimeRangeChange(value)
-  }
-
+export function TimeFilter({ value, onTimeRangeChange }: { value: string; onTimeRangeChange: (range: string) => void }) {
   return (
     <div className="flex items-center gap-4">
       <span className="font-medium text-sm">Time Range:</span>
-      <Select onValueChange={handleTimeRangeChange} value={timeRange}>
+      <Select onValueChange={onTimeRangeChange} value={value}>
         <SelectTrigger className="w-[180px]">
           <SelectValue placeholder="Select time range" />
         </SelectTrigger>

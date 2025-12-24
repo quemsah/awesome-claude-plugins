@@ -8,6 +8,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { ChartContainer, ChartTooltipContent } from '../ui/chart.tsx'
 import { TimeFilter } from './TimeFilter.tsx'
 
+const timeRangeLabels: Record<string, string> = {
+  '7days': 'Last 7 days',
+  '30days': 'Last 30 days',
+  'all': 'All time',
+}
+
 interface StatsPageProps {
   stats: StatsItem[]
 }
@@ -107,7 +113,7 @@ export function StatsPage({ stats }: StatsPageProps) {
   return (
     <div className="space-y-6">
       <div className="mb-6 flex items-center justify-between">
-        <TimeFilter onTimeRangeChange={setTimeRange} />
+        <TimeFilter value={timeRange} onTimeRangeChange={setTimeRange} />
         {timeRange !== 'all' && trendData.periodDays > 0 && (
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm">Trend:</span>
@@ -137,7 +143,10 @@ export function StatsPage({ stats }: StatsPageProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="font-bold text-2xl">+{overallTrends.averageDailyIncrease}</div>
+            <div className="font-bold text-2xl">
+              {overallTrends.averageDailyIncrease >= 0 ? '+' : ''}
+              {overallTrends.averageDailyIncrease}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -146,10 +155,7 @@ export function StatsPage({ stats }: StatsPageProps) {
         <CardHeader>
           <CardTitle>Repository Count Over Time</CardTitle>
           <CardDescription>
-            {timeRange === '7days' && 'Last 7 days - '}
-            {timeRange === '30days' && 'Last 30 days - '}
-            {timeRange === 'all' && 'All time - '}
-            Daily repository count from {chartData.length > 0 ? chartData[0].formattedDate : ''} to{' '}
+            {timeRangeLabels[timeRange]} - Daily repository count from {chartData.length > 0 ? chartData[0].formattedDate : ''} to{' '}
             {chartData.length > 0 ? chartData[chartData.length - 1].formattedDate : ''}
           </CardDescription>
         </CardHeader>
