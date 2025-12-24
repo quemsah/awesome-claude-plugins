@@ -11,7 +11,6 @@ interface SearchControlsProps {
   onSortChange: (option: SortOption) => void
   filteredPluginCount: number
   filteredRepoCount: number
-  isLoading: boolean
 }
 
 export function SearchControls({
@@ -21,7 +20,6 @@ export function SearchControls({
   onSortChange,
   filteredPluginCount,
   filteredRepoCount,
-  isLoading,
 }: SearchControlsProps) {
   return (
     <div className="mb-4 flex flex-col items-center justify-between gap-4 md:flex-row">
@@ -42,9 +40,7 @@ export function SearchControls({
         </div>
       </div>
       <div className="text-muted-foreground text-sm">
-        {isLoading
-          ? 'Loading...'
-          : `${filteredPluginCount} ${filteredPluginCount === 1 ? 'plugin' : 'plugins'} available across ${filteredRepoCount} ${filteredRepoCount === 1 ? 'repository' : 'repositories'}`}
+        {`${filteredPluginCount} ${filteredPluginCount === 1 ? 'plugin' : 'plugins'} available across ${filteredRepoCount} ${filteredRepoCount === 1 ? 'repository' : 'repositories'}`}
       </div>
     </div>
   )

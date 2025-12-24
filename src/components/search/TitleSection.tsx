@@ -5,18 +5,14 @@ import { StatsItemSchema } from '../../schemas/stats.schema.ts'
 export function TitleSection() {
   let lastUpdated: string | null = null
 
-  try {
-    if (Array.isArray(statsData) && statsData.length > 0) {
-      const lastEntryRaw = statsData[statsData.length - 1]
-      const validationResult = StatsItemSchema.safeParse(lastEntryRaw)
+  if (Array.isArray(statsData) && statsData.length > 0) {
+    const lastEntryRaw = statsData[statsData.length - 1]
+    const validationResult = StatsItemSchema.safeParse(lastEntryRaw)
 
-      if (validationResult.success) {
-        const date = new Date(validationResult.data.date)
-        lastUpdated = formatDate(date)
-      }
+    if (validationResult.success) {
+      const date = new Date(validationResult.data.date)
+      lastUpdated = formatDate(date)
     }
-  } catch (error) {
-    console.error('Failed to get last updated stats:', error)
   }
 
   return (

@@ -41,13 +41,12 @@ export function SearchPage({ initialRepos }: SearchPageProps) {
       <SearchControls
         filteredPluginCount={filteredPluginCount}
         filteredRepoCount={filteredRepos.length}
-        isLoading={false}
         onSearchChange={setSearchTerm}
         onSortChange={setSortOption}
         searchTerm={searchTerm}
         sortOption={sortOption}
       />
-      <RepoList isLoading={false} repos={initialRepos} sortedRepos={sortedRepos} sortOption={sortOption} />
+      <RepoList hasLoadError={initialRepos.length === 0} sortedRepos={sortedRepos} sortOption={sortOption} />
     </>
   )
 }

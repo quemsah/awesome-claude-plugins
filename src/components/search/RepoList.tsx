@@ -2,25 +2,15 @@
 
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { LoadedContent } from './LoadedContent.tsx'
-import { LoadingContent } from './LoadingContent.tsx'
 import type { SortOption } from './Sort.tsx'
 
 interface RepoListProps {
-  repos: Repo[]
+  hasLoadError: boolean
   sortedRepos: Repo[]
-  isLoading: boolean
   sortOption: SortOption
 }
 
-export function RepoList({ repos, sortedRepos, isLoading, sortOption }: RepoListProps) {
-  if (isLoading) {
-    return (
-      <div aria-busy="true" aria-live="polite">
-        <LoadingContent />
-      </div>
-    )
-  }
-
+export function RepoList({ hasLoadError, sortedRepos, sortOption }: RepoListProps) {
   if (sortedRepos.length > 0) {
     return (
       <div aria-live="polite">
@@ -32,7 +22,7 @@ export function RepoList({ repos, sortedRepos, isLoading, sortOption }: RepoList
   return (
     <div className="py-8 text-center">
       <p className="text-muted-foreground">
-        {repos.length === 0 ? 'Failed to load repositories. Please try again later.' : 'No repositories match your search.'}
+        {hasLoadError ? 'Failed to load repositories. Please try again later.' : 'No repositories match your search.'}
       </p>
     </div>
   )

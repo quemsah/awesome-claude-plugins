@@ -1,18 +1,17 @@
 import { Header } from '../../components/common/Header.tsx'
+import { StatsPage } from '../../components/stats/StatsPage.tsx'
 import StatsStructuredData from '../../components/stats/StatsStructuredData.tsx'
 import statsData from '../../data/stats.json' with { type: 'json' }
 import { StatsArraySchema, type StatsItem } from '../../schemas/stats.schema.ts'
 
-export default function StatsPage() {
+export default function StatsPageRoute() {
   let stats: StatsItem[] = []
 
-  try {
-    const validationResult = StatsArraySchema.safeParse(statsData)
-    if (validationResult.success) {
-      stats = validationResult.data
-    }
-  } catch (error) {
-    console.error('Failed to load stats:', error)
+  const validationResult = StatsArraySchema.safeParse(statsData)
+  if (validationResult.success) {
+    stats = validationResult.data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  } else {
+    console.error('Invalid stats data format:', validationResult.error)
   }
 
   const startDate = stats.length > 0 ? stats[0].date : undefined
