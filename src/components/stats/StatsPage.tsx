@@ -1,14 +1,51 @@
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Area, AreaChart, Tooltip, XAxis, YAxis } from 'recharts'
 import { formatDate } from '../../lib/utils.ts'
 import type { StatsItem } from '../../schemas/stats.schema.ts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card.tsx'
 import { ChartContainer, ChartTooltipContent } from '../ui/chart.tsx'
+import { TimeFilter } from './TimeFilter.tsx'
 
 interface StatsPageProps {
   stats: StatsItem[]
+}
+
+export function filterStatsByTimeRange(stats: StatsItem[], timeRange: string): StatsItem[] {
+  if (timeRange === 'all') {
+    return stats
+  }
+
+  const now = new Date()
+  const cutoffDate = new Date()
+
+  if (timeRange === '7days') {
+    cutoffDate.setDate(now.getDate() - 7)
+  } else if (timeRange === '30days') {
+    cutoffDate.setDate(now.getDate() - 30)
+  }
+
+  return stats.filter((item) => new Date(item.date) >= cutoffDate)
+}
+
+export function calculateTrend(filteredStats: StatsItem[]): { growth: number; percentage: number; periodDays: number } {
+  if (filteredStats.length <= 1) {
+    return { growth: 0, percentage: 0, periodDays: 0 }
+  }
+
+  const firstSize = Number.parseInt(filteredStats[0].size, 10) || 0
+  const lastSize = Number.parseInt(filteredStats[filteredStats.length - 1].size, 10) || 0
+  const totalGrowth = lastSize - firstSize
+  const periodDays = Math.max(1, filteredStats.length - 1)
+
+  const percentage = firstSize > 0 ? Math.round((totalGrowth / firstSize) * 10000) / 100 : 0
+
+  return {
+    growth: totalGrowth,
+    percentage,
+    periodDays,
+  }
 }
 
 const removeTitleTag = (container: HTMLElement | null) => {
@@ -21,29 +58,34 @@ const removeTitleTag = (container: HTMLElement | null) => {
 
 export function StatsPage({ stats }: StatsPageProps) {
   const chartRef = useRef<HTMLDivElement>(null)
+  const [timeRange, setTimeRange] = useState('all')
+
+  const filteredStats = useMemo(() => filterStatsByTimeRange(stats, timeRange), [stats, timeRange])
 
   const chartData = useMemo(() => {
-    const sortedData = [...stats].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    const sortedData = [...filteredStats].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
     return sortedData.map((item) => ({
       date: item.date,
       size: Number.parseInt(item.size, 10) || 0,
       formattedDate: formatDate(new Date(item.date)),
     }))
-  }, [stats])
+  }, [filteredStats])
 
-  const trends = useMemo(() => {
-    if (chartData.length <= 1) {
+  const trendData = useMemo(() => calculateTrend(filteredStats), [filteredStats])
+
+  const overallTrends = useMemo(() => {
+    if (stats.length <= 1) {
       return { averageDailyIncrease: 0, totalDays: 0 }
     }
-    const firstSize = chartData[0].size
-    const lastSize = chartData[chartData.length - 1].size
+    const firstSize = Number.parseInt(stats[0].size, 10) || 0
+    const lastSize = Number.parseInt(stats[stats.length - 1].size, 10) || 0
     const totalGrowth = lastSize - firstSize
-    const totalDays = chartData.length - 1
+    const totalDays = stats.length - 1
     return {
       averageDailyIncrease: Math.round((totalGrowth / totalDays) * 100) / 100,
       totalDays,
     }
-  }, [chartData])
+  }, [stats])
 
   useEffect(() => {
     if (!chartRef.current) return
@@ -64,6 +106,19 @@ export function StatsPage({ stats }: StatsPageProps) {
 
   return (
     <div className="space-y-6">
+      <div className="mb-6 flex items-center justify-between">
+        <TimeFilter onTimeRangeChange={setTimeRange} />
+        {timeRange !== 'all' && trendData.periodDays > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-sm">Trend:</span>
+            <span className={`font-bold ${trendData.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {trendData.growth >= 0 ? '+' : ''}
+              {trendData.growth} ({trendData.percentage}%)
+            </span>
+          </div>
+        )}
+      </div>
+
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -82,7 +137,7 @@ export function StatsPage({ stats }: StatsPageProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="font-bold text-2xl">+{trends.averageDailyIncrease}</div>
+            <div className="font-bold text-2xl">+{overallTrends.averageDailyIncrease}</div>
           </CardContent>
         </Card>
       </div>
@@ -91,6 +146,9 @@ export function StatsPage({ stats }: StatsPageProps) {
         <CardHeader>
           <CardTitle>Repository Count Over Time</CardTitle>
           <CardDescription>
+            {timeRange === '7days' && 'Last 7 days - '}
+            {timeRange === '30days' && 'Last 30 days - '}
+            {timeRange === 'all' && 'All time - '}
             Daily repository count from {chartData.length > 0 ? chartData[0].formattedDate : ''} to{' '}
             {chartData.length > 0 ? chartData[chartData.length - 1].formattedDate : ''}
           </CardDescription>
