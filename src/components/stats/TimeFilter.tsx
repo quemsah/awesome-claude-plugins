@@ -7,7 +7,7 @@ export function TimeFilter({ value, onTimeRangeChange }: { value: string; onTime
     <div className="flex items-center gap-4">
       <span className="font-medium text-sm">Time Range:</span>
       <Select onValueChange={onTimeRangeChange} value={value}>
-        <SelectTrigger className="w-[180px]">
+        <SelectTrigger className="w-44">
           <SelectValue placeholder="Select time range" />
         </SelectTrigger>
         <SelectContent>

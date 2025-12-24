@@ -11,7 +11,7 @@ import { TimeFilter } from './TimeFilter.tsx'
 const timeRangeLabels: Record<string, string> = {
   '7days': 'Last 7 days',
   '30days': 'Last 30 days',
-  'all': 'All time',
+  all: 'All time',
 }
 
 interface StatsPageProps {
@@ -113,7 +113,7 @@ export function StatsPage({ stats }: StatsPageProps) {
   return (
     <div className="space-y-6">
       <div className="mb-6 flex items-center justify-between">
-        <TimeFilter value={timeRange} onTimeRangeChange={setTimeRange} />
+        <TimeFilter onTimeRangeChange={setTimeRange} value={timeRange} />
         {timeRange !== 'all' && trendData.periodDays > 0 && (
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm">Trend:</span>
