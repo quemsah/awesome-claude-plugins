@@ -23,8 +23,8 @@ const ChartContainer = React.forwardRef<
     children: React.ComponentProps<typeof ResponsiveContainer>['children']
   }
 >(({ className, children, ...props }, ref) => (
-  <div className={cn('w-full text-xs', className)} ref={ref}>
-    <ResponsiveContainer height="100%" width="100%" {...props}>
+  <div className={cn('w-full text-xs', className)} ref={ref} style={{ height: '400px', width: '100%' }}>
+    <ResponsiveContainer height={400} width="100%" {...props}>
       {children}
     </ResponsiveContainer>
   </div>
