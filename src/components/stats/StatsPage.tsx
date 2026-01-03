@@ -14,6 +14,8 @@ const timeRangeLabels: Record<string, string> = {
   all: 'All time',
 }
 
+const MILLISECONDS_IN_DAY = 1000 * 60 * 60 * 24
+
 interface StatsPageProps {
   stats: StatsItem[]
 }
@@ -59,20 +61,22 @@ export function fillMissingDates(stats: StatsItem[]): StatsItem[] {
     return [...stats]
   }
 
+  const statsWithDateObjects = stats.map((s) => ({ ...s, dateObj: new Date(s.date) }))
+  const sortedStats = statsWithDateObjects.sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime())
+
   const filledStats: StatsItem[] = []
-  const sortedStats = [...stats].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
   for (let i = 0; i < sortedStats.length; i++) {
     const currentItem = sortedStats[i]
-    filledStats.push(currentItem)
+    filledStats.push({ date: currentItem.date, size: currentItem.size })
 
     if (i < sortedStats.length - 1) {
       const nextItem = sortedStats[i + 1]
-      const currentDate = new Date(currentItem.date)
-      const nextDate = new Date(nextItem.date)
+      const currentDate = currentItem.dateObj
+      const nextDate = nextItem.dateObj
 
       const timeDiff = nextDate.getTime() - currentDate.getTime()
-      const dayDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24))
+      const dayDiff = Math.floor(timeDiff / MILLISECONDS_IN_DAY)
 
       if (dayDiff > 1) {
         const currentSize = Number.parseInt(currentItem.size, 10) || 0
@@ -80,8 +84,7 @@ export function fillMissingDates(stats: StatsItem[]): StatsItem[] {
         const dailyIncrement = (nextSize - currentSize) / dayDiff
 
         for (let day = 1; day < dayDiff; day++) {
-          const missingDate = new Date(currentDate)
-          missingDate.setDate(currentDate.getDate() + day)
+          const missingDate = new Date(currentDate.getTime() + day * MILLISECONDS_IN_DAY)
 
           const interpolatedSize = Math.round(currentSize + dailyIncrement * day)
 
@@ -112,8 +115,7 @@ export function StatsPage({ stats }: StatsPageProps) {
   const filteredStats = useMemo(() => filterStatsByTimeRange(stats, timeRange), [stats, timeRange])
 
   const chartData = useMemo(() => {
-    const sortedData = [...filteredStats].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    const filledData = fillMissingDates(sortedData)
+    const filledData = fillMissingDates(filteredStats)
     return filledData.map((item) => ({
       date: item.date,
       size: Number.parseInt(item.size, 10) || 0,
