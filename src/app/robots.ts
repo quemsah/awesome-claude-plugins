@@ -1,14 +1,13 @@
 import type { MetadataRoute } from 'next'
+import { BASE_URL } from '../lib/constants.ts'
 
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl = 'https://awesomeclaudeplugins.com'
-
   return {
     rules: {
       userAgent: '*',
       allow: '/',
     },
-    sitemap: `${baseUrl}/sitemap.xml`,
-    host: baseUrl,
+    sitemap: `${BASE_URL}/sitemap.xml`,
+    host: BASE_URL,
   }
 }

@@ -2,12 +2,12 @@ import type { Metadata } from 'next'
 import './globals.css'
 import process from 'node:process'
 import Script from 'next/script'
+import { BASE_URL } from '../lib/constants.ts'
 import { Providers } from '../providers/providers.tsx'
 
 export function generateMetadata(): Metadata {
-  const baseUrl = 'https://awesomeclaudeplugins.com'
   return {
-    metadataBase: new URL(baseUrl),
+    metadataBase: new URL(BASE_URL),
     title: {
       default: 'Awesome Claude Plugins',
       template: '%s | Awesome Claude Plugins',
@@ -36,7 +36,7 @@ export function generateMetadata(): Metadata {
       'Claude Code workflows',
       'n8n automation',
     ],
-    authors: [{ name: 'Awesome Claude Plugins Team', url: 'https://awesomeclaudeplugins.com' }],
+    authors: [{ name: 'Awesome Claude Plugins Team', url: BASE_URL }],
     creator: 'Awesome Claude Plugins Team',
     publisher: 'Awesome Claude Plugins Team',
     icons: {
@@ -57,7 +57,7 @@ export function generateMetadata(): Metadata {
     openGraph: {
       type: 'website',
       locale: 'en_US',
-      url: 'https://awesomeclaudeplugins.com',
+      url: BASE_URL,
       title: 'Awesome Claude Plugins',
       description:
         'Explore the ultimate collection of Claude Code plugins. Discover powerful AI tools, extensions, and integrations across GitHub repositories',
@@ -91,7 +91,7 @@ export function generateMetadata(): Metadata {
       },
     },
     alternates: {
-      canonical: baseUrl,
+      canonical: BASE_URL,
     },
     verification: {
       google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION_CODE,

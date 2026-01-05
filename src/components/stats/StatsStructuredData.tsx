@@ -1,4 +1,6 @@
 /** biome-ignore-all lint/security/noDangerouslySetInnerHtml: <Used to inject ld+json> */
+import { BASE_URL } from '../../lib/constants.ts'
+
 interface StatsStructuredDataProps {
   startDate?: string
   endDate?: string
@@ -13,7 +15,7 @@ export default function StatsStructuredData({ startDate, endDate }: StatsStructu
     '@type': 'WebPage',
     name: 'Repository Statistics | Awesome Claude Plugins',
     description: 'View statistics and trends about Claude Code plugin adoption across GitHub repositories',
-    url: 'https://awesomeclaudeplugins.com/stats',
+    url: `${BASE_URL}/stats`,
     about: {
       '@type': 'Dataset',
       name: 'Claude Code Plugin Adoption Statistics',
@@ -24,7 +26,7 @@ export default function StatsStructuredData({ startDate, endDate }: StatsStructu
     publisher: {
       '@type': 'Organization',
       name: 'Awesome Claude Plugins Team',
-      url: 'https://awesomeclaudeplugins.com',
+      url: BASE_URL,
     },
   }
 
@@ -36,13 +38,13 @@ export default function StatsStructuredData({ startDate, endDate }: StatsStructu
         '@type': 'ListItem',
         position: 1,
         name: 'Home',
-        item: 'https://awesomeclaudeplugins.com',
+        item: BASE_URL,
       },
       {
         '@type': 'ListItem',
         position: 2,
         name: 'Statistics',
-        item: 'https://awesomeclaudeplugins.com/stats',
+        item: `${BASE_URL}/stats`,
       },
     ],
   }

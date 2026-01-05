@@ -1,4 +1,6 @@
 /** biome-ignore-all lint/security/noDangerouslySetInnerHtml: <Used to inject ld+json> */
+
+import { BASE_URL } from '../../lib/constants.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 
 interface StructuredDataProps {
@@ -12,11 +14,11 @@ export default function StructuredData({ repos }: StructuredDataProps) {
     name: 'Awesome Claude Plugins',
     description:
       'Discover GitHub repositories that have adopted Claude Code plugins. Browse repositories by stars, forks, and plugin count',
-    url: 'https://awesomeclaudeplugins.com',
+    url: BASE_URL,
     publisher: {
       '@type': 'Organization',
       name: 'Awesome Claude Plugins Team',
-      url: 'https://awesomeclaudeplugins.com',
+      url: BASE_URL,
     },
   }
 
@@ -45,7 +47,7 @@ export default function StructuredData({ repos }: StructuredDataProps) {
       price: '0',
       priceCurrency: 'EUR',
       availability: 'https://schema.org/InStock',
-      url: 'https://awesomeclaudeplugins.com',
+      url: BASE_URL,
     },
     featureList: [
       'Claude Code plugin adoption tracking',
@@ -65,7 +67,7 @@ export default function StructuredData({ repos }: StructuredDataProps) {
     publisher: {
       '@type': 'Organization',
       name: 'Awesome Claude Plugins Team',
-      url: 'https://awesomeclaudeplugins.com',
+      url: BASE_URL,
     },
   }
 

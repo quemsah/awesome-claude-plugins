@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { BASE_URL } from '../../lib/constants.ts'
 
 export const metadata: Metadata = {
   title: 'Claude Code Trends & Analytics',
@@ -20,7 +21,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Claude Code Trends & Analytics',
     description: 'Explore Claude Code plugin adoption statistics, repository growth trends and usage patterns across GitHub',
-    url: 'https://awesomeclaudeplugins.com/stats',
+    url: `${BASE_URL}/stats`,
     type: 'website',
     images: [
       {
