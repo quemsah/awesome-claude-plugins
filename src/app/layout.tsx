@@ -5,7 +5,7 @@ import Script from 'next/script'
 import { Providers } from '../providers/providers.tsx'
 
 export function generateMetadata(): Metadata {
-  const baseUrl = 'https://claude-plugins.22.deno.net'
+  const baseUrl = 'https://awesomeclaudeplugins.com'
   return {
     metadataBase: new URL(baseUrl),
     title: {
@@ -13,22 +13,32 @@ export function generateMetadata(): Metadata {
       template: '%s | Awesome Claude Plugins',
     },
     description:
-      'Explore the ultimate collection of Claude Code plugins. Discover powerful AI tools, extensions, and integrations across GitHub repositories.',
+      'Explore the ultimate collection of Claude Code plugins. Discover powerful AI tools, extensions, and integrations across GitHub repositories',
     keywords: [
       'Claude Code plugins',
       'Claude AI tools',
-      'Claude development tools',
+      'Anthropic Claude plugins',
       'Claude Code extensions',
-      'AI plugins for Claude',
-      'Claude plugin marketplace',
-      'GitHub Claude plugins',
-      'automated plugin discovery',
-      'n8n workflows',
+      'AI coding agents',
+      'MCP servers',
+      'Claude skills marketplace',
+      'GitHub plugin repositories',
+      'Automated plugin discovery',
       'AI development tools',
+      'Multi-agent orchestration',
+      'Claude Code marketplace',
+      'Agent skills',
+      'Coding automation',
+      'AI plugin directory',
+      'Claude development ecosystem',
+      'Plugin adoption analytics',
+      'GitHub AI tools',
+      'Claude Code workflows',
+      'n8n automation',
     ],
-    authors: [{ name: 'awesome-claude-plugins', url: 'https://claude-plugins.22.deno.net' }, { name: 'Awesome Claude Plugins Team' }],
-    creator: 'Awesome Claude Plugins',
-    publisher: 'Awesome Claude Plugins',
+    authors: [{ name: 'Awesome Claude Plugins Team', url: 'https://awesomeclaudeplugins.com' }],
+    creator: 'Awesome Claude Plugins Team',
+    publisher: 'Awesome Claude Plugins Team',
     icons: {
       icon: [
         { url: '/favicon.ico' },
@@ -47,10 +57,10 @@ export function generateMetadata(): Metadata {
     openGraph: {
       type: 'website',
       locale: 'en_US',
-      url: 'https://claude-plugins.22.deno.net',
+      url: 'https://awesomeclaudeplugins.com',
       title: 'Awesome Claude Plugins',
       description:
-        'Explore the ultimate collection of Claude Code plugins. Discover powerful AI tools, extensions, and integrations across GitHub repositories.',
+        'Explore the ultimate collection of Claude Code plugins. Discover powerful AI tools, extensions, and integrations across GitHub repositories',
       siteName: 'Awesome Claude Plugins',
       images: [
         {
@@ -65,7 +75,7 @@ export function generateMetadata(): Metadata {
       card: 'summary_large_image',
       title: 'Awesome Claude Plugins | AI Development Tools',
       description:
-        'Discover powerful plugins, extensions, and tools for Claude AI. Browse curated collections and boost your development workflow.',
+        'Discover powerful plugins, extensions, and tools for Claude AI. Browse curated collections and boost your development workflow',
       creator: '@awesome_claude_plugins',
       images: ['/android-chrome-512x512.png'],
     },
@@ -99,7 +109,6 @@ export default function RootLayout({
       <body className="min-h-screen">
         <Providers>{children}</Providers>
         <Script data-collect-dnt="true" src="https://scripts.simpleanalyticscdn.com/latest.js" />
-        <Script src="https://scripts.simpleanalyticscdn.com/auto-events.js" />
         <noscript>
           {/** biome-ignore lint/performance/noImgElement: <sa> */}
           <img alt="" referrerPolicy="no-referrer-when-downgrade" src="https://queue.simpleanalyticscdn.com/noscript.gif" />

@@ -11,9 +11,9 @@ export default function StatsStructuredData({ startDate, endDate }: StatsStructu
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'WebPage',
-    name: 'Repository Statistics | Awesome Claude Code Plugins',
+    name: 'Repository Statistics | Awesome Claude Plugins',
     description: 'View statistics and trends about Claude Code plugin adoption across GitHub repositories',
-    url: 'https://claude-plugins.22.deno.net/stats',
+    url: 'https://awesomeclaudeplugins.com/stats',
     about: {
       '@type': 'Dataset',
       name: 'Claude Code Plugin Adoption Statistics',
@@ -23,8 +23,8 @@ export default function StatsStructuredData({ startDate, endDate }: StatsStructu
     },
     publisher: {
       '@type': 'Organization',
-      name: 'Awesome Claude Plugins',
-      url: 'https://claude-plugins.22.deno.net',
+      name: 'Awesome Claude Plugins Team',
+      url: 'https://awesomeclaudeplugins.com',
     },
   }
 
@@ -36,13 +36,13 @@ export default function StatsStructuredData({ startDate, endDate }: StatsStructu
         '@type': 'ListItem',
         position: 1,
         name: 'Home',
-        item: 'https://claude-plugins.22.deno.net',
+        item: 'https://awesomeclaudeplugins.com',
       },
       {
         '@type': 'ListItem',
         position: 2,
         name: 'Statistics',
-        item: 'https://claude-plugins.22.deno.net/stats',
+        item: 'https://awesomeclaudeplugins.com/stats',
       },
     ],
   }

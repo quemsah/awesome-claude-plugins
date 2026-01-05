@@ -8,7 +8,7 @@ interface RepoStructuredDataProps {
 }
 
 export default function RepoStructuredData({ repo }: RepoStructuredDataProps) {
-  const baseUrl = 'https://claude-plugins.22.deno.net'
+  const baseUrl = 'https://awesomeclaudeplugins.com'
 
   const breadcrumb = {
     '@context': 'https://schema.org',
@@ -52,7 +52,7 @@ export default function RepoStructuredData({ repo }: RepoStructuredDataProps) {
             url: repo.owner.html_url,
           },
     license: repo.license?.name || 'Unknown',
-    keywords: repo.topics?.join(', ') || 'Claude Code, plugins, GitHub',
+    keywords: repo.topics?.join(', ') || 'Claude Code, plugin adoption, GitHub, metrics',
     isPartOf: {
       '@type': 'WebSite',
       name: 'Awesome Claude Plugins',

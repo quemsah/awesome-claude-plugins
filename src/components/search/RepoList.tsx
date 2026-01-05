@@ -22,7 +22,7 @@ export function RepoList({ hasLoadError, sortedRepos, sortOption }: RepoListProp
   return (
     <div className="py-8 text-center">
       <p className="text-muted-foreground">
-        {hasLoadError ? 'Failed to load repositories. Please try again later.' : 'No repositories match your search.'}
+        {hasLoadError ? 'Failed to load repositories. Please try again later' : 'No repositories match your search'}
       </p>
     </div>
   )

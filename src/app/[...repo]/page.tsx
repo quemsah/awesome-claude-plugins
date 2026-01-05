@@ -93,7 +93,7 @@ export default function RepoPage({ params }: RouteParams) {
                   </div>
                 ) : (
                   <p aria-live="polite" className="py-4 text-center text-muted-foreground">
-                    No plugins found in this repository.
+                    No Claude Code plugins found in this repository.
                   </p>
                 )}
               </CardContent>

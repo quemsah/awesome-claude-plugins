@@ -11,12 +11,12 @@ export default function StructuredData({ repos }: StructuredDataProps) {
     '@type': 'WebSite',
     name: 'Awesome Claude Plugins',
     description:
-      'Discover GitHub repositories that have adopted Claude Code plugins. Browse repositories by stars, forks, and plugin count.',
-    url: 'https://claude-plugins.22.deno.net',
+      'Discover GitHub repositories that have adopted Claude Code plugins. Browse repositories by stars, forks, and plugin count',
+    url: 'https://awesomeclaudeplugins.com',
     publisher: {
       '@type': 'Organization',
-      name: 'Awesome Claude Plugins',
-      url: 'https://claude-plugins.22.deno.net',
+      name: 'Awesome Claude Plugins Team',
+      url: 'https://awesomeclaudeplugins.com',
     },
   }
 
@@ -38,23 +38,34 @@ export default function StructuredData({ repos }: StructuredDataProps) {
     name: 'Awesome Claude Plugins',
     applicationCategory: 'DeveloperApplication',
     description:
-      'Directory of GitHub repositories that have adopted Claude Code plugins, showcasing plugin adoption across the developer ecosystem.',
+      'Directory of GitHub repositories that have adopted Claude Code plugins, showcasing plugin adoption across the developer ecosystem',
     operatingSystem: 'Web',
     offers: {
       '@type': 'Offer',
       price: '0',
       priceCurrency: 'EUR',
       availability: 'https://schema.org/InStock',
-      url: 'https://claude-plugins.22.deno.net',
+      url: 'https://awesomeclaudeplugins.com',
     },
-    featureList: ['Plugin discovery', 'Repository browsing', 'Search functionality', 'Sorting options', 'Statistics tracking'],
-    applicationSubCategory: 'AI Development Tools',
+    featureList: [
+      'Claude Code plugin adoption tracking',
+      'MCP server discovery',
+      'Agent skills marketplace',
+      'AI-powered repository browsing',
+      'Advanced search functionality',
+      'Multi-criteria sorting options',
+      'Comprehensive statistics tracking',
+      'Plugin adoption growth analytics',
+      'Automated workflow monitoring',
+      'GitHub integration metrics',
+    ],
+    applicationSubCategory: 'AI Development Analytics',
     softwareVersion: '1.0',
     datePublished: '2025-12-12',
     publisher: {
       '@type': 'Organization',
-      name: 'Awesome Claude Plugins',
-      url: 'https://claude-plugins.22.deno.net',
+      name: 'Awesome Claude Plugins Team',
+      url: 'https://awesomeclaudeplugins.com',
     },
   }
 

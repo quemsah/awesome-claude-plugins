@@ -10,19 +10,25 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   return {
     title: `${repoName}`,
-    description: `View detailed information about the ${repoName} repository and its Claude Code plugins.`,
+    description: `Explore ${repoName} repository with Claude Code plugins, MCP servers, and agent skills. View plugin adoption metrics, AI development tools, and automated workflow integrations`,
     keywords: [
-      'GitHub repository details',
-      'Claude Code plugin adoption',
-      'repository metrics',
-      'AI plugin usage',
-      'developer statistics',
-      'open source analytics',
+      'Claude Code plugins',
+      'GitHub repository',
+      'AI coding tools',
+      'MCP servers',
+      'Agent skills',
+      'Plugin adoption metrics',
+      'Repository analytics',
+      'AI development tools',
+      'Claude Code integration',
+      'Automated workflows',
       repoName,
+      `${repoName} plugins`,
+      `${repoName} Claude Code`,
     ],
     openGraph: {
       title: `${repoName}`,
-      description: `View detailed information about the ${repoName} repository and its Claude Code plugins.`,
+      description: `Explore ${repoName} repository with Claude Code plugins, MCP servers, and agent skills. View plugin adoption metrics, AI development tools, and automated workflow integrations`,
       type: 'website',
       images: [
         {
@@ -36,7 +42,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     twitter: {
       card: 'summary_large_image',
       title: `${repoName}`,
-      description: `View detailed information about the ${repoName} repository and its Claude Code plugins.`,
+      description: `Explore ${repoName} repository with Claude Code plugins, MCP servers, and agent skills. View plugin adoption metrics, AI development tools, and automated workflow integrations`,
       images: ['/android-chrome-512x512.png'],
     },
   }
