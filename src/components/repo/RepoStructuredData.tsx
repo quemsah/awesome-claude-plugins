@@ -1,5 +1,6 @@
 /** biome-ignore-all lint/security/noDangerouslySetInnerHtml: <Used to inject ld+json> */
 import type { components } from '@octokit/openapi-types'
+import { BASE_URL } from '../../lib/constants.ts'
 
 type Repository = components['schemas']['repository']
 
@@ -8,8 +9,6 @@ interface RepoStructuredDataProps {
 }
 
 export default function RepoStructuredData({ repo }: RepoStructuredDataProps) {
-  const baseUrl = 'https://claude-plugins.22.deno.net'
-
   const breadcrumb = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -18,13 +17,13 @@ export default function RepoStructuredData({ repo }: RepoStructuredDataProps) {
         '@type': 'ListItem',
         position: 1,
         name: 'Home',
-        item: baseUrl,
+        item: BASE_URL,
       },
       {
         '@type': 'ListItem',
         position: 2,
         name: repo.name,
-        item: `${baseUrl}/${repo.full_name}`,
+        item: `${BASE_URL}/${repo.full_name}`,
       },
     ],
   }
@@ -52,11 +51,11 @@ export default function RepoStructuredData({ repo }: RepoStructuredDataProps) {
             url: repo.owner.html_url,
           },
     license: repo.license?.name || 'Unknown',
-    keywords: repo.topics?.join(', ') || 'Claude Code, plugins, GitHub',
+    keywords: repo.topics?.join(', ') || 'Claude Code, plugin adoption, GitHub, metrics',
     isPartOf: {
       '@type': 'WebSite',
       name: 'Awesome Claude Plugins',
-      url: baseUrl,
+      url: BASE_URL,
     },
   }
 

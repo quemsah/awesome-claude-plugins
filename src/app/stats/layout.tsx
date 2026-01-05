@@ -1,20 +1,27 @@
 import type { Metadata } from 'next'
+import { BASE_URL } from '../../lib/constants.ts'
 
 export const metadata: Metadata = {
   title: 'Claude Code Trends & Analytics',
-  description: 'Explore Claude Code plugin adoption statistics, repository growth trends, and usage patterns across GitHub.',
+  description: 'Explore Claude Code plugin adoption statistics, repository growth trends and usage patterns across GitHub',
   keywords: [
-    'Claude Code statistics',
-    'plugin adoption trends',
-    'AI development analytics',
-    'GitHub repository growth',
-    'Claude plugin usage',
-    'AI tool statistics',
+    'Claude Code analytics',
+    'Plugin adoption statistics',
+    'AI development trends',
+    'GitHub repository metrics',
+    'Claude Code growth charts',
+    'MCP server analytics',
+    'Agent skills statistics',
+    'AI coding tools usage',
+    'Plugin marketplace trends',
+    'Automated workflow analytics',
+    'Claude Code adoption rates',
+    'Repository plugin metrics',
   ],
   openGraph: {
     title: 'Claude Code Trends & Analytics',
-    description: 'Explore Claude Code plugin adoption statistics, repository growth trends, and usage patterns across GitHub.',
-    url: 'https://claude-plugins.22.deno.net/stats',
+    description: 'Explore Claude Code plugin adoption statistics, repository growth trends and usage patterns across GitHub',
+    url: `${BASE_URL}/stats`,
     type: 'website',
     images: [
       {
@@ -28,7 +35,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'Claude Code Trends & Analytics',
-    description: 'Explore Claude Code plugin adoption statistics, repository growth trends, and usage patterns across GitHub.',
+    description: 'Explore Claude Code plugin adoption statistics, repository growth trends and usage patterns across GitHub',
     images: ['/android-chrome-512x512.png'],
   },
 }

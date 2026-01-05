@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'Awesome Claude Plugins',
     short_name: 'Claude Plugins',
-    description: 'Discover and install plugins for Claude Code',
+    description: 'Discover and install Claude Code plugins, MCP servers, and agent skills for AI-powered development workflows',
     start_url: '/',
     display: 'standalone',
     background_color: '#ffffff',

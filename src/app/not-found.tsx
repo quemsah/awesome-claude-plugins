@@ -26,6 +26,6 @@ export default function NotFound() {
 }
 
 export const metadata = {
-  title: '404 - Page Not Found | awesome-claude-plugins',
-  description: 'The page you are looking for could not be found.',
+  title: '404 - Page Not Found | Awesome Claude Plugins',
+  description: 'The page you are looking for could not be found',
 }
