@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { BASE_URL } from '../../lib/constants.ts'
 
 export const metadata: Metadata = {
-  title: 'Claude Code Trends & Analytics',
+  title: 'Trends & Analytics',
   description: 'Explore Claude Code plugin adoption statistics, repository growth trends and usage patterns across GitHub',
   keywords: [
     'Claude Code analytics',
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     'Repository plugin metrics',
   ],
   openGraph: {
-    title: 'Claude Code Trends & Analytics',
+    title: 'Trends & Analytics',
     description: 'Explore Claude Code plugin adoption statistics, repository growth trends and usage patterns across GitHub',
     url: `${BASE_URL}/stats`,
     type: 'website',
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Claude Code Trends & Analytics',
+    title: 'Trends & Analytics',
     description: 'Explore Claude Code plugin adoption statistics, repository growth trends and usage patterns across GitHub',
     images: ['/android-chrome-512x512.png'],
   },

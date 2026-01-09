@@ -1,6 +1,6 @@
 'use client'
 
-import { BarChart3, Github, Search } from 'lucide-react'
+import { BarChart3, Github, Info, Search } from 'lucide-react'
 import { usePathname, useRouter } from 'next/navigation'
 import { Button } from '../ui/button.tsx'
 import { ClaudeIcon } from './ClaudeIcon.tsx'
@@ -42,6 +42,15 @@ export function Header() {
             >
               <BarChart3 aria-hidden="true" className="h-4 w-4" />
               <span>Stats</span>
+            </button>
+            <button
+              aria-label="About project"
+              className={`flex items-center gap-2 text-sm ${pathname === '/about' ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
+              onClick={() => router.push('/about')}
+              type="button"
+            >
+              <Info aria-hidden="true" className="h-4 w-4" />
+              <span>About</span>
             </button>
           </div>
         </nav>
