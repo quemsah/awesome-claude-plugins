@@ -24,6 +24,8 @@ jobs:
 
       - name: Run install step
         run: "deno install"
+        working-directory: ui
 
       - name: Run linter
         run: deno task style
+        working-directory: ui
