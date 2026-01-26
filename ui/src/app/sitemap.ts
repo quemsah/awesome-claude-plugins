@@ -41,6 +41,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url: `${BASE_URL}/stats`,
       lastModified: now,
       changeFrequency: 'weekly',
+      priority: 0.9,
+    },
+    {
+      url: `${BASE_URL}/about`,
+      lastModified: now,
+      changeFrequency: 'weekly',
       priority: 0.8,
     },
     ...repoUrls,
