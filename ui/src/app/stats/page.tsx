@@ -2,7 +2,8 @@ import { Header } from '../../components/common/Header.tsx'
 import { StatsPage } from '../../components/stats/StatsPage.tsx'
 import StatsStructuredData from '../../components/stats/StatsStructuredData.tsx'
 import statsData from '../../data/stats.json' with { type: 'json' }
-import { StatsArraySchema, type StatsItem } from '../../schemas/stats.schema.ts'
+import type { StatsItem } from '../../schemas/stats.schema.ts'
+import { StatsArraySchema } from '../../schemas/stats.schema.ts'
 
 export default function StatsPageRoute() {
   let stats: StatsItem[] = []

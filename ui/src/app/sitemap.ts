@@ -2,7 +2,8 @@
 import type { MetadataRoute } from 'next'
 import reposData from '../data/repos.json' with { type: 'json' }
 import { BASE_URL } from '../lib/constants.ts'
-import { type Repo, ReposArraySchema } from '../schemas/repo.schema.ts'
+import type { Repo } from '../schemas/repo.schema.ts'
+import { ReposArraySchema } from '../schemas/repo.schema.ts'
 
 function isValidRepo(repo: Repo): repo is Repo & { owner: string; repo_name: string } {
   return repo.owner !== null && repo.repo_name !== null
