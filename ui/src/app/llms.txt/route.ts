@@ -11,7 +11,6 @@ This website provides a curated collection of Claude plugins with advanced searc
 
 - **Website Name**: Awesome Claude Plugins
 - **Purpose**: Curated directory of Claude AI plugins
-- **Last Updated**: ${new Date().toISOString().split('T')[0]}
 - **Target Audience**: AI developers, plugin creators, and Claude AI users
 - **Unique Value**: Discover and integrate Claude plugins with performance analytics and curated recommendations
 
@@ -52,7 +51,7 @@ This website is updated regularly with new plugins, performance data, and docume
 
 ## Contact & Support
 
-- **GitHub Repository**: https://github.com/your-repo/awesome-claude-plugins
+- **GitHub Repository**: https://github.com/quemsah/awesome-claude-plugins
 
 ## Optional Resources
 
