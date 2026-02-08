@@ -59,6 +59,7 @@ const ChartTooltipContent = React.forwardRef<
     axisId?: unknown
     itemSorter?: unknown
     activeIndex?: unknown
+    includeHidden?: unknown
   }
 >(
   (
@@ -84,6 +85,7 @@ const ChartTooltipContent = React.forwardRef<
       axisId: _axisId,
       itemSorter: _itemSorter,
       activeIndex: _activeIndex,
+      includeHidden: _includeHidden,
       ...props
     },
     ref

@@ -39,14 +39,23 @@ function Button({
   variant,
   size,
   asChild = false,
+  suppressHydrationWarning = false,
   ...props
 }: React.ComponentProps<'button'> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
+    suppressHydrationWarning?: boolean
   }) {
   const Comp = asChild ? Slot : 'button'
 
-  return <Comp className={cn(buttonVariants({ variant, size, className }))} data-slot="button" {...props} />
+  return (
+    <Comp
+      className={cn(buttonVariants({ variant, size, className }))}
+      data-slot="button"
+      suppressHydrationWarning={suppressHydrationWarning}
+      {...props}
+    />
+  )
 }
 
 export { Button, buttonVariants }
