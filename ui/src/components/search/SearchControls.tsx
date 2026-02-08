@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { Search } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useDebouncedCallback } from 'use-debounce'
 import { Input } from '../ui/input.tsx'
 import { Sort, type SortOption } from './Sort.tsx'

@@ -1,5 +1,5 @@
 import { GitFork, Star } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { ClaudeIcon } from '../common/ClaudeIcon.tsx'
 import { CopiedIcon } from '../common/CopiedIcon.tsx'
@@ -33,15 +33,15 @@ export function RepoCard({ repo, className }: RepoCardProps) {
     setIsHovered(false)
   }, [])
 
-  const getMarketplaceCommand = useCallback(() => `/plugin marketplace add ${repo.owner}/${repo.repo_name}`, [repo.owner, repo.repo_name])
+  const marketplaceCommand = useMemo(() => `/plugin marketplace add ${repo.owner}/${repo.repo_name}`, [repo.owner, repo.repo_name])
 
   const handleCopyClick = useCallback(() => {
     if (repo.owner && repo.repo_name) {
-      navigator.clipboard.writeText(getMarketplaceCommand())
+      navigator.clipboard.writeText(marketplaceCommand)
       setIsCopied(true)
       setTimeout(() => setIsCopied(false), 500)
     }
-  }, [repo.owner, repo.repo_name, getMarketplaceCommand])
+  }, [marketplaceCommand])
 
   if (!repo.repo_name) return null
 
@@ -92,7 +92,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
         {hasValidRepoInfo ? (
           <div className="mt-3 border-muted/20 border-t">
             <div className="flex items-center gap-2 rounded-md bg-muted/50 p-2 text-xs">
-              <code className="grow break-all font-mono">{getMarketplaceCommand()}</code>
+              <code className="grow break-all font-mono">{marketplaceCommand}</code>
               <button
                 aria-label={isCopied ? 'Marketplace command copied' : 'Copy marketplace command'}
                 className={`shrink-0 rounded-md p-1 transition-colors ${isCopied ? 'bg-green-500/20 text-green-600' : 'hover:bg-muted'}`}

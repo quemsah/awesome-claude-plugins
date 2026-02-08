@@ -2,7 +2,7 @@ import process from 'node:process'
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: process.env.DEV_ORIGINS?.split(',') ?? [],
+  allowedDevOrigins: ['192.168.10.68'],
   reactStrictMode: true,
   poweredByHeader: false,
   compiler: {
