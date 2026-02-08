@@ -8,9 +8,9 @@
   },
   "tasks": {
     "install": "deno install --allow-scripts",
-    "dev": "deno run -A --unstable-detect-cjs npm:next@16.0.10 dev",
-    "build": "deno run -A --unstable-detect-cjs npm:next@16.0.10 build",
-    "start": "deno run -A --unstable-detect-cjs npm:next@16.0.10 start",
+    "dev": "deno run -A --unstable-detect-cjs npm:next@16.1.6 dev",
+    "build": "deno run -A --unstable-detect-cjs npm:next@16.1.6 build",
+    "start": "deno run -A --unstable-detect-cjs npm:next@16.1.6 start",
     "style": "deno lint --fix; deno run -A npm:@biomejs/biome check --write --unsafe ."
   },
   "imports": {
