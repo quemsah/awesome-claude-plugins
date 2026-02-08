@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.10/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.3.14/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!.next", "!build", "!next-env.d.ts", "!out", "!src/data", "**"]
+    "includes": ["**", "!.next", "!build", "!next-env.d.ts", "!out", "!src/data"]
   },
   "formatter": {
     "enabled": true,
@@ -21,7 +21,7 @@
     "bracketSpacing": true,
     "expand": "auto",
     "useEditorconfig": true,
-    "includes": ["**", "!.next", "!build", "!next-env.d.ts", "!out", "!src/data", "**"]
+    "includes": ["**", "!.next", "!build", "!next-env.d.ts", "!out", "!src/data/**", "**"]
   },
   "linter": {
     "enabled": true,
@@ -111,7 +111,7 @@
         "useNamespaceKeyword": "error"
       }
     },
-    "includes": ["**", "!.next", "!build", "!next-env.d.ts", "!out", "!src/data", "**"]
+    "includes": ["**", "!.next", "!build", "!next-env.d.ts", "!out", "!src/data/**", "**"]
   },
   "javascript": {
     "formatter": {
