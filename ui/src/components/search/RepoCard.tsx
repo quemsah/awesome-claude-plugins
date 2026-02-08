@@ -51,8 +51,8 @@ export function RepoCard({ repo, className }: RepoCardProps) {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <CardHeader className="-space-y-2 pr-14">
-        <CardTitle className="text-lg transition-colors duration-300 group-hover:text-primary">
+      <CardHeader className="-space-y-2 pr-14 sm:pr-16">
+        <CardTitle className="text-base sm:text-lg transition-colors duration-300 group-hover:text-primary">
           <h3>{repo.repo_name}</h3>
         </CardTitle>
         <CardDescription className="text-muted-foreground text-sm">
@@ -66,7 +66,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
         <div className="grow">
           {!!repo.description && <p className="mb-4 line-clamp-2 text-muted-foreground text-sm">{repo.description}</p>}
         </div>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1">
               <Star aria-hidden="true" className="h-4 w-4" />
@@ -83,7 +83,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
               </div>
             )}
           </div>
-          <Button asChild className="h-8 shrink-0">
+          <Button asChild className="h-9 w-full sm:h-8 sm:w-auto">
             <a aria-label={`View details for ${repo.owner}/${repo.repo_name}`} href={`/${repo.owner}/${repo.repo_name}`}>
               Details
             </a>
@@ -95,7 +95,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
               <code className="grow break-all font-mono">{marketplaceCommand}</code>
               <button
                 aria-label={isCopied ? 'Marketplace command copied' : 'Copy marketplace command'}
-                className={`shrink-0 rounded-md p-1 transition-colors ${isCopied ? 'bg-green-500/20 text-green-600' : 'hover:bg-muted'}`}
+                className={`shrink-0 rounded-md p-2 transition-colors ${isCopied ? 'bg-green-500/20 text-green-600' : 'hover:bg-muted'}`}
                 onClick={handleCopyClick}
                 title={isCopied ? 'Marketplace command copied' : 'Copy marketplace command'}
                 type="button"
@@ -106,7 +106,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
           </div>
         ) : null}
       </CardContent>
-      <Button asChild className="absolute top-6 right-6 h-8 w-8" size="icon" variant="outline">
+      <Button asChild className="absolute top-4 right-4 h-8 w-8 sm:top-6 sm:right-6" size="icon" variant="outline">
         <a aria-label={`View ${repo.owner}/${repo.repo_name} on GitHub`} href={repo.html_url} rel="noopener noreferrer" target="_blank">
           <AnimatedGithubIcon isHovered={isHovered} />
         </a>

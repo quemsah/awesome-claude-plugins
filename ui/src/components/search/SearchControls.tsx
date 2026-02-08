@@ -42,10 +42,10 @@ export function SearchControls({
     <div
       role="search"
       aria-label="Repository search and filtering"
-      className="mb-4 flex flex-col items-center justify-between gap-4 md:flex-row"
+      className="mb-6 flex flex-col items-center justify-between gap-4 md:flex-row"
     >
       <div className="flex w-full flex-col items-center gap-4 sm:w-auto sm:flex-row">
-        <div className="relative w-full sm:w-48">
+        <div className="relative w-full sm:w-64 lg:w-80">
           <Search aria-hidden="true" className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 transform" />
           <Input
             aria-label="Search repositories"
@@ -60,7 +60,7 @@ export function SearchControls({
           <Sort onSortChange={onSortChange} sortOption={sortOption} />
         </div>
       </div>
-      <div className="text-muted-foreground text-sm">
+      <div className="text-center text-muted-foreground text-sm md:text-right">
         {`${filteredPluginCount} ${filteredPluginCount === 1 ? 'plugin' : 'plugins'} available across ${filteredRepoCount} ${filteredRepoCount === 1 ? 'repository' : 'repositories'}`}
       </div>
     </div>

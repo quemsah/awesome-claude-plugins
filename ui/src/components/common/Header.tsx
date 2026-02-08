@@ -12,9 +12,9 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 border-b backdrop-blur">
-      <div className="flex items-center justify-between px-4 py-4">
+      <div className="flex items-center justify-between px-4 py-4 sm:px-6">
         <nav aria-label="Main navigation">
-          <div className="flex gap-4" style={{ alignItems: 'last baseline' }}>
+          <div className="flex gap-3 sm:gap-4" style={{ alignItems: 'last baseline' }}>
             <Link
               aria-label="Home"
               className="hidden font-medium text-foreground text-lg transition-colors hover:text-primary md:block"
@@ -29,7 +29,7 @@ export function Header() {
               href="/"
             >
               <Search aria-hidden="true" className="h-4 w-4" />
-              <span>Search</span>
+              <span className="hidden sm:inline">Search</span>
             </Link>
 
             <Link
@@ -38,7 +38,7 @@ export function Header() {
               href="/stats"
             >
               <BarChart3 aria-hidden="true" className="h-4 w-4" />
-              <span>Stats</span>
+              <span className="hidden sm:inline">Stats</span>
             </Link>
             <Link
               aria-label="About project"
@@ -46,12 +46,12 @@ export function Header() {
               href="/about"
             >
               <Info aria-hidden="true" className="h-4 w-4" />
-              <span>About</span>
+              <span className="hidden sm:inline">About</span>
             </Link>
           </div>
         </nav>
-        <div className="flex items-center gap-2">
-          <Button asChild size="icon" variant="outline">
+        <div className="flex items-center gap-1 sm:gap-2">
+          <Button asChild size="icon" variant="outline" className="h-9 w-9">
             <a
               aria-label="Claude Code documentation"
               href="https://code.claude.com/docs/en/plugins"
@@ -61,7 +61,7 @@ export function Header() {
               <ClaudeIcon />
             </a>
           </Button>
-          <Button asChild size="icon" variant="outline">
+          <Button asChild size="icon" variant="outline" className="h-9 w-9">
             <a
               aria-label="GitHub repository"
               href="https://github.com/quemsah/awesome-claude-plugins"

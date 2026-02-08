@@ -27,17 +27,17 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
   }
 
   return (
-    <Card className="p-8">
+    <Card className="p-4 sm:p-8">
       <CardHeader className="mb-0 p-0">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-4">
-            <Avatar className="h-16 w-16">
+            <Avatar className="h-12 w-12 sm:h-16 sm:w-16">
               <AvatarImage alt={repo.owner.login} src={repo.owner.avatar_url} />
               <AvatarFallback>{repo.owner.login.slice(0, 2).toUpperCase()}</AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <h1 className="wrap-break-word mb-2 font-bold text-3xl">{repo.name}</h1>
-              <CardDescription className="wrap-break-word text-lg">
+              <h1 className="wrap-break-word mb-2 font-bold text-2xl sm:text-3xl">{repo.name}</h1>
+              <CardDescription className="wrap-break-word text-base sm:text-lg">
                 by{' '}
                 <a
                   aria-label={`View ${repo.owner.login}'s GitHub profile`}
@@ -51,7 +51,7 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
               </CardDescription>
             </div>
           </div>
-          <div className="flex flex-wrap gap-3 sm:ml-4 sm:flex-nowrap">
+          <div className="flex flex-col gap-2 sm:flex-row sm:ml-4 sm:flex-nowrap sm:gap-3">
             {!!repo.homepage && (
               <Button asChild className="flex-1 justify-center sm:w-auto" variant="outline">
                 <a aria-label="Visit repository homepage" href={repo.homepage} rel="noopener noreferrer" target="_blank">
@@ -76,9 +76,9 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
       </CardHeader>
 
       <CardContent className="p-0">
-        {!!repo.description && <p className="mb-6 text-lg text-muted-foreground">{repo.description}</p>}
+        {!!repo.description && <p className="mb-6 text-base sm:text-lg text-muted-foreground">{repo.description}</p>}
 
-        <div className="mb-6 flex flex-wrap gap-4">
+        <div className="mb-6 flex flex-wrap gap-3 sm:gap-4">
           <Badge className="gap-2 text-sm" variant="secondary">
             <Star aria-hidden="true" className="h-5 w-5" />
             <span className="font-semibold">{repo.stargazers_count?.toLocaleString() ?? 0}</span>

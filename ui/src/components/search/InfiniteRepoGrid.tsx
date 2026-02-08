@@ -43,7 +43,7 @@ export function InfiniteRepoGrid({ items, sortOption: _sortOption }: InfiniteRep
 
   return (
     <section aria-label="Claude plugins">
-      <ul className="m-0 grid list-none grid-cols-1 gap-4 p-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <ul className="m-0 grid list-none grid-cols-1 gap-6 p-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {visibleItems.map((repo) => (
           <li className="m-0 list-none p-0" key={repo.id}>
             <RepoCard repo={repo} />

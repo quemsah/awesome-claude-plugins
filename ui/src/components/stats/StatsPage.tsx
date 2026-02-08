@@ -158,7 +158,7 @@ export function StatsPage({ stats }: StatsPageProps) {
 
   return (
     <div className="space-y-6">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <TimeFilter onTimeRangeChange={setTimeRange} value={timeRange} />
         {timeRange !== 'all' && trendData.periodDays > 0 && (
           <div className="flex items-center gap-2">

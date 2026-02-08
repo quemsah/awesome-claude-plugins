@@ -57,7 +57,7 @@ export default function RepoPage({ params }: RouteParams) {
       <Header />
       <main className="min-h-screen bg-background">
         {repo ? <RepoStructuredData repo={repo} /> : null}
-        <div className="container mx-auto max-w-4xl px-4 py-8">
+        <div className="container mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
           <Button aria-label="Back to all repositories" asChild className="mb-6" variant="ghost">
             <Link href="/">
               <ArrowLeft aria-hidden="true" className="h-4 w-4" />
