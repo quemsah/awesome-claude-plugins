@@ -19,11 +19,11 @@ export function PluginList({ title, items, repoPath, defaultBranch }: PluginList
           return (
             <li className="break-all" key={item}>
               <a
+                aria-label={`Open ${item} in new tab`}
                 className="underline-offset-4 transition-colors hover:text-primary hover:underline group-hover:text-primary"
                 href={fileUrl}
                 rel="noopener noreferrer"
                 target="_blank"
-                aria-label={`Open ${item} in new tab`}
               >
                 {item}
               </a>

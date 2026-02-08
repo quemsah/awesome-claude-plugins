@@ -51,7 +51,7 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
               </CardDescription>
             </div>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:ml-4 sm:flex-nowrap sm:gap-3">
+          <div className="flex flex-col gap-2 sm:ml-4 sm:flex-row sm:flex-nowrap sm:gap-3">
             {!!repo.homepage && (
               <Button asChild className="flex-1 justify-center sm:w-auto" variant="outline">
                 <a aria-label="Visit repository homepage" href={repo.homepage} rel="noopener noreferrer" target="_blank">
@@ -76,7 +76,7 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
       </CardHeader>
 
       <CardContent className="p-0">
-        {!!repo.description && <p className="mb-6 text-base sm:text-lg text-muted-foreground">{repo.description}</p>}
+        {!!repo.description && <p className="mb-6 text-base text-muted-foreground sm:text-lg">{repo.description}</p>}
 
         <div className="mb-6 flex flex-wrap gap-3 sm:gap-4">
           <Badge className="gap-2 text-sm" variant="secondary">

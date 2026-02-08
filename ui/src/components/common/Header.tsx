@@ -51,7 +51,7 @@ export function Header() {
           </div>
         </nav>
         <div className="flex items-center gap-1 sm:gap-2">
-          <Button asChild size="icon" variant="outline" className="h-9 w-9">
+          <Button asChild className="h-9 w-9" size="icon" variant="outline">
             <a
               aria-label="Claude Code documentation"
               href="https://code.claude.com/docs/en/plugins"
@@ -61,7 +61,7 @@ export function Header() {
               <ClaudeIcon />
             </a>
           </Button>
-          <Button asChild size="icon" variant="outline" className="h-9 w-9">
+          <Button asChild className="h-9 w-9" size="icon" variant="outline">
             <a
               aria-label="GitHub repository"
               href="https://github.com/quemsah/awesome-claude-plugins"

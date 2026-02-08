@@ -41,7 +41,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
       setIsCopied(true)
       setTimeout(() => setIsCopied(false), 500)
     }
-  }, [marketplaceCommand])
+  }, [marketplaceCommand, repo.owner, repo.repo_name])
 
   if (!repo.repo_name) return null
 
@@ -52,7 +52,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
       onMouseLeave={handleMouseLeave}
     >
       <CardHeader className="-space-y-2 pr-14 sm:pr-16">
-        <CardTitle className="text-base sm:text-lg transition-colors duration-300 group-hover:text-primary">
+        <CardTitle className="text-base transition-colors duration-300 group-hover:text-primary sm:text-lg">
           <h3>{repo.repo_name}</h3>
         </CardTitle>
         <CardDescription className="text-muted-foreground text-sm">
