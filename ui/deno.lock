@@ -27,6 +27,7 @@
     "npm:tailwind-merge@^3.4.0": "3.4.0",
     "npm:tailwindcss@^4.1.18": "4.1.18",
     "npm:typescript@^5.9.3": "5.9.3",
+    "npm:use-debounce@^10.1.0": "10.1.0_react@19.2.4",
     "npm:zod@^4.2.1": "4.3.6"
   },
   "npm": {
@@ -1489,6 +1490,12 @@
         "@types/react"
       ]
     },
+    "use-debounce@10.1.0_react@19.2.4": {
+      "integrity": "sha512-lu87Za35V3n/MyMoEpD5zJv0k7hCn0p+V/fK2kWD+3k2u3kOCwO593UArbczg1fhfs2rqPEnHpULJ3KmGdDzvg==",
+      "dependencies": [
+        "react"
+      ]
+    },
     "use-sidecar@1.1.3_@types+react@19.2.13_react@19.2.4": {
       "integrity": "sha512-Fedw0aZvkhynoPYlA5WXrMCAMm+nSWdZt6lzJQ7Ok8S6Q+VsHmHpRWndVRJ8Be0ZbkfPc5LRYH+5XrzXcEeLRQ==",
       "dependencies": [
@@ -1558,6 +1565,7 @@
         "npm:tailwind-merge@^3.4.0",
         "npm:tailwindcss@^4.1.18",
         "npm:typescript@^5.9.3",
+        "npm:use-debounce@^10.1.0",
         "npm:zod@^4.2.1"
       ]
     }
