@@ -22,11 +22,11 @@ export function SearchPage({ initialRepos }: SearchPageProps) {
       [...filteredRepos].sort((a, b) => {
         switch (sortOption) {
           case 'stars-desc':
-            return (b.stargazers_count || 0) - (a.stargazers_count || 0)
+            return (b.stargazers_count ?? 0) - (a.stargazers_count ?? 0)
           case 'forks-desc':
-            return (b.forks_count || 0) - (a.forks_count || 0)
+            return (b.forks_count ?? 0) - (a.forks_count ?? 0)
           case 'plugins-desc':
-            return (b.plugins_count || 0) - (a.plugins_count || 0)
+            return (b.plugins_count ?? 0) - (a.plugins_count ?? 0)
           default:
             return 0
         }

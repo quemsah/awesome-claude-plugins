@@ -39,7 +39,11 @@ export function SearchControls({
   }
 
   return (
-    <div className="mb-4 flex flex-col items-center justify-between gap-4 md:flex-row">
+    <div
+      role="search"
+      aria-label="Repository search and filtering"
+      className="mb-4 flex flex-col items-center justify-between gap-4 md:flex-row"
+    >
       <div className="flex w-full flex-col items-center gap-4 sm:w-auto sm:flex-row">
         <div className="relative w-full sm:w-48">
           <Search aria-hidden="true" className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 transform" />

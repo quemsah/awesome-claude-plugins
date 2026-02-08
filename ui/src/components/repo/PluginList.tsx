@@ -23,6 +23,7 @@ export function PluginList({ title, items, repoPath, defaultBranch }: PluginList
                 href={fileUrl}
                 rel="noopener noreferrer"
                 target="_blank"
+                aria-label={`Open ${item} in new tab`}
               >
                 {item}
               </a>
