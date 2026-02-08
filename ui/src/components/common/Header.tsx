@@ -1,13 +1,13 @@
 'use client'
 
 import { BarChart3, Github, Info, Search } from 'lucide-react'
-import { usePathname, useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { Button } from '../ui/button.tsx'
 import { ClaudeIcon } from './ClaudeIcon.tsx'
 import { ThemeToggle } from './ThemeToggle.tsx'
 
 export function Header() {
-  const router = useRouter()
   const pathname = usePathname()
 
   return (
@@ -15,43 +15,39 @@ export function Header() {
       <div className="flex items-center justify-between px-4 py-4">
         <nav aria-label="Main navigation">
           <div className="flex gap-4" style={{ alignItems: 'last baseline' }}>
-            <button
+            <Link
               aria-label="Home"
               className="hidden font-medium text-foreground text-lg transition-colors hover:text-primary md:block"
-              onClick={() => router.push('/')}
-              type="button"
+              href="/"
             >
               awesome-claude-plugins
-            </button>
+            </Link>
 
-            <button
+            <Link
               aria-label="Search repositories"
               className={`flex items-center gap-2 text-sm ${pathname === '/' ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
-              onClick={() => router.push('/')}
-              type="button"
+              href="/"
             >
               <Search aria-hidden="true" className="h-4 w-4" />
               <span>Search</span>
-            </button>
+            </Link>
 
-            <button
+            <Link
               aria-label="View statistics"
               className={`flex items-center gap-2 text-sm ${pathname === '/stats' ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
-              onClick={() => router.push('/stats')}
-              type="button"
+              href="/stats"
             >
               <BarChart3 aria-hidden="true" className="h-4 w-4" />
               <span>Stats</span>
-            </button>
-            <button
+            </Link>
+            <Link
               aria-label="About project"
               className={`flex items-center gap-2 text-sm ${pathname === '/about' ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
-              onClick={() => router.push('/about')}
-              type="button"
+              href="/about"
             >
               <Info aria-hidden="true" className="h-4 w-4" />
               <span>About</span>
-            </button>
+            </Link>
           </div>
         </nav>
         <div className="flex items-center gap-2">
