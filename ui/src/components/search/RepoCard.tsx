@@ -41,7 +41,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
       setIsCopied(true)
       setTimeout(() => setIsCopied(false), 500)
     }
-  }, [repo.owner, repo.repo_name, marketplaceCommand])
+  }, [marketplaceCommand])
 
   if (!repo.repo_name) return null
 
