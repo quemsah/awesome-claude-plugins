@@ -28,7 +28,7 @@ export function Header() {
               className={`flex items-center gap-2 text-sm ${pathname === '/' ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
               href="/"
             >
-              <Search aria-hidden="true" className="h-4 w-4" />
+              <Search aria-hidden="true" className="h-5 w-5" />
               <span className="hidden sm:inline">Search</span>
             </Link>
 
@@ -37,7 +37,7 @@ export function Header() {
               className={`flex items-center gap-2 text-sm ${pathname === '/stats' ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
               href="/stats"
             >
-              <BarChart3 aria-hidden="true" className="h-4 w-4" />
+              <BarChart3 aria-hidden="true" className="h-5 w-5" />
               <span className="hidden sm:inline">Stats</span>
             </Link>
             <Link
@@ -45,7 +45,7 @@ export function Header() {
               className={`flex items-center gap-2 text-sm ${pathname === '/about' ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
               href="/about"
             >
-              <Info aria-hidden="true" className="h-4 w-4" />
+              <Info aria-hidden="true" className="h-5 w-5" />
               <span className="hidden sm:inline">About</span>
             </Link>
           </div>
