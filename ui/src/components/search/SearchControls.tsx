@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Search } from 'lucide-react'
 import { useDebouncedCallback } from 'use-debounce'
 import { Input } from '../ui/input.tsx'
@@ -24,6 +24,10 @@ export function SearchControls({
   filteredRepoCount,
 }: SearchControlsProps) {
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm)
+
+  useEffect(() => {
+    setLocalSearchTerm(searchTerm)
+  }, [searchTerm])
 
   const debouncedSearch = useDebouncedCallback((value: string) => {
     onSearchChange(value)
