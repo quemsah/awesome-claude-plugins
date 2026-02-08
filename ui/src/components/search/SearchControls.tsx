@@ -1,6 +1,8 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { Search } from 'lucide-react'
+import { useDebouncedCallback } from 'use-debounce'
 import { Input } from '../ui/input.tsx'
 import { Sort, type SortOption } from './Sort.tsx'
 
@@ -21,6 +23,21 @@ export function SearchControls({
   filteredPluginCount,
   filteredRepoCount,
 }: SearchControlsProps) {
+  const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm)
+
+  useEffect(() => {
+    setLocalSearchTerm(searchTerm)
+  }, [searchTerm])
+
+  const debouncedSearch = useDebouncedCallback((value: string) => {
+    onSearchChange(value)
+  }, 100)
+
+  const handleSearchChange = (value: string) => {
+    setLocalSearchTerm(value)
+    debouncedSearch(value)
+  }
+
   return (
     <div className="mb-4 flex flex-col items-center justify-between gap-4 md:flex-row">
       <div className="flex w-full flex-col items-center gap-4 sm:w-auto sm:flex-row">
@@ -29,10 +46,10 @@ export function SearchControls({
           <Input
             aria-label="Search repositories"
             className="w-full pl-10"
-            onChange={(e) => onSearchChange(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             placeholder="Search repositories..."
             type="search"
-            value={searchTerm}
+            value={localSearchTerm}
           />
         </div>
         <div className="w-full sm:w-auto">
