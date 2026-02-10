@@ -22,6 +22,13 @@ export default function StatsStructuredData({ startDate, endDate }: StatsStructu
       description: 'Daily statistics showing the growth of repositories adopting Claude Code plugins over time',
       variableMeasured: 'Repository Count',
       temporalCoverage,
+      license: 'https://creativecommons.org/publicdomain/zero/1.0/',
+      isAccessibleForFree: true,
+      creator: {
+        '@type': 'Organization',
+        name: 'Awesome Claude Plugins Team',
+        url: BASE_URL,
+      },
     },
     publisher: {
       '@type': 'Organization',
