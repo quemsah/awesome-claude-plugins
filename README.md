@@ -104,3 +104,4 @@
 | 98 | [osgrep](https://github.com/Ryandonofrio3/osgrep) | Open Source Semantic Search for your AI Agent | 1029 | 5 | 1 |
 | 99 | [skills](https://github.com/expo/skills) | A collection of AI agent skills for working with Expo projects and Expo Application Services | 1022 | 9 | 3 |
 | 100 | [terraform-skill](https://github.com/antonbabenko/terraform-skill) | The Claude Agent Skill for Terraform and OpenTofu - testing, modules, CI/CD, and production patterns | 1019 | 13 | 1 |
+| 101 | [claude-aws-cost-saver](https://github.com/prajapatimehul/claude-aws-cost-saver) | Claude Code plugin that finds AWS cost savings. 173 automated checks across EC2, RDS, S3, Lambda, and 30+ services. Integrates AWS Compute Optimizer ML and real pricing. Read-only and safe. | 10 | 5 | 1 |
