@@ -104,3 +104,4 @@
 | 98 | [osgrep](https://github.com/Ryandonofrio3/osgrep) | Open Source Semantic Search for your AI Agent | 1029 | 5 | 1 |
 | 99 | [skills](https://github.com/expo/skills) | A collection of AI agent skills for working with Expo projects and Expo Application Services | 1022 | 9 | 3 |
 | 100 | [terraform-skill](https://github.com/antonbabenko/terraform-skill) | The Claude Agent Skill for Terraform and OpenTofu - testing, modules, CI/CD, and production patterns | 1019 | 13 | 1 |
+| 101 | [pm-skills](https://github.com/product-on-purpose/pm-skills) | 24 plug-and-play product-management agent skills spanning the Triple Diamond, from discovery interviews to experiment results, plus templates and workflow bundles. | 23 | 2 | 24 |
