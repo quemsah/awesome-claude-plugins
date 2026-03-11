@@ -104,3 +104,4 @@
 | 98 | [claude-code-tools](https://github.com/pchalasani/claude-code-tools) | Practical productivity tools for Claude Code, Codex-CLI, and similar CLI coding agents. | 1561 | 9 | 6 |
 | 99 | [claude-code-plugins-plus-skills](https://github.com/jeremylongshore/claude-code-plugins-plus-skills) | 270+ Claude Code plugins with 739 agent skills. Production orchestration patterns, interactive tutorials (11 Jupyter notebooks), and CCPI package manager. 4.13.0 | 1551 | 14 | 340 |
 | 100 | [agent-skills](https://github.com/supabase/agent-skills) | Agent Skills to help developers using AI agents with Supabase | 1543 | 9 | 1 |
+| 101 | [x-twitter-scraper](https://github.com/Xquik-dev/x-twitter-scraper) | X (Twitter) data extraction & automation skill for AI coding agents. 40+ tools: tweet search, user lookup, follower extraction, engagement metrics, giveaway draws, trending topics, write actions, and Telegram integrations. REST API, MCP server & HMAC webhooks. | - | - | 1 |
