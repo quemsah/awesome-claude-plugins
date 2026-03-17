@@ -1,6 +1,7 @@
 {
   "version": "5",
   "specifiers": {
+    "npm:@biomejs/biome@*": "2.4.7",
     "npm:@biomejs/biome@^2.4.7": "2.4.7",
     "npm:@next/bundle-analyzer@^16.1.7": "16.1.7",
     "npm:@octokit/openapi-types@27": "27.0.0",

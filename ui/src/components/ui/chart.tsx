@@ -90,7 +90,7 @@ const ChartTooltipContent = React.forwardRef<
     },
     ref
   ) => {
-    if (active && payload && payload.length) {
+    if (active && payload?.length) {
       return (
         <div className={cn('grid gap-2', className)} ref={ref} {...props}>
           {!!label && <p className="font-medium">{label}</p>}
