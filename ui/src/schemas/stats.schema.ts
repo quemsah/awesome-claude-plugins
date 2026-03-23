@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 export const StatsItemSchema = z.object({
   date: z.string().datetime(),
-  size: z.string(),
+  size: z.number(),
 })
 
 export const StatsArraySchema = z.array(StatsItemSchema)

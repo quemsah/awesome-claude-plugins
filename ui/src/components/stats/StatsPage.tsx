@@ -42,8 +42,8 @@ export function calculateTrend(filteredStats: StatsItem[]): { growth: number; pe
     return { growth: 0, percentage: 0, periodDays: 0 }
   }
 
-  const firstSize = Number.parseInt(filteredStats[0].size, 10) || 0
-  const lastSize = Number.parseInt(filteredStats[filteredStats.length - 1].size, 10) || 0
+  const firstSize = filteredStats[0].size
+  const lastSize = filteredStats[filteredStats.length - 1].size
   const totalGrowth = lastSize - firstSize
   const periodDays = Math.max(1, filteredStats.length - 1)
 
@@ -79,8 +79,8 @@ export function fillMissingDates(stats: StatsItem[]): StatsItem[] {
       const dayDiff = Math.floor(timeDiff / MILLISECONDS_IN_DAY)
 
       if (dayDiff > 1) {
-        const currentSize = Number.parseInt(currentItem.size, 10) || 0
-        const nextSize = Number.parseInt(nextItem.size, 10) || 0
+        const currentSize = currentItem.size
+        const nextSize = nextItem.size
         const dailyIncrement = (nextSize - currentSize) / dayDiff
 
         for (let day = 1; day < dayDiff; day++) {
@@ -90,7 +90,7 @@ export function fillMissingDates(stats: StatsItem[]): StatsItem[] {
 
           filledStats.push({
             date: missingDate.toISOString(),
-            size: interpolatedSize.toString(),
+            size: interpolatedSize,
           })
         }
       }
@@ -118,7 +118,7 @@ export function StatsPage({ stats }: StatsPageProps) {
     const filledData = fillMissingDates(filteredStats)
     return filledData.map((item) => ({
       date: item.date,
-      size: Number.parseInt(item.size, 10) || 0,
+      size: item.size,
       formattedDate: formatDate(new Date(item.date)),
     }))
   }, [filteredStats])
@@ -129,8 +129,8 @@ export function StatsPage({ stats }: StatsPageProps) {
     if (stats.length <= 1) {
       return { averageDailyIncrease: 0, totalDays: 0 }
     }
-    const firstSize = Number.parseInt(stats[0].size, 10) || 0
-    const lastSize = Number.parseInt(stats[stats.length - 1].size, 10) || 0
+    const firstSize = stats[0].size
+    const lastSize = stats[stats.length - 1].size
     const totalGrowth = lastSize - firstSize
     const totalDays = stats.length - 1
     return {
