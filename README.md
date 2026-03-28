@@ -104,3 +104,4 @@
 | 98 | [JEngine](https://github.com/JasonXuDeveloper/JEngine) | The solution that allows unity games to update in runtime. 使Unity开发的游戏支持热更新的解决方案。 | 2191 | 38 | 1 |
 | 99 | [playwright-skill](https://github.com/lackeyjb/playwright-skill) | Claude Code Skill for browser automation with Playwright. Model-invoked - Claude autonomously writes and executes custom automation for testing and validation. | 2146 | 10 | 1 |
 | 100 | [PRPs-agentic-eng](https://github.com/Wirasm/PRPs-agentic-eng) | Prompts, workflows and more for agentic engineering  | 2077 | 68 | 1 |
+| 101 | [caliber](https://github.com/caliber-ai-org/ai-setup) | CLI that fingerprints projects and generates AI agent configs (CLAUDE.md, skills, AGENTS.md). Scores config quality. Supports Claude Code, Cursor, Codex. | -- | -- | 1 |
