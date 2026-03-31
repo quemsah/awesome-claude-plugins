@@ -36,6 +36,7 @@ export function Header() {
               aria-label="View statistics"
               className={`flex items-center gap-2 text-sm ${pathname === '/stats' ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
               href="/stats"
+              prefetch={false}
             >
               <BarChart3 aria-hidden="true" className="h-5 w-5" />
               <span className="hidden sm:inline">Stats</span>
@@ -44,6 +45,7 @@ export function Header() {
               aria-label="About project"
               className={`flex items-center gap-2 text-sm ${pathname === '/about' ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
               href="/about"
+              prefetch={false}
             >
               <Info aria-hidden="true" className="h-5 w-5" />
               <span className="hidden sm:inline">About</span>
