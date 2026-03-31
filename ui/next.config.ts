@@ -15,20 +15,8 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     optimizePackageImports: [
-      '@radix-ui/react-avatar',
-      '@radix-ui/react-dropdown-menu',
-      '@radix-ui/react-icons',
-      '@radix-ui/react-select',
-      '@radix-ui/react-separator',
-      '@radix-ui/react-slot',
-      'class-variance-authority',
-      'clsx',
-      'fuse.js',
       'lucide-react',
-      'next/link',
-      'next/navigation',
       'recharts',
-      'tailwind-merge',
     ],
   },
   // Build optimizations
