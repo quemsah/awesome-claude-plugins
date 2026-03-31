@@ -13,6 +13,12 @@ const nextConfig: NextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error'] } : false,
   },
+  experimental: {
+    optimizePackageImports: [
+      'lucide-react',
+      'recharts',
+    ],
+  },
   // Build optimizations
   images: {
     formats: ['image/avif', 'image/webp'],
