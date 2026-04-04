@@ -104,7 +104,3 @@
 | 98 | [Product-Manager-Skills](https://github.com/deanpeters/Product-Manager-Skills) | Product Management skills framework built on battle-tested methods for Claude Code, Cowork, Codex, and AI agents. | 2978 | 27 | 47 |
 | 99 | [arscontexta](https://github.com/agenticnotetaking/arscontexta) | Claude Code plugin that generates individualized knowledge systems from conversation. You describe how you think and work, have a conversation and get a complete second brain as markdown files you own. | 2914 | 28 | 1 |
 | 100 | [buildwithclaude](https://github.com/davepoon/buildwithclaude) | A single hub to find Claude Skills, Agents, Commands, Hooks, Plugins, and Marketplace collections to extend Claude Code, Claude Desktop, Agent SDK and OpenClaw | 2681 | 36 | 53 |
-
-## Tools
-
-- [Claude Code Launchpad](https://github.com/noambrand/kivun-terminal) - A Windows and macOS installer that transforms Claude Code from a bare CLI into a polished professional suite: automated Node.js, Git, and Claude Code setup, interactive folder selection (skip `cd`), desktop shortcut, and live two-line status bar. Zero to working in 2 minutes.
