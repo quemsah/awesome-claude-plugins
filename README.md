@@ -103,4 +103,5 @@
 | 97 | [Product-Manager-Skills](https://github.com/deanpeters/Product-Manager-Skills) | Product Management skills framework built on battle-tested methods for Claude Code, Cowork, Codex, and AI agents. | 3054 | 26 | 47 |
 | 98 | [graphjin](https://github.com/dosco/graphjin) | GraphJin - An Automagical Compiler to Connect AI to Your Databases | 3043 | 44 | 1 |
 | 99 | [tinker-cookbook](https://github.com/thinking-machines-lab/tinker-cookbook) | Post-training with Tinker | 3031 | 27 | 1 |
+- [guardian-agent-prompts](https://github.com/milkomida77/guardian-agent-prompts) - 49 production-tested AI agent system prompts for Claude Code multi-agent orchestration. MIT licensed.
 | 100 | [arscontexta](https://github.com/agenticnotetaking/arscontexta) | Claude Code plugin that generates individualized knowledge systems from conversation. You describe how you think and work, have a conversation and get a complete second brain as markdown files you own. | 3003 | 28 | 1 |
