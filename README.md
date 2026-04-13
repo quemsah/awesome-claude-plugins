@@ -104,3 +104,4 @@
 | 98 | [Acontext](https://github.com/memodb-io/Acontext) | Agent Skills as a Memory Layer | 3312 | 28 | 1 |
 | 99 | [claude-scholar](https://github.com/Galaxy-Dawn/claude-scholar) | Semi-automated research assistant for academic research and software development. Supports Claude Code, OpenCode, and Codex CLI across ideation, coding, experiments, writing, and publication. | 3199 | 18 | 1 |
 | 100 | [arscontexta](https://github.com/agenticnotetaking/arscontexta) | Claude Code plugin that generates individualized knowledge systems from conversation. You describe how you think and work, have a conversation and get a complete second brain as markdown files you own. | 3122 | 28 | 1 |
+- [CCHub](https://github.com/Moresl/cchub) - A desktop control panel for the Claude Code / Codex / Gemini CLI ecosystem. Manage MCP servers, config profiles, agent skills, CLAUDE.md, hooks, and workflow templates from a single Tauri app (Windows / macOS / Linux).
