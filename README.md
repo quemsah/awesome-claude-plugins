@@ -104,3 +104,7 @@
 | 98 | [Acontext](https://github.com/memodb-io/Acontext) | Agent Skills as a Memory Layer | 3312 | 28 | 1 |
 | 99 | [claude-scholar](https://github.com/Galaxy-Dawn/claude-scholar) | Semi-automated research assistant for academic research and software development. Supports Claude Code, OpenCode, and Codex CLI across ideation, coding, experiments, writing, and publication. | 3199 | 18 | 1 |
 | 100 | [arscontexta](https://github.com/agenticnotetaking/arscontexta) | Claude Code plugin that generates individualized knowledge systems from conversation. You describe how you think and work, have a conversation and get a complete second brain as markdown files you own. | 3122 | 28 | 1 |
+
+## Remote MCP Servers
+
+- [Helium MCP](https://github.com/connerlambden/helium-mcp) - Remote MCP server for market intelligence, ML options pricing, and news bias analysis across 5,000+ sources. Free tier, no API key. [Documentation](https://heliumtrades.com/mcp).
