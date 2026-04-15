@@ -104,3 +104,5 @@
 | 98 | [Acontext](https://github.com/memodb-io/Acontext) | Agent Skills as a Memory Layer | 3312 | 28 | 1 |
 | 99 | [claude-scholar](https://github.com/Galaxy-Dawn/claude-scholar) | Semi-automated research assistant for academic research and software development. Supports Claude Code, OpenCode, and Codex CLI across ideation, coding, experiments, writing, and publication. | 3199 | 18 | 1 |
 | 100 | [arscontexta](https://github.com/agenticnotetaking/arscontexta) | Claude Code plugin that generates individualized knowledge systems from conversation. You describe how you think and work, have a conversation and get a complete second brain as markdown files you own. | 3122 | 28 | 1 |
+
+- [Asynkor](https://github.com/asynkor/asynkor) - Coordination layer for AI agent teams. File leasing, shared memory, cross-machine sync. One MCP server for Claude Code, Cursor, Windsurf.
