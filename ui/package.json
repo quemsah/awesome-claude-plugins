@@ -13,7 +13,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "fuse.js": "7.2.0",
-    "lucide-react": "^0.577.0",
+    "lucide-react": "^1.0.0",
     "next": "16.2.2",
     "next-themes": "0.4.6",
     "react": "19.2.4",
@@ -32,6 +32,6 @@
     "@types/react-dom": "^19.2.3",
     "husky": "^9.1.7",
     "tailwindcss": "^4.2.2",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.0"
   }
 }
