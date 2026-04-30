@@ -2,6 +2,13 @@
   "name": "awesome-claude-plugins",
   "version": "0.1.0",
   "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "build:analyze": "ANALYZE=true next build",
+    "start": "next start",
+    "style": "biome check --write --unsafe ."
+  },
   "dependencies": {
     "@octokit/openapi-types": "^27.0.0",
     "@radix-ui/react-avatar": "^1.1.11",
