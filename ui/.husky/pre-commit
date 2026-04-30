@@ -1,1 +1,1 @@
-deno task style
+npm run style
