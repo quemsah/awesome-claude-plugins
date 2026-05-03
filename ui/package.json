@@ -28,10 +28,10 @@
     "recharts": "3.8.1",
     "tailwind-merge": "^3.5.0",
     "use-debounce": "^10.1.1",
-    "zod": "^4.4.1"
+    "zod": "^4.4.2"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.13",
+    "@biomejs/biome": "^2.4.14",
     "@next/bundle-analyzer": "^16.2.4",
     "@tailwindcss/postcss": "^4.2.4",
     "@types/node": "^24.12.2",
