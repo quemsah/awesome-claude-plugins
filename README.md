@@ -104,3 +104,4 @@
 | 98 | [Kami](https://github.com/tw93/Kami) | 👩‍🚒 Good content deserves good paper. | 4323 | 12 | 1 |
 | 99 | [awesome-agent-skills](https://github.com/libukai/awesome-agent-skills) | Agent Skills 终极指南：快速入门、资源推荐、精选技能与实用工具 ｜The Ultimate Guide to Agent Skills: QuickStart, Resources, Features&Toolkit | 4283 | 17 | 3 |
 | 100 | [autoresearch](https://github.com/uditgoenka/autoresearch) | Claude Autoresearch Skill — Autonomous goal-directed iteration for Claude Code. Inspired by Karpathy's autoresearch. Modify → Verify → Keep/Discard → Repeat forever. | 4271 | 20 | 1 |
+
