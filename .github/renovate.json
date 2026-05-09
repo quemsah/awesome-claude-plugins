@@ -1,11 +1,18 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
-  "schedule": ["* 0-4 * * 1"],
+  "timezone": "Europe/Athens",
   "packageRules": [
     {
-      "matchPackageNames": ["*"],
-      "groupName": "weekly dependency updates",
+      "matchUpdateTypes": ["minor"],
+      "schedule": ["* 17 * * 2,4"],
+      "groupName": "minor dependency updates",
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "matchUpdateTypes": ["major"],
+      "schedule": ["* 17 1,15 * *"],
+      "groupName": "major dependency updates",
       "minimumReleaseAge": "7 days"
     }
   ]
