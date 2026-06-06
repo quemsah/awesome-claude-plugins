@@ -10,6 +10,7 @@ export function PluginSource({ source, repoPath, defaultBranch = 'main' }: Plugi
   if (!source) return null
 
   const sourcePath = typeof source === 'string' ? source : source.source
+  const targetRepo = typeof source === 'string' ? repoPath : source.repo
 
   return (
     <div>
@@ -17,7 +18,7 @@ export function PluginSource({ source, repoPath, defaultBranch = 'main' }: Plugi
       <p className="break-all text-muted-foreground text-sm">
         <a
           className="underline-offset-4 transition-colors hover:text-primary hover:underline group-hover:text-primary"
-          href={`https://github.com/${repoPath}/blob/${defaultBranch}/${sourcePath}`}
+          href={`https://github.com/${targetRepo}/blob/${defaultBranch}/${sourcePath}`}
           rel="noopener noreferrer"
           target="_blank"
         >
