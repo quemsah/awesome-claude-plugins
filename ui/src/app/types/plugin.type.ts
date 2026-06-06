@@ -3,12 +3,17 @@ export type PluginAuthor = {
   email?: string
 }
 
+export type PluginSource = {
+  source: string
+  repo: string
+}
+
 export type Plugin = {
   name?: string
   description?: string
   version?: string
   id?: string
-  source?: string
+  source?: string | PluginSource
   category?: string
   author?: PluginAuthor
   license?: string
