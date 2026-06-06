@@ -26,14 +26,16 @@ export function PluginCard({ plugin, repoPath, repo }: PluginCardProps) {
       <PluginHeader category={plugin.category} name={plugin.name} version={plugin.version} />
       {plugin.name ? <InstallCommand pluginId={plugin.id} pluginName={plugin.name} repoPath={repoPath} /> : null}
       <CardContent className="space-y-2 pt-1">
-        <PluginDescription description={plugin.description} />
-        <PluginSource defaultBranch={repo?.default_branch} repoPath={repoPath} source={plugin.source} />
-        <PluginAuthor author={plugin.author} />
-        <PluginId id={plugin.id} />
-        <PluginKeywords keywords={plugin.keywords} />
-        <PluginList defaultBranch={repo?.default_branch} items={plugin.commands} repoPath={repoPath} title="Commands" />
-        <PluginList defaultBranch={repo?.default_branch} items={plugin.agents} repoPath={repoPath} title="Agents" />
-        <PluginList defaultBranch={repo?.default_branch} items={plugin.mcpServers} repoPath={repoPath} title="MCP Servers" />
+        <article aria-label={`Plugin: ${plugin.name || 'Unnamed Plugin'}`}>
+          <PluginDescription description={plugin.description} />
+          <PluginSource defaultBranch={repo?.default_branch} repoPath={repoPath} source={plugin.source} />
+          <PluginAuthor author={plugin.author} />
+          <PluginId id={plugin.id} />
+          <PluginKeywords keywords={plugin.keywords} />
+          <PluginList defaultBranch={repo?.default_branch} items={plugin.commands} repoPath={repoPath} title="Commands" />
+          <PluginList defaultBranch={repo?.default_branch} items={plugin.agents} repoPath={repoPath} title="Agents" />
+          <PluginList defaultBranch={repo?.default_branch} items={plugin.mcpServers} repoPath={repoPath} title="MCP Servers" />
+        </article>
       </CardContent>
     </Card>
   )

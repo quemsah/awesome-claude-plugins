@@ -9,8 +9,8 @@ export function PluginList({ title, items, repoPath, defaultBranch }: PluginList
   if (!items?.length) return null
 
   return (
-    <div>
-      <h6 className="mb-0.5 font-medium text-sm">
+    <section aria-labelledby={`${title}-heading`} className="plugin-list">
+      <h6 className="mb-0.5 font-medium text-sm" id={`${title}-heading`}>
         {title} ({items.length})
       </h6>
       <ul className="list-inside list-disc space-y-0.5 text-muted-foreground text-sm">
@@ -31,6 +31,6 @@ export function PluginList({ title, items, repoPath, defaultBranch }: PluginList
           )
         })}
       </ul>
-    </div>
+    </section>
   )
 }

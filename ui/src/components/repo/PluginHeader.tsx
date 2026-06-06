@@ -13,10 +13,8 @@ export function PluginHeader({ name, version, category }: PluginHeaderProps) {
       <div className="flex items-start justify-between">
         <div>
           <CardTitle className="font-bold text-lg transition-colors duration-300 group-hover:text-primary">
-            <h3>
-              {name || 'Unnamed Plugin'}
-              {version ? <span className="text-muted-foreground">@{version}</span> : null}
-            </h3>
+            <h3>{name || 'Unnamed Plugin'}</h3>
+            {version ? <span className="text-muted-foreground">@{version}</span> : null}
           </CardTitle>
         </div>
         {category ? (
