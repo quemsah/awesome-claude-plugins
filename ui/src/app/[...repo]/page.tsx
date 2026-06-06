@@ -7,6 +7,7 @@ import { Header } from '../../components/common/Header.tsx'
 import { PluginCard } from '../../components/repo/PluginCard.tsx'
 import { RepoInfoCard } from '../../components/repo/RepoInfoCard.tsx'
 import RepoStructuredData from '../../components/repo/RepoStructuredData.tsx'
+import { CardSkeleton } from '../../components/Skeleton/CardSkeleton.tsx'
 import { Button } from '../../components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card.tsx'
 import { usePlugins } from '../../hooks/usePlugins.ts'
@@ -24,10 +25,7 @@ export default function RepoPage({ params }: RouteParams) {
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
-        <div className="text-center">
-          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-primary border-b-2" />
-          <p className="mt-2 text-muted-foreground">Loading repository...</p>
-        </div>
+        <CardSkeleton />
       </main>
     )
   }
@@ -77,18 +75,14 @@ export default function RepoPage({ params }: RouteParams) {
               <CardContent className="p-0">
                 {pluginsLoading ? (
                   <div aria-busy="true" aria-live="polite" className="py-8 text-center">
-                    <div className="mx-auto h-6 w-6 animate-spin rounded-full border-primary border-b-2" />
-                    <p className="mt-2 text-muted-foreground">Loading plugins...</p>
+                    <CardSkeleton count={3} />
                   </div>
                 ) : plugins.length > 0 ? (
                   <div aria-atomic="true" aria-live="polite" className="space-y-4">
                     {plugins.map((plugin, index) => (
-                      <PluginCard
-                        key={`${plugin.id || ''}-${plugin.name || ''}-${index}`}
-                        plugin={plugin}
-                        repo={repo}
-                        repoPath={repoPath}
-                      />
+                      <article key={`${plugin.id || ''}-${plugin.name || ''}-${index}`}>
+                        <PluginCard plugin={plugin} repo={repo} repoPath={repoPath} />
+                      </article>
                     ))}
                   </div>
                 ) : (
