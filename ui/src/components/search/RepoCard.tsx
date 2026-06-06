@@ -1,5 +1,6 @@
 import { GitFork, Star } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { prefetchRepo } from '../../hooks/useRepo.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { ClaudeIcon } from '../common/ClaudeIcon.tsx'
 import { CopiedIcon } from '../common/CopiedIcon.tsx'
@@ -27,7 +28,10 @@ export function RepoCard({ repo, className }: RepoCardProps) {
 
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true)
-  }, [])
+    if (repo.owner && repo.repo_name) {
+      prefetchRepo(`${repo.owner}/${repo.repo_name}`)
+    }
+  }, [repo.owner, repo.repo_name])
 
   const handleMouseLeave = useCallback(() => {
     setIsHovered(false)
