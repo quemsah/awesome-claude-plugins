@@ -8,7 +8,7 @@ type Props = {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { repo } = await params
   const repoName = repo.join('/')
-  const canonicalUrl = `${BASE_URL}/${encodeURIComponent(repoName)}`
+  const canonicalUrl = `${BASE_URL}/${repoName}`
 
   return {
     title: `${repoName}`,
