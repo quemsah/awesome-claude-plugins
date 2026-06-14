@@ -7,7 +7,7 @@ import { Header } from '../../components/common/Header.tsx'
 import { PluginCard } from '../../components/repo/PluginCard.tsx'
 import { RepoInfoCard } from '../../components/repo/RepoInfoCard.tsx'
 import RepoStructuredData from '../../components/repo/RepoStructuredData.tsx'
-import { CardSkeleton } from '../../components/Skeleton/CardSkeleton.tsx'
+import { CardSkeleton } from '../../components/skeleton/CardSkeleton.tsx'
 import { Button } from '../../components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card.tsx'
 import { usePlugins } from '../../hooks/usePlugins.ts'
@@ -25,7 +25,9 @@ export default function RepoPage({ params }: RouteParams) {
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
-        <CardSkeleton />
+        <div aria-label="Loading repository..." role="status">
+          <CardSkeleton />
+        </div>
       </main>
     )
   }
@@ -76,6 +78,7 @@ export default function RepoPage({ params }: RouteParams) {
                 {pluginsLoading ? (
                   <div aria-busy="true" aria-live="polite" className="py-8 text-center">
                     <CardSkeleton count={3} />
+                    <span className="sr-only">Loading plugins...</span>
                   </div>
                 ) : plugins.length > 0 ? (
                   <div aria-atomic="true" aria-live="polite" className="space-y-4">

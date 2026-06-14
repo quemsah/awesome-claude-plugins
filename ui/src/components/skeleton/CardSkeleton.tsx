@@ -9,8 +9,8 @@ export function CardSkeleton({ count = 1 }: CardSkeletonProps) {
   return (
     <>
       {Array.from({ length: count }).map((_, index) => (
-        <Card className="w-full" key={index}>
-          <div className="flex flex-col gap-4 px-6 py-4">
+        <Card className="w-full p-0" key={index}>
+          <CardContent className="space-y-3 p-6">
             <div className="flex items-start justify-between">
               <div className="flex flex-col gap-2">
                 <Skeleton className="h-6 w-48" />
@@ -18,8 +18,6 @@ export function CardSkeleton({ count = 1 }: CardSkeletonProps) {
               </div>
               <Skeleton className="h-5 w-20 rounded-full" />
             </div>
-          </div>
-          <CardContent className="space-y-3 px-6">
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-5/6" />
             <Skeleton className="h-4 w-3/4" />
