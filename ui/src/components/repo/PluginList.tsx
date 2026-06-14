@@ -1,3 +1,7 @@
+'use client'
+
+import { useId } from 'react'
+
 interface PluginListProps {
   title: string
   items?: string[]
@@ -5,12 +9,24 @@ interface PluginListProps {
   defaultBranch?: string
 }
 
+function slugify(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') || 'heading'
+  )
+}
+
 export function PluginList({ title, items, repoPath, defaultBranch }: PluginListProps) {
+  const generatedId = useId()
+  const headingId = `${generatedId}-${slugify(title)}-heading`
+
   if (!items?.length) return null
 
   return (
-    <section aria-labelledby={`${title}-heading`} className="plugin-list">
-      <h6 className="mb-0.5 font-medium text-sm" id={`${title}-heading`}>
+    <section aria-labelledby={headingId} className="plugin-list">
+      <h6 className="mb-0.5 font-medium text-sm" id={headingId}>
         {title} ({items.length})
       </h6>
       <ul className="list-inside list-disc space-y-0.5 text-muted-foreground text-sm">
