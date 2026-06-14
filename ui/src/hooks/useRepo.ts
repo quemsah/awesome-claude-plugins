@@ -3,7 +3,66 @@ import { useEffect, useState } from 'react'
 
 type Repository = components['schemas']['repository']
 
-const prefetchCache = new Map<string, Repository>()
+type CacheEntry = {
+  data: Repository
+  expiresAt: number
+}
+
+const MAX_PREFETCH_CACHE_ENTRIES = 50
+const PREFETCH_CACHE_TTL_MS = 5 * 60 * 1000
+const prefetchCache = new Map<string, CacheEntry>()
+const prefetchInFlight = new Map<string, Promise<Repository | null>>()
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
+}
+
+function getFreshCachedRepo(repoPath: string): Repository | null {
+  const entry = prefetchCache.get(repoPath)
+  if (!entry) return null
+
+  if (entry.expiresAt <= Date.now()) {
+    prefetchCache.delete(repoPath)
+    return null
+  }
+
+  prefetchCache.delete(repoPath)
+  prefetchCache.set(repoPath, entry)
+  return entry.data
+}
+
+function setCachedRepo(repoPath: string, data: Repository): void {
+  prefetchCache.delete(repoPath)
+  prefetchCache.set(repoPath, {
+    data,
+    expiresAt: Date.now() + PREFETCH_CACHE_TTL_MS,
+  })
+
+  while (prefetchCache.size > MAX_PREFETCH_CACHE_ENTRIES) {
+    const oldestKey = prefetchCache.keys().next().value
+    if (!oldestKey) break
+    prefetchCache.delete(oldestKey)
+  }
+}
+
+function getRepoApiUrl(repoPath: string): string | null {
+  const normalizedRepoPath = repoPath.trim()
+  const [owner, repoName, extraSegment] = normalizedRepoPath.split('/')
+
+  if (!(owner && repoName) || extraSegment) return null
+
+  return `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}`
+}
+
+async function fetchRepoData(repoPath: string, signal?: AbortSignal): Promise<Repository | null> {
+  const apiUrl = getRepoApiUrl(repoPath)
+  if (!apiUrl) return null
+
+  const resp = await fetch(apiUrl, { signal })
+  if (!resp.ok) return null
+
+  return (await resp.json()) as Repository
+}
 
 export function useRepo(repoPath: string) {
   const [repo, setRepo] = useState<Repository | null>(null)
@@ -11,58 +70,76 @@ export function useRepo(repoPath: string) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (prefetchCache.has(repoPath)) {
-      setRepo(prefetchCache.get(repoPath) as Repository)
+    let isMounted = true
+    const controller = new AbortController()
+    const cachedRepo = getFreshCachedRepo(repoPath)
+
+    if (cachedRepo) {
+      setRepo(cachedRepo)
       setLoading(false)
+      setError(null)
       return
     }
 
-    const controller = new AbortController()
+    setLoading(true)
+    setError(null)
 
     ;(async () => {
       try {
-        const resp = await fetch(`https://api.github.com/repos/${repoPath}`, {
-          signal: controller.signal,
-        })
-        if (!resp.ok) {
-          if (resp.status === 404) {
-            setError('Repository not found')
-          } else {
-            setError('Failed to load repository')
-          }
+        const prefetchedRepo = await prefetchRepo(repoPath)
+        if (!isMounted || controller.signal.aborted) return
+
+        if (prefetchedRepo) {
+          setRepo(prefetchedRepo)
           return
         }
-        const data = (await resp.json()) as Repository
-        prefetchCache.set(repoPath, data)
-        setRepo(data)
+
+        const data = await fetchRepoData(repoPath, controller.signal)
+        if (!isMounted || controller.signal.aborted) return
+
+        if (data) {
+          setCachedRepo(repoPath, data)
+          setRepo(data)
+          return
+        }
+
+        setError('Repository not found')
       } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') {
-          return
-        }
+        if (!isMounted || isAbortError(err)) return
         setError('Failed to load repository')
       } finally {
-        setLoading(false)
+        if (isMounted && !controller.signal.aborted) {
+          setLoading(false)
+        }
       }
     })()
 
-    return () => controller.abort()
+    return () => {
+      isMounted = false
+      controller.abort()
+    }
   }, [repoPath])
 
   return { repo, loading, error }
 }
 
-export function prefetchRepo(repoPath: string): void {
-  if (prefetchCache.has(repoPath)) return
+export function prefetchRepo(repoPath: string): Promise<Repository | null> {
+  const cachedRepo = getFreshCachedRepo(repoPath)
+  if (cachedRepo) return Promise.resolve(cachedRepo)
 
-  fetch(`https://api.github.com/repos/${repoPath}`)
-    .then((resp) => {
-      if (resp.ok) return resp.json()
-      throw new Error('Failed to prefetch')
+  const inFlightRequest = prefetchInFlight.get(repoPath)
+  if (inFlightRequest) return inFlightRequest
+
+  const request = fetchRepoData(repoPath)
+    .then((data) => {
+      if (data) setCachedRepo(repoPath, data)
+      return data
     })
-    .then((data: Repository) => {
-      prefetchCache.set(repoPath, data)
+    .catch(() => null)
+    .finally(() => {
+      prefetchInFlight.delete(repoPath)
     })
-    .catch(() => {
-      // Silently fail prefetch
-    })
+
+  prefetchInFlight.set(repoPath, request)
+  return request
 }
