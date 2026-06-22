@@ -100,7 +100,7 @@ export function fillMissingDates(stats: StatsItem[]): StatsItem[] {
   return filledStats
 }
 
-const removeTitleTag = (container: HTMLElement | null) => {
+function removeTitleTag(container: HTMLElement | null) {
   if (!container) return
   const titleTags = container.querySelectorAll('.recharts-wrapper title')
   titleTags.forEach((tag) => {
