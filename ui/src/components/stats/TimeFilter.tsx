@@ -5,9 +5,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 export function TimeFilter({ value, onTimeRangeChange }: { value: string; onTimeRangeChange: (range: string) => void }) {
   return (
     <div className="flex items-center gap-4">
-      <span className="font-medium text-sm">Time Range:</span>
+      <span className="font-medium text-sm" id="stats-time-range-label">
+        Time Range:
+      </span>
       <Select onValueChange={onTimeRangeChange} value={value}>
-        <SelectTrigger className="w-44">
+        <SelectTrigger aria-labelledby="stats-time-range-label" className="w-44">
           <SelectValue placeholder="Select time range" />
         </SelectTrigger>
         <SelectContent>

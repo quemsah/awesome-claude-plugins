@@ -15,9 +15,32 @@ const timeRangeLabels: Record<string, string> = {
 }
 
 const MILLISECONDS_IN_DAY = 1000 * 60 * 60 * 24
+const numberFormatter = new Intl.NumberFormat('en-US')
+const percentageFormatter = new Intl.NumberFormat('en-US', {
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 0,
+})
 
 interface StatsPageProps {
   stats: StatsItem[]
+}
+
+type ChartDataPoint = {
+  date: string
+  size: number
+  formattedDate: string
+}
+
+type StatsSummary = {
+  currentTotal: number
+  endDate: string
+  netGrowth: number
+  percentageGrowth: number
+  pointCount: number
+  rangeLabel: string
+  startDate: string
+  summaryText: string
+  trendDescription: string
 }
 
 export function filterStatsByTimeRange(stats: StatsItem[], timeRange: string): StatsItem[] {
@@ -100,6 +123,68 @@ export function fillMissingDates(stats: StatsItem[]): StatsItem[] {
   return filledStats
 }
 
+function formatSignedNumber(value: number): string {
+  const prefix = value > 0 ? '+' : ''
+  return `${prefix}${numberFormatter.format(value)}`
+}
+
+function formatSignedPercentage(value: number): string {
+  const prefix = value > 0 ? '+' : ''
+  return `${prefix}${percentageFormatter.format(value)}%`
+}
+
+function getTrendDescription(netGrowth: number): string {
+  if (netGrowth > 0) {
+    return 'increased'
+  }
+
+  if (netGrowth < 0) {
+    return 'decreased'
+  }
+
+  return 'did not change'
+}
+
+export function buildStatsSummary(chartData: ChartDataPoint[], timeRange: string): StatsSummary {
+  const rangeLabel = timeRangeLabels[timeRange] ?? 'Selected range'
+
+  if (chartData.length === 0) {
+    return {
+      currentTotal: 0,
+      endDate: 'No data',
+      netGrowth: 0,
+      percentageGrowth: 0,
+      pointCount: 0,
+      rangeLabel,
+      startDate: 'No data',
+      summaryText: `${rangeLabel}: no repository data is available for this range.`,
+      trendDescription: 'has no data',
+    }
+  }
+
+  const firstPoint = chartData[0]
+  const lastPoint = chartData[chartData.length - 1]
+  const netGrowth = lastPoint.size - firstPoint.size
+  const percentageGrowth = firstPoint.size > 0 ? Math.round((netGrowth / firstPoint.size) * 10000) / 100 : 0
+  const trendDescription = getTrendDescription(netGrowth)
+
+  return {
+    currentTotal: lastPoint.size,
+    endDate: lastPoint.formattedDate,
+    netGrowth,
+    percentageGrowth,
+    pointCount: chartData.length,
+    rangeLabel,
+    startDate: firstPoint.formattedDate,
+    summaryText: `${rangeLabel}: current total ${numberFormatter.format(lastPoint.size)} repositories on ${
+      lastPoint.formattedDate
+    }; range ${firstPoint.formattedDate} to ${lastPoint.formattedDate}; net growth ${formatSignedNumber(
+      netGrowth
+    )} repositories; percentage growth ${formatSignedPercentage(percentageGrowth)}.`,
+    trendDescription,
+  }
+}
+
 function removeTitleTag(container: HTMLElement | null) {
   if (!container) return
   const titleTags = container.querySelectorAll('.recharts-wrapper title')
@@ -124,6 +209,7 @@ export function StatsPage({ stats }: StatsPageProps) {
   }, [filteredStats])
 
   const trendData = useMemo(() => calculateTrend(filteredStats), [filteredStats])
+  const statsSummary = useMemo(() => buildStatsSummary(chartData, timeRange), [chartData, timeRange])
 
   const overallTrends = useMemo(() => {
     if (stats.length <= 1) {
@@ -161,15 +247,47 @@ export function StatsPage({ stats }: StatsPageProps) {
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <TimeFilter onTimeRangeChange={setTimeRange} value={timeRange} />
         {timeRange !== 'all' && trendData.periodDays > 0 && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-sm">Trend:</span>
             <span className={`font-bold ${trendData.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {trendData.growth >= 0 ? '+' : ''}
               {trendData.growth} ({trendData.percentage}%)
             </span>
+            <span className="text-muted-foreground text-sm">Repositories {statsSummary.trendDescription} over this range.</span>
           </div>
         )}
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Selected Range Summary</CardTitle>
+          <CardDescription aria-atomic="true" aria-live="polite" id="stats-chart-summary">
+            {statsSummary.summaryText}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <dt className="font-medium text-muted-foreground text-sm">Current total</dt>
+              <dd className="font-semibold text-lg">{numberFormatter.format(statsSummary.currentTotal)}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-muted-foreground text-sm">Date range</dt>
+              <dd className="text-sm">
+                {statsSummary.startDate} to {statsSummary.endDate}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-muted-foreground text-sm">Net growth</dt>
+              <dd className="font-semibold text-lg">{formatSignedNumber(statsSummary.netGrowth)}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-muted-foreground text-sm">Percentage growth</dt>
+              <dd className="font-semibold text-lg">{formatSignedPercentage(statsSummary.percentageGrowth)}</dd>
+            </div>
+          </dl>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2">
         <Card>
@@ -206,7 +324,11 @@ export function StatsPage({ stats }: StatsPageProps) {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <p className="sr-only" id="stats-chart-table-description">
+            The table below lists every date and repository count included in the chart.
+          </p>
           <ChartContainer
+            aria-describedby="stats-chart-summary stats-chart-table-description"
             aria-label="Repository growth chart showing daily repository count over time"
             className="h-100"
             config={{
@@ -245,6 +367,36 @@ export function StatsPage({ stats }: StatsPageProps) {
               />
             </AreaChart>
           </ChartContainer>
+          <details className="mt-6 rounded-md border p-4">
+            <summary className="cursor-pointer font-medium text-sm">
+              Chart data table ({numberFormatter.format(statsSummary.pointCount)} dates)
+            </summary>
+            <div className="mt-4 max-h-96 overflow-auto">
+              <table className="w-full border-collapse text-left text-sm">
+                <caption className="sr-only">Repository count chart data for {statsSummary.rangeLabel}</caption>
+                <thead>
+                  <tr className="border-b">
+                    <th className="py-2 pr-4 font-medium" scope="col">
+                      Date
+                    </th>
+                    <th className="py-2 font-medium" scope="col">
+                      Repository count
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {chartData.map((item) => (
+                    <tr className="border-b last:border-b-0" key={`${item.date}-${item.size}`}>
+                      <td className="py-2 pr-4">
+                        <time dateTime={item.date}>{item.formattedDate}</time>
+                      </td>
+                      <td className="py-2 tabular-nums">{numberFormatter.format(item.size)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
         </CardContent>
       </Card>
     </div>
