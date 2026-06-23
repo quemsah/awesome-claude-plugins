@@ -2,6 +2,8 @@
 
 > Last updated: 22.06.2026 with 23121 total repositories indexed.
 
+Local setup and contributor commands are documented in [docs/development.md](docs/development.md).
+
 | # | Repo Name | Description | Stars | Subs | Plugins |
 |---|-----------|-------------|-------|-------------|---------|
 | 1 | [superpowers](https://github.com/obra/superpowers) | An agentic skills framework & software development methodology that works. | 234966 | 877 | 1 |
