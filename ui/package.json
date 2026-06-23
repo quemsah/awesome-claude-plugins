@@ -10,6 +10,8 @@
     "build": "next build",
     "build:analyze": "ANALYZE=true next build",
     "start": "next start",
+    "readme:generate": "node scripts/generate-readme.mjs",
+    "readme:check": "node scripts/generate-readme.mjs --check",
     "style": "biome check --write --unsafe ."
   },
   "dependencies": {

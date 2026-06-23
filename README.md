@@ -1,9 +1,37 @@
 # Awesome Claude Code Plugins: Top 100 Repositories
 
-> Last updated: 22.06.2026 with 23121 total repositories indexed.
+> Last updated: 22.06.2026 UTC with 23121 total repositories indexed and 62194 plugins counted.
+
+This README is generated from `ui/src/data/repos.json` and `ui/src/data/stats.json`.
+
+Browse the live app at [awesomeclaudeplugins.com](https://awesomeclaudeplugins.com).
+
+## Project Links
+
+- [Live app](https://awesomeclaudeplugins.com)
+- [Contribution guide](CONTRIBUTING.md)
+- [Data provenance](docs/data-provenance.md)
+- [Catalog generation](docs/catalog-generation.md)
+
+## Ranking Contract
+
+- Ranking: repositories are sorted by GitHub stars descending, then subscribers descending as a tie-breaker.
+- Repo Name: repository name linked to GitHub.
+- Description: GitHub repository description at the time of the catalog snapshot.
+- Stars: GitHub `stargazers_count`.
+- Subs: GitHub `subscribers_count`.
+- Plugins: cataloged plugin count for the repository; missing counts render as `0`.
+- Last updated: UTC calendar date from the latest stats snapshot (`2026-06-22T06:06:29.505Z`).
+
+## Maintenance
+
+- Regenerate this file from `ui/` with `npm run readme:generate`.
+- Check for drift from `ui/` with `npm run readme:check`.
+- Catalog update review steps are documented in [docs/catalog-generation.md](docs/catalog-generation.md).
+- Contribution and correction requests are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 | # | Repo Name | Description | Stars | Subs | Plugins |
-|---|-----------|-------------|-------|-------------|---------|
+|---|-----------|-------------|-------|------|---------|
 | 1 | [superpowers](https://github.com/obra/superpowers) | An agentic skills framework & software development methodology that works. | 234966 | 877 | 1 |
 | 2 | [ECC](https://github.com/affaan-m/ECC) | The agent harness performance optimization system. Skills, instincts, memory, security, and research-first development for Claude Code, Codex, Opencode, Cursor and beyond. | 219432 | 1127 | 1 |
 | 3 | [andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) | A single CLAUDE.md file to improve Claude Code behavior, derived from Andrej Karpathy's observations on LLM coding pitfalls. | 179886 | 1007 | 1 |
@@ -24,7 +52,7 @@
 | 18 | [career-ops](https://github.com/santifer/career-ops) | AI-powered job search system built on Claude Code. 14 skill modes, Go dashboard, PDF generation, batch processing. | 54945 | 208 | 1 |
 | 19 | [Understand-Anything](https://github.com/Lum1104/Understand-Anything) | Graphs that teach > graphs that impress. Turn any code into an interactive knowledge graph you can explore, search, and ask questions about. Works with Claude Code, Codex, Cursor, Copilot, Gemini CLI, and more. | 54661 | 176 | 1 |
 | 20 | [BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) | Breakthrough Method for Agile Ai Driven Development | 49471 | 399 | 2 |
-| 21 | [taste-skill](https://github.com/Leonxlnx/taste-skill) | Taste-Skill - gives your AI good taste. stops the AI from generating boring, generic slop  | 47982 | 137 | 1 |
+| 21 | [taste-skill](https://github.com/Leonxlnx/taste-skill) | Taste-Skill - gives your AI good taste. stops the AI from generating boring, generic slop | 47982 | 137 | 1 |
 | 22 | [slidev](https://github.com/slidevjs/slidev) | Presentation Slides for Developers | 47305 | 162 | 1 |
 | 23 | [last30days-skill](https://github.com/mvanhorn/last30days-skill) | AI agent skill that researches any topic across Reddit, X, YouTube, HN, Polymarket, and the web - then synthesizes a grounded summary | 45192 | 149 | 1 |
 | 24 | [headroom](https://github.com/chopratejas/headroom) | Compress tool outputs, logs, files, and RAG chunks before they reach the LLM. 60-95% fewer tokens, same answers. Library, proxy, MCP server. | 45078 | 141 | 1 |
@@ -62,7 +90,7 @@
 | 56 | [compound-engineering-plugin](https://github.com/EveryInc/compound-engineering-plugin) | Official Compound Engineering plugin for Claude Code, Codex, Cursor, and more | 21860 | 113 | 1 |
 | 57 | [knowledge-work-plugins](https://github.com/anthropics/knowledge-work-plugins) | Open source repository of plugins primarily intended for knowledge workers to use in Claude Cowork | 21570 | 175 | 68 |
 | 58 | [codex-plugin-cc](https://github.com/openai/codex-plugin-cc) | Use Codex from Claude Code to review code or delegate tasks. | 21399 | 67 | 1 |
-| 59 | [ralph](https://github.com/snarktank/ralph) | Ralph is an autonomous AI agent loop that runs repeatedly until all PRD items are complete.  | 20475 | 108 | 1 |
+| 59 | [ralph](https://github.com/snarktank/ralph) | Ralph is an autonomous AI agent loop that runs repeatedly until all PRD items are complete. | 20475 | 108 | 1 |
 | 60 | [pm-skills](https://github.com/phuryn/pm-skills) | PM Skills Marketplace: 100+ agentic skills, commands, and plugins — from discovery to strategy, execution, launch, and growth. | 20328 | 163 | 9 |
 | 61 | [beads](https://github.com/steveyegge/beads) | Beads - A memory upgrade for your coding agent | 20018 | 77 | 1 |
 | 62 | [daily](https://github.com/dailydotdev/daily) | daily.dev is a professional network for developers to learn, collaborate, and grow together 👩🏽‍💻 👨‍💻 | 19889 | 114 | 2 |
@@ -73,7 +101,7 @@
 | 67 | [hindsight](https://github.com/vectorize-io/hindsight) | Hindsight: Agent Memory That  Learns | 16850 | 51 | 1 |
 | 68 | [Agent-Skills-for-Context-Engineering](https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering) | A comprehensive collection of Agent Skills for context engineering, multi-agent architectures, and production agent systems. Use when building, optimizing, or debugging agent systems that require effective context management. | 16667 | 99 | 1 |
 | 69 | [deepeval](https://github.com/confident-ai/deepeval) | The LLM Evaluation Framework | 16343 | 63 | 1 |
-| 70 | [browser-harness](https://github.com/browser-use/browser-harness) | Browser Harness | Self-healing harness that enables LLMs to complete any task. | 15167 | 42 | 1 |
+| 70 | [browser-harness](https://github.com/browser-use/browser-harness) | Browser Harness \| Self-healing harness that enables LLMs to complete any task. | 15167 | 42 | 1 |
 | 71 | [prowler](https://github.com/prowler-cloud/prowler) | Prowler is the world’s most widely used open-source cloud security platform that automates security and compliance across any cloud environment. | 14019 | 119 | 1 |
 | 72 | [awesome-web-security](https://github.com/qazbnm456/awesome-web-security) | 🐶 A curated list of Web Security materials and resources. | 13497 | 351 | 1 |
 | 73 | [pipecat](https://github.com/pipecat-ai/pipecat) | Open Source framework for voice and multimodal conversational AI | 12930 | 75 | 1 |
@@ -103,4 +131,4 @@
 | 97 | [open-code-review](https://github.com/alibaba/open-code-review) | Open-source & free — Battle-tested at Alibaba's scale. Hybrid architecture code review tool: deterministic pipelines + LLM Agent, precise line-level comments, built-in fine-tuned ruleset (NPE, thread-safety, XSS, SQL injection), OpenAI & Anthropic compatible. | 8138 | 30 | 1 |
 | 98 | [financial-services-plugins](https://github.com/anthropics/financial-services-plugins) |  | 7866 | 88 | 8 |
 | 99 | [web-access](https://github.com/eze-is/web-access) | 给 Claude Code 装上完整联网能力的 skill：三层通道调度 + 浏览器 CDP + 并行分治 | 7777 | 14 | 1 |
-| 100 | [awesome-gpt-image-2](https://github.com/freestylefly/awesome-gpt-image-2) | Prompt as Code | GPT-Image2 工业级提示词引擎与模板库，470+ 个案例逆向工程，20+ 套工业级模板，并提炼出Skills，持续更新中 | 7761 | 24 | 1 |
+| 100 | [awesome-gpt-image-2](https://github.com/freestylefly/awesome-gpt-image-2) | Prompt as Code \| GPT-Image2 工业级提示词引擎与模板库，470+ 个案例逆向工程，20+ 套工业级模板，并提炼出Skills，持续更新中 | 7761 | 24 | 1 |
