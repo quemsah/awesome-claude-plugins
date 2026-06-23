@@ -39,3 +39,7 @@ jobs:
       - name: Run production build
         run: npm run build
         working-directory: ui
+
+      - name: Validate catalog data
+        run: npm run validate:data
+        working-directory: ui

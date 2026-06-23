@@ -1,0 +1,28 @@
+{
+  "knownAnomalies": {
+    "repositoriesWithNullPluginCount": {
+      "expectedCount": 247,
+      "reason": "Legacy discovered repository rows that have not had plugin counts backfilled yet."
+    },
+    "repositoriesWithUntrimmedDescriptions": {
+      "expectedCount": 341,
+      "reason": "Existing generated descriptions contain source whitespace that should be cleaned in the ingestion pipeline."
+    },
+    "caseInsensitiveRepositoryCollisions": {
+      "expectedCount": 21,
+      "reason": "Existing catalog contains case-only owner/repo collisions that need canonicalization."
+    },
+    "statsGapsOverOneAndHalfDays": {
+      "expectedCount": 16,
+      "reason": "Existing historical snapshots have known collection gaps."
+    },
+    "statsDuplicateUtcDays": {
+      "expectedCount": 4,
+      "reason": "Existing historical snapshots include multiple samples on the same UTC calendar day."
+    },
+    "statsDeclines": {
+      "expectedCount": 1,
+      "reason": "Existing historical snapshots include one repository-count decline."
+    }
+  }
+}
