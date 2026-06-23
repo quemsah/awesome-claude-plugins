@@ -2,19 +2,18 @@
 
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { LoadedContent } from './LoadedContent.tsx'
-import type { SortOption } from './Sort.tsx'
 
 interface RepoListProps {
   hasLoadError: boolean
+  resetKey: string
   sortedRepos: Repo[]
-  sortOption: SortOption
 }
 
-export function RepoList({ hasLoadError, sortedRepos, sortOption }: RepoListProps) {
+export function RepoList({ hasLoadError, resetKey, sortedRepos }: RepoListProps) {
   if (sortedRepos.length > 0) {
     return (
       <div aria-live="polite">
-        <LoadedContent repos={sortedRepos} sortOption={sortOption} />
+        <LoadedContent repos={sortedRepos} resetKey={resetKey} />
       </div>
     )
   }

@@ -1,14 +1,13 @@
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { Card, CardContent } from '../ui/card.tsx'
 import { InfiniteRepoGrid } from './InfiniteRepoGrid.tsx'
-import type { SortOption } from './Sort.tsx'
 
 interface LoadedContentProps {
   repos: Repo[]
-  sortOption?: SortOption
+  resetKey: string
 }
 
-export function LoadedContent({ repos, sortOption }: LoadedContentProps) {
+export function LoadedContent({ repos, resetKey }: LoadedContentProps) {
   return repos.length === 0 ? (
     <Card className="py-12 text-center">
       <CardContent>
@@ -16,6 +15,6 @@ export function LoadedContent({ repos, sortOption }: LoadedContentProps) {
       </CardContent>
     </Card>
   ) : (
-    <InfiniteRepoGrid items={repos} sortOption={sortOption} />
+    <InfiniteRepoGrid items={repos} resetKey={resetKey} />
   )
 }
