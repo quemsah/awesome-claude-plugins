@@ -32,6 +32,9 @@ export const metadata: Metadata = {
       },
     ],
   },
+  alternates: {
+    canonical: `${BASE_URL}/about`,
+  },
   twitter: {
     card: 'summary_large_image',
     title: 'About',
