@@ -2,19 +2,22 @@
 
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { LoadedContent } from './LoadedContent.tsx'
-import type { SortOption } from './Sort.tsx'
 
 interface RepoListProps {
   hasLoadError: boolean
+  hasMore: boolean
+  isLoadingMore: boolean
+  loadError: string | null
+  onLoadMore: () => void
   sortedRepos: Repo[]
-  sortOption: SortOption
 }
 
-export function RepoList({ hasLoadError, sortedRepos, sortOption }: RepoListProps) {
+export function RepoList({ hasLoadError, hasMore, isLoadingMore, loadError, onLoadMore, sortedRepos }: RepoListProps) {
   if (sortedRepos.length > 0) {
     return (
       <div aria-live="polite">
-        <LoadedContent repos={sortedRepos} sortOption={sortOption} />
+        <LoadedContent hasMore={hasMore} isLoadingMore={isLoadingMore} onLoadMore={onLoadMore} repos={sortedRepos} />
+        {loadError ? <p className="mt-4 text-center text-destructive text-sm">{loadError}</p> : null}
       </div>
     )
   }
@@ -22,7 +25,7 @@ export function RepoList({ hasLoadError, sortedRepos, sortOption }: RepoListProp
   return (
     <div className="py-8 text-center">
       <p className="text-muted-foreground">
-        {hasLoadError ? 'Failed to load repositories. Please try again later' : 'No repositories match your search'}
+        {hasLoadError ? loadError || 'Failed to load repositories. Please try again later' : 'No repositories match your search'}
       </p>
     </div>
   )

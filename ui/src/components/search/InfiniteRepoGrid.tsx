@@ -1,28 +1,27 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { Repo } from '../../schemas/repo.schema.ts'
+import { Button } from '../ui/button.tsx'
 import { RepoCard } from './RepoCard.tsx'
-import type { SortOption } from './Sort.tsx'
 
 interface InfiniteRepoGridProps {
+  hasMore: boolean
+  isLoadingMore: boolean
   items: Repo[]
-  sortOption?: SortOption
+  onLoadMore: () => void
 }
 
-const ITEMS_PER_BATCH = 24
-
-export function InfiniteRepoGrid({ items, sortOption: _sortOption }: InfiniteRepoGridProps) {
-  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_BATCH)
+export function InfiniteRepoGrid({ hasMore, isLoadingMore, items, onLoadMore }: InfiniteRepoGridProps) {
   const observerTarget = useRef<HTMLDivElement>(null)
 
   const handleIntersection = useCallback(
     (entries: IntersectionObserverEntry[]) => {
-      if (entries[0].isIntersecting) {
-        setVisibleCount((prev) => Math.min(prev + ITEMS_PER_BATCH, items.length))
+      if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
+        onLoadMore()
       }
     },
-    [items.length]
+    [hasMore, isLoadingMore, onLoadMore]
   )
 
   useEffect(() => {
@@ -35,27 +34,23 @@ export function InfiniteRepoGrid({ items, sortOption: _sortOption }: InfiniteRep
     return () => observer.disconnect()
   }, [handleIntersection])
 
-  useEffect(() => {
-    setVisibleCount(ITEMS_PER_BATCH)
-  }, [])
-
-  const visibleItems = items.slice(0, visibleCount)
-
   return (
     <section aria-label="Claude plugins">
       <ul className="m-0 grid list-none grid-cols-1 gap-6 p-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {visibleItems.map((repo) => (
+        {items.map((repo) => (
           <li className="m-0 list-none p-0" key={repo.id}>
             <RepoCard repo={repo} />
           </li>
         ))}
       </ul>
 
-      {visibleCount < items.length && (
-        <div className="flex h-20 w-full items-center justify-center text-muted-foreground text-sm" ref={observerTarget}>
-          Loading more repositories...
+      {hasMore ? (
+        <div className="flex h-24 w-full items-center justify-center" ref={observerTarget}>
+          <Button disabled={isLoadingMore} onClick={onLoadMore} type="button" variant="outline">
+            {isLoadingMore ? 'Loading repositories...' : 'Load more repositories'}
+          </Button>
         </div>
-      )}
+      ) : null}
     </section>
   )
 }

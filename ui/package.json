@@ -10,6 +10,7 @@
     "build": "next build",
     "build:analyze": "ANALYZE=true next build",
     "start": "next start",
+    "payload:check": "node scripts/check-payload-budget.mjs",
     "style": "biome check --write --unsafe ."
   },
   "dependencies": {

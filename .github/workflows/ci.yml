@@ -31,3 +31,7 @@ jobs:
       - name: Run linter
         run: npm run style
         working-directory: ui
+
+      - name: Check homepage payload budget
+        run: npm run payload:check
+        working-directory: ui

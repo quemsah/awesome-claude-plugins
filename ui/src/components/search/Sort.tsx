@@ -1,23 +1,17 @@
-import { Box, GitFork, Star } from 'lucide-react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select.tsx'
-
-export type SortOption = 'stars-desc' | 'forks-desc' | 'plugins-desc'
+import type { SortOption } from '../../lib/repoSearch.ts'
 
 const sortOptions = [
   {
     value: 'stars-desc',
     label: 'Stars',
-    icon: <Star className="mr-2 h-4 w-4" />,
   },
   {
     value: 'forks-desc',
     label: 'Forks',
-    icon: <GitFork className="mr-2 h-4 w-4" />,
   },
   {
     value: 'plugins-desc',
     label: 'Plugins',
-    icon: <Box className="mr-2 h-4 w-4" />,
   },
 ] as const
 
@@ -27,28 +21,19 @@ interface SortProps {
 }
 
 export function Sort({ sortOption, onSortChange }: SortProps) {
-  const selectedOption = sortOptions.find((option) => option.value === sortOption) || sortOptions[0]
-
   return (
-    <Select onValueChange={(value: string) => onSortChange(value as SortOption)} value={sortOption}>
-      <SelectTrigger aria-label="Sort by" className="w-full sm:w-48">
-        <SelectValue>
-          <span className="flex items-center">
-            {selectedOption.icon}
-            <span className="truncate">{selectedOption.label}</span>
-          </span>
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent align="start">
-        {sortOptions.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            <span className="flex items-center">
-              {option.icon}
-              <span className="truncate">{option.label}</span>
-            </span>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <select
+      aria-label="Sort by"
+      className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-48"
+      name="sort"
+      onChange={(event) => onSortChange(event.target.value as SortOption)}
+      value={sortOption}
+    >
+      {sortOptions.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
   )
 }

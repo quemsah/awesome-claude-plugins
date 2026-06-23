@@ -1,52 +1,108 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { useFuzzySearch } from '../../hooks/useFuzzySearch.ts'
-import type { Repo } from '../../schemas/repo.schema.ts'
+import { useCallback, useState } from 'react'
+import type { RepoSearchResult, SortOption } from '../../lib/repoSearch.ts'
 import { RepoList } from './RepoList.tsx'
 import { SearchControls } from './SearchControls.tsx'
-import type { SortOption } from './Sort.tsx'
 
 interface SearchPageProps {
-  initialRepos: Repo[]
+  initialResult: RepoSearchResult
 }
 
-export function SearchPage({ initialRepos }: SearchPageProps) {
-  const [sortOption, setSortOption] = useState<SortOption>('stars-desc')
-  const [searchTerm, setSearchTerm] = useState('')
+export function SearchPage({ initialResult }: SearchPageProps) {
+  const [result, setResult] = useState(initialResult)
+  const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
-  const filteredRepos = useFuzzySearch(initialRepos, searchTerm)
+  const loadResults = useCallback(
+    async ({ query, sortOption, page, append }: { query: string; sortOption: SortOption; page: number; append: boolean }) => {
+      const params = new URLSearchParams({
+        q: query,
+        sort: sortOption,
+        page: String(page),
+        pageSize: String(initialResult.pageSize),
+      })
 
-  const sortedRepos = useMemo(
-    () =>
-      [...filteredRepos].sort((a, b) => {
-        switch (sortOption) {
-          case 'stars-desc':
-            return (b.stargazers_count ?? 0) - (a.stargazers_count ?? 0)
-          case 'forks-desc':
-            return (b.forks_count ?? 0) - (a.forks_count ?? 0)
-          case 'plugins-desc':
-            return (b.plugins_count ?? 0) - (a.plugins_count ?? 0)
-          default:
-            return 0
+      setLoadError(null)
+      append ? setIsLoadingMore(true) : setIsLoading(true)
+
+      try {
+        const response = await fetch(`/api/repos/search?${params.toString()}`)
+        if (!response.ok) {
+          throw new Error('Failed to load repositories')
         }
-      }),
-    [filteredRepos, sortOption]
+
+        const nextResult = (await response.json()) as RepoSearchResult
+        setResult((current) => ({
+          ...nextResult,
+          repos: append ? [...current.repos, ...nextResult.repos] : nextResult.repos,
+        }))
+
+        if (!append) {
+          updateUrl(query, sortOption)
+        }
+      } catch {
+        setLoadError('Failed to load repositories. Please try again later')
+      } finally {
+        append ? setIsLoadingMore(false) : setIsLoading(false)
+      }
+    },
+    [initialResult.pageSize]
   )
 
-  const filteredPluginCount = useMemo(() => filteredRepos.reduce((total, repo) => total + (repo.plugins_count || 0), 0), [filteredRepos])
+  const handleSearchChange = useCallback(
+    (query: string) => {
+      loadResults({ query, sortOption: result.sortOption, page: 1, append: false })
+    },
+    [loadResults, result.sortOption]
+  )
+
+  const handleSortChange = useCallback(
+    (sortOption: SortOption) => {
+      loadResults({ query: result.query, sortOption, page: 1, append: false })
+    },
+    [loadResults, result.query]
+  )
+
+  const handleLoadMore = useCallback(() => {
+    if (result.hasMore && !(isLoading || isLoadingMore)) {
+      loadResults({ query: result.query, sortOption: result.sortOption, page: result.page + 1, append: true })
+    }
+  }, [isLoading, isLoadingMore, loadResults, result.hasMore, result.page, result.query, result.sortOption])
 
   return (
     <>
       <SearchControls
-        filteredPluginCount={filteredPluginCount}
-        filteredRepoCount={filteredRepos.length}
-        onSearchChange={setSearchTerm}
-        onSortChange={setSortOption}
-        searchTerm={searchTerm}
-        sortOption={sortOption}
+        filteredPluginCount={result.totalPluginCount}
+        filteredRepoCount={result.totalRepoCount}
+        isLoading={isLoading}
+        onSearchChange={handleSearchChange}
+        onSortChange={handleSortChange}
+        searchTerm={result.query}
+        sortOption={result.sortOption}
       />
-      <RepoList hasLoadError={initialRepos.length === 0} sortedRepos={sortedRepos} sortOption={sortOption} />
+      <RepoList
+        hasLoadError={Boolean(loadError)}
+        hasMore={result.hasMore}
+        isLoadingMore={isLoadingMore}
+        loadError={loadError}
+        onLoadMore={handleLoadMore}
+        sortedRepos={result.repos}
+      />
     </>
   )
+}
+
+function updateUrl(query: string, sortOption: SortOption) {
+  const params = new URLSearchParams()
+  if (query) {
+    params.set('q', query)
+  }
+  if (sortOption !== 'stars-desc') {
+    params.set('sort', sortOption)
+  }
+
+  const nextUrl = params.toString() ? `/?${params.toString()}` : '/'
+  window.history.replaceState(null, '', nextUrl)
 }
