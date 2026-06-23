@@ -1,0 +1,32 @@
+name: Plugin repository submission
+description: Submit a repository that should be added to the catalog.
+title: "Add repository: "
+labels: ["catalog", "submission"]
+body:
+  - type: input
+    id: repository_url
+    attributes:
+      label: Repository URL
+      description: Link to the GitHub repository.
+      placeholder: "https://github.com/owner/repo"
+    validations:
+      required: true
+  - type: input
+    id: marketplace_manifest
+    attributes:
+      label: Marketplace manifest URL
+      description: Link to `.claude-plugin/marketplace.json` if the repository has one.
+      placeholder: "https://github.com/owner/repo/blob/main/.claude-plugin/marketplace.json"
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Plugin evidence
+      description: List files, directories, or documentation proving Claude Code plugin relevance.
+      placeholder: ".claude-plugin/marketplace.json, commands/*.md, agents/*.md, MCP server config, skill files"
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Anything maintainers should know before triage.

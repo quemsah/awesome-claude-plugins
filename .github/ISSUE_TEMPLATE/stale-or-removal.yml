@@ -1,0 +1,38 @@
+name: Stale or removal request
+description: Report a deleted, archived, private, renamed, stale, or unsafe catalog entry.
+title: "Review stale entry: "
+labels: ["catalog", "stale"]
+body:
+  - type: input
+    id: repository_url
+    attributes:
+      label: Repository URL
+      placeholder: "https://github.com/owner/repo"
+    validations:
+      required: true
+  - type: dropdown
+    id: status
+    attributes:
+      label: Current status
+      options:
+        - Deleted or unavailable
+        - Archived
+        - Made private
+        - Renamed or transferred
+        - No longer plugin related
+        - Unsafe or abusive content
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: Explain what changed and what action you are requesting.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Link to redirects, archive status, replacement repository, or other supporting information.

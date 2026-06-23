@@ -1,0 +1,24 @@
+name: False positive report
+description: Report a catalog entry that is not actually Claude Code plugin related.
+title: "False positive: "
+labels: ["catalog", "false-positive"]
+body:
+  - type: input
+    id: repository_url
+    attributes:
+      label: Repository URL
+      placeholder: "https://github.com/owner/repo"
+    validations:
+      required: true
+  - type: textarea
+    id: reason
+    attributes:
+      label: Why is this a false positive?
+      description: Explain why the repository should not be considered Claude Code plugin related.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Link to files, repository docs, or search results that support removal.

@@ -2,6 +2,8 @@
 
 > Last updated: 22.06.2026 with 23121 total repositories indexed.
 
+To submit, correct, or remove catalog entries, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 | # | Repo Name | Description | Stars | Subs | Plugins |
 |---|-----------|-------------|-------|-------------|---------|
 | 1 | [superpowers](https://github.com/obra/superpowers) | An agentic skills framework & software development methodology that works. | 234966 | 877 | 1 |

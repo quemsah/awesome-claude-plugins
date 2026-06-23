@@ -1,0 +1,38 @@
+name: Catalog correction
+description: Correct an existing catalog entry.
+title: "Correct catalog entry: "
+labels: ["catalog", "correction"]
+body:
+  - type: input
+    id: current_repository_url
+    attributes:
+      label: Current catalog URL
+      description: Link to the repository as it appears now.
+      placeholder: "https://github.com/owner/repo"
+    validations:
+      required: true
+  - type: dropdown
+    id: correction_type
+    attributes:
+      label: Correction type
+      options:
+        - Repository renamed or transferred
+        - Incorrect description or metadata
+        - Incorrect plugin count
+        - Incorrect marketplace manifest path
+        - Canonical repository should be different
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: requested_change
+    attributes:
+      label: Requested change
+      description: Describe the exact correction and provide links when possible.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Link to GitHub redirects, manifests, files, releases, or repository settings that support the correction.
