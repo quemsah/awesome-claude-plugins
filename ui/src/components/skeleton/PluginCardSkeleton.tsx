@@ -1,26 +1,33 @@
-import { Card, CardContent } from '../ui/card.tsx'
+import { Card, CardContent, CardHeader } from '../ui/card.tsx'
 import { Skeleton } from '../ui/skeleton.tsx'
 
-interface CardSkeletonProps {
+interface PluginCardSkeletonProps {
   count?: number
 }
 
-export function CardSkeleton({ count = 1 }: CardSkeletonProps) {
+export function PluginCardSkeleton({ count = 1 }: PluginCardSkeletonProps) {
   return (
     <div className="space-y-4">
       {Array.from({ length: count }).map((_, index) => (
-        <Card className="w-full p-0" key={index}>
-          <CardContent className="space-y-3 p-6">
-            <div className="flex items-start justify-between">
-              <div className="flex flex-col gap-2">
+        <Card aria-hidden="true" className="w-full" key={index}>
+          <CardHeader className="-space-y-2 pb-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-2">
                 <Skeleton className="h-6 w-48" />
-                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-4 w-20" />
               </div>
-              <Skeleton className="h-5 w-20 rounded-full" />
+              <Skeleton className="h-5 w-20 shrink-0 rounded-full" />
             </div>
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-5/6" />
-            <Skeleton className="h-4 w-3/4" />
+          </CardHeader>
+          <div className="px-6 pb-4">
+            <Skeleton className="h-11 w-full rounded-md" />
+          </div>
+          <CardContent className="space-y-2 pt-1">
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-5/6" />
+            </div>
             <div className="flex items-center gap-2 pt-1">
               <Skeleton className="h-3 w-16" />
               <Skeleton className="h-3 w-24" />
