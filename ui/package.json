@@ -10,6 +10,7 @@
     "build": "next build",
     "build:analyze": "ANALYZE=true next build",
     "start": "next start",
+    "validate:plugins": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/validate-plugin-index.mjs",
     "style": "biome check --write --unsafe ."
   },
   "dependencies": {

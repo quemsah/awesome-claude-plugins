@@ -1,6 +1,7 @@
 import type { components } from '@octokit/openapi-types'
 import { useEffect, useState } from 'react'
 import type { Plugin } from '../app/types/plugin.type.ts'
+import { getIndexedPluginsForRepo, parsePluginManifest } from '../lib/pluginIndex.ts'
 
 type Repository = components['schemas']['repository']
 
@@ -15,6 +16,13 @@ export function usePlugins(repo: Repository | null, repoPath: string) {
         if (!repo) return
 
         setPluginsLoading(true)
+        setPluginsError(null)
+
+        const indexedPlugins = getIndexedPluginsForRepo(repoPath)
+        if (indexedPlugins.length > 0) {
+          setPlugins(indexedPlugins.map((entry) => entry.plugin))
+          return
+        }
 
         const defaultBranch = repo.default_branch
         const pluginsResponse = await fetch(
@@ -30,11 +38,11 @@ export function usePlugins(repo: Repository | null, repoPath: string) {
         }
 
         const pluginsData = await pluginsResponse.json()
-        if (Array.isArray(pluginsData)) {
-          setPlugins(pluginsData)
-        } else if (pluginsData.plugins && Array.isArray(pluginsData.plugins)) {
-          setPlugins(pluginsData.plugins)
+        const manifestResult = parsePluginManifest(pluginsData)
+        if (manifestResult.success) {
+          setPlugins(manifestResult.plugins)
         } else {
+          setPluginsError('Invalid plugin manifest')
           setPlugins([])
         }
       } catch {
