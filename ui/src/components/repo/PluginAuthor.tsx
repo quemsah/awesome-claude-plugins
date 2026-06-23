@@ -10,8 +10,8 @@ export function PluginAuthor({ author }: PluginAuthorProps) {
 
   return (
     <div>
-      <h6 className="mb-0.5 font-medium text-sm">Author</h6>
-      <div className="text-muted-foreground text-sm">
+      <dt className="mb-0.5 font-medium text-sm">Author</dt>
+      <dd className="text-muted-foreground text-sm">
         {author.name ? (
           <p className="font-medium">
             {author.name}
@@ -20,7 +20,7 @@ export function PluginAuthor({ author }: PluginAuthorProps) {
         ) : author.email ? (
           <p className="break-all">{author.email}</p>
         ) : null}
-      </div>
+      </dd>
     </div>
   )
 }

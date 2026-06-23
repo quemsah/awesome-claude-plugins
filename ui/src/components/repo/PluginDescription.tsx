@@ -7,8 +7,8 @@ export function PluginDescription({ description }: PluginDescriptionProps) {
 
   return (
     <div>
-      <h6 className="mb-0.5 font-medium text-sm">Description</h6>
-      <p className="text-muted-foreground text-sm">{description}</p>
+      <dt className="mb-0.5 font-medium text-sm">Description</dt>
+      <dd className="text-muted-foreground text-sm">{description}</dd>
     </div>
   )
 }
