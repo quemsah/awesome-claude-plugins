@@ -57,7 +57,14 @@ export function SearchControls({
         </div>
       </div>
       <div className="text-center text-muted-foreground text-sm md:text-right">
-        {`${filteredPluginCount} ${filteredPluginCount === 1 ? 'plugin' : 'plugins'} available across ${filteredRepoCount} ${filteredRepoCount === 1 ? 'repository' : 'repositories'}`}
+        <p>
+          {`${filteredPluginCount} ${filteredPluginCount === 1 ? 'plugin' : 'plugins'} available across ${filteredRepoCount} ${filteredRepoCount === 1 ? 'repository' : 'repositories'}`}
+        </p>
+        {sortOption === 'quality-desc' ? (
+          <p className="mt-1 max-w-lg text-xs">
+            Quality balances plugin count, Claude/plugin evidence, description completeness, capped popularity, and broad-project penalties.
+          </p>
+        ) : null}
       </div>
     </section>
   )
