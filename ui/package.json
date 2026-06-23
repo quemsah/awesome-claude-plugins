@@ -10,6 +10,7 @@
     "build": "next build",
     "build:analyze": "ANALYZE=true next build",
     "start": "next start",
+    "typecheck": "tsc --noEmit",
     "style": "biome check --write --unsafe ."
   },
   "dependencies": {
