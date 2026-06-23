@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useFuzzySearch } from '../../hooks/useFuzzySearch.ts'
+import { compareRepoLifecycleRank } from '../../lib/repoLifecycle.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { RepoList } from './RepoList.tsx'
 import { SearchControls } from './SearchControls.tsx'
@@ -20,6 +21,9 @@ export function SearchPage({ initialRepos }: SearchPageProps) {
   const sortedRepos = useMemo(
     () =>
       [...filteredRepos].sort((a, b) => {
+        const lifecycleDelta = compareRepoLifecycleRank(a, b)
+        if (lifecycleDelta !== 0) return lifecycleDelta
+
         switch (sortOption) {
           case 'stars-desc':
             return (b.stargazers_count ?? 0) - (a.stargazers_count ?? 0)

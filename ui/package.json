@@ -10,6 +10,8 @@
     "build": "next build",
     "build:analyze": "ANALYZE=true next build",
     "start": "next start",
+    "lifecycle:report": "node scripts/report-repo-lifecycle.mjs",
+    "lifecycle:check": "node scripts/report-repo-lifecycle.mjs --check",
     "style": "biome check --write --unsafe ."
   },
   "dependencies": {

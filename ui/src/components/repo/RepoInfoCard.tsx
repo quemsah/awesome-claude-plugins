@@ -13,6 +13,12 @@ interface RepoInfoCardProps {
 }
 
 export function RepoInfoCard({ repo }: RepoInfoCardProps) {
+  const statusBadges = [
+    repo.archived ? { label: 'Archived', title: 'Repository is archived upstream and may not receive maintenance.' } : null,
+    repo.fork ? { label: 'Fork', title: 'Repository is marked as a fork on GitHub.' } : null,
+    repo.mirror_url ? { label: 'Mirror', title: 'Repository is marked as a mirror on GitHub.' } : null,
+  ].filter((badge): badge is { label: string; title: string } => badge !== null)
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Unknown'
     return formatDateUtil(new Date(dateString))
@@ -76,6 +82,16 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
       </CardHeader>
 
       <CardContent className="p-0">
+        {statusBadges.length > 0 ? (
+          <div className="mb-4 flex flex-wrap gap-2">
+            {statusBadges.map((badge) => (
+              <Badge key={badge.label} title={badge.title} variant="outline">
+                {badge.label}
+              </Badge>
+            ))}
+          </div>
+        ) : null}
+
         {!!repo.description && <p className="mb-6 text-base text-muted-foreground sm:text-lg">{repo.description}</p>}
 
         <div className="mb-6 flex flex-wrap gap-3 sm:gap-4">

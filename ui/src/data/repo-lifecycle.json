@@ -1,0 +1,133 @@
+{
+  "generated_at": "2026-06-22T06:06:29.505Z",
+  "source": "Derived from case-insensitive owner/repo collisions in ui/src/data/repos.json.",
+  "repositories": [
+    {
+      "slug": "bitqs/Slime",
+      "status": "case_collision",
+      "canonical_slug": "bitqs/slime",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "borgels/vaner",
+      "status": "case_collision",
+      "canonical_slug": "Borgels/vaner",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "brillcp/laconic",
+      "status": "case_collision",
+      "canonical_slug": "brillcp/Laconic",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "brycewang-stanford/AER-skills",
+      "status": "case_collision",
+      "canonical_slug": "brycewang-stanford/AER-Skills",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "choam2426/Geas",
+      "status": "case_collision",
+      "canonical_slug": "choam2426/geas",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "citedy/claude-plugins",
+      "status": "case_collision",
+      "canonical_slug": "Citedy/claude-plugins",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "cljiahao/templatecentral",
+      "status": "case_collision",
+      "canonical_slug": "cljiahao/templateCentral",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "datatorag/marketplace",
+      "status": "case_collision",
+      "canonical_slug": "DataToRag/marketplace",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "Dev10x-Guru/Dev10x-Claude",
+      "status": "case_collision",
+      "canonical_slug": "Dev10x-Guru/dev10x-claude",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "eddacraft/kindling",
+      "status": "case_collision",
+      "canonical_slug": "EddaCraft/kindling",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "HypoxanthineOvO/hypo-workflow",
+      "status": "case_collision",
+      "canonical_slug": "HypoxanthineOvO/Hypo-Workflow",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "Inlustra/skills",
+      "status": "case_collision",
+      "canonical_slug": "Inlustra/Skills",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "langfuse/Claude-Observability-Plugin",
+      "status": "case_collision",
+      "canonical_slug": "langfuse/claude-observability-plugin",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "Meghshyams/production-readiness",
+      "status": "case_collision",
+      "canonical_slug": "Meghshyams/Production-Readiness",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "mindverse/Second-Me-Skills",
+      "status": "case_collision",
+      "canonical_slug": "mindverse/second-me-skills",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "Mnfst-AI/Stage_Manager_Skills",
+      "status": "case_collision",
+      "canonical_slug": "mnfst-ai/Stage_Manager_Skills",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "mrunknown2/Earthh-Evans-Finance-Skill",
+      "status": "case_collision",
+      "canonical_slug": "mrunknown2/earthh-evans-finance-skill",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "shubhthorat/claude-plugins",
+      "status": "case_collision",
+      "canonical_slug": "ShubhThorat/claude-plugins",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "signalcompose/maxmcp",
+      "status": "case_collision",
+      "canonical_slug": "signalcompose/MaxMCP",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "vegastack/oss-notion-markdown-sync",
+      "status": "case_collision",
+      "canonical_slug": "VegaStack/oss-notion-markdown-sync",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    },
+    {
+      "slug": "xiaolfeng/claude-marketplace",
+      "status": "case_collision",
+      "canonical_slug": "XiaoLFeng/claude-marketplace",
+      "reason": "Case-only duplicate of the canonical repository slug."
+    }
+  ]
+}
+

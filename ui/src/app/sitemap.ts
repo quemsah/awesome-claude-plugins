@@ -2,6 +2,7 @@
 import type { MetadataRoute } from 'next'
 import reposData from '../data/repos.json' with { type: 'json' }
 import { BASE_URL } from '../lib/constants.ts'
+import { getRepoSitemapPriority, shouldIncludeRepoInSitemap } from '../lib/repoLifecycle.ts'
 import type { Repo } from '../schemas/repo.schema.ts'
 import { ReposArraySchema } from '../schemas/repo.schema.ts'
 
@@ -24,11 +25,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
     console.error('Failed to load repositories for sitemap:', error)
   }
 
-  const repoUrls: MetadataRoute.Sitemap = repos.map((repo) => ({
+  const repoUrls: MetadataRoute.Sitemap = repos.filter(shouldIncludeRepoInSitemap).map((repo) => ({
     url: `${BASE_URL}/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo_name)}`,
     lastModified: now,
-    changeFrequency: 'weekly',
-    priority: 0.5,
+    changeFrequency: getRepoSitemapPriority(repo) < 0.5 ? 'monthly' : 'weekly',
+    priority: getRepoSitemapPriority(repo),
   }))
 
   return [
