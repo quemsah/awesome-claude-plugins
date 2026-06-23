@@ -6,8 +6,8 @@ on:
     branches: [main]
 
 jobs:
-  style:
-    name: style
+  app:
+    name: app
     runs-on: ubuntu-latest
 
     permissions:
@@ -28,6 +28,14 @@ jobs:
         run: npm ci
         working-directory: ui
 
+      - name: Run typecheck
+        run: npm run typecheck
+        working-directory: ui
+
       - name: Run linter
         run: npm run style
+        working-directory: ui
+
+      - name: Run production build
+        run: npm run build
         working-directory: ui
