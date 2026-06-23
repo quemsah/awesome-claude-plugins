@@ -74,7 +74,7 @@ export function fillMissingDates(stats: StatsItem[]): ChartStatsItem[] {
 
   for (let i = 0; i < sortedStats.length; i++) {
     const currentItem = sortedStats[i]
-    filledStats.push({ date: currentItem.date, interpolated: false, size: currentItem.size })
+    filledStats.push({ id: currentItem.id, date: currentItem.date, interpolated: false, size: currentItem.size })
 
     if (i < sortedStats.length - 1) {
       const nextItem = sortedStats[i + 1]
@@ -96,6 +96,7 @@ export function fillMissingDates(stats: StatsItem[]): ChartStatsItem[] {
           const interpolatedSize = Math.round(currentSize + dailyIncrement * day)
 
           filledStats.push({
+            id: Math.round(missingDate.getTime() / 1000),
             date: missingDate.toISOString(),
             interpolated: true,
             size: interpolatedSize,

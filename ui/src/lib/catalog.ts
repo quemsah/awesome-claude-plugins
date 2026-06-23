@@ -2,14 +2,9 @@
 import reposData from '../data/repos.json' with { type: 'json' }
 import statsData from '../data/stats.json' with { type: 'json' }
 import type { Repo } from '../schemas/repo.schema.ts'
+import type { StatsItem } from '../schemas/stats.schema.ts'
 
 const FALLBACK_LAST_MODIFIED = new Date('2026-01-01T00:00:00.000Z')
-
-interface StatsEntry {
-  date: string
-  size: number
-  id: number
-}
 
 export type CatalogRepo = Repo & { owner: string; repo_name: string }
 
@@ -27,7 +22,7 @@ export function findCatalogRepo(repoPath: string) {
 }
 
 export function getCatalogLastModified() {
-  const latestStat = (statsData as StatsEntry[]).at(-1)
+  const latestStat = (statsData as StatsItem[]).at(-1)
   const parsedDate = latestStat ? new Date(latestStat.date) : FALLBACK_LAST_MODIFIED
 
   if (Number.isNaN(parsedDate.getTime())) {
