@@ -9,12 +9,15 @@ import { ThemeToggle } from './ThemeToggle.tsx'
 
 export function Header() {
   const pathname = usePathname()
+  const isSearchActive = pathname === '/'
+  const isStatsActive = pathname === '/stats'
+  const isAboutActive = pathname === '/about'
 
   return (
     <header className="sticky top-0 z-50 border-b backdrop-blur">
-      <div className="flex items-center justify-between px-4 py-4 sm:px-6">
-        <nav aria-label="Main navigation">
-          <div className="flex gap-3 sm:gap-4" style={{ alignItems: 'last baseline' }}>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:flex-nowrap sm:px-6 sm:py-4">
+        <nav aria-label="Main navigation" className="order-2 w-full sm:order-1 sm:w-auto">
+          <div className="grid grid-cols-3 gap-1 sm:flex sm:gap-4" style={{ alignItems: 'last baseline' }}>
             <Link
               aria-label="Home"
               className="hidden font-medium text-foreground text-lg transition-colors hover:text-primary md:block"
@@ -24,36 +27,39 @@ export function Header() {
             </Link>
 
             <Link
+              aria-current={isSearchActive ? 'page' : undefined}
               aria-label="Search repositories"
-              className={`flex items-center gap-2 text-sm ${pathname === '/' ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
+              className={`flex min-h-11 items-center justify-center gap-2 rounded-md px-2 text-sm ${isSearchActive ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} transition-colors sm:min-h-0 sm:justify-start sm:px-0`}
               href="/"
             >
               <Search aria-hidden="true" className="h-5 w-5" />
-              <span className="hidden sm:inline">Search</span>
+              <span>Search</span>
             </Link>
 
             <Link
+              aria-current={isStatsActive ? 'page' : undefined}
               aria-label="View statistics"
-              className={`flex items-center gap-2 text-sm ${pathname === '/stats' ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
+              className={`flex min-h-11 items-center justify-center gap-2 rounded-md px-2 text-sm ${isStatsActive ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} transition-colors sm:min-h-0 sm:justify-start sm:px-0`}
               href="/stats"
               prefetch={false}
             >
               <BarChart3 aria-hidden="true" className="h-5 w-5" />
-              <span className="hidden sm:inline">Stats</span>
+              <span>Stats</span>
             </Link>
             <Link
+              aria-current={isAboutActive ? 'page' : undefined}
               aria-label="About project"
-              className={`flex items-center gap-2 text-sm ${pathname === '/about' ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
+              className={`flex min-h-11 items-center justify-center gap-2 rounded-md px-2 text-sm ${isAboutActive ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} transition-colors sm:min-h-0 sm:justify-start sm:px-0`}
               href="/about"
               prefetch={false}
             >
               <Info aria-hidden="true" className="h-5 w-5" />
-              <span className="hidden sm:inline">About</span>
+              <span>About</span>
             </Link>
           </div>
         </nav>
-        <div className="flex items-center gap-1 sm:gap-2">
-          <Button asChild className="h-9 w-9" size="icon" variant="outline">
+        <div className="order-1 ml-auto flex items-center gap-1 sm:order-2 sm:gap-2">
+          <Button asChild className="size-11 sm:size-9" size="icon" variant="outline">
             <a
               aria-label="Claude Code documentation"
               href="https://code.claude.com/docs/en/plugins"
@@ -63,7 +69,7 @@ export function Header() {
               <ClaudeIcon />
             </a>
           </Button>
-          <Button asChild className="h-9 w-9" size="icon" variant="outline">
+          <Button asChild className="size-11 sm:size-9" size="icon" variant="outline">
             <a
               aria-label="GitHub repository"
               href="https://github.com/quemsah/awesome-claude-plugins"
