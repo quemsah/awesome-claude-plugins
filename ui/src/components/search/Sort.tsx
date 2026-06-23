@@ -1,9 +1,14 @@
-import { Box, GitFork, Star } from 'lucide-react'
+import { Box, GitFork, Sparkles, Star } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select.tsx'
 
-export type SortOption = 'stars-desc' | 'forks-desc' | 'plugins-desc'
+export type SortOption = 'quality-desc' | 'stars-desc' | 'forks-desc' | 'plugins-desc'
 
 const sortOptions = [
+  {
+    value: 'quality-desc',
+    label: 'Quality',
+    icon: <Sparkles className="mr-2 h-4 w-4" />,
+  },
   {
     value: 'stars-desc',
     label: 'Stars',

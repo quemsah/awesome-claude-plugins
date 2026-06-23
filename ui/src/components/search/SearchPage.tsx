@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useFuzzySearch } from '../../hooks/useFuzzySearch.ts'
+import { compareRepoQuality } from '../../lib/qualityScore.mjs'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { RepoList } from './RepoList.tsx'
 import { SearchControls } from './SearchControls.tsx'
@@ -12,7 +13,7 @@ interface SearchPageProps {
 }
 
 export function SearchPage({ initialRepos }: SearchPageProps) {
-  const [sortOption, setSortOption] = useState<SortOption>('stars-desc')
+  const [sortOption, setSortOption] = useState<SortOption>('quality-desc')
   const [searchTerm, setSearchTerm] = useState('')
 
   const filteredRepos = useFuzzySearch(initialRepos, searchTerm)
@@ -21,6 +22,8 @@ export function SearchPage({ initialRepos }: SearchPageProps) {
     () =>
       [...filteredRepos].sort((a, b) => {
         switch (sortOption) {
+          case 'quality-desc':
+            return compareRepoQuality(a, b)
           case 'stars-desc':
             return (b.stargazers_count ?? 0) - (a.stargazers_count ?? 0)
           case 'forks-desc':
