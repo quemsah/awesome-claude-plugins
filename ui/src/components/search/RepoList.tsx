@@ -6,11 +6,12 @@ import type { SortOption } from './Sort.tsx'
 
 interface RepoListProps {
   hasLoadError: boolean
+  searchTerm: string
   sortedRepos: Repo[]
   sortOption: SortOption
 }
 
-export function RepoList({ hasLoadError, sortedRepos, sortOption }: RepoListProps) {
+export function RepoList({ hasLoadError, searchTerm, sortedRepos, sortOption }: RepoListProps) {
   if (sortedRepos.length > 0) {
     return (
       <div aria-live="polite">
@@ -22,7 +23,11 @@ export function RepoList({ hasLoadError, sortedRepos, sortOption }: RepoListProp
   return (
     <div className="py-8 text-center">
       <p className="text-muted-foreground">
-        {hasLoadError ? 'Failed to load repositories. Please try again later' : 'No repositories match your search'}
+        {hasLoadError
+          ? 'Failed to load repositories. Please try again later'
+          : searchTerm
+            ? 'No repositories match your search across names, descriptions, owners, owner/repo paths, or plugin counts'
+            : 'No repositories match your search'}
       </p>
     </div>
   )

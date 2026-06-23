@@ -1,8 +1,10 @@
 import Fuse from 'fuse.js'
 import type { Repo } from '../schemas/repo.schema.ts'
+import { getRepoSearchFieldValue, searchableRepoFields } from './searchFields.mjs'
 
 export const fuseOptions = {
-  keys: ['repo_name', 'description'],
+  keys: searchableRepoFields,
+  getFn: (repo: Repo, field: string | string[]) => getRepoSearchFieldValue(repo, Array.isArray(field) ? field[0] : field),
   includeScore: true,
   threshold: 0.2,
   ignoreLocation: true,
