@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useFuzzySearch } from '../../hooks/useFuzzySearch.ts'
+import { isVerifiedRepo } from '../../lib/repoVerification.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { RepoList } from './RepoList.tsx'
 import { SearchControls } from './SearchControls.tsx'
@@ -14,8 +15,13 @@ interface SearchPageProps {
 export function SearchPage({ initialRepos }: SearchPageProps) {
   const [sortOption, setSortOption] = useState<SortOption>('stars-desc')
   const [searchTerm, setSearchTerm] = useState('')
+  const [verifiedOnly, setVerifiedOnly] = useState(false)
 
-  const filteredRepos = useFuzzySearch(initialRepos, searchTerm)
+  const searchedRepos = useFuzzySearch(initialRepos, searchTerm)
+  const filteredRepos = useMemo(
+    () => (verifiedOnly ? searchedRepos.filter((repo) => isVerifiedRepo(repo)) : searchedRepos),
+    [searchedRepos, verifiedOnly]
+  )
 
   const sortedRepos = useMemo(
     () =>
@@ -43,8 +49,10 @@ export function SearchPage({ initialRepos }: SearchPageProps) {
         filteredRepoCount={filteredRepos.length}
         onSearchChange={setSearchTerm}
         onSortChange={setSortOption}
+        onVerifiedOnlyChange={setVerifiedOnly}
         searchTerm={searchTerm}
         sortOption={sortOption}
+        verifiedOnly={verifiedOnly}
       />
       <RepoList hasLoadError={initialRepos.length === 0} sortedRepos={sortedRepos} sortOption={sortOption} />
     </>

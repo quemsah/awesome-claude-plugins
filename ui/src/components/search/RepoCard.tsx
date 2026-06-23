@@ -1,9 +1,11 @@
 import { GitFork, Star } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { getRepoVerification } from '../../lib/repoVerification.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { ClaudeIcon } from '../common/ClaudeIcon.tsx'
 import { CopiedIcon } from '../common/CopiedIcon.tsx'
 import { CopyIcon } from '../common/CopyIcon.tsx'
+import { Badge } from '../ui/badge.tsx'
 import { Button } from '../ui/button.tsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card.tsx'
 import { AnimatedGithubIcon } from './AnimatedGithubIcon.tsx'
@@ -24,6 +26,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isCopied, setIsCopied] = useState(false)
   const hasValidRepoInfo = Boolean(repo.owner && repo.repo_name)
+  const verification = getRepoVerification(repo)
 
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true)
@@ -61,6 +64,11 @@ export function RepoCard({ repo, className }: RepoCardProps) {
             {repo.owner}
           </a>
         </CardDescription>
+        <div>
+          <Badge title={verification.description} variant={verification.status === 'verified' ? 'secondary' : 'outline'}>
+            {verification.label}
+          </Badge>
+        </div>
       </CardHeader>
       <CardContent className="flex h-full flex-col">
         <div className="grow">

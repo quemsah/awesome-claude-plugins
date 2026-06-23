@@ -116,7 +116,8 @@ export default function RepoPage({ params }: RouteParams) {
                   </div>
                 ) : (
                   <p aria-live="polite" className="py-4 text-center text-muted-foreground">
-                    No Claude Code plugins found in this repository.
+                    No verified Claude Code marketplace plugins were found in this repository. It may be discovered by catalog signals but
+                    not yet verified as installable marketplace data.
                   </p>
                 )}
               </CardContent>

@@ -11,6 +11,8 @@ interface SearchControlsProps {
   onSearchChange: (value: string) => void
   sortOption: SortOption
   onSortChange: (option: SortOption) => void
+  verifiedOnly: boolean
+  onVerifiedOnlyChange: (value: boolean) => void
   filteredPluginCount: number
   filteredRepoCount: number
 }
@@ -20,6 +22,8 @@ export function SearchControls({
   onSearchChange,
   sortOption,
   onSortChange,
+  verifiedOnly,
+  onVerifiedOnlyChange,
   filteredPluginCount,
   filteredRepoCount,
 }: SearchControlsProps) {
@@ -55,6 +59,15 @@ export function SearchControls({
         <div className="w-full sm:w-auto">
           <Sort onSortChange={onSortChange} sortOption={sortOption} />
         </div>
+        <label className="flex w-full items-center gap-2 text-sm sm:w-auto">
+          <input
+            checked={verifiedOnly}
+            className="h-4 w-4"
+            onChange={(event) => onVerifiedOnlyChange(event.target.checked)}
+            type="checkbox"
+          />
+          <span>Verified only</span>
+        </label>
       </div>
       <div className="text-center text-muted-foreground text-sm md:text-right">
         {`${filteredPluginCount} ${filteredPluginCount === 1 ? 'plugin' : 'plugins'} available across ${filteredRepoCount} ${filteredRepoCount === 1 ? 'repository' : 'repositories'}`}
