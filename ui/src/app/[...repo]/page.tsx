@@ -37,6 +37,9 @@ export default function RepoPage({ params }: RouteParams) {
             </Button>
 
             <div aria-label="Loading repository..." aria-live="polite" role="status">
+              <span className="sr-only">Loading repository...</span>
+            </div>
+            <div aria-hidden="true">
               <RepoInfoCardSkeleton />
               <Card className="mt-8 p-6">
                 <CardHeader className="mb-4 p-0">
@@ -48,7 +51,6 @@ export default function RepoPage({ params }: RouteParams) {
                   <PluginCardSkeleton count={3} />
                 </CardContent>
               </Card>
-              <span className="sr-only">Loading repository...</span>
             </div>
           </div>
         </main>
@@ -100,7 +102,7 @@ export default function RepoPage({ params }: RouteParams) {
               </CardHeader>
               <CardContent className="p-0">
                 {pluginsLoading ? (
-                  <div aria-busy="true" aria-live="polite" className="py-8 text-center">
+                  <div aria-busy="true" aria-live="polite" className="py-8">
                     <PluginCardSkeleton count={3} />
                     <span className="sr-only">Loading plugins...</span>
                   </div>

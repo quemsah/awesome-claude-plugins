@@ -7,9 +7,9 @@ interface PluginCardSkeletonProps {
 
 export function PluginCardSkeleton({ count = 1 }: PluginCardSkeletonProps) {
   return (
-    <div className="space-y-4">
+    <div aria-hidden="true" className="space-y-4">
       {Array.from({ length: count }).map((_, index) => (
-        <Card aria-hidden="true" className="w-full" key={index}>
+        <Card className="w-full" key={index}>
           <CardHeader className="-space-y-2 pb-3">
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-2">
