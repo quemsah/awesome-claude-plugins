@@ -20,8 +20,8 @@ export default function RepoPage({ params }: RouteParams) {
   const resolvedParams = use(params)
   const repoPath = resolvedParams.repo.join('/')
 
-  const { repo, loading, error } = useRepo(repoPath)
-  const { plugins, pluginsLoading, pluginsError } = usePlugins(repo, repoPath)
+  const { repo, loading, error, retry: retryRepo } = useRepo(repoPath)
+  const { plugins, pluginsLoading, pluginsError, manifestStatus, retry: retryPlugins } = usePlugins(repo, repoPath)
 
   if (loading) {
     return (
@@ -63,9 +63,14 @@ export default function RepoPage({ params }: RouteParams) {
       <main className="flex min-h-screen items-center justify-center bg-background">
         <Card className="p-8 text-center">
           <CardHeader>
-            <CardTitle>{error || 'Repository not found'}</CardTitle>
+            <CardTitle>{error?.message || 'Repository not found'}</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {error?.retryable ? (
+              <Button onClick={retryRepo} type="button" variant="outline">
+                Retry
+              </Button>
+            ) : null}
             <Button asChild>
               <Link href="/">
                 <ArrowLeft className="h-4 w-4" />
@@ -93,37 +98,53 @@ export default function RepoPage({ params }: RouteParams) {
 
           <RepoInfoCard repo={repo} />
 
-          {!pluginsError && (
-            <Card className="mt-8 p-6">
-              <CardHeader className="mb-4 p-0">
-                <CardTitle className="text-2xl">
-                  <h2>Available Plugins</h2>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {pluginsLoading ? (
-                  <div aria-busy="true" aria-live="polite" className="py-8">
-                    <PluginCardSkeleton count={3} />
-                    <span className="sr-only">Loading plugins...</span>
-                  </div>
-                ) : plugins.length > 0 ? (
-                  <div aria-atomic="true" aria-live="polite" className="space-y-4">
-                    {plugins.map((plugin, index) => (
-                      <article key={`${plugin.id || ''}-${plugin.name || ''}-${index}`}>
-                        <PluginCard plugin={plugin} repo={repo} repoPath={repoPath} />
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <p aria-live="polite" className="py-4 text-center text-muted-foreground">
-                    No Claude Code plugins found in this repository.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          )}
+          <Card className="mt-8 p-6">
+            <CardHeader className="mb-4 p-0">
+              <CardTitle className="text-2xl">
+                <h2>Available Plugins</h2>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {pluginsLoading ? (
+                <div aria-busy="true" aria-live="polite" className="py-8">
+                  <PluginCardSkeleton count={3} />
+                  <span className="sr-only">Loading plugins...</span>
+                </div>
+              ) : null}
+              {!pluginsLoading && pluginsError ? <PluginErrorMessage error={pluginsError} onRetry={retryPlugins} /> : null}
+              {!(pluginsLoading || pluginsError) && plugins.length > 0 ? (
+                <div aria-atomic="true" aria-live="polite" className="space-y-4">
+                  {plugins.map((plugin, index) => (
+                    <article key={`${plugin.id || ''}-${plugin.name || ''}-${index}`}>
+                      <PluginCard plugin={plugin} repo={repo} repoPath={repoPath} />
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+              {!(pluginsLoading || pluginsError) && plugins.length === 0 ? (
+                <p aria-live="polite" className="py-4 text-center text-muted-foreground">
+                  {manifestStatus === 'missing'
+                    ? 'No marketplace manifest was found for this repository.'
+                    : 'No Claude Code plugins found in this repository.'}
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
         </div>
       </main>
     </>
+  )
+}
+
+function PluginErrorMessage({ error, onRetry }: { error: { message: string; retryable: boolean }; onRetry: () => void }) {
+  return (
+    <div className="space-y-3 py-4 text-center">
+      <p className="text-muted-foreground">{error.message}</p>
+      {error.retryable ? (
+        <Button onClick={onRetry} type="button" variant="outline">
+          Retry
+        </Button>
+      ) : null}
+    </div>
   )
 }
