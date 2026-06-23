@@ -6,6 +6,12 @@ import { useDebouncedCallback } from 'use-debounce'
 import { Input } from '../ui/input.tsx'
 import { Sort, type SortOption } from './Sort.tsx'
 
+interface FacetOption {
+  value: string
+  label: string
+  count: number
+}
+
 interface SearchControlsProps {
   searchTerm: string
   onSearchChange: (value: string) => void
@@ -13,6 +19,23 @@ interface SearchControlsProps {
   onSortChange: (option: SortOption) => void
   filteredPluginCount: number
   filteredRepoCount: number
+  categoryFilter: string
+  categoryOptions: FacetOption[]
+  hasActiveFilters: boolean
+  keywordFilter: string
+  keywordOptions: FacetOption[]
+  verificationFilter: string
+  verificationOptions: FacetOption[]
+  lifecycleFilter: string
+  lifecycleOptions: FacetOption[]
+  languageFilter: string
+  languageOptions: FacetOption[]
+  onCategoryChange: (value: string) => void
+  onClearFilters: () => void
+  onKeywordChange: (value: string) => void
+  onVerificationChange: (value: string) => void
+  onLifecycleChange: (value: string) => void
+  onLanguageChange: (value: string) => void
 }
 
 export function SearchControls({
@@ -22,6 +45,23 @@ export function SearchControls({
   onSortChange,
   filteredPluginCount,
   filteredRepoCount,
+  categoryFilter,
+  categoryOptions,
+  hasActiveFilters,
+  keywordFilter,
+  keywordOptions,
+  verificationFilter,
+  verificationOptions,
+  lifecycleFilter,
+  lifecycleOptions,
+  languageFilter,
+  languageOptions,
+  onCategoryChange,
+  onClearFilters,
+  onKeywordChange,
+  onVerificationChange,
+  onLifecycleChange,
+  onLanguageChange,
 }: SearchControlsProps) {
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm)
 
@@ -55,6 +95,80 @@ export function SearchControls({
         <div className="w-full sm:w-auto">
           <Sort onSortChange={onSortChange} sortOption={sortOption} />
         </div>
+        <select
+          aria-label="Filter by category"
+          className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs sm:w-56"
+          onChange={(event) => onCategoryChange(event.target.value)}
+          value={categoryFilter}
+        >
+          <option value="">All categories</option>
+          {categoryOptions.map((option) => (
+            <option disabled={option.count === 0} key={option.value} value={option.value}>
+              {option.label} ({option.count})
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Filter by keyword"
+          className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs sm:w-44"
+          onChange={(event) => onKeywordChange(event.target.value)}
+          value={keywordFilter}
+        >
+          <option value="">All keywords</option>
+          {keywordOptions.map((option) => (
+            <option disabled={option.count === 0} key={option.value} value={option.value}>
+              {option.label} ({option.count})
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Filter by verification status"
+          className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs sm:w-40"
+          onChange={(event) => onVerificationChange(event.target.value)}
+          value={verificationFilter}
+        >
+          <option value="">All statuses</option>
+          {verificationOptions.map((option) => (
+            <option disabled={option.count === 0} key={option.value} value={option.value}>
+              {option.label} ({option.count})
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Filter by lifecycle state"
+          className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs sm:w-36"
+          onChange={(event) => onLifecycleChange(event.target.value)}
+          value={lifecycleFilter}
+        >
+          <option value="">All lifecycle</option>
+          {lifecycleOptions.map((option) => (
+            <option disabled={option.count === 0} key={option.value} value={option.value}>
+              {option.label} ({option.count})
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Filter by language"
+          className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs sm:w-40"
+          onChange={(event) => onLanguageChange(event.target.value)}
+          value={languageFilter}
+        >
+          <option value="">All languages</option>
+          {languageOptions.map((option) => (
+            <option disabled={option.count === 0} key={option.value} value={option.value}>
+              {option.label} ({option.count})
+            </option>
+          ))}
+        </select>
+        {hasActiveFilters ? (
+          <button
+            className="text-muted-foreground text-sm underline-offset-4 hover:text-foreground hover:underline"
+            onClick={onClearFilters}
+            type="button"
+          >
+            Clear filters
+          </button>
+        ) : null}
       </div>
       <div className="text-center text-muted-foreground text-sm md:text-right">
         {`${filteredPluginCount} ${filteredPluginCount === 1 ? 'plugin' : 'plugins'} available across ${filteredRepoCount} ${filteredRepoCount === 1 ? 'repository' : 'repositories'}`}

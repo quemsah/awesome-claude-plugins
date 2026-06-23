@@ -19,8 +19,9 @@ const qHelloRegex = /\?q=hello$/
 const sortOptionForksRegex = /Forks/
 const _sortOptionPluginsRegex = /Plugins/
 const sortOptionStarsRegex = /Stars/
+const _sortOptionQualityRegex = /Quality/
 
-async function chooseSortOption(page: Page, optionName: 'Stars' | 'Forks' | 'Plugins') {
+async function chooseSortOption(page: Page, optionName: 'Stars' | 'Forks' | 'Plugins' | 'Quality') {
   await page.getByRole('combobox', { name: 'Sort by' }).click()
   await page.getByRole('option', { name: optionName }).click()
 }
@@ -28,6 +29,79 @@ async function chooseSortOption(page: Page, optionName: 'Stars' | 'Forks' | 'Plu
 async function expectFirstDetailsLink(page: Page, repoPath: string) {
   await expect(page.getByRole('link', { name: detailsLinkName }).first()).toHaveAttribute('aria-label', `View details for ${repoPath}`)
 }
+
+test('home page filter by category updates selected value', async ({ page }) => {
+  await page.goto('/')
+  await page.selectOption('[aria-label="Filter by category"]', 'skills-prompts')
+  await expect(page.getByRole('combobox', { name: 'Filter by category' })).toHaveValue('skills-prompts')
+  await page.getByRole('button', { name: 'Clear filters' }).click()
+  await expect(page.getByRole('combobox', { name: 'Filter by category' })).toHaveValue('')
+})
+
+test('home page filter by keyword updates selected value', async ({ page }) => {
+  await page.goto('/')
+  await page.selectOption('[aria-label="Filter by keyword"]', 'review')
+  await expect(page.getByRole('combobox', { name: 'Filter by keyword' })).toHaveValue('review')
+  await page.getByRole('button', { name: 'Clear filters' }).click()
+  await expect(page.getByRole('combobox', { name: 'Filter by keyword' })).toHaveValue('')
+})
+
+test('home page clear filters resets all dropdowns', async ({ page }) => {
+  await page.goto('/')
+  await page.selectOption('[aria-label="Filter by category"]', 'design-content')
+  await expect(page.getByRole('combobox', { name: 'Filter by category' })).toHaveValue('design-content')
+
+  await page.getByRole('button', { name: 'Clear filters' }).click()
+  await expect(page.getByRole('combobox', { name: 'Filter by category' })).toHaveValue('')
+})
+
+test('home page filter by verification status updates selected value', async ({ page }) => {
+  await page.goto('/')
+  await page.selectOption('[aria-label="Filter by verification status"]', 'verified')
+  await expect(page.getByRole('combobox', { name: 'Filter by verification status' })).toHaveValue('verified')
+  await page.getByRole('button', { name: 'Clear filters' }).click()
+  await expect(page.getByRole('combobox', { name: 'Filter by verification status' })).toHaveValue('')
+})
+
+test('home page filter by lifecycle state updates selected value', async ({ page }) => {
+  await page.goto('/')
+  await page.selectOption('[aria-label="Filter by lifecycle state"]', 'active')
+  await expect(page.getByRole('combobox', { name: 'Filter by lifecycle state' })).toHaveValue('active')
+  await page.getByRole('button', { name: 'Clear filters' }).click()
+  await expect(page.getByRole('combobox', { name: 'Filter by lifecycle state' })).toHaveValue('')
+})
+
+test('home page filter by language updates selected value', async ({ page }) => {
+  await page.goto('/')
+  await page.selectOption('[aria-label="Filter by language"]', 'JavaScript')
+  await expect(page.getByRole('combobox', { name: 'Filter by language' })).toHaveValue('JavaScript')
+  await page.getByRole('button', { name: 'Clear filters' }).click()
+  await expect(page.getByRole('combobox', { name: 'Filter by language' })).toHaveValue('')
+})
+
+test('home page quality sort mode reorders repositories', async ({ page }) => {
+  await page.goto('/')
+
+  await expectFirstDetailsLink(page, 'obra/superpowers')
+
+  await chooseSortOption(page, 'Quality')
+
+  await expect(page.getByRole('link', { name: detailsLinkName }).first()).toBeVisible()
+})
+
+test('home page multiple filters can be combined and cleared', async ({ page }) => {
+  await page.goto('/')
+
+  await page.selectOption('[aria-label="Filter by verification status"]', 'verified')
+  await page.selectOption('[aria-label="Filter by lifecycle state"]', 'active')
+
+  await expect(page.getByRole('combobox', { name: 'Filter by verification status' })).toHaveValue('verified')
+  await expect(page.getByRole('combobox', { name: 'Filter by lifecycle state' })).toHaveValue('active')
+
+  await page.getByRole('button', { name: 'Clear filters' }).click()
+  await expect(page.getByRole('combobox', { name: 'Filter by verification status' })).toHaveValue('')
+  await expect(page.getByRole('combobox', { name: 'Filter by lifecycle state' })).toHaveValue('')
+})
 
 test('header navigation, external actions, and theme selection work across routes', async ({ page }) => {
   await page.goto('/')
