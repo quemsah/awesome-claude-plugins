@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Repo } from '../../schemas/repo.schema.ts'
+import { Button } from '../ui/button.tsx'
 import { RepoCard } from './RepoCard.tsx'
 import type { SortOption } from './Sort.tsx'
 
@@ -14,15 +15,33 @@ const ITEMS_PER_BATCH = 24
 
 export function InfiniteRepoGrid({ items, sortOption: _sortOption }: InfiniteRepoGridProps) {
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_BATCH)
+  const [loadAnnouncement, setLoadAnnouncement] = useState('')
   const observerTarget = useRef<HTMLDivElement>(null)
+  const visibleCountRef = useRef(ITEMS_PER_BATCH)
+
+  useEffect(() => {
+    visibleCountRef.current = visibleCount
+  }, [visibleCount])
+
+  const loadMore = useCallback(() => {
+    const previousVisibleCount = visibleCountRef.current
+    const nextVisibleCount = Math.min(previousVisibleCount + ITEMS_PER_BATCH, items.length)
+    const loadedCount = nextVisibleCount - previousVisibleCount
+
+    if (loadedCount <= 0) return
+
+    visibleCountRef.current = nextVisibleCount
+    setVisibleCount(nextVisibleCount)
+    setLoadAnnouncement(`${loadedCount} more repositories loaded. ${nextVisibleCount} of ${items.length} repositories are visible.`)
+  }, [items.length])
 
   const handleIntersection = useCallback(
     (entries: IntersectionObserverEntry[]) => {
       if (entries[0].isIntersecting) {
-        setVisibleCount((prev) => Math.min(prev + ITEMS_PER_BATCH, items.length))
+        loadMore()
       }
     },
-    [items.length]
+    [loadMore]
   )
 
   useEffect(() => {
@@ -51,11 +70,17 @@ export function InfiniteRepoGrid({ items, sortOption: _sortOption }: InfiniteRep
         ))}
       </ul>
 
-      {visibleCount < items.length && (
-        <div className="flex h-20 w-full items-center justify-center text-muted-foreground text-sm" ref={observerTarget}>
-          Loading more repositories...
+      <p aria-live="polite" className="sr-only" id="load-more-status">
+        {loadAnnouncement}
+      </p>
+
+      {visibleCount < items.length ? (
+        <div className="flex h-20 w-full items-center justify-center" ref={observerTarget}>
+          <Button aria-describedby="load-more-status" onClick={loadMore} type="button" variant="outline">
+            Load more repositories
+          </Button>
         </div>
-      )}
+      ) : null}
     </section>
   )
 }
