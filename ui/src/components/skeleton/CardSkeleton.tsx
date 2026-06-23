@@ -7,7 +7,7 @@ interface CardSkeletonProps {
 
 export function CardSkeleton({ count = 1 }: CardSkeletonProps) {
   return (
-    <>
+    <div className="space-y-4">
       {Array.from({ length: count }).map((_, index) => (
         <Card className="w-full p-0" key={index}>
           <CardContent className="space-y-3 p-6">
@@ -44,6 +44,6 @@ export function CardSkeleton({ count = 1 }: CardSkeletonProps) {
           </CardContent>
         </Card>
       ))}
-    </>
+    </div>
   )
 }
