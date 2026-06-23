@@ -1,20 +1,17 @@
 import { useState } from 'react'
+import { getInstallCommand } from '../lib/installCommand.ts'
 
 export function useInstallCommand(pluginName?: string, pluginId?: string, repoPath?: string) {
   const [isCopied, setIsCopied] = useState(false)
 
-  const getInstallCommand = () => {
-    const normalizedName = pluginName?.toLowerCase().replace(/\s+/g, '-') || ''
-    const suffix = pluginId ? `@${pluginId}` : repoPath ? `@${repoPath.replace('/', '-')}` : ''
-    return `/plugin install ${normalizedName}${suffix}`
-  }
+  const getCommand = () => getInstallCommand(pluginName, pluginId, repoPath)
 
   const handleCopyClick = () => {
-    const command = getInstallCommand()
+    const command = getCommand()
     navigator.clipboard.writeText(command)
     setIsCopied(true)
     setTimeout(() => setIsCopied(false), 500)
   }
 
-  return { getInstallCommand, handleCopyClick, isCopied }
+  return { getInstallCommand: getCommand, handleCopyClick, isCopied }
 }
