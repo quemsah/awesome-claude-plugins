@@ -10,6 +10,7 @@
     "build": "next build",
     "build:analyze": "ANALYZE=true next build",
     "start": "next start",
+    "catalog:diff": "node scripts/catalog-update-summary.mjs",
     "style": "biome check --write --unsafe ."
   },
   "dependencies": {
