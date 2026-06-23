@@ -38,6 +38,9 @@ export const metadata: Metadata = {
     description: 'Explore Claude Code plugin adoption statistics, repository growth trends and usage patterns across GitHub',
     images: ['/android-chrome-512x512.png'],
   },
+  alternates: {
+    canonical: `${BASE_URL}/stats`,
+  },
 }
 
 export default function StatsLayout({ children }: { children: React.ReactNode }) {

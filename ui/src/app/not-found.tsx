@@ -1,6 +1,8 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Button } from '../components/ui/button.tsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card.tsx'
+import { BASE_URL } from '../lib/constants.ts'
 
 export default function NotFound() {
   return (
@@ -25,7 +27,10 @@ export default function NotFound() {
   )
 }
 
-export const metadata = {
+export const metadata: Metadata = {
   title: '404 - Page Not Found | Awesome Claude Plugins',
   description: 'The page you are looking for could not be found',
+  alternates: {
+    canonical: BASE_URL,
+  },
 }

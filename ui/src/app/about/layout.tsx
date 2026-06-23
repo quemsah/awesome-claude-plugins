@@ -39,6 +39,9 @@ export const metadata: Metadata = {
       'A daily-updated directory of Claude Code plugins and tools, inspired by the awesome list movement. Automated discovery using n8n workflows scanning GitHub daily.',
     images: ['/android-chrome-512x512.png'],
   },
+  alternates: {
+    canonical: `${BASE_URL}/about`,
+  },
 }
 
 export default function AboutLayout({ children }: { children: React.ReactNode }) {

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { BASE_URL } from '../../lib/constants.ts'
 
 type Props = {
   params: Promise<{ repo: string[] }>
@@ -7,6 +8,7 @@ type Props = {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { repo } = await params
   const repoName = repo.join('/')
+  const canonicalUrl = `${BASE_URL}/${repo.map(encodeURIComponent).join('/')}`
 
   return {
     title: `${repoName}`,
@@ -29,6 +31,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     openGraph: {
       title: `${repoName}`,
       description: `Explore ${repoName} repository with Claude Code plugins, MCP servers, and agent skills. View plugin adoption metrics, AI development tools, and automated workflow integrations`,
+      url: canonicalUrl,
       type: 'website',
       images: [
         {
@@ -44,6 +47,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title: `${repoName}`,
       description: `Explore ${repoName} repository with Claude Code plugins, MCP servers, and agent skills. View plugin adoption metrics, AI development tools, and automated workflow integrations`,
       images: ['/android-chrome-512x512.png'],
+    },
+    alternates: {
+      canonical: canonicalUrl,
     },
   }
 }
