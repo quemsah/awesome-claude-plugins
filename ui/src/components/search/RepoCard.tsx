@@ -1,5 +1,6 @@
 import { GitFork, Star } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { getMarketplaceAddCommand } from '../../lib/installCommand.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { ClaudeIcon } from '../common/ClaudeIcon.tsx'
 import { CopiedIcon } from '../common/CopiedIcon.tsx'
@@ -23,7 +24,8 @@ interface RepoCardProps {
 export function RepoCard({ repo, className }: RepoCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isCopied, setIsCopied] = useState(false)
-  const hasValidRepoInfo = Boolean(repo.owner && repo.repo_name)
+  const marketplaceCommand = useMemo(() => getMarketplaceAddCommand(repo.owner, repo.repo_name), [repo.owner, repo.repo_name])
+  const hasValidRepoInfo = Boolean(marketplaceCommand)
 
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true)
@@ -33,15 +35,13 @@ export function RepoCard({ repo, className }: RepoCardProps) {
     setIsHovered(false)
   }, [])
 
-  const marketplaceCommand = useMemo(() => `/plugin marketplace add ${repo.owner}/${repo.repo_name}`, [repo.owner, repo.repo_name])
-
   const handleCopyClick = useCallback(() => {
-    if (repo.owner && repo.repo_name) {
+    if (marketplaceCommand) {
       navigator.clipboard.writeText(marketplaceCommand)
       setIsCopied(true)
       setTimeout(() => setIsCopied(false), 500)
     }
-  }, [marketplaceCommand, repo.owner, repo.repo_name])
+  }, [marketplaceCommand])
 
   if (!repo.repo_name) return null
 

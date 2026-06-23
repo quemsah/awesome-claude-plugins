@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "validate:data": "node scripts/validate-data.mjs",
     "test:e2e": "playwright test",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.mjs",
     "style": "biome check --write --unsafe ."
   },
   "dependencies": {
