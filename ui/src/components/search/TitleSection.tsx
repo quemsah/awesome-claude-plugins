@@ -1,18 +1,15 @@
-import statsData from '../../data/stats.json' with { type: 'json' }
+import catalogMetaData from '../../data/catalog-meta.json' with { type: 'json' }
 import { formatDate } from '../../lib/utils.ts'
-import { StatsItemSchema } from '../../schemas/stats.schema.ts'
+import { CatalogMetaSchema } from '../../schemas/catalog-meta.schema.ts'
 
 export function TitleSection() {
   let lastUpdated: string | null = null
 
-  if (Array.isArray(statsData) && statsData.length > 0) {
-    const lastEntryRaw = statsData[statsData.length - 1]
-    const validationResult = StatsItemSchema.safeParse(lastEntryRaw)
+  const validationResult = CatalogMetaSchema.safeParse(catalogMetaData)
 
-    if (validationResult.success) {
-      const date = new Date(validationResult.data.date)
-      lastUpdated = formatDate(date)
-    }
+  if (validationResult.success) {
+    const date = new Date(validationResult.data.generated_at)
+    lastUpdated = formatDate(date)
   }
 
   return (

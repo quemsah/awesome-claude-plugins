@@ -1,7 +1,9 @@
 /** biome-ignore-all lint/style/useNamingConvention: <n8n> */
 import type { MetadataRoute } from 'next'
+import catalogMetaData from '../data/catalog-meta.json' with { type: 'json' }
 import reposData from '../data/repos.json' with { type: 'json' }
 import { BASE_URL } from '../lib/constants.ts'
+import { CatalogMetaSchema } from '../schemas/catalog-meta.schema.ts'
 import type { Repo } from '../schemas/repo.schema.ts'
 import { ReposArraySchema } from '../schemas/repo.schema.ts'
 
@@ -10,7 +12,8 @@ function isValidRepo(repo: Repo): repo is Repo & { owner: string; repo_name: str
 }
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const now = new Date()
+  const catalogMetaResult = CatalogMetaSchema.safeParse(catalogMetaData)
+  const lastModified = catalogMetaResult.success ? new Date(catalogMetaResult.data.generated_at) : new Date()
   let repos: (Repo & { owner: string; repo_name: string })[] = []
 
   try {
@@ -26,7 +29,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   const repoUrls: MetadataRoute.Sitemap = repos.map((repo) => ({
     url: `${BASE_URL}/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo_name)}`,
-    lastModified: now,
+    lastModified,
     changeFrequency: 'weekly',
     priority: 0.5,
   }))
@@ -34,19 +37,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return [
     {
       url: `${BASE_URL}/`,
-      lastModified: now,
+      lastModified,
       changeFrequency: 'daily',
       priority: 1.0,
     },
     {
       url: `${BASE_URL}/stats`,
-      lastModified: now,
+      lastModified,
       changeFrequency: 'weekly',
       priority: 0.9,
     },
     {
       url: `${BASE_URL}/about`,
-      lastModified: now,
+      lastModified,
       changeFrequency: 'weekly',
       priority: 0.8,
     },

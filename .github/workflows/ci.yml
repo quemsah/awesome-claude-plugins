@@ -31,3 +31,7 @@ jobs:
       - name: Run linter
         run: npm run style
         working-directory: ui
+
+      - name: Validate catalog metadata
+        run: npm run validate:meta
+        working-directory: ui

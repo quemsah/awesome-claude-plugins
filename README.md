@@ -1,6 +1,6 @@
 # Awesome Claude Code Plugins: Top 100 Repositories
 
-> Last updated: 22.06.2026 with 23121 total repositories indexed.
+> Last updated: 22.06.2026 with 23121 total repositories indexed. Catalog provenance is recorded in `ui/src/data/catalog-meta.json`.
 
 | # | Repo Name | Description | Stars | Subs | Plugins |
 |---|-----------|-------------|-------|-------------|---------|

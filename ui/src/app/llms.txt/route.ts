@@ -1,11 +1,22 @@
+import catalogMetaData from '../../data/catalog-meta.json' with { type: 'json' }
+import { CatalogMetaSchema } from '../../schemas/catalog-meta.schema.ts'
+
 export const dynamic = 'force-static'
 
 export function GET() {
+  const catalogMetaResult = CatalogMetaSchema.safeParse(catalogMetaData)
+  const catalogMeta = catalogMetaResult.success ? catalogMetaResult.data : null
+  const repositoryCount = catalogMeta?.repository_count.toLocaleString('en-US') ?? 'the indexed'
+  const pluginCount = catalogMeta?.plugin_count.toLocaleString('en-US') ?? 'available'
+  const generatedAt = catalogMeta ? new Date(catalogMeta.generated_at).toISOString().split('T')[0] : 'unknown'
+
   const llmsContent = `# Awesome Claude Plugins
 
 > A comprehensive directory of Claude AI plugins that helps developers discover, evaluate, and integrate high-quality plugins for their AI applications.
 
 This website provides a curated collection of Claude plugins with advanced search capabilities, performance metrics, and seamless integration workflows to enhance AI development productivity.
+
+Current catalog snapshot: ${repositoryCount} repositories, ${pluginCount} plugins, generated on ${generatedAt}.
 
 ## About This Website
 
@@ -47,7 +58,7 @@ This website provides a curated collection of Claude plugins with advanced searc
 
 ## Content Updates
 
-This website is updated regularly with new plugins, performance data, and documentation. Major updates occur weekly, while minor updates may happen daily.
+This website is updated regularly with new plugins and repository data. The current machine-readable catalog provenance is stored in \`ui/src/data/catalog-meta.json\`.
 
 ## Contact & Support
 

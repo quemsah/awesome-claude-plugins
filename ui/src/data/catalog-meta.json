@@ -1,0 +1,29 @@
+{
+  "generated_at": "2026-06-22T06:06:29.505Z",
+  "source_version": "n8n-github-discovery-v1",
+  "discovery_query_version": "claude-plugin-catalog-v1",
+  "repository_count": 23121,
+  "plugin_count": 62194,
+  "validation_status": "passed_with_known_anomalies",
+  "validation_summary": {
+    "checked_at": "2026-06-22T06:06:29.505Z",
+    "repository_count_matches_latest_stats": true,
+    "known_anomalies": [
+      {
+        "name": "repositoriesWithNullPluginCount",
+        "count": 247,
+        "reason": "Legacy discovered repository rows that have not had plugin counts backfilled yet."
+      },
+      {
+        "name": "repositoriesWithUntrimmedDescriptions",
+        "count": 341,
+        "reason": "Existing generated descriptions contain source whitespace that should be cleaned in the ingestion pipeline."
+      },
+      {
+        "name": "caseInsensitiveRepositoryCollisions",
+        "count": 21,
+        "reason": "Existing catalog contains case-only owner/repo collisions that need canonicalization."
+      }
+    ]
+  }
+}
