@@ -12,8 +12,7 @@ export function generateMetadata(): Metadata {
       default: 'Awesome Claude Plugins',
       template: '%s | Awesome Claude Plugins',
     },
-    description:
-      'Explore the ultimate collection of Claude Code plugins. Discover powerful AI tools, extensions, and integrations across GitHub repositories',
+    description: 'Explore a generated catalog of GitHub repositories related to Claude Code plugins, MCP servers, and agent skills',
     keywords: [
       'Claude Code plugins',
       'Claude AI tools',
@@ -21,12 +20,12 @@ export function generateMetadata(): Metadata {
       'Claude Code extensions',
       'AI coding agents',
       'MCP servers',
-      'Claude skills marketplace',
+      'Claude skills catalog',
       'GitHub plugin repositories',
       'Automated plugin discovery',
       'AI development tools',
       'Multi-agent orchestration',
-      'Claude Code marketplace',
+      'Claude Code plugin catalog',
       'Agent skills',
       'Coding automation',
       'AI plugin directory',
@@ -59,8 +58,7 @@ export function generateMetadata(): Metadata {
       locale: 'en_US',
       url: BASE_URL,
       title: 'Awesome Claude Plugins',
-      description:
-        'Explore the ultimate collection of Claude Code plugins. Discover powerful AI tools, extensions, and integrations across GitHub repositories',
+      description: 'Explore a generated catalog of GitHub repositories related to Claude Code plugins, MCP servers, and agent skills',
       siteName: 'Awesome Claude Plugins',
       images: [
         {
@@ -74,8 +72,7 @@ export function generateMetadata(): Metadata {
     twitter: {
       card: 'summary_large_image',
       title: 'Awesome Claude Plugins | AI Development Tools',
-      description:
-        'Discover powerful plugins, extensions, and tools for Claude AI. Browse curated collections and boost your development workflow',
+      description: 'Browse generated repository listings and catalog statistics for Claude Code plugin-related projects',
       creator: '@awesome_claude_plugins',
       images: ['/android-chrome-512x512.png'],
     },

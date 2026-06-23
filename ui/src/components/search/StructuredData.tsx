@@ -12,8 +12,7 @@ export default function StructuredData({ repos }: StructuredDataProps) {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     name: 'Awesome Claude Plugins',
-    description:
-      'Discover GitHub repositories that have adopted Claude Code plugins. Browse repositories by stars, forks, and plugin count',
+    description: 'Search a generated catalog of GitHub repositories related to Claude Code plugins, MCP servers, and agent skills',
     url: BASE_URL,
     publisher: {
       '@type': 'Organization',
@@ -25,6 +24,7 @@ export default function StructuredData({ repos }: StructuredDataProps) {
   const itemList = {
     '@context': 'https://schema.org',
     '@type': 'ItemList',
+    numberOfItems: repos.length,
     itemListElement: repos.slice(0, 16).map((repo, index) => ({
       '@type': 'ListItem',
       position: index + 1,
@@ -39,8 +39,7 @@ export default function StructuredData({ repos }: StructuredDataProps) {
     '@type': 'SoftwareApplication',
     name: 'Awesome Claude Plugins',
     applicationCategory: 'DeveloperApplication',
-    description:
-      'Directory of GitHub repositories that have adopted Claude Code plugins, showcasing plugin adoption across the developer ecosystem',
+    description: 'Generated web catalog for browsing GitHub repositories related to Claude Code plugins, MCP servers, and agent skills',
     operatingSystem: 'Web',
     offers: {
       '@type': 'Offer',
@@ -50,16 +49,13 @@ export default function StructuredData({ repos }: StructuredDataProps) {
       url: BASE_URL,
     },
     featureList: [
-      'Claude Code plugin adoption tracking',
-      'MCP server discovery',
-      'Agent skills marketplace',
-      'AI-powered repository browsing',
-      'Advanced search functionality',
-      'Multi-criteria sorting options',
-      'Comprehensive statistics tracking',
-      'Plugin adoption growth analytics',
-      'Automated workflow monitoring',
-      'GitHub integration metrics',
+      'Repository catalog browsing',
+      'Client-side repository search',
+      'Sorting by stars, forks, and plugin count',
+      'Copyable Claude plugin marketplace install commands',
+      'Repository detail pages linked to GitHub data',
+      'Historical repository count statistics',
+      'Machine-readable llms.txt and JSON-LD metadata',
     ],
     applicationSubCategory: 'AI Development Analytics',
     softwareVersion: '1.0',
