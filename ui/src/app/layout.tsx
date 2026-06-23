@@ -27,6 +27,8 @@ export function generateMetadata(): Metadata {
       'AI development tools',
       'Multi-agent orchestration',
       'Claude Code marketplace',
+      'Claude skills catalog',
+      'Claude Code plugin catalog',
       'Agent skills',
       'Coding automation',
       'AI plugin directory',
