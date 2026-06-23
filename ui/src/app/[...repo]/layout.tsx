@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import { findCatalogRepo, getRepoCanonicalPath } from '../../lib/catalog.ts'
+import { BASE_URL } from '../../lib/constants.ts'
 
 type Props = {
   params: Promise<{ repo: string[] }>
@@ -7,10 +9,17 @@ type Props = {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { repo } = await params
   const repoName = repo.join('/')
+  const catalogRepo = findCatalogRepo(repoName)
+  const title = catalogRepo ? `${catalogRepo.owner}/${catalogRepo.repo_name}` : repoName
+  const description =
+    catalogRepo?.description ??
+    `Explore ${title} repository with Claude Code plugins, MCP servers, and agent skills. View plugin adoption metrics, AI development tools, and automated workflow integrations`
+  const canonicalPath = catalogRepo ? getRepoCanonicalPath(catalogRepo) : repo.map(encodeURIComponent).join('/')
+  const canonicalUrl = `${BASE_URL}/${canonicalPath}`
 
   return {
-    title: `${repoName}`,
-    description: `Explore ${repoName} repository with Claude Code plugins, MCP servers, and agent skills. View plugin adoption metrics, AI development tools, and automated workflow integrations`,
+    title,
+    description,
     keywords: [
       'Claude Code plugins',
       'GitHub repository',
@@ -22,28 +31,32 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       'AI development tools',
       'Claude Code integration',
       'Automated workflows',
-      repoName,
-      `${repoName} plugins`,
-      `${repoName} Claude Code`,
+      title,
+      `${title} plugins`,
+      `${title} Claude Code`,
     ],
     openGraph: {
-      title: `${repoName}`,
-      description: `Explore ${repoName} repository with Claude Code plugins, MCP servers, and agent skills. View plugin adoption metrics, AI development tools, and automated workflow integrations`,
+      title,
+      description,
+      url: canonicalUrl,
       type: 'website',
       images: [
         {
           url: '/android-chrome-512x512.png',
           width: 512,
           height: 512,
-          alt: repoName,
+          alt: title,
         },
       ],
     },
     twitter: {
       card: 'summary_large_image',
-      title: `${repoName}`,
-      description: `Explore ${repoName} repository with Claude Code plugins, MCP servers, and agent skills. View plugin adoption metrics, AI development tools, and automated workflow integrations`,
+      title,
+      description,
       images: ['/android-chrome-512x512.png'],
+    },
+    alternates: {
+      canonical: canonicalUrl,
     },
   }
 }

@@ -1,52 +1,35 @@
 /** biome-ignore-all lint/style/useNamingConvention: <n8n> */
 import type { MetadataRoute } from 'next'
-import reposData from '../data/repos.json' with { type: 'json' }
+import { getCatalogLastModified, getCatalogRepos, getRepoCanonicalPath, getRepoSitemapPriority } from '../lib/catalog.ts'
 import { BASE_URL } from '../lib/constants.ts'
-import type { Repo } from '../schemas/repo.schema.ts'
-import { ReposArraySchema } from '../schemas/repo.schema.ts'
-
-function isValidRepo(repo: Repo): repo is Repo & { owner: string; repo_name: string } {
-  return repo.owner !== null && repo.repo_name !== null
-}
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const now = new Date()
-  let repos: (Repo & { owner: string; repo_name: string })[] = []
-
-  try {
-    const validationResult = ReposArraySchema.safeParse(reposData)
-    if (validationResult.success) {
-      repos = validationResult.data.filter(isValidRepo) as (Repo & { owner: string; repo_name: string })[]
-    } else {
-      console.error('Failed to validate repositories for sitemap:', validationResult.error)
-    }
-  } catch (error) {
-    console.error('Failed to load repositories for sitemap:', error)
-  }
+  const catalogLastModified = getCatalogLastModified()
+  const repos = getCatalogRepos()
 
   const repoUrls: MetadataRoute.Sitemap = repos.map((repo) => ({
-    url: `${BASE_URL}/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo_name)}`,
-    lastModified: now,
-    changeFrequency: 'weekly',
-    priority: 0.5,
+    url: `${BASE_URL}/${getRepoCanonicalPath(repo)}`,
+    lastModified: catalogLastModified,
+    changeFrequency: repo.plugins_count === null ? 'monthly' : 'weekly',
+    priority: getRepoSitemapPriority(repo),
   }))
 
   return [
     {
       url: `${BASE_URL}/`,
-      lastModified: now,
+      lastModified: catalogLastModified,
       changeFrequency: 'daily',
       priority: 1.0,
     },
     {
       url: `${BASE_URL}/stats`,
-      lastModified: now,
+      lastModified: catalogLastModified,
       changeFrequency: 'weekly',
       priority: 0.9,
     },
     {
       url: `${BASE_URL}/about`,
-      lastModified: now,
+      lastModified: catalogLastModified,
       changeFrequency: 'weekly',
       priority: 0.8,
     },
