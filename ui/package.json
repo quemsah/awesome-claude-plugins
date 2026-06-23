@@ -9,7 +9,12 @@
     "dev": "next dev",
     "build": "next build",
     "build:analyze": "ANALYZE=true next build",
+    "lint": "biome check .",
     "start": "next start",
+    "test": "node --test tests/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "validate:data": "node scripts/validate-catalog.mjs",
+    "verify": "npm run validate:data && npm run lint && npm run typecheck && npm test && npm run build",
     "style": "biome check --write --unsafe ."
   },
   "dependencies": {

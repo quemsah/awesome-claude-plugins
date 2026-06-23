@@ -1,9 +1,9 @@
-name: CI
+name: Deploy
+
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   verify:
@@ -47,3 +47,13 @@ jobs:
       - name: Build production app
         run: npm run build
         working-directory: ui
+
+  production-ready:
+    name: production-ready
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Mark verified production candidate
+        run: echo "Production deployment may proceed for this verified commit."

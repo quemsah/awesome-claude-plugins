@@ -6,8 +6,10 @@ const bundleAnalyzer = withBundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
 })
 
+const allowedDevOrigins = parseList(process.env.ALLOWED_DEV_ORIGINS)
+
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ['192.168.10.68'],
+  ...(allowedDevOrigins.length > 0 ? { allowedDevOrigins } : {}),
   reactStrictMode: true,
   poweredByHeader: false,
   compiler: {
@@ -37,3 +39,12 @@ const nextConfig: NextConfig = {
 }
 
 export default bundleAnalyzer(nextConfig)
+
+function parseList(value: string | undefined) {
+  return (
+    value
+      ?.split(',')
+      .map((item) => item.trim())
+      .filter(Boolean) ?? []
+  )
+}
