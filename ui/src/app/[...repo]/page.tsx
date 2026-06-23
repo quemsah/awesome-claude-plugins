@@ -7,6 +7,8 @@ import { Header } from '../../components/common/Header.tsx'
 import { PluginCard } from '../../components/repo/PluginCard.tsx'
 import { RepoInfoCard } from '../../components/repo/RepoInfoCard.tsx'
 import RepoStructuredData from '../../components/repo/RepoStructuredData.tsx'
+import { PluginCardSkeleton } from '../../components/skeleton/PluginCardSkeleton.tsx'
+import { RepoInfoCardSkeleton } from '../../components/skeleton/RepoInfoCardSkeleton.tsx'
 import { Button } from '../../components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card.tsx'
 import { usePlugins } from '../../hooks/usePlugins.ts'
@@ -23,12 +25,36 @@ export default function RepoPage({ params }: RouteParams) {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background">
-        <div className="text-center">
-          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-primary border-b-2" />
-          <p className="mt-2 text-muted-foreground">Loading repository...</p>
-        </div>
-      </main>
+      <>
+        <Header />
+        <main aria-busy="true" className="min-h-screen bg-background">
+          <div className="container mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
+            <Button aria-label="Back to all repositories" asChild className="mb-6" variant="ghost">
+              <Link href="/">
+                <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+                Back to all repositories
+              </Link>
+            </Button>
+
+            <div aria-label="Loading repository..." aria-live="polite" role="status">
+              <span className="sr-only">Loading repository...</span>
+            </div>
+            <div aria-hidden="true">
+              <RepoInfoCardSkeleton />
+              <Card className="mt-8 p-6">
+                <CardHeader className="mb-4 p-0">
+                  <CardTitle className="text-2xl">
+                    <h2>Available Plugins</h2>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <PluginCardSkeleton count={3} />
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </main>
+      </>
     )
   }
 
@@ -76,19 +102,16 @@ export default function RepoPage({ params }: RouteParams) {
               </CardHeader>
               <CardContent className="p-0">
                 {pluginsLoading ? (
-                  <div aria-busy="true" aria-live="polite" className="py-8 text-center">
-                    <div className="mx-auto h-6 w-6 animate-spin rounded-full border-primary border-b-2" />
-                    <p className="mt-2 text-muted-foreground">Loading plugins...</p>
+                  <div aria-busy="true" aria-live="polite" className="py-8">
+                    <PluginCardSkeleton count={3} />
+                    <span className="sr-only">Loading plugins...</span>
                   </div>
                 ) : plugins.length > 0 ? (
                   <div aria-atomic="true" aria-live="polite" className="space-y-4">
                     {plugins.map((plugin, index) => (
-                      <PluginCard
-                        key={`${plugin.id || ''}-${plugin.name || ''}-${index}`}
-                        plugin={plugin}
-                        repo={repo}
-                        repoPath={repoPath}
-                      />
+                      <article key={`${plugin.id || ''}-${plugin.name || ''}-${index}`}>
+                        <PluginCard plugin={plugin} repo={repo} repoPath={repoPath} />
+                      </article>
                     ))}
                   </div>
                 ) : (
