@@ -12,6 +12,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "validate:data": "node scripts/validate-data.mjs",
+    "test:e2e": "playwright test",
     "style": "biome check --write --unsafe ."
   },
   "dependencies": {
@@ -38,6 +39,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.16",
     "@next/bundle-analyzer": "^16.2.7",
+    "@playwright/test": "^1.61.0",
     "@tailwindcss/postcss": "^4.3.0",
     "@types/node": "^24.13.1",
     "@types/react": "^19.2.17",
