@@ -35,7 +35,6 @@ jobs:
       - name: Run linter
         run: npm run style
         working-directory: ui
-
       - name: Run production build
         run: npm run build
         working-directory: ui
@@ -50,5 +49,4 @@ jobs:
 
       - name: Run unit tests
         run: npm test
-        working-directory: ui
         working-directory: ui
