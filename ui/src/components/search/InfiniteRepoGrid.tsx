@@ -1,25 +1,23 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { getExpandedVisibleCount, getRenderedItemCount, getResetVisibleCount } from '../../lib/visibleResults.mjs'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { RepoCard } from './RepoCard.tsx'
-import type { SortOption } from './Sort.tsx'
 
 interface InfiniteRepoGridProps {
   items: Repo[]
-  sortOption?: SortOption
+  resetKey: string
 }
 
-const ITEMS_PER_BATCH = 24
-
-export function InfiniteRepoGrid({ items, sortOption: _sortOption }: InfiniteRepoGridProps) {
-  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_BATCH)
+export function InfiniteRepoGrid({ items, resetKey }: InfiniteRepoGridProps) {
+  const [visibleCount, setVisibleCount] = useState(() => getResetVisibleCount())
   const observerTarget = useRef<HTMLDivElement>(null)
 
   const handleIntersection = useCallback(
     (entries: IntersectionObserverEntry[]) => {
       if (entries[0].isIntersecting) {
-        setVisibleCount((prev) => Math.min(prev + ITEMS_PER_BATCH, items.length))
+        setVisibleCount((prev) => getExpandedVisibleCount(prev, items.length))
       }
     },
     [items.length]
@@ -36,10 +34,13 @@ export function InfiniteRepoGrid({ items, sortOption: _sortOption }: InfiniteRep
   }, [handleIntersection])
 
   useEffect(() => {
-    setVisibleCount(ITEMS_PER_BATCH)
-  }, [])
+    if (resetKey) {
+      setVisibleCount(getResetVisibleCount())
+    }
+  }, [resetKey])
 
-  const visibleItems = items.slice(0, visibleCount)
+  const renderedItemCount = getRenderedItemCount(visibleCount, items.length)
+  const visibleItems = items.slice(0, renderedItemCount)
 
   return (
     <section aria-label="Claude plugins">

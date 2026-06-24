@@ -47,3 +47,7 @@ jobs:
       - name: Run browser e2e tests
         run: npm run test:e2e
         working-directory: ui
+
+      - name: Run tests
+        run: npm test
+        working-directory: ui
