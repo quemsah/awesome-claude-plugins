@@ -11,6 +11,7 @@
     "build:analyze": "ANALYZE=true next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "validate:data": "node scripts/validate-data.mjs",
     "style": "biome check --write --unsafe ."
   },
   "dependencies": {
