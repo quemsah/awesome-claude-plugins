@@ -1,20 +1,23 @@
 import { useState } from 'react'
+import { getPluginInstallCommand, isPluginInstallCommandVerified } from '../lib/installCommand.ts'
 
 export function useInstallCommand(pluginName?: string, pluginId?: string, repoPath?: string) {
   const [isCopied, setIsCopied] = useState(false)
 
-  const getInstallCommand = () => {
-    const normalizedName = pluginName?.toLowerCase().replace(/\s+/g, '-') || ''
-    const suffix = pluginId ? `@${pluginId}` : repoPath ? `@${repoPath.replace('/', '-')}` : ''
-    return `/plugin install ${normalizedName}${suffix}`
+  const installCommand = getPluginInstallCommand({ pluginName, pluginId, repoPath })
+  const isVerified = isPluginInstallCommandVerified(pluginId, repoPath)
+
+  const handleCopyClick = async () => {
+    if (!(installCommand && isVerified)) return
+
+    try {
+      await navigator.clipboard.writeText(installCommand)
+      setIsCopied(true)
+      setTimeout(() => setIsCopied(false), 500)
+    } catch {
+      // clipboard write failed; leave isCopied as false
+    }
   }
 
-  const handleCopyClick = () => {
-    const command = getInstallCommand()
-    navigator.clipboard.writeText(command)
-    setIsCopied(true)
-    setTimeout(() => setIsCopied(false), 500)
-  }
-
-  return { getInstallCommand, handleCopyClick, isCopied }
+  return { getInstallCommand: () => installCommand, handleCopyClick, installCommand, isCopied, isVerified }
 }

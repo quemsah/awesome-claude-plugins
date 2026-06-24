@@ -9,17 +9,23 @@ interface InstallCommandProps {
 }
 
 export function InstallCommand({ pluginName, pluginId, repoPath }: InstallCommandProps) {
-  const { getInstallCommand, handleCopyClick, isCopied } = useInstallCommand(pluginName, pluginId, repoPath)
+  const { handleCopyClick, installCommand, isCopied, isVerified } = useInstallCommand(pluginName, pluginId, repoPath)
+
+  const isDisabled = !(installCommand && isVerified)
 
   return (
     <div className="px-6 pb-4">
       <div className="flex items-center gap-2 rounded-md border bg-muted/50 p-3">
-        <code className="grow break-all font-mono text-sm">{getInstallCommand()}</code>
+        <code className="grow break-all font-mono text-sm">{installCommand ?? 'Install command unavailable'}</code>
+        {installCommand && !isVerified && <span className="shrink-0 text-muted-foreground text-xs">unverified</span>}
         <button
-          aria-label={isCopied ? 'Installation command copied' : 'Copy installation command'}
-          className={`shrink-0 rounded-md p-1 transition-colors ${isCopied ? 'bg-green-500/20 text-green-600' : 'hover:bg-muted'}`}
+          aria-label={
+            isCopied ? 'Installation command copied' : isDisabled ? 'Copy install command unavailable' : 'Copy installation command'
+          }
+          className={`shrink-0 rounded-md p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${isCopied ? 'bg-green-500/20 text-green-600' : 'enabled:hover:bg-muted'}`}
+          disabled={isDisabled}
           onClick={handleCopyClick}
-          title={isCopied ? 'Installation command copied' : 'Copy installation command'}
+          title={isVerified ? 'Copy installation command' : 'Unverified command'}
           type="button"
         >
           {isCopied ? <CopiedIcon /> : <CopyIcon />}
