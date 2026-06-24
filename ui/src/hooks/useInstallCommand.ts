@@ -8,7 +8,7 @@ export function useInstallCommand(pluginName?: string, pluginId?: string, repoPa
   const isVerified = isPluginInstallCommandVerified(pluginId, repoPath)
 
   const handleCopyClick = () => {
-    if (!installCommand || !isVerified) return
+    if (!(installCommand && isVerified)) return
 
     navigator.clipboard.writeText(installCommand)
     setIsCopied(true)
