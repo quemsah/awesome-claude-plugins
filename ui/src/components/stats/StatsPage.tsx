@@ -20,6 +20,10 @@ interface StatsPageProps {
   stats: StatsItem[]
 }
 
+type ChartStatsItem = StatsItem & {
+  interpolated?: boolean
+}
+
 export function filterStatsByTimeRange(stats: StatsItem[], timeRange: string): StatsItem[] {
   if (timeRange === 'all') {
     return stats
@@ -45,7 +49,9 @@ export function calculateTrend(filteredStats: StatsItem[]): { growth: number; pe
   const firstSize = filteredStats[0].size
   const lastSize = filteredStats[filteredStats.length - 1].size
   const totalGrowth = lastSize - firstSize
-  const periodDays = Math.max(1, filteredStats.length - 1)
+  const firstDate = new Date(filteredStats[0].date)
+  const lastDate = new Date(filteredStats[filteredStats.length - 1].date)
+  const periodDays = Math.max(1, Math.round((lastDate.getTime() - firstDate.getTime()) / MILLISECONDS_IN_DAY))
 
   const percentage = firstSize > 0 ? Math.round((totalGrowth / firstSize) * 10000) / 100 : 0
 
@@ -56,7 +62,7 @@ export function calculateTrend(filteredStats: StatsItem[]): { growth: number; pe
   }
 }
 
-export function fillMissingDates(stats: StatsItem[]): StatsItem[] {
+export function fillMissingDates(stats: StatsItem[]): ChartStatsItem[] {
   if (stats.length <= 1) {
     return [...stats]
   }
@@ -64,19 +70,20 @@ export function fillMissingDates(stats: StatsItem[]): StatsItem[] {
   const statsWithDateObjects = stats.map((s) => ({ ...s, dateObj: new Date(s.date) }))
   const sortedStats = statsWithDateObjects.sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime())
 
-  const filledStats: StatsItem[] = []
+  const filledStats: ChartStatsItem[] = []
 
   for (let i = 0; i < sortedStats.length; i++) {
     const currentItem = sortedStats[i]
-    filledStats.push({ date: currentItem.date, size: currentItem.size })
+    filledStats.push({ date: currentItem.date, interpolated: false, size: currentItem.size })
 
     if (i < sortedStats.length - 1) {
       const nextItem = sortedStats[i + 1]
       const currentDate = currentItem.dateObj
       const nextDate = nextItem.dateObj
 
-      const timeDiff = nextDate.getTime() - currentDate.getTime()
-      const dayDiff = Math.floor(timeDiff / MILLISECONDS_IN_DAY)
+      const d1 = Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate())
+      const d2 = Date.UTC(nextDate.getUTCFullYear(), nextDate.getUTCMonth(), nextDate.getUTCDate())
+      const dayDiff = Math.round((d2 - d1) / MILLISECONDS_IN_DAY)
 
       if (dayDiff > 1) {
         const currentSize = currentItem.size
@@ -84,12 +91,13 @@ export function fillMissingDates(stats: StatsItem[]): StatsItem[] {
         const dailyIncrement = (nextSize - currentSize) / dayDiff
 
         for (let day = 1; day < dayDiff; day++) {
-          const missingDate = new Date(currentDate.getTime() + day * MILLISECONDS_IN_DAY)
+          const missingDate = new Date(d1 + day * MILLISECONDS_IN_DAY)
 
           const interpolatedSize = Math.round(currentSize + dailyIncrement * day)
 
           filledStats.push({
             date: missingDate.toISOString(),
+            interpolated: true,
             size: interpolatedSize,
           })
         }
@@ -118,12 +126,15 @@ export function StatsPage({ stats }: StatsPageProps) {
     const filledData = fillMissingDates(filteredStats)
     return filledData.map((item) => ({
       date: item.date,
+      interpolated: item.interpolated ?? false,
       size: item.size,
       formattedDate: formatDate(new Date(item.date)),
+      snapshotType: item.interpolated ? 'Interpolated' : 'Observed',
     }))
   }, [filteredStats])
 
   const trendData = useMemo(() => calculateTrend(filteredStats), [filteredStats])
+
 
   const overallTrends = useMemo(() => {
     if (stats.length <= 1) {
@@ -132,7 +143,7 @@ export function StatsPage({ stats }: StatsPageProps) {
     const firstSize = stats[0].size
     const lastSize = stats[stats.length - 1].size
     const totalGrowth = lastSize - firstSize
-    const totalDays = stats.length - 1
+    const totalDays = calculateTrend(stats).periodDays
     return {
       averageDailyIncrease: Math.round((totalGrowth / totalDays) * 100) / 100,
       totalDays,
@@ -171,7 +182,7 @@ export function StatsPage({ stats }: StatsPageProps) {
         )}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="font-medium text-sm">
