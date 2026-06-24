@@ -63,7 +63,7 @@ test('repo detail page renders repository metadata, links, and rich plugin cards
   await expect(page.getByText('claude-code')).toBeVisible()
   await expect(page.locator('[data-slot="badge"]').filter({ hasText: 'plugins' })).toBeVisible()
   await expect(page.getByText('TypeScript')).toBeVisible()
-  await expect(page.locator('dd').filter({ hasText: 'MIT' })).toBeVisible()
+  await expect(page.getByText('MIT', { exact: true })).toBeVisible()
   await expect(page.getByText('2.0 MB')).toBeVisible()
   await expect(page.getByText('01.01.2026')).toBeVisible()
   await expect(page.getByText('01.06.2026')).toBeVisible()
@@ -73,25 +73,25 @@ test('repo detail page renders repository metadata, links, and rich plugin cards
   await expect(examplePlugin.locator('[data-slot="badge"]')).toContainText(['Testing', 'testing', 'automation'])
   await expect(examplePlugin.getByText('/plugin install example-plugin@example-plugin')).toBeVisible()
   await expect(examplePlugin.getByText('A plugin rendered from mocked marketplace data')).toBeVisible()
-  await expect(examplePlugin.getByRole('link', { name: '.claude-plugin/plugin.json' })).toHaveAttribute(
+  await expect(examplePlugin.getByRole('link', { name: 'Open source file .claude-plugin/plugin.json in a new tab' })).toHaveAttribute(
     'href',
     'https://github.com/example/plugin-repo/blob/main/.claude-plugin/plugin.json'
   )
   await expect(examplePlugin.getByText('Example Maintainer')).toBeVisible()
   await expect(examplePlugin.getByText('maintainer@example.dev')).toBeVisible()
-  await expect(examplePlugin.locator('p').filter({ hasText: 'example-plugin' })).toBeVisible()
+  await expect(examplePlugin.getByText('example-plugin', { exact: true })).toBeVisible()
   await expect(examplePlugin.getByText('Commands (2)')).toBeVisible()
-  await expect(examplePlugin.getByRole('link', { name: 'Open commands/example.md in new tab' })).toHaveAttribute(
+  await expect(examplePlugin.getByRole('link', { name: 'Open commands/example.md in a new tab' })).toHaveAttribute(
     'href',
     'https://github.com/example/plugin-repo/blob/main/commands/example.md'
   )
   await expect(examplePlugin.getByText('Agents (1)')).toBeVisible()
-  await expect(examplePlugin.getByRole('link', { name: 'Open agents/reviewer.md in new tab' })).toHaveAttribute(
+  await expect(examplePlugin.getByRole('link', { name: 'Open agents/reviewer.md in a new tab' })).toHaveAttribute(
     'href',
     'https://github.com/example/plugin-repo/blob/main/agents/reviewer.md'
   )
   await expect(examplePlugin.getByText('MCP Servers (1)')).toBeVisible()
-  await expect(examplePlugin.getByRole('link', { name: 'Open mcp/server.json in new tab' })).toHaveAttribute(
+  await expect(examplePlugin.getByRole('link', { name: 'Open mcp/server.json in a new tab' })).toHaveAttribute(
     'href',
     'https://github.com/example/plugin-repo/blob/main/mcp/server.json'
   )
@@ -102,7 +102,7 @@ test('repo detail page renders repository metadata, links, and rich plugin cards
 
   const fallbackPlugin = page.locator('article').filter({ has: page.getByRole('heading', { name: fallbackPluginHeading }) })
   await expect(fallbackPlugin.getByText('/plugin install fallback-install-target@example-plugin-repo')).toBeVisible()
-  await expect(fallbackPlugin.getByRole('link', { name: 'plugins/fallback.json' })).toHaveAttribute(
+  await expect(fallbackPlugin.getByRole('link', { name: 'Open source file plugins/fallback.json in a new tab' })).toHaveAttribute(
     'href',
     'https://github.com/elsewhere/shared-plugins/blob/main/plugins/fallback.json'
   )

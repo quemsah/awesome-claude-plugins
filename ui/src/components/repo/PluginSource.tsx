@@ -14,9 +14,10 @@ export function PluginSource({ source, repoPath, defaultBranch = 'main' }: Plugi
 
   return (
     <div>
-      <h6 className="mb-0.5 font-medium text-sm">Source</h6>
-      <p className="break-all text-muted-foreground text-sm">
+      <dt className="mb-0.5 font-medium text-sm">Source</dt>
+      <dd className="break-all text-muted-foreground text-sm">
         <a
+          aria-label={`Open source file ${sourcePath} in a new tab`}
           className="underline-offset-4 transition-colors hover:text-primary hover:underline group-hover:text-primary"
           href={`https://github.com/${targetRepo}/blob/${defaultBranch}/${sourcePath}`}
           rel="noopener noreferrer"
@@ -24,7 +25,7 @@ export function PluginSource({ source, repoPath, defaultBranch = 'main' }: Plugi
         >
           {sourcePath}
         </a>
-      </p>
+      </dd>
     </div>
   )
 }
