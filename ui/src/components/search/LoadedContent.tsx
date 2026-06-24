@@ -4,10 +4,9 @@ import { InfiniteRepoGrid } from './InfiniteRepoGrid.tsx'
 
 interface LoadedContentProps {
   repos: Repo[]
-  resetKey: string
 }
 
-export function LoadedContent({ repos, resetKey }: LoadedContentProps) {
+export function LoadedContent({ repos }: LoadedContentProps) {
   return repos.length === 0 ? (
     <Card className="py-12 text-center">
       <CardContent>
@@ -15,6 +14,6 @@ export function LoadedContent({ repos, resetKey }: LoadedContentProps) {
       </CardContent>
     </Card>
   ) : (
-    <InfiniteRepoGrid items={repos} resetKey={resetKey} />
+    <InfiniteRepoGrid items={repos} />
   )
 }

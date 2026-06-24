@@ -1,16 +1,15 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getExpandedVisibleCount, getRenderedItemCount, getResetVisibleCount } from '../../lib/visibleResults.mjs'
+import { getExpandedVisibleCount, getRenderedItemCount, getResetVisibleCount } from '../../lib/visibleResults.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { RepoCard } from './RepoCard.tsx'
 
 interface InfiniteRepoGridProps {
   items: Repo[]
-  resetKey: string
 }
 
-export function InfiniteRepoGrid({ items, resetKey }: InfiniteRepoGridProps) {
+export function InfiniteRepoGrid({ items }: InfiniteRepoGridProps) {
   const [visibleCount, setVisibleCount] = useState(() => getResetVisibleCount())
   const observerTarget = useRef<HTMLDivElement>(null)
 
@@ -32,12 +31,6 @@ export function InfiniteRepoGrid({ items, resetKey }: InfiniteRepoGridProps) {
 
     return () => observer.disconnect()
   }, [handleIntersection])
-
-  useEffect(() => {
-    if (resetKey) {
-      setVisibleCount(getResetVisibleCount())
-    }
-  }, [resetKey])
 
   const renderedItemCount = getRenderedItemCount(visibleCount, items.length)
   const visibleItems = items.slice(0, renderedItemCount)

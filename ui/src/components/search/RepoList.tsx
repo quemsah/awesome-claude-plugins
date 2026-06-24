@@ -5,15 +5,14 @@ import { LoadedContent } from './LoadedContent.tsx'
 
 interface RepoListProps {
   hasLoadError: boolean
-  resetKey: string
   sortedRepos: Repo[]
 }
 
-export function RepoList({ hasLoadError, resetKey, sortedRepos }: RepoListProps) {
+export function RepoList({ hasLoadError, sortedRepos }: RepoListProps) {
   if (sortedRepos.length > 0) {
     return (
       <div aria-live="polite">
-        <LoadedContent repos={sortedRepos} resetKey={resetKey} />
+        <LoadedContent repos={sortedRepos} />
       </div>
     )
   }
