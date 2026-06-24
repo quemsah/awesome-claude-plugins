@@ -135,7 +135,6 @@ export function StatsPage({ stats }: StatsPageProps) {
 
   const trendData = useMemo(() => calculateTrend(filteredStats), [filteredStats])
 
-
   const overallTrends = useMemo(() => {
     if (stats.length <= 1) {
       return { averageDailyIncrease: 0, totalDays: 0 }
