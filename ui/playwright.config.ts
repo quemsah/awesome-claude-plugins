@@ -1,5 +1,5 @@
 /** biome-ignore-all lint/style/useNamingConvention: Playwright config uses baseURL as an API option. */
-import { defineConfig, devices } from 'playwright/test'
+import { defineConfig, devices } from '@playwright/test'
 
 const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000'
 
