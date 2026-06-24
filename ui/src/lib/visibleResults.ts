@@ -4,11 +4,7 @@ export function getResetVisibleCount(batchSize: number = ITEMS_PER_BATCH): numbe
   return batchSize
 }
 
-export function getExpandedVisibleCount(
-  currentVisibleCount: number,
-  totalItems: number,
-  batchSize: number = ITEMS_PER_BATCH
-): number {
+export function getExpandedVisibleCount(currentVisibleCount: number, totalItems: number, batchSize: number = ITEMS_PER_BATCH): number {
   return Math.min(currentVisibleCount + batchSize, totalItems)
 }
 

@@ -46,7 +46,7 @@ export function SearchPage({ initialRepos }: SearchPageProps) {
         searchTerm={searchTerm}
         sortOption={sortOption}
       />
-      <RepoList key={`${searchTerm}:${sortOption}`} hasLoadError={initialRepos.length === 0} sortedRepos={sortedRepos} />
+      <RepoList hasLoadError={initialRepos.length === 0} key={`${searchTerm}:${sortOption}`} sortedRepos={sortedRepos} />
     </>
   )
 }
