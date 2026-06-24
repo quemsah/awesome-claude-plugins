@@ -18,7 +18,7 @@ const qSuperpowersSortForksRegex = /\?q=superpowers&sort=forks-desc$/
 const qHelloRegex = /\?q=hello$/
 const sortOptionForksRegex = /Forks/
 const _sortOptionPluginsRegex = /Plugins/
-const _sortOptionStarsRegex = /Stars/
+const sortOptionStarsRegex = /Stars/
 
 async function chooseSortOption(page: Page, optionName: 'Stars' | 'Forks' | 'Plugins') {
   await page.getByRole('combobox', { name: 'Sort by' }).click()
@@ -195,7 +195,6 @@ test('home page persists sort option in url query parameters', async ({ page }) 
 test('home page restores state from url query parameters on load', async ({ page }) => {
   await page.goto('/?q=superpowers&sort=forks-desc')
 
-  await expect(page).toHaveURL(qSuperpowersRegex)
   await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toHaveValue('superpowers')
   await expect(page.getByRole('combobox', { name: 'Sort by' })).toHaveText(sortOptionForksRegex)
   await expect(page.getByRole('link', { name: 'View details for obra/superpowers' }).first()).toBeVisible()
@@ -220,6 +219,11 @@ test('home page browser back and forward navigation restores persisted state', a
 
   await page.goBack()
   await expect(page).toHaveURL(qSuperpowersRegex)
+  await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toHaveValue('superpowers')
+  await expect(page.getByRole('combobox', { name: 'Sort by' })).toHaveText(sortOptionStarsRegex)
+
+  await page.goForward()
+  await expect(page).toHaveURL(qSuperpowersSortForksRegex)
   await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toHaveValue('superpowers')
   await expect(page.getByRole('combobox', { name: 'Sort by' })).toHaveText(sortOptionForksRegex)
 })
