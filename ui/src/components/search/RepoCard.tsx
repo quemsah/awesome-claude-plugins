@@ -93,6 +93,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
           <div className="mt-3 border-muted/20 border-t">
             <div className="flex items-center gap-2 rounded-md bg-muted/50 p-2 text-xs">
               <code className="grow break-all font-mono">{marketplaceCommand}</code>
+              <span className="shrink-0 text-muted-foreground">marketplace add</span>
               <button
                 aria-label={isCopied ? 'Marketplace command copied' : 'Copy marketplace command'}
                 className={`shrink-0 rounded-md p-2 transition-colors ${isCopied ? 'bg-green-500/20 text-green-600' : 'hover:bg-muted'}`}
