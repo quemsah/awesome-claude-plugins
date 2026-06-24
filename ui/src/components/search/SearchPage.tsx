@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useFuzzySearch } from '../../hooks/useFuzzySearch.ts'
-import { buildSearchUrl, parseSortOption } from '../../lib/searchState.mjs'
+import { buildSearchUrl, parseSortOption } from '../../lib/searchState.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { RepoList } from './RepoList.tsx'
 import { SearchControls } from './SearchControls.tsx'
@@ -11,11 +11,11 @@ import type { SortOption } from './Sort.tsx'
 interface SearchPageProps {
   initialRepos: Repo[]
   initialSearchTerm: string
-  initialSortOption: string
+  initialSortOption: SortOption
 }
 
 export function SearchPage({ initialRepos, initialSearchTerm, initialSortOption }: SearchPageProps) {
-  const [sortOption, setSortOption] = useState<SortOption>(parseSortOption(initialSortOption) as SortOption)
+  const [sortOption, setSortOption] = useState<SortOption>(parseSortOption(initialSortOption))
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm)
 
   const filteredRepos = useFuzzySearch(initialRepos, searchTerm)
@@ -75,7 +75,7 @@ export function SearchPage({ initialRepos, initialSearchTerm, initialSortOption 
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search)
       setSearchTerm(params.get('q') ?? '')
-      setSortOption(parseSortOption(params.get('sort')) as SortOption)
+      setSortOption(parseSortOption(params.get('sort')))
     }
 
     window.addEventListener('popstate', handlePopState)

@@ -189,7 +189,6 @@ test('home page restores state from url query parameters on load', async ({ page
 
   await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toHaveValue('superpowers')
   await expect(page.getByRole('combobox', { name: 'Sort by' })).toHaveText(/Forks/)
-  await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toHaveValue('superpowers')
   await expect(page.getByRole('link', { name: 'View details for obra/superpowers' }).first()).toBeVisible()
 })
 

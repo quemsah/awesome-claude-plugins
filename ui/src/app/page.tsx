@@ -3,7 +3,7 @@ import { SearchPage } from '../components/search/SearchPage.tsx'
 import StructuredData from '../components/search/StructuredData.tsx'
 import { TitleSection } from '../components/search/TitleSection.tsx'
 import reposData from '../data/repos.json' with { type: 'json' }
-import { parseSortOption } from '../lib/searchState.mjs'
+import { parseSortOption } from '../lib/searchState.ts'
 import type { Repo } from '../schemas/repo.schema.ts'
 import { ReposArraySchema } from '../schemas/repo.schema.ts'
 
