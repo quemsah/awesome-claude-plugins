@@ -70,7 +70,7 @@ function validateRepos() {
   const nullPluginCountRows = []
   const untrimmedDescriptionRows = []
 
-  repos.forEach((repo, index) => {
+  function validateRepo(repo, index) {
     const label = `repos[${index}]`
     if (!isPlainObject(repo)) {
       addFailure(`${label} must be an object`)
@@ -142,7 +142,9 @@ function validateRepos() {
     } else if (typeof repo.description === 'string' && repo.description !== repo.description.trim()) {
       untrimmedDescriptionRows.push(`${repo.owner}/${repo.repo_name}#${repo.id}`)
     }
-  })
+  }
+
+  repos.forEach(validateRepo)
 
   const canonicalCollisionGroups = [...canonicalRepos.entries()]
     .filter(([, rows]) => rows.length > 1)
@@ -174,7 +176,7 @@ function validateStats() {
   let previousDate = null
   let previousItem = null
 
-  stats.forEach((item, index) => {
+  function validateStat(item, index) {
     const label = `stats[${index}]`
     if (!isPlainObject(item)) {
       addFailure(`${label} must be an object`)
@@ -208,6 +210,7 @@ function validateStats() {
 
     if (previousDate && date < previousDate) {
       addFailure(`${rowLabel}: date must be chronological after ${previousItem.date}`)
+      return
     }
 
     if (previousDate) {
@@ -228,7 +231,9 @@ function validateStats() {
 
     previousDate = date
     previousItem = item
-  })
+  }
+
+  stats.forEach(validateStat)
 
   const duplicateDayRows = [...duplicateDays.entries()]
     .filter(([, rows]) => rows.length > 1)
