@@ -1,7 +1,8 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useFuzzySearch } from '../../hooks/useFuzzySearch.ts'
+import { buildSearchUrl, parseSortOption } from '../../lib/searchState.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { RepoList } from './RepoList.tsx'
 import { SearchControls } from './SearchControls.tsx'
@@ -9,11 +10,13 @@ import type { SortOption } from './Sort.tsx'
 
 interface SearchPageProps {
   initialRepos: Repo[]
+  initialSearchTerm: string
+  initialSortOption: SortOption
 }
 
-export function SearchPage({ initialRepos }: SearchPageProps) {
-  const [sortOption, setSortOption] = useState<SortOption>('stars-desc')
-  const [searchTerm, setSearchTerm] = useState('')
+export function SearchPage({ initialRepos, initialSearchTerm, initialSortOption }: SearchPageProps) {
+  const [sortOption, setSortOption] = useState<SortOption>(parseSortOption(initialSortOption))
+  const [searchTerm, setSearchTerm] = useState(initialSearchTerm)
 
   const filteredRepos = useFuzzySearch(initialRepos, searchTerm)
 
@@ -36,13 +39,56 @@ export function SearchPage({ initialRepos }: SearchPageProps) {
 
   const filteredPluginCount = useMemo(() => filteredRepos.reduce((total, repo) => total + (repo.plugins_count || 0), 0), [filteredRepos])
 
+  const updateSearchUrl = useCallback((nextSearchTerm: string, nextSortOption: SortOption, mode: 'push' | 'replace' = 'push') => {
+    const currentUrl = `${window.location.pathname}${window.location.search}`
+    const nextUrl = buildSearchUrl(window.location.pathname, window.location.search, {
+      searchTerm: nextSearchTerm,
+      sortOption: nextSortOption,
+    })
+
+    if (nextUrl !== currentUrl) {
+      window.history[mode === 'push' ? 'pushState' : 'replaceState'](null, '', nextUrl)
+    }
+  }, [])
+
+  const handleSearchChange = useCallback(
+    (nextSearchTerm: string) => {
+      setSearchTerm(nextSearchTerm)
+      updateSearchUrl(nextSearchTerm, sortOption)
+    },
+    [sortOption, updateSearchUrl]
+  )
+
+  const handleSortChange = useCallback(
+    (nextSortOption: SortOption) => {
+      setSortOption(nextSortOption)
+      updateSearchUrl(searchTerm, nextSortOption)
+    },
+    [searchTerm, updateSearchUrl]
+  )
+
+  useEffect(() => {
+    updateSearchUrl(searchTerm, sortOption, 'replace')
+  }, [searchTerm, sortOption, updateSearchUrl])
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search)
+      setSearchTerm(params.get('q') ?? '')
+      setSortOption(parseSortOption(params.get('sort')))
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
   return (
     <>
       <SearchControls
         filteredPluginCount={filteredPluginCount}
         filteredRepoCount={filteredRepos.length}
-        onSearchChange={setSearchTerm}
-        onSortChange={setSortOption}
+        onSearchChange={handleSearchChange}
+        onSortChange={handleSortChange}
         searchTerm={searchTerm}
         sortOption={sortOption}
       />
