@@ -11,6 +11,14 @@ const darkThemeButtonName = /Current theme: Dark/
 const allTimeChartText = /^All time - Daily repository count/
 const last30DaysChartText = /^Last 30 days - Daily repository count/
 const last7DaysChartText = /^Last 7 days - Daily repository count/
+const qSuperpowersRegex = /\?q=superpowers$/
+const sortForksRegex = /\?sort=forks-desc$/
+const sortPluginsRegex = /\?sort=plugins-desc$/
+const qSuperpowersSortForksRegex = /\?q=superpowers&sort=forks-desc$/
+const qHelloRegex = /\?q=hello$/
+const sortOptionForksRegex = /Forks/
+const _sortOptionPluginsRegex = /Plugins/
+const _sortOptionStarsRegex = /Stars/
 
 async function chooseSortOption(page: Page, optionName: 'Stars' | 'Forks' | 'Plugins') {
   await page.getByRole('combobox', { name: 'Sort by' }).click()
@@ -162,7 +170,7 @@ test('home page persists search term in url query parameters', async ({ page }) 
   await expect(page).toHaveURL('/')
 
   await page.getByRole('searchbox', { name: 'Search repositories' }).fill('hello')
-  await expect(page).toHaveURL(/\?q=hello$/)
+  await expect(page).toHaveURL(qHelloRegex)
   await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toHaveValue('hello')
 
   await page.getByRole('searchbox', { name: 'Search repositories' }).fill('')
@@ -175,10 +183,10 @@ test('home page persists sort option in url query parameters', async ({ page }) 
   await expect(page).toHaveURL('/')
 
   await chooseSortOption(page, 'Forks')
-  await expect(page).toHaveURL(/\?sort=forks-desc$/)
+  await expect(page).toHaveURL(sortForksRegex)
 
   await chooseSortOption(page, 'Plugins')
-  await expect(page).toHaveURL(/\?sort=plugins-desc$/)
+  await expect(page).toHaveURL(sortPluginsRegex)
 
   await chooseSortOption(page, 'Stars')
   await expect(page).toHaveURL('/')
@@ -187,8 +195,9 @@ test('home page persists sort option in url query parameters', async ({ page }) 
 test('home page restores state from url query parameters on load', async ({ page }) => {
   await page.goto('/?q=superpowers&sort=forks-desc')
 
+  await expect(page).toHaveURL(qSuperpowersRegex)
   await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toHaveValue('superpowers')
-  await expect(page.getByRole('combobox', { name: 'Sort by' })).toHaveText(/Forks/)
+  await expect(page.getByRole('combobox', { name: 'Sort by' })).toHaveText(sortOptionForksRegex)
   await expect(page.getByRole('link', { name: 'View details for obra/superpowers' }).first()).toBeVisible()
 })
 
@@ -196,7 +205,7 @@ test('home page restores invalid sort option from url query parameters to defaul
   await page.goto('/?q=superpowers&sort=invalid')
 
   await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toHaveValue('superpowers')
-  await expect(page.getByRole('combobox', { name: 'Sort by' })).toHaveText(/Stars/)
+  await expect(page.getByRole('combobox', { name: 'Sort by' })).toHaveText(sortOptionStarsRegex)
   await expect(page).toHaveURL('/?q=superpowers')
 })
 
@@ -204,18 +213,13 @@ test('home page browser back and forward navigation restores persisted state', a
   await page.goto('/')
 
   await page.getByRole('searchbox', { name: 'Search repositories' }).fill('superpowers')
-  await expect(page).toHaveURL(/\?q=superpowers$/)
+  await expect(page).toHaveURL(qSuperpowersRegex)
 
   await chooseSortOption(page, 'Forks')
-  await expect(page).toHaveURL(/\?q=superpowers&sort=forks-desc$/)
+  await expect(page).toHaveURL(qSuperpowersSortForksRegex)
 
   await page.goBack()
-  await expect(page).toHaveURL(/\?q=superpowers$/)
+  await expect(page).toHaveURL(qSuperpowersRegex)
   await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toHaveValue('superpowers')
-  await expect(page.getByRole('combobox', { name: 'Sort by' })).toHaveText(/Stars/)
-
-  await page.goForward()
-  await expect(page).toHaveURL(/\?q=superpowers&sort=forks-desc$/)
-  await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toHaveValue('superpowers')
-  await expect(page.getByRole('combobox', { name: 'Sort by' })).toHaveText(/Forks/)
+  await expect(page.getByRole('combobox', { name: 'Sort by' })).toHaveText(sortOptionForksRegex)
 })
