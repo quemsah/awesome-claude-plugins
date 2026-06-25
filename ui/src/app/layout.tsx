@@ -1,9 +1,9 @@
-import type { Metadata } from 'next'
-import './globals.css'
 import process from 'node:process'
+import type { Metadata } from 'next'
 import Script from 'next/script'
 import { BASE_URL } from '../lib/constants.ts'
 import { Providers } from '../providers/providers.tsx'
+import './globals.css'
 
 export function generateMetadata(): Metadata {
   return {
