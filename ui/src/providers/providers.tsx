@@ -4,7 +4,7 @@ import { ThemeProvider } from './theme-provider.tsx'
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange enableSystem storageKey="theme-preference">
+    <ThemeProvider attribute="class" defaultTheme="dark" disableTransitionOnChange enableSystem storageKey="theme-preference">
       {children}
     </ThemeProvider>
   )
