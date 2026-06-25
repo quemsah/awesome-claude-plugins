@@ -2,7 +2,6 @@
 import reposData from '../data/repos.json' with { type: 'json' }
 import statsData from '../data/stats.json' with { type: 'json' }
 import type { Repo } from '../schemas/repo.schema.ts'
-import { ReposArraySchema } from '../schemas/repo.schema.ts'
 
 const FALLBACK_LAST_MODIFIED = new Date('2026-01-01T00:00:00.000Z')
 
@@ -14,15 +13,11 @@ interface StatsEntry {
 
 export type CatalogRepo = Repo & { owner: string; repo_name: string }
 
+const catalogRepos: CatalogRepo[] = (reposData as Repo[])
+  .filter((repo): repo is CatalogRepo => repo.owner !== null && repo.repo_name !== null)
+
 export function getCatalogRepos(): CatalogRepo[] {
-  const validationResult = ReposArraySchema.safeParse(reposData)
-
-  if (!validationResult.success) {
-    console.error('Failed to validate repository catalog:', validationResult.error)
-    return []
-  }
-
-  return validationResult.data.filter(isCatalogRepo)
+  return catalogRepos
 }
 
 export function findCatalogRepo(repoPath: string) {
@@ -47,8 +42,4 @@ export function getRepoCanonicalPath(repo: CatalogRepo) {
 
 export function getRepoSitemapPriority(repo: CatalogRepo) {
   return repo.plugins_count === null ? 0.3 : 0.5
-}
-
-function isCatalogRepo(repo: Repo): repo is CatalogRepo {
-  return repo.owner !== null && repo.repo_name !== null
 }
