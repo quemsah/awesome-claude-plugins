@@ -10,7 +10,7 @@
       "description": "Keep framework updates isolated for focused review.",
       "matchPackageNames": ["next", "react", "react-dom"],
       "matchUpdateTypes": ["major", "minor", "patch"],
-      "schedule": ["0 17 1,15 * *"],
+      "schedule": ["0 10 * * 1"],
       "groupName": "framework dependency updates",
       "minimumReleaseAge": "7 days"
     },
@@ -19,7 +19,7 @@
       "matchPackageNames": ["@biomejs/biome", "@next/bundle-analyzer", "@octokit/openapi-types", "@playwright/test", "@tailwindcss/postcss", "husky", "tailwindcss", "typescript"],
       "matchPackagePatterns": ["^@types/"],
       "matchUpdateTypes": ["minor", "patch"],
-      "schedule": ["0 17 * * 2,4"],
+      "schedule": ["0 14 * * 3"],
       "groupName": "tooling and type dependency updates",
       "minimumReleaseAge": "3 days"
     },
@@ -42,7 +42,7 @@
         "zod"
       ],
       "matchUpdateTypes": ["minor", "patch"],
-      "schedule": ["0 17 * * 2,4"],
+      "schedule": ["0 16 * * 5"],
       "groupName": "runtime dependency updates",
       "minimumReleaseAge": "3 days"
     },
@@ -50,7 +50,7 @@
       "description": "Keep non-framework major updates separate from routine groups.",
       "matchUpdateTypes": ["major"],
       "excludePackageNames": ["next", "react", "react-dom"],
-      "schedule": ["0 17 1,15 * *"],
+      "schedule": ["0 9 * * 2"],
       "groupName": "major dependency updates",
       "minimumReleaseAge": "7 days"
     }
