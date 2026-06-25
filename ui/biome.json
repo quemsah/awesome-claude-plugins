@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.1/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -32,7 +32,7 @@
       "test": "recommended"
     },
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "a11y": {
         "noAriaUnsupportedElements": "warn",
         "useAltText": "warn",
@@ -44,7 +44,8 @@
       "complexity": {
         "noUselessStringConcat": "error",
         "noVoid": "error",
-        "useSimplifiedLogicExpression": "error"
+        "useSimplifiedLogicExpression": "error",
+        "useArrayFind": "error"
       },
       "correctness": {
         "noChildrenProp": "error",
@@ -59,11 +60,6 @@
         "useJsxKeyInIterable": "error"
       },
       "nursery": {
-        "noDuplicatedSpreadProps": "error",
-        "noLeakedRender": "error",
-        "noMultiStr": "error",
-        "useArraySortCompare": "error",
-        "useFind": "error",
         "useSortedClasses": "error"
       },
       "performance": {
@@ -87,7 +83,8 @@
         "useNamingConvention": "error",
         "useObjectSpread": "error",
         "useReactFunctionComponents": "warn",
-        "useSelfClosingElements": "error"
+        "useSelfClosingElements": "error",
+        "noMultilineString": "error"
       },
       "suspicious": {
         "noArrayIndexKey": "off",
@@ -104,7 +101,10 @@
         "noUnsafeDeclarationMerging": "error",
         "noVar": "error",
         "useGoogleFontDisplay": "warn",
-        "useNamespaceKeyword": "error"
+        "useNamespaceKeyword": "error",
+        "noDuplicatedSpreadProps": "error",
+        "noLeakedRender": "error",
+        "useArraySortCompare": "error"
       }
     },
     "includes": ["**", "!.next", "!build", "!next-env.d.ts", "!out", "!src/data/**", "**"]

@@ -2,16 +2,55 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
   "timezone": "Europe/Athens",
+  "lockFileMaintenance": {
+    "enabled": false
+  },
   "packageRules": [
     {
-      "matchUpdateTypes": ["minor"],
-      "schedule": ["* 17 * * 2,4"],
-      "groupName": "minor dependency updates",
+      "description": "Keep framework updates isolated for focused review.",
+      "matchPackageNames": ["next", "react", "react-dom"],
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      "schedule": ["0 10 * * 1"],
+      "groupName": "framework dependency updates",
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "Group lower-risk type and tooling updates.",
+      "matchPackageNames": ["@biomejs/biome", "@next/bundle-analyzer", "@octokit/openapi-types", "@playwright/test", "@tailwindcss/postcss", "husky", "tailwindcss", "typescript"],
+      "matchPackagePatterns": ["^@types/"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "schedule": ["0 14 * * 3"],
+      "groupName": "tooling and type dependency updates",
       "minimumReleaseAge": "3 days"
     },
     {
+      "description": "Group app runtime minor and patch updates apart from framework packages.",
+      "matchPackageNames": [
+        "@radix-ui/react-avatar",
+        "@radix-ui/react-dropdown-menu",
+        "@radix-ui/react-icons",
+        "@radix-ui/react-select",
+        "@radix-ui/react-slot",
+        "class-variance-authority",
+        "clsx",
+        "fuse.js",
+        "lucide-react",
+        "next-themes",
+        "recharts",
+        "tailwind-merge",
+        "use-debounce",
+        "zod"
+      ],
+      "matchUpdateTypes": ["minor", "patch"],
+      "schedule": ["0 16 * * 5"],
+      "groupName": "runtime dependency updates",
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Keep non-framework major updates separate from routine groups.",
       "matchUpdateTypes": ["major"],
-      "schedule": ["* 17 1,15 * *"],
+      "excludePackageNames": ["next", "react", "react-dom"],
+      "schedule": ["0 9 * * 2"],
       "groupName": "major dependency updates",
       "minimumReleaseAge": "7 days"
     }
