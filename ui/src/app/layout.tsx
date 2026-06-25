@@ -53,7 +53,7 @@ export function generateMetadata(): Metadata {
         },
       ],
     },
-    manifest: '/site.webmanifest',
+    manifest: '/manifest.webmanifest',
     openGraph: {
       type: 'website',
       locale: 'en_US',
