@@ -13,8 +13,9 @@ interface StatsEntry {
 
 export type CatalogRepo = Repo & { owner: string; repo_name: string }
 
-const catalogRepos: CatalogRepo[] = (reposData as Repo[])
-  .filter((repo): repo is CatalogRepo => repo.owner !== null && repo.repo_name !== null)
+const catalogRepos: CatalogRepo[] = (reposData as Repo[]).filter(
+  (repo): repo is CatalogRepo => repo.owner !== null && repo.repo_name !== null
+)
 
 export function getCatalogRepos(): CatalogRepo[] {
   return catalogRepos
