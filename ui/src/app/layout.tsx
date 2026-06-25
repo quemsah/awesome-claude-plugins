@@ -91,7 +91,7 @@ export function generateMetadata(): Metadata {
       },
     },
     alternates: {
-      canonical: BASE_URL,
+      canonical: `${BASE_URL}/`,
     },
     verification: {
       google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION_CODE,
