@@ -17,7 +17,7 @@ const catalogRepos: CatalogRepo[] = (reposData as Repo[]).filter(
   (repo): repo is CatalogRepo => repo.owner !== null && repo.repo_name !== null
 )
 
-export function getCatalogRepos(): CatalogRepo[] {
+export function getCatalogRepos(): readonly CatalogRepo[] {
   return catalogRepos
 }
 
