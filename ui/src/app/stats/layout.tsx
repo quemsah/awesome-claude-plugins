@@ -14,6 +14,7 @@ export const metadata: Metadata = {
     'Agent skills statistics',
     'AI coding tools usage',
     'Plugin marketplace trends',
+    'Plugin catalog trends',
     'Automated workflow analytics',
     'Claude Code adoption rates',
     'Repository plugin metrics',
