@@ -50,7 +50,7 @@
       "description": "Keep non-framework major updates separate from routine groups.",
       "matchUpdateTypes": ["major"],
       "excludePackageNames": ["next", "react", "react-dom"],
-      "schedule": ["* 9 * * 2"],
+      "schedule": ["after 9am and before 10am on Tuesday"],
       "groupName": "major dependency updates",
       "minimumReleaseAge": "7 days"
     }
