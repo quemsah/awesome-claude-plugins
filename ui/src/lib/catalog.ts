@@ -2,7 +2,6 @@
 import reposData from '../data/repos.json' with { type: 'json' }
 import statsData from '../data/stats.json' with { type: 'json' }
 import type { Repo } from '../schemas/repo.schema.ts'
-import type { StatsItem } from '../schemas/stats.schema.ts'
 import { StatsItemSchema } from '../schemas/stats.schema.ts'
 
 const FALLBACK_LAST_MODIFIED = new Date('2026-01-01T00:00:00.000Z')
