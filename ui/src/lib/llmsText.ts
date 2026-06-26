@@ -9,8 +9,8 @@ export interface CatalogSummary {
 }
 
 export function getCatalogSummary(repos: Repo[], stats: StatsItem[]): CatalogSummary {
-  const safeRepos: Array<Repo | null | undefined> = Array.isArray(repos) ? repos : []
-  const safeStats = Array.isArray(stats) ? stats : []
+  const safeRepos = (Array.isArray(repos) ? repos : []).filter((repo): repo is Repo => repo != null)
+  const safeStats = (Array.isArray(stats) ? stats : []).filter((stat): stat is StatsItem => stat != null)
 
   let latestStat: StatsItem | undefined
   let latestDateValue: number = 0
@@ -27,9 +27,8 @@ export function getCatalogSummary(repos: Repo[], stats: StatsItem[]): CatalogSum
 
   return {
     repoCount: safeRepos.length,
-    pluginRepositoryCount: safeRepos.filter((repo): repo is Repo => repo != null && Number.isFinite(repo.plugins_count)).length,
+    pluginRepositoryCount: safeRepos.filter((repo): repo is Repo => Number.isFinite(repo.plugins_count)).length,
     pluginCount: safeRepos.reduce((total, repo) => {
-      if (repo == null) return total
       const count = repo.plugins_count
       return total + (typeof count === 'number' && Number.isFinite(count) ? count : 0)
     }, 0),
