@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useFuzzySearch } from '../../hooks/useFuzzySearch.ts'
-import { compareRepoQuality } from '../../lib/qualityScore.mjs'
+import { compareRepoQuality } from '../../lib/qualityScore.ts'
 import {
   filterReposByFacets,
   getCategoryOptions,
@@ -10,7 +10,7 @@ import {
   getLanguageOptions,
   getLifecycleOptions,
   getVerificationOptions,
-} from '../../lib/repoFacets.mjs'
+} from '../../lib/repoFacets.ts'
 import { buildSearchUrl, parseSortOption } from '../../lib/searchState.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { RepoList } from './RepoList.tsx'

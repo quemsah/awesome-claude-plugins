@@ -1,3 +1,5 @@
+import type { Repo } from '../schemas/repo.schema.ts'
+
 export const categoryTaxonomy = [
   { value: 'agent-workflows', label: 'Agent workflows', terms: ['agent', 'agents', 'swarm', 'workflow', 'orchestration', 'automation'] },
   { value: 'mcp-integrations', label: 'MCP and integrations', terms: ['mcp', 'server', 'integration', 'connector', 'api'] },
@@ -10,7 +12,7 @@ export const categoryTaxonomy = [
     terms: ['security', 'guardrail', 'compliance', 'monitoring', 'observability'],
   },
   { value: 'design-content', label: 'Design and content', terms: ['design', 'ui', 'slides', 'image', 'video'] },
-]
+] as const
 
 export const keywordTaxonomy = [
   'claude',
@@ -25,17 +27,17 @@ export const keywordTaxonomy = [
   'data',
   'testing',
   'review',
-]
+] as const
 
 export const verificationOptions = [
   { value: 'verified', label: 'Verified' },
   { value: 'unknown', label: 'Unknown' },
-]
+] as const
 
 export const lifecycleOptions = [
   { value: 'active', label: 'Active' },
   { value: 'inactive', label: 'Inactive' },
-]
+] as const
 
 const languageKeywords = {
   python: ['python', 'py'],
@@ -57,7 +59,7 @@ const languageKeywords = {
   dart: ['dart'],
 }
 
-const languageDisplayNames = {
+const languageDisplayNames: Record<keyof typeof languageKeywords, string> = {
   python: 'Python',
   javascript: 'JavaScript',
   typescript: 'TypeScript',
@@ -77,29 +79,29 @@ const languageDisplayNames = {
   dart: 'Dart',
 }
 
-export function getRepoCategories(repo) {
+export function getRepoCategories(repo: Repo): string[] {
   const text = getRepoFacetText(repo)
   return categoryTaxonomy.filter((category) => category.terms.some((term) => text.includes(term))).map((category) => category.value)
 }
 
-export function getRepoKeywords(repo) {
+export function getRepoKeywords(repo: Repo): string[] {
   const text = getRepoFacetText(repo)
   return keywordTaxonomy.filter((keyword) => text.includes(keyword))
 }
 
-export function getRepoVerificationStatus(repo) {
+export function getRepoVerificationStatus(repo: Repo): 'verified' | 'unknown' {
   return repo.plugins_count !== null ? 'verified' : 'unknown'
 }
 
-export function getRepoLifecycleState(repo) {
+export function getRepoLifecycleState(repo: Repo): 'active' | 'inactive' {
   const stars = repo.stargazers_count ?? 0
   const subs = repo.subscribers_count ?? 0
   return stars > 0 || subs > 0 ? 'active' : 'inactive'
 }
 
-export function getRepoLanguage(repo) {
+export function getRepoLanguage(repo: Repo): string | null {
   const name = repo.repo_name ? repo.repo_name.toLowerCase() : ''
-  for (const [key, keywords] of Object.entries(languageKeywords)) {
+  for (const [key, keywords] of Object.entries(languageKeywords) as [keyof typeof languageKeywords, string[]][]) {
     if (keywords.some((keyword) => name.includes(keyword))) {
       return languageDisplayNames[key] || key
     }
@@ -107,7 +109,7 @@ export function getRepoLanguage(repo) {
   return null
 }
 
-export function filterReposByFacets(repos, filters) {
+export function filterReposByFacets(repos: Repo[], filters: { category?: string; keyword?: string; verification?: string; lifecycle?: string; language?: string }): Repo[] {
   return repos.filter((repo) => {
     const matchesCategory = !filters.category || getRepoCategories(repo).includes(filters.category)
     const matchesKeyword = !filters.keyword || getRepoKeywords(repo).includes(filters.keyword)
@@ -118,7 +120,7 @@ export function filterReposByFacets(repos, filters) {
   })
 }
 
-export function getCategoryOptions(repos) {
+export function getCategoryOptions(repos: Repo[]): { value: string; label: string; count: number }[] {
   return categoryTaxonomy.map((category) => ({
     value: category.value,
     label: category.label,
@@ -126,7 +128,7 @@ export function getCategoryOptions(repos) {
   }))
 }
 
-export function getKeywordOptions(repos) {
+export function getKeywordOptions(repos: Repo[]): { value: string; label: string; count: number }[] {
   return keywordTaxonomy.map((keyword) => ({
     value: keyword,
     label: keyword,
@@ -134,7 +136,7 @@ export function getKeywordOptions(repos) {
   }))
 }
 
-export function getVerificationOptions(repos) {
+export function getVerificationOptions(repos: Repo[]): { value: string; label: string; count: number }[] {
   return verificationOptions.map((option) => ({
     value: option.value,
     label: option.label,
@@ -142,7 +144,7 @@ export function getVerificationOptions(repos) {
   }))
 }
 
-export function getLifecycleOptions(repos) {
+export function getLifecycleOptions(repos: Repo[]): { value: string; label: string; count: number }[] {
   return lifecycleOptions.map((option) => ({
     value: option.value,
     label: option.label,
@@ -150,8 +152,8 @@ export function getLifecycleOptions(repos) {
   }))
 }
 
-export function getLanguageOptions(repos) {
-  const languages = new Map()
+export function getLanguageOptions(repos: Repo[]): { value: string; label: string; count: number }[] {
+  const languages = new Map<string, number>()
   repos.forEach((repo) => {
     const lang = getRepoLanguage(repo)
     if (lang) {
@@ -163,6 +165,6 @@ export function getLanguageOptions(repos) {
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
 }
 
-function getRepoFacetText(repo) {
+function getRepoFacetText(repo: Repo): string {
   return `${repo.owner ?? ''} ${repo.repo_name ?? ''} ${repo.description ?? ''}`.toLowerCase()
 }

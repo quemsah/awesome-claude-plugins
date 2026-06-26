@@ -11,7 +11,7 @@
     "build:analyze": "ANALYZE=true next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "validate:data": "node scripts/validate-data.mjs",
+    "validate:data": "node --experimental-strip-types scripts/validate-data.ts",
     "test:e2e": "playwright test",
     "style": "biome check --write --unsafe ."
   },

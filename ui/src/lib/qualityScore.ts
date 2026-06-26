@@ -1,10 +1,12 @@
-export function compareRepoQuality(a, b) {
+import type { Repo } from '../schemas/repo.schema.ts'
+
+export function compareRepoQuality(a: Repo, b: Repo): number {
   const scoreA = computeRepoQuality(a)
   const scoreB = computeRepoQuality(b)
   return scoreB - scoreA
 }
 
-function computeRepoQuality(repo) {
+function computeRepoQuality(repo: Repo): number {
   const stars = repo.stargazers_count ?? 0
   const forks = repo.forks_count ?? 0
   const subs = repo.subscribers_count ?? 0
