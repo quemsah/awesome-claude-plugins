@@ -10,7 +10,7 @@
       "description": "Keep framework updates isolated for focused review.",
       "matchPackageNames": ["next", "react", "react-dom"],
       "matchUpdateTypes": ["major", "minor", "patch"],
-      "schedule": ["* 10 * * 1"],
+      "schedule": ["after 10am and before 11am on Monday"],
       "groupName": "framework dependency updates",
       "minimumReleaseAge": "7 days"
     },
