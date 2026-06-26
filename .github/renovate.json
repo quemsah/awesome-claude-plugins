@@ -19,7 +19,7 @@
       "matchPackageNames": ["@biomejs/biome", "@next/bundle-analyzer", "@octokit/openapi-types", "@playwright/test", "@tailwindcss/postcss", "husky", "tailwindcss", "typescript"],
       "matchPackagePatterns": ["^@types/"],
       "matchUpdateTypes": ["minor", "patch"],
-      "schedule": ["* 14 * * 3"],
+      "schedule": ["after 2pm and before 3pm on Wednesday"],
       "groupName": "tooling and type dependency updates",
       "minimumReleaseAge": "3 days"
     },
