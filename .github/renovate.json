@@ -42,7 +42,7 @@
         "zod"
       ],
       "matchUpdateTypes": ["minor", "patch"],
-      "schedule": ["* 16 * * 5"],
+      "schedule": ["after 4pm and before 5pm on Friday"],
       "groupName": "runtime dependency updates",
       "minimumReleaseAge": "3 days"
     },
