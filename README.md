@@ -104,3 +104,5 @@
 | 98 | [connect](https://github.com/redpanda-data/connect) | Fancy stream processing made operationally mundane | 8695 | 112 | 1 |
 | 99 | [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) | Self-organizing AI second brain for Obsidian + Claude Code. Drop any source and Claude reads, links, and files it into one connected knowledge graph of plain Markdown you own. AI note-taking, personal knowledge management (PKM), and an open-source Notion alternative. Based on Karpathy's LLM Wiki pattern. | 8653 | 45 | 1 |
 | 100 | [claude-for-legal](https://github.com/anthropics/claude-for-legal) | A suite of plugins for legal workflows | 8604 | 99 | 13 |
+
+- **[Context Kit](https://github.com/JDDavenport/context-kit)** — Personal Context Artifacts: 4 Markdown templates + 5 Claude Code skills for giving AI agents deep personal context. MIT-licensed, one-command install.
