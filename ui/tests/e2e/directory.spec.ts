@@ -56,8 +56,8 @@ test('header navigation, external actions, and theme selection work across route
   await expect(page).toHaveURL(aboutUrl)
   await expect(page.getByRole('heading', { name: 'About This Project' })).toBeVisible()
 
-  await page.getByRole('link', { name: 'Search repositories' }).click()
-  await expect(page).toHaveURL('/')
+  await page.locator('a[aria-label="Search repositories"]').click()
+  await page.waitForURL('/')
   await expect(page.getByRole('heading', { name: 'Awesome Claude Plugins' })).toBeVisible()
 })
 
@@ -158,8 +158,8 @@ test('about page exposes static project cards and header navigation', async ({ p
   await expect(page.getByText('Automated Discovery')).toBeVisible()
   await expect(page.getByText('Why?')).toBeVisible()
 
-  await page.getByRole('link', { name: 'Search repositories' }).click()
-  await expect(page).toHaveURL('/')
+  await page.locator('a[aria-label="Search repositories"]').click()
+  await page.waitForURL('/')
   await expect(page.getByRole('heading', { name: 'Awesome Claude Plugins' })).toBeVisible()
 })
 
