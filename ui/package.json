@@ -11,7 +11,6 @@
     "build:analyze": "cross-env ANALYZE=true next build --webpack",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "validate:data": "node scripts/validate-data.mjs",
     "indexnow": "node scripts/indexnow.mjs",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
