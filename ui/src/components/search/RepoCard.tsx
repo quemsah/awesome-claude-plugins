@@ -73,11 +73,11 @@ export function RepoCard({ repo, className }: RepoCardProps) {
           by{' '}
           <a
             className="underline-offset-4 hover:text-primary hover:underline"
-            href={getGitHubOwnerUrl(repo.owner!)}
+            href={getGitHubOwnerUrl(repo.owner ?? '')}
             rel="noopener noreferrer"
             target="_blank"
           >
-            {repo.owner!}
+            {repo.owner ?? ''}
           </a>
         </CardDescription>
       </CardHeader>
@@ -108,8 +108,8 @@ export function RepoCard({ repo, className }: RepoCardProps) {
           </div>
           <Button asChild className="h-9 w-full sm:h-8 sm:w-auto">
             <Link
-              aria-label={`View details for ${repo.owner!}/${repo.repo_name!}`}
-              href={`/${getGitHubRepoPath(repo.owner!, repo.repo_name!)}`}
+              aria-label={`View details for ${repo.owner ?? ''}/${repo.repo_name ?? ''}`}
+              href={`/${getGitHubRepoPath(repo.owner ?? '', repo.repo_name ?? '')}`}
               prefetch={false}
             >
               Details
