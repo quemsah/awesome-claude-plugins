@@ -2,7 +2,7 @@
 import { z } from 'zod'
 import { getGitHubOwnerUrl, getGitHubRepoUrl, isGitHubSegment } from '../lib/repositoryIdentity.ts'
 
-const GitHubSegmentSchema = z.string().refine(isGitHubSegment, 'Must be a valid GitHub path segment')
+const _GitHubSegmentSchema = z.string().refine(isGitHubSegment, 'Must be a valid GitHub path segment')
 
 export const RepoSchema = z
   .object({
@@ -18,7 +18,7 @@ export const RepoSchema = z
     id: z.number(),
   })
   .superRefine((repo, context) => {
-    if (!repo.owner || !repo.repo_name) {
+    if (!(repo.owner && repo.repo_name)) {
       return
     }
 
