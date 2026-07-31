@@ -1,6 +1,6 @@
 # Awesome Claude Code Plugins: Top 100 Repositories
 
-> Last updated: 31.07.2026 with 30719 total repositories indexed.
+> Last updated: 31.07.2026 with 30878 total repositories indexed.
 
 | # | Repo Name | Description | Stars | Subs | Plugins |
 |---|-----------|-------------|-------|-------------|---------|
