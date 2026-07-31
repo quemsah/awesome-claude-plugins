@@ -6,20 +6,13 @@ interface PluginAuthorProps {
 
 export function PluginAuthor({ author }: PluginAuthorProps) {
   if (!author) return null
-  if (!(author.name || author.email)) return null
+  if (!author.name) return null
 
   return (
     <div>
       <dt className="mb-0.5 font-medium text-sm">Author</dt>
       <dd className="text-muted-foreground text-sm">
-        {author.name ? (
-          <p className="font-medium">
-            {author.name}
-            {author.email ? <span className="font-normal"> ({author.email})</span> : null}
-          </p>
-        ) : author.email ? (
-          <p className="break-all">{author.email}</p>
-        ) : null}
+        <p className="font-medium">{author.name}</p>
       </dd>
     </div>
   )

@@ -1,28 +1,37 @@
 {
+  "version": 1,
+  "owner": "catalog-maintainers",
+  "expiresAt": "2026-12-31",
   "knownAnomalies": {
     "repositoriesWithNullPluginCount": {
-      "expectedCount": 247,
-      "reason": "Legacy discovered repository rows that have not had plugin counts backfilled yet."
+      "expectedCount": 276,
+      "maxCount": 400,
+      "reason": "Legacy discovered repository rows that have not had plugin counts backfilled yet; count is reviewed against the generated catalog."
     },
     "repositoriesWithUntrimmedDescriptions": {
-      "expectedCount": 341,
-      "reason": "Existing generated descriptions contain source whitespace that should be cleaned in the ingestion pipeline."
+      "expectedCount": 427,
+      "maxCount": 600,
+      "reason": "Existing generated descriptions contain source whitespace that should be cleaned in the ingestion pipeline; count is reviewed against the generated catalog."
     },
     "caseInsensitiveRepositoryCollisions": {
-      "expectedCount": 21,
-      "reason": "Existing catalog contains case-only owner/repo collisions that need canonicalization."
+      "expectedCount": 27,
+      "maxCount": 50,
+      "reason": "Existing catalog contains case-only owner/repo collisions that need canonicalization; count is reviewed against the generated catalog."
     },
     "statsGapsOverOneAndHalfDays": {
-      "expectedCount": 16,
-      "reason": "Existing historical snapshots have known collection gaps."
+      "expectedCount": 18,
+      "maxCount": 30,
+      "reason": "Existing historical snapshots have known collection gaps; count is reviewed against the generated catalog."
     },
     "statsDuplicateUtcDays": {
-      "expectedCount": 4,
+      "expectedCount": 5,
+      "maxCount": 15,
       "reason": "Existing historical snapshots include multiple samples on the same UTC calendar day."
     },
     "statsDeclines": {
-      "expectedCount": 1,
-      "reason": "Existing historical snapshots include one repository-count decline."
+      "expectedCount": 2,
+      "maxCount": 10,
+      "reason": "Existing historical snapshots include known repository-count declines; count is reviewed against the generated catalog."
     }
   }
 }

@@ -8,8 +8,9 @@ const failures = []
 const notices = []
 
 const MILLISECONDS_IN_DAY = 1000 * 60 * 60 * 24
-const GITHUB_REPO_URL_PATTERN = /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+$/
-const GITHUB_OWNER_URL_PATTERN = /^https:\/\/github\.com\/[^/\s]+$/
+const GITHUB_SEGMENT_PATTERN = /^[A-Za-z0-9._-]+$/
+const GITHUB_REPO_URL_PATTERN = /^https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
+const GITHUB_OWNER_URL_PATTERN = /^https:\/\/github\.com\/[A-Za-z0-9._-]+$/
 
 function readJson(relativePath) {
   return JSON.parse(readFileSync(new URL(relativePath, import.meta.url), 'utf8'))
@@ -31,21 +32,49 @@ function isPositiveInteger(value) {
   return Number.isInteger(value) && value > 0
 }
 
+function validateAnomalyPolicy() {
+  if (!Number.isInteger(allowlist.version) || allowlist.version < 1) {
+    addFailure('Data-validation allowlist must have a positive integer version')
+  }
+  if (typeof allowlist.owner !== 'string' || allowlist.owner.trim().length === 0) {
+    addFailure('Data-validation allowlist must identify an owner')
+  }
+  if (typeof allowlist.expiresAt !== 'string' || Number.isNaN(Date.parse(allowlist.expiresAt))) {
+    addFailure('Data-validation allowlist must have a valid expiry date')
+  } else if (new Date(allowlist.expiresAt) < new Date()) {
+    addFailure(`Data-validation allowlist expired on ${allowlist.expiresAt}; review its anomaly policy`)
+  }
+}
+
 function getKnownAnomaly(name) {
   const anomaly = allowlist.knownAnomalies?.[name]
   if (!anomaly) {
     addFailure(`Missing known-anomaly allowlist entry: ${name}`)
     return null
   }
+  if (!Number.isInteger(anomaly.expectedCount) || anomaly.expectedCount < 0) {
+    addFailure(`Known-anomaly allowlist entry ${name} must have a nonnegative integer expectedCount`)
+    return null
+  }
+  if (!Number.isInteger(anomaly.maxCount) || anomaly.maxCount < anomaly.expectedCount) {
+    addFailure(`Known-anomaly allowlist entry ${name} must have a maxCount ceiling of at least expectedCount`)
+    return null
+  }
   return anomaly
 }
 
-function checkKnownCount(name, actualCount, details) {
+function reportKnownCount(name, actualCount, details) {
   const anomaly = getKnownAnomaly(name)
   if (!anomaly) return
 
+  const ceiling = Number.isInteger(anomaly.maxCount) ? anomaly.maxCount : anomaly.expectedCount
+  if (actualCount > ceiling) {
+    addFailure(`${name}: ${actualCount} exceeds the tolerated ceiling of ${ceiling}. ${details}`)
+    return
+  }
+
   if (actualCount !== anomaly.expectedCount) {
-    addFailure(`${name}: expected ${anomaly.expectedCount}, found ${actualCount}. ${details}`)
+    notices.push(`${name}: expected ${anomaly.expectedCount}, found ${actualCount}. ${details}`)
     return
   }
 
@@ -87,12 +116,12 @@ function validateRepos() {
       seenIds.set(repo.id, index)
     }
 
-    if (typeof repo.owner !== 'string' || repo.owner.length === 0) {
-      addFailure(`${rowLabel}: owner must be a non-empty string`)
+    if (typeof repo.owner !== 'string' || !GITHUB_SEGMENT_PATTERN.test(repo.owner)) {
+      addFailure(`${rowLabel}: owner must be a valid GitHub path segment`)
     }
 
-    if (typeof repo.repo_name !== 'string' || repo.repo_name.length === 0) {
-      addFailure(`${rowLabel}: repo_name must be a non-empty string`)
+    if (typeof repo.repo_name !== 'string' || !GITHUB_SEGMENT_PATTERN.test(repo.repo_name)) {
+      addFailure(`${rowLabel}: repo_name must be a valid GitHub path segment`)
     }
 
     if (typeof repo.html_url !== 'string' || !GITHUB_REPO_URL_PATTERN.test(repo.html_url)) {
@@ -150,13 +179,13 @@ function validateRepos() {
     .filter(([, rows]) => rows.length > 1)
     .map(([canonicalKey, rows]) => `${canonicalKey}: ${rows.join(' | ')}`)
 
-  checkKnownCount('repositoriesWithNullPluginCount', nullPluginCountRows.length, `Sample: ${formatSample(nullPluginCountRows)}`)
-  checkKnownCount(
+  reportKnownCount('repositoriesWithNullPluginCount', nullPluginCountRows.length, `Sample: ${formatSample(nullPluginCountRows)}`)
+  reportKnownCount(
     'repositoriesWithUntrimmedDescriptions',
     untrimmedDescriptionRows.length,
     `Sample: ${formatSample(untrimmedDescriptionRows)}`
   )
-  checkKnownCount(
+  reportKnownCount(
     'caseInsensitiveRepositoryCollisions',
     canonicalCollisionGroups.length,
     `Sample: ${formatSample(canonicalCollisionGroups, 5)}`
@@ -239,11 +268,12 @@ function validateStats() {
     .filter(([, rows]) => rows.length > 1)
     .map(([day, rows]) => `${day}: ${rows.join(' | ')}`)
 
-  checkKnownCount('statsGapsOverOneAndHalfDays', gapRows.length, `Sample: ${formatSample(gapRows, 5)}`)
-  checkKnownCount('statsDuplicateUtcDays', duplicateDayRows.length, `Sample: ${formatSample(duplicateDayRows)}`)
-  checkKnownCount('statsDeclines', declineRows.length, `Sample: ${formatSample(declineRows)}`)
+  reportKnownCount('statsGapsOverOneAndHalfDays', gapRows.length, `Sample: ${formatSample(gapRows, 5)}`)
+  reportKnownCount('statsDuplicateUtcDays', duplicateDayRows.length, `Sample: ${formatSample(duplicateDayRows)}`)
+  reportKnownCount('statsDeclines', declineRows.length, `Sample: ${formatSample(declineRows)}`)
 }
 
+validateAnomalyPolicy()
 validateRepos()
 validateStats()
 

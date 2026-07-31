@@ -1,5 +1,6 @@
 import type { components } from '@octokit/openapi-types'
 import { CircleDot, Code, ExternalLink, Eye, FileText, GitFork, Star } from 'lucide-react'
+import Image from 'next/image'
 import { formatDate as formatDateUtil } from '../../lib/utils.ts'
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar.tsx'
 import { Badge } from '../ui/badge.tsx'
@@ -8,11 +9,24 @@ import { Card, CardContent, CardDescription, CardHeader } from '../ui/card.tsx'
 
 type Repository = components['schemas']['repository']
 
+function getSafeHomepageUrl(homepage: string | null): string | null {
+  if (!homepage) return null
+
+  try {
+    const url = new URL(homepage)
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null
+  } catch {
+    return null
+  }
+}
+
 interface RepoInfoCardProps {
   repo: Repository
 }
 
 export function RepoInfoCard({ repo }: RepoInfoCardProps) {
+  const subscribersCount = (repo as Record<string, unknown>).subscribers_count
+  const homepageUrl = getSafeHomepageUrl(repo.homepage)
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Unknown'
     return formatDateUtil(new Date(dateString))
@@ -32,11 +46,13 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-4">
             <Avatar className="h-12 w-12 sm:h-16 sm:w-16">
-              <AvatarImage alt={repo.owner.login} src={repo.owner.avatar_url} />
+              <AvatarImage asChild>
+                <Image alt={repo.owner.login} height={64} src={repo.owner.avatar_url} width={64} />
+              </AvatarImage>
               <AvatarFallback>{repo.owner.login.slice(0, 2).toUpperCase()}</AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <h1 className="wrap-break-word mb-2 font-bold text-2xl sm:text-3xl">{repo.name}</h1>
+              <h1 className="wrap-break-word mb-2 text-balance font-bold text-2xl sm:text-3xl">{repo.name}</h1>
               <CardDescription className="wrap-break-word text-base sm:text-lg">
                 by{' '}
                 <a
@@ -52,9 +68,9 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:ml-4 sm:flex-row sm:flex-nowrap sm:gap-3">
-            {!!repo.homepage && (
+            {homepageUrl && (
               <Button asChild className="flex-1 justify-center sm:w-auto" variant="outline">
-                <a aria-label="Visit repository homepage" href={repo.homepage} rel="noopener noreferrer" target="_blank">
+                <a aria-label="Visit repository homepage" href={homepageUrl} rel="nofollow noopener noreferrer" target="_blank">
                   <ExternalLink aria-hidden="true" className="h-4 w-4" />
                   Homepage
                 </a>
@@ -91,8 +107,8 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
           </Badge>
           <Badge className="gap-2 text-sm" variant="secondary">
             <Eye aria-hidden="true" className="h-5 w-5" />
-            <span className="font-semibold">{repo.watchers_count?.toLocaleString() ?? 0}</span>
-            <span>watchers</span>
+            <span className="font-semibold">{typeof subscribersCount === 'number' ? subscribersCount.toLocaleString() : 0}</span>
+            <span>watchers/subscribers</span>
           </Badge>
           <Badge className="gap-2 text-sm" variant="secondary">
             <CircleDot aria-hidden="true" className="h-5 w-5" />

@@ -1,7 +1,10 @@
 import process from 'node:process'
-import type { Metadata } from 'next'
-import Script from 'next/script'
-import { BASE_URL } from '../lib/constants.ts'
+import type { Metadata, Viewport } from 'next'
+import Link from 'next/link'
+import { Header } from '../components/common/Header.tsx'
+import { SimpleAnalytics } from '../components/common/SimpleAnalytics.tsx'
+import { WebVitals } from '../components/common/WebVitals.tsx'
+import { BASE_URL, DEFAULT_OG_IMAGE } from '../lib/constants.ts'
 import { Providers } from '../providers/providers.tsx'
 import './globals.css'
 
@@ -14,35 +17,12 @@ export function generateMetadata(): Metadata {
     },
     description:
       'Explore the ultimate collection of Claude Code plugins. Discover powerful AI tools, extensions, and integrations across GitHub repositories',
-    keywords: [
-      'Claude Code plugins',
-      'Claude AI tools',
-      'Anthropic Claude plugins',
-      'Claude Code extensions',
-      'AI coding agents',
-      'MCP servers',
-      'Claude skills marketplace',
-      'GitHub plugin repositories',
-      'Automated plugin discovery',
-      'AI development tools',
-      'Multi-agent orchestration',
-      'Claude Code marketplace',
-      'Claude skills catalog',
-      'Claude Code plugin catalog',
-      'Agent skills',
-      'Coding automation',
-      'AI plugin directory',
-      'Claude development ecosystem',
-      'Plugin adoption analytics',
-      'GitHub AI tools',
-      'Claude Code workflows',
-      'n8n automation',
-    ],
     authors: [{ name: 'Awesome Claude Plugins Team', url: BASE_URL }],
     creator: 'Awesome Claude Plugins Team',
     publisher: 'Awesome Claude Plugins Team',
     icons: {
       icon: [
+        { url: '/favicon.svg', type: 'image/svg+xml' },
         { url: '/favicon.ico' },
         { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
         { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
@@ -66,9 +46,9 @@ export function generateMetadata(): Metadata {
       siteName: 'Awesome Claude Plugins',
       images: [
         {
-          url: '/android-chrome-512x512.png',
-          width: 512,
-          height: 512,
+          url: DEFAULT_OG_IMAGE,
+          width: 1200,
+          height: 630,
           alt: 'Awesome Claude Plugins',
         },
       ],
@@ -79,7 +59,7 @@ export function generateMetadata(): Metadata {
       description:
         'Discover powerful plugins, extensions, and tools for Claude AI. Browse curated collections and boost your development workflow',
       creator: '@awesome_claude_plugins',
-      images: ['/android-chrome-512x512.png'],
+      images: [DEFAULT_OG_IMAGE],
     },
     robots: {
       index: true,
@@ -93,7 +73,10 @@ export function generateMetadata(): Metadata {
       },
     },
     alternates: {
-      canonical: `${BASE_URL}/`,
+      types: {
+        'application/feed+json': `${BASE_URL}/feed.json`,
+        'text/markdown': `${BASE_URL}/index.md`,
+      },
     },
     verification: {
       google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION_CODE,
@@ -101,20 +84,41 @@ export function generateMetadata(): Metadata {
   }
 }
 
+export const viewport: Viewport = {
+  colorScheme: 'light dark',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#171717' },
+  ],
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const shouldLoadAnalytics = process.env.NODE_ENV === 'production' && process.env.VERCEL_ENV !== 'preview'
+
   return (
     <html lang="en-US" suppressHydrationWarning>
-      <body className="min-h-screen">
-        <Providers>{children}</Providers>
-        <Script data-collect-dnt="true" src="https://scripts.simpleanalyticscdn.com/latest.js" />
-        <noscript>
-          {/** biome-ignore lint/performance/noImgElement: <sa> */}
-          <img alt="" referrerPolicy="no-referrer-when-downgrade" src="https://queue.simpleanalyticscdn.com/noscript.gif" />
-        </noscript>
+      <body className="min-h-dvh">
+        {shouldLoadAnalytics ? <link crossOrigin="anonymous" href="https://scripts.simpleanalyticscdn.com" rel="preconnect" /> : null}
+        <Providers>
+          <Header />
+          <noscript>
+            <p className="border-b px-4 py-3 text-center text-muted-foreground text-sm">
+              JavaScript is disabled. You can still browse the catalog, but search and sorting require JavaScript.
+            </p>
+          </noscript>
+          {children}
+          <footer className="border-t px-4 py-6 text-center text-muted-foreground text-sm">
+            <Link className="underline-offset-4 hover:text-foreground hover:underline" href="/privacy">
+              Privacy
+            </Link>
+          </footer>
+        </Providers>
+        <SimpleAnalytics enabled={shouldLoadAnalytics} />
+        <WebVitals />
       </body>
     </html>
   )

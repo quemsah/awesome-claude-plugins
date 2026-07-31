@@ -6,7 +6,7 @@ interface PluginListProps {
 }
 
 export function PluginList({ title, items, repoPath, defaultBranch }: PluginListProps) {
-  if (!items?.length) return null
+  if (!(items?.length && defaultBranch)) return null
 
   return (
     <div>
@@ -16,7 +16,7 @@ export function PluginList({ title, items, repoPath, defaultBranch }: PluginList
       <dd>
         <ul className="list-inside list-disc space-y-0.5 text-muted-foreground text-sm">
           {items.map((item) => {
-            const fileUrl = `https://github.com/${repoPath}/blob/${defaultBranch || 'main'}/${item}`
+            const fileUrl = `https://github.com/${repoPath}/blob/${defaultBranch}/${item}`
             return (
               <li className="break-all" key={item}>
                 <a

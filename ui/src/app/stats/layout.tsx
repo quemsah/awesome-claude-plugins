@@ -1,46 +1,34 @@
 import type { Metadata } from 'next'
-import { BASE_URL } from '../../lib/constants.ts'
+import { BASE_URL, DEFAULT_OG_IMAGE } from '../../lib/constants.ts'
 
 export const metadata: Metadata = {
-  title: 'Trends & Analytics',
+  title: 'Repositories Statistics',
   description: 'Explore Claude Code plugin adoption statistics, repository growth trends and usage patterns across GitHub',
-  keywords: [
-    'Claude Code analytics',
-    'Plugin adoption statistics',
-    'AI development trends',
-    'GitHub repository metrics',
-    'Claude Code growth charts',
-    'MCP server analytics',
-    'Agent skills statistics',
-    'AI coding tools usage',
-    'Plugin marketplace trends',
-    'Plugin catalog trends',
-    'Automated workflow analytics',
-    'Claude Code adoption rates',
-    'Repository plugin metrics',
-  ],
   openGraph: {
-    title: 'Trends & Analytics',
+    title: 'Repositories Statistics | Awesome Claude Plugins',
     description: 'Explore Claude Code plugin adoption statistics, repository growth trends and usage patterns across GitHub',
     url: `${BASE_URL}/stats`,
     type: 'website',
     images: [
       {
-        url: '/android-chrome-512x512.png',
-        width: 512,
-        height: 512,
+        url: DEFAULT_OG_IMAGE,
+        width: 1200,
+        height: 630,
         alt: 'Claude Code Plugin Statistics',
       },
     ],
   },
   alternates: {
     canonical: `${BASE_URL}/stats`,
+    types: {
+      'text/markdown': `${BASE_URL}/stats.md`,
+    },
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Trends & Analytics',
+    title: 'Repositories Statistics | Awesome Claude Plugins',
     description: 'Explore Claude Code plugin adoption statistics, repository growth trends and usage patterns across GitHub',
-    images: ['/android-chrome-512x512.png'],
+    images: [DEFAULT_OG_IMAGE],
   },
 }
 

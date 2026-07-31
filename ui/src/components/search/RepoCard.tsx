@@ -1,6 +1,11 @@
+'use client'
+
 import { GitFork, Star } from 'lucide-react'
+import Link from 'next/link'
 import { useCallback, useMemo, useState } from 'react'
+import { copyText } from '../../lib/clipboard.ts'
 import { getMarketplaceAddCommand } from '../../lib/installCommand.ts'
+import { getGitHubOwnerUrl, getGitHubRepoPath } from '../../lib/repositoryIdentity.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { ClaudeIcon } from '../common/ClaudeIcon.tsx'
 import { CopiedIcon } from '../common/CopiedIcon.tsx'
@@ -24,6 +29,7 @@ interface RepoCardProps {
 export function RepoCard({ repo, className }: RepoCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isCopied, setIsCopied] = useState(false)
+  const [copyError, setCopyError] = useState<string | null>(null)
   const marketplaceCommand = useMemo(() => getMarketplaceAddCommand(repo.owner, repo.repo_name), [repo.owner, repo.repo_name])
   const hasValidRepoInfo = Boolean(marketplaceCommand)
 
@@ -38,16 +44,15 @@ export function RepoCard({ repo, className }: RepoCardProps) {
   const handleCopyClick = useCallback(async () => {
     if (!marketplaceCommand) return
 
-    try {
-      await navigator.clipboard.writeText(marketplaceCommand)
+    const copied = await copyText(marketplaceCommand)
+    if (copied) {
+      setCopyError(null)
       setIsCopied(true)
-      setTimeout(() => setIsCopied(false), 500)
-    } catch {
-      // clipboard write failed; leave isCopied as false
+      setTimeout(() => setIsCopied(false), 2_000)
+    } else {
+      setCopyError('Unable to copy the marketplace command. Select and copy it manually.')
     }
   }, [marketplaceCommand])
-
-  if (!repo.repo_name) return null
 
   return (
     <Card
@@ -57,49 +62,69 @@ export function RepoCard({ repo, className }: RepoCardProps) {
     >
       <CardHeader className="-space-y-2 pr-14 sm:pr-16">
         <CardTitle className="text-base transition-colors duration-300 group-hover:text-primary sm:text-lg">
-          <h3>{repo.repo_name}</h3>
+          <h2>{repo.repo_name}</h2>
         </CardTitle>
+        <Button asChild className="touch-target absolute top-4 right-4 h-8 w-8 sm:top-6 sm:right-6" size="icon" variant="outline">
+          <a aria-label={`View ${repo.owner}/${repo.repo_name} on GitHub`} href={repo.html_url} rel="noopener noreferrer" target="_blank">
+            <AnimatedGithubIcon isHovered={isHovered} />
+          </a>
+        </Button>
         <CardDescription className="text-muted-foreground text-sm">
           by{' '}
-          <a className="underline-offset-4 hover:text-primary hover:underline" href={`https://github.com/${repo.owner}`}>
+          <a
+            className="underline-offset-4 hover:text-primary hover:underline"
+            href={getGitHubOwnerUrl(repo.owner)}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
             {repo.owner}
           </a>
         </CardDescription>
       </CardHeader>
       <CardContent className="flex h-full flex-col">
         <div className="grow">
-          {!!repo.description && <p className="mb-4 line-clamp-2 text-muted-foreground text-sm">{repo.description}</p>}
+          <p className="mb-4 line-clamp-2 text-muted-foreground text-sm">{repo.description?.trim() || 'No description available.'}</p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1">
               <Star aria-hidden="true" className="h-4 w-4" />
               <span className="text-xs">{formatNumber(repo.stargazers_count ?? 0)}</span>
+              <span className="sr-only">stars</span>
             </div>
             <div className="flex items-center gap-1">
               <GitFork aria-hidden="true" className="h-4 w-4" />
               <span className="text-xs">{formatNumber(repo.forks_count ?? 0)}</span>
+              <span className="sr-only">forks</span>
             </div>
             {repo.plugins_count !== null && (
               <div className="flex items-center gap-1">
                 <ClaudeIcon aria-hidden="true" />
                 <span className="text-xs">{formatNumber(repo.plugins_count ?? 0)}</span>
+                <span className="sr-only">plugins</span>
+                {(repo.stargazers_count ?? 0) < 10 && <span className="text-muted-foreground text-xs">(low signal)</span>}
               </div>
             )}
           </div>
           <Button asChild className="h-9 w-full sm:h-8 sm:w-auto">
-            <a aria-label={`View details for ${repo.owner}/${repo.repo_name}`} href={`/${repo.owner}/${repo.repo_name}`}>
+            <Link
+              aria-label={`View details for ${repo.owner}/${repo.repo_name}`}
+              href={`/${getGitHubRepoPath(repo.owner, repo.repo_name)}`}
+              prefetch={false}
+            >
               Details
-            </a>
+            </Link>
           </Button>
         </div>
         {hasValidRepoInfo ? (
-          <div className="mt-3 border-muted/20 border-t">
+          <div className="mt-3 border-border border-t">
             <div className="flex items-center gap-2 rounded-md bg-muted/50 p-2 text-xs">
-              <code className="grow break-all font-mono">{marketplaceCommand}</code>
+              <code className="grow truncate font-mono" title={marketplaceCommand ?? undefined}>
+                {marketplaceCommand}
+              </code>
               <button
                 aria-label={isCopied ? 'Marketplace command copied' : 'Copy marketplace command'}
-                className={`shrink-0 rounded-md p-2 transition-colors ${isCopied ? 'bg-green-500/20 text-green-600' : 'hover:bg-muted'}`}
+                className={`touch-target shrink-0 rounded-md p-2 transition-colors ${isCopied ? 'bg-status-positive/20 text-status-positive' : 'hover:bg-muted'}`}
                 onClick={handleCopyClick}
                 title={isCopied ? 'Marketplace command copied' : 'Copy marketplace command'}
                 type="button"
@@ -110,11 +135,9 @@ export function RepoCard({ repo, className }: RepoCardProps) {
           </div>
         ) : null}
       </CardContent>
-      <Button asChild className="absolute top-4 right-4 h-8 w-8 sm:top-6 sm:right-6" size="icon" variant="outline">
-        <a aria-label={`View ${repo.owner}/${repo.repo_name} on GitHub`} href={repo.html_url} rel="noopener noreferrer" target="_blank">
-          <AnimatedGithubIcon isHovered={isHovered} />
-        </a>
-      </Button>
+      <span aria-atomic="true" aria-live="polite" className="sr-only">
+        {copyError ?? (isCopied ? 'Marketplace command copied' : '')}
+      </span>
     </Card>
   )
 }

@@ -2,7 +2,7 @@ import Fuse from 'fuse.js'
 import type { Repo } from '../schemas/repo.schema.ts'
 
 export const fuseOptions = {
-  keys: ['repo_name', 'description'],
+  keys: ['repo_name', 'owner', 'description'],
   includeScore: true,
   threshold: 0.2,
   ignoreLocation: true,
@@ -11,9 +11,9 @@ export const fuseOptions = {
   findAllMatches: true,
 }
 
-let fuseCache: WeakMap<Repo[], Fuse<Repo>> | null = null
+let fuseCache: WeakMap<readonly Repo[], Fuse<Repo>> | null = null
 
-function getCachedFuseIndex(repos: Repo[]): Fuse<Repo> {
+function getCachedFuseIndex(repos: readonly Repo[]): Fuse<Repo> {
   if (!fuseCache) {
     fuseCache = new WeakMap()
   }
@@ -26,6 +26,6 @@ function getCachedFuseIndex(repos: Repo[]): Fuse<Repo> {
   return fuse
 }
 
-export function createFuseIndex(repos: Repo[]): Fuse<Repo> {
+export function createFuseIndex(repos: readonly Repo[]): Fuse<Repo> {
   return getCachedFuseIndex(repos)
 }

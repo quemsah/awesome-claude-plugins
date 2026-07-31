@@ -1,129 +1,94 @@
-'use client'
+import type { components } from '@octokit/openapi-types'
+import { notFound, permanentRedirect } from 'next/navigation'
+import { MarketplacePluginsSchema, type Plugin } from '../../app/types/plugin.type.ts'
+import { RepoPageClient } from '../../components/repo/RepoPageClient.tsx'
+import { findCatalogRepo, getRepoCanonicalPath } from '../../lib/catalog.ts'
+import { fetchGitHubRepository, fetchMarketplace } from '../../lib/github.ts'
 
-import { ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
-import { use } from 'react'
-import { Header } from '../../components/common/Header.tsx'
-import { PluginCard } from '../../components/repo/PluginCard.tsx'
-import { RepoInfoCard } from '../../components/repo/RepoInfoCard.tsx'
-import RepoStructuredData from '../../components/repo/RepoStructuredData.tsx'
-import { PluginCardSkeleton } from '../../components/skeleton/PluginCardSkeleton.tsx'
-import { RepoInfoCardSkeleton } from '../../components/skeleton/RepoInfoCardSkeleton.tsx'
-import { Button } from '../../components/ui/button.tsx'
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card.tsx'
-import { usePlugins } from '../../hooks/usePlugins.ts'
-import { useRepo } from '../../hooks/useRepo.ts'
+type RouteParams = {
+  params: Promise<{ repo: string[] }>
+}
 
-type RouteParams = { params: Promise<{ repo: string[] }> }
+type Repository = components['schemas']['repository']
 
-export default function RepoPage({ params }: RouteParams) {
-  const resolvedParams = use(params)
-  const repoPath = resolvedParams.repo.join('/')
+export const revalidate = 3_600
 
-  const { repo, loading, error } = useRepo(repoPath)
-  const { plugins, pluginsLoading, pluginsError } = usePlugins(repo, repoPath)
+export default async function RepoPage({ params }: RouteParams) {
+  const { repo } = await params
 
-  if (loading) {
-    return (
-      <>
-        <Header />
-        <main aria-busy="true" className="min-h-screen bg-background">
-          <div className="container mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
-            <Button aria-label="Back to all repositories" asChild className="mb-6" variant="ghost">
-              <Link href="/">
-                <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-                Back to all repositories
-              </Link>
-            </Button>
-
-            <div aria-label="Loading repository..." aria-live="polite" role="status">
-              <span className="sr-only">Loading repository...</span>
-            </div>
-            <div aria-hidden="true">
-              <RepoInfoCardSkeleton />
-              <Card className="mt-8 p-6">
-                <CardHeader className="mb-4 p-0">
-                  <CardTitle className="text-2xl">
-                    <h2>Available Plugins</h2>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <PluginCardSkeleton count={3} />
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </main>
-      </>
-    )
+  if (repo.length !== 2) {
+    notFound()
   }
 
-  if (error || !repo) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background">
-        <Card className="p-8 text-center">
-          <CardHeader>
-            <CardTitle>{error || 'Repository not found'}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Button asChild>
-              <Link href="/">
-                <ArrowLeft className="h-4 w-4" />
-                Back to all repositories
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </main>
-    )
+  const repoPath = repo.join('/')
+  const catalogRepo = findCatalogRepo(repoPath)
+  if (!catalogRepo) {
+    notFound()
   }
 
-  return (
-    <>
-      <Header />
-      <main className="min-h-screen bg-background">
-        {repo ? <RepoStructuredData repo={repo} /> : null}
-        <div className="container mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
-          <Button aria-label="Back to all repositories" asChild className="mb-6" variant="ghost">
-            <Link href="/">
-              <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-              Back to all repositories
-            </Link>
-          </Button>
+  const canonicalPath = getRepoCanonicalPath(catalogRepo)
+  if (repoPath !== canonicalPath) {
+    permanentRedirect(`/${canonicalPath}`)
+  }
 
-          <RepoInfoCard repo={repo} />
+  let repositoryResponse: Response
+  try {
+    repositoryResponse = await fetchGitHubRepository(repo[0], repo[1])
+  } catch (error) {
+    console.error('Failed to fetch repository from GitHub', {
+      error: error instanceof Error ? error.message : String(error),
+      repoPath,
+    })
+    throw new Error('Failed to load repository', { cause: error })
+  }
 
-          {!pluginsError && (
-            <Card className="mt-8 p-6">
-              <CardHeader className="mb-4 p-0">
-                <CardTitle className="text-2xl">
-                  <h2>Available Plugins</h2>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {pluginsLoading ? (
-                  <div aria-busy="true" aria-live="polite" className="py-8">
-                    <PluginCardSkeleton count={3} />
-                    <span className="sr-only">Loading plugins...</span>
-                  </div>
-                ) : plugins.length > 0 ? (
-                  <div aria-atomic="true" aria-live="polite" className="space-y-4">
-                    {plugins.map((plugin, index) => (
-                      <article key={`${plugin.id || ''}-${plugin.name || ''}-${index}`}>
-                        <PluginCard plugin={plugin} repo={repo} repoPath={repoPath} />
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <p aria-live="polite" className="py-4 text-center text-muted-foreground">
-                    No Claude Code plugins found in this repository.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </main>
-    </>
-  )
+  if (repositoryResponse.status === 404) {
+    notFound()
+  }
+  if (!repositoryResponse.ok) {
+    throw new Error(`GitHub repository request failed with status ${repositoryResponse.status}`)
+  }
+
+  let repository: Repository
+  try {
+    repository = (await repositoryResponse.json()) as Repository
+  } catch (error) {
+    console.error('Failed to parse GitHub repository response', {
+      error: error instanceof Error ? error.message : String(error),
+      repoPath,
+    })
+    throw new Error('Failed to load repository', { cause: error })
+  }
+
+  let marketplaceResult: Response
+  try {
+    marketplaceResult = await fetchMarketplace(repo[0], repo[1], repository.default_branch)
+  } catch (error) {
+    console.error('Failed to fetch marketplace manifest', {
+      error: error instanceof Error ? error.message : String(error),
+      repoPath,
+    })
+    marketplaceResult = new Response(null, { status: 503 })
+  }
+
+  let plugins: Plugin[] = []
+  let pluginsError: string | null = null
+  if (marketplaceResult.status !== 404) {
+    if (!marketplaceResult.ok) {
+      pluginsError = 'Failed to load marketplace manifest.'
+    } else {
+      try {
+        const parsedMarketplace = MarketplacePluginsSchema.safeParse(await marketplaceResult.json())
+        if (parsedMarketplace.success) {
+          plugins = parsedMarketplace.data
+        } else {
+          pluginsError = 'Marketplace manifest contains invalid data.'
+        }
+      } catch {
+        pluginsError = 'Marketplace manifest contains invalid data.'
+      }
+    }
+  }
+
+  return <RepoPageClient plugins={plugins} pluginsError={pluginsError} repo={repository} repoPath={repoPath} />
 }

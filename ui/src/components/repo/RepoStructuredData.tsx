@@ -1,6 +1,8 @@
 /** biome-ignore-all lint/security/noDangerouslySetInnerHtml: <Used to inject ld+json> */
 import type { components } from '@octokit/openapi-types'
+import { getRepoBreadcrumbs } from '../../lib/breadcrumbs.ts'
 import { BASE_URL } from '../../lib/constants.ts'
+import { serializeJsonLd } from '../../lib/jsonLd.ts'
 
 type Repository = components['schemas']['repository']
 
@@ -12,20 +14,12 @@ export default function RepoStructuredData({ repo }: RepoStructuredDataProps) {
   const breadcrumb = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
-    itemListElement: [
-      {
-        '@type': 'ListItem',
-        position: 1,
-        name: 'Home',
-        item: BASE_URL,
-      },
-      {
-        '@type': 'ListItem',
-        position: 2,
-        name: repo.name,
-        item: `${BASE_URL}/${repo.full_name}`,
-      },
-    ],
+    itemListElement: getRepoBreadcrumbs(repo).map((item, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: item.name,
+      item: item.url,
+    })),
   }
 
   const softwareSourceCode = {
@@ -50,7 +44,7 @@ export default function RepoStructuredData({ repo }: RepoStructuredDataProps) {
             name: repo.owner.login,
             url: repo.owner.html_url,
           },
-    license: repo.license?.name || 'Unknown',
+    ...(repo.license?.url ? { license: repo.license.url } : {}),
     keywords: repo.topics?.join(', ') || 'Claude Code, plugin adoption, GitHub, metrics',
     isPartOf: {
       '@type': 'WebSite',
@@ -72,9 +66,9 @@ export default function RepoStructuredData({ repo }: RepoStructuredDataProps) {
 
   return (
     <>
-      <script dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumb) }} type="application/ld+json" />
-      <script dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareSourceCode) }} type="application/ld+json" />
-      {organization ? <script dangerouslySetInnerHTML={{ __html: JSON.stringify(organization) }} type="application/ld+json" /> : null}
+      <script dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumb) }} type="application/ld+json" />
+      <script dangerouslySetInnerHTML={{ __html: serializeJsonLd(softwareSourceCode) }} type="application/ld+json" />
+      {organization ? <script dangerouslySetInnerHTML={{ __html: serializeJsonLd(organization) }} type="application/ld+json" /> : null}
     </>
   )
 }

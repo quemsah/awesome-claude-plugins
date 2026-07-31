@@ -1,3 +1,5 @@
+'use client'
+
 import { useInstallCommand } from '../../hooks/useInstallCommand.ts'
 import { CopiedIcon } from '../common/CopiedIcon.tsx'
 import { CopyIcon } from '../common/CopyIcon.tsx'
@@ -9,7 +11,7 @@ interface InstallCommandProps {
 }
 
 export function InstallCommand({ pluginName, pluginId, repoPath }: InstallCommandProps) {
-  const { handleCopyClick, installCommand, isCopied, isVerified } = useInstallCommand(pluginName, pluginId, repoPath)
+  const { copyError, handleCopyClick, installCommand, isCopied, isVerified } = useInstallCommand(pluginName, pluginId, repoPath)
 
   const isDisabled = !(installCommand && isVerified)
 
@@ -22,7 +24,7 @@ export function InstallCommand({ pluginName, pluginId, repoPath }: InstallComman
           aria-label={
             isCopied ? 'Installation command copied' : isDisabled ? 'Copy install command unavailable' : 'Copy installation command'
           }
-          className={`shrink-0 rounded-md p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${isCopied ? 'bg-green-500/20 text-green-600' : 'enabled:hover:bg-muted'}`}
+          className={`touch-target shrink-0 rounded-md p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${isCopied ? 'bg-status-positive/20 text-status-positive' : 'enabled:hover:bg-muted'}`}
           disabled={isDisabled}
           onClick={handleCopyClick}
           title={isVerified ? 'Copy installation command' : 'Unverified command'}
@@ -31,6 +33,9 @@ export function InstallCommand({ pluginName, pluginId, repoPath }: InstallComman
           {isCopied ? <CopiedIcon /> : <CopyIcon />}
         </button>
       </div>
+      <p aria-live="polite" className="mt-2 text-destructive text-xs" role={copyError ? 'alert' : undefined}>
+        {copyError ?? (isCopied ? 'Install command copied.' : '')}
+      </p>
     </div>
   )
 }

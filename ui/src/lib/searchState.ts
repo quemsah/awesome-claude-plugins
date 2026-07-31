@@ -1,5 +1,4 @@
-import type { SortOption } from '../components/search/Sort.tsx'
-import { sortOptionValues } from '../components/search/Sort.tsx'
+import { type SortOption, sortOptionValues } from './sortOptions.ts'
 
 export const defaultSortOption: SortOption = sortOptionValues[0]
 export const validSortOptions: readonly SortOption[] = sortOptionValues

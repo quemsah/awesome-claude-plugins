@@ -1,10 +1,12 @@
 /** biome-ignore-all lint/security/noDangerouslySetInnerHtml: <Used to inject ld+json> */
 
+import { getRepoCanonicalPath } from '../../lib/catalog.ts'
 import { BASE_URL } from '../../lib/constants.ts'
+import { serializeJsonLd } from '../../lib/jsonLd.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 
 interface StructuredDataProps {
-  repos: Repo[]
+  repos: readonly Repo[]
 }
 
 export default function StructuredData({ repos }: StructuredDataProps) {
@@ -15,11 +17,6 @@ export default function StructuredData({ repos }: StructuredDataProps) {
     description:
       'Discover GitHub repositories that have adopted Claude Code plugins. Browse repositories by stars, forks, and plugin count',
     url: BASE_URL,
-    publisher: {
-      '@type': 'Organization',
-      name: 'Awesome Claude Plugins Team',
-      url: BASE_URL,
-    },
   }
 
   const itemList = {
@@ -30,52 +27,14 @@ export default function StructuredData({ repos }: StructuredDataProps) {
       position: index + 1,
       name: repo.repo_name,
       ...(repo.description && { description: repo.description }),
-      url: `https://github.com/${repo.owner}/${repo.repo_name}`,
+      url: `${BASE_URL}/${getRepoCanonicalPath(repo)}`,
     })),
-  }
-
-  const softwareApplication = {
-    '@context': 'https://schema.org',
-    '@type': 'SoftwareApplication',
-    name: 'Awesome Claude Plugins',
-    applicationCategory: 'DeveloperApplication',
-    description:
-      'Directory of GitHub repositories that have adopted Claude Code plugins, showcasing plugin adoption across the developer ecosystem',
-    operatingSystem: 'Web',
-    offers: {
-      '@type': 'Offer',
-      price: '0',
-      priceCurrency: 'EUR',
-      availability: 'https://schema.org/InStock',
-      url: BASE_URL,
-    },
-    featureList: [
-      'Claude Code plugin adoption tracking',
-      'MCP server discovery',
-      'Agent skills marketplace',
-      'AI-powered repository browsing',
-      'Advanced search functionality',
-      'Claude Code statistics tracking',
-      'Plugin adoption growth analytics',
-      'Copyable Claude plugin marketplace install commands',
-      'Repository detail pages linked to Claude Code plugin catalog',
-      'Historical repository count statistics',
-    ],
-    applicationSubCategory: 'AI Development Analytics',
-    softwareVersion: '1.0',
-    datePublished: '2025-12-12',
-    publisher: {
-      '@type': 'Organization',
-      name: 'Awesome Claude Plugins Team',
-      url: BASE_URL,
-    },
   }
 
   return (
     <>
-      <script dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} type="application/ld+json" />
-      <script dangerouslySetInnerHTML={{ __html: JSON.stringify(itemList) }} type="application/ld+json" />
-      <script dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplication) }} type="application/ld+json" />
+      <script dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }} type="application/ld+json" />
+      <script dangerouslySetInnerHTML={{ __html: serializeJsonLd(itemList) }} type="application/ld+json" />
     </>
   )
 }

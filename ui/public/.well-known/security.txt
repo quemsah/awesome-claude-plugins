@@ -1,0 +1,4 @@
+Contact: https://github.com/quemsah/awesome-claude-plugins/security/advisories/new
+Expires: 2027-07-31T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://awesomeclaudeplugins.com/.well-known/security.txt

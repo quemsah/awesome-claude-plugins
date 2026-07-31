@@ -1,4 +1,5 @@
 import { Box, GitFork, Star } from 'lucide-react'
+import type { SortOption } from '../../lib/sortOptions.ts'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select.tsx'
 
 const sortOptions = [
@@ -6,9 +7,6 @@ const sortOptions = [
   { value: 'forks-desc', label: 'Forks', icon: <GitFork className="mr-2 h-4 w-4" /> },
   { value: 'plugins-desc', label: 'Plugins', icon: <Box className="mr-2 h-4 w-4" /> },
 ] as const
-
-export type SortOption = (typeof sortOptions)[number]['value']
-export const sortOptionValues = sortOptions.map((option) => option.value) as readonly SortOption[]
 
 interface SortProps {
   sortOption: SortOption
