@@ -49,7 +49,7 @@ The data is generated from checked-in daily catalog snapshots.
 }
 
 export function buildRepoMarkdown(repo: Repo): string {
-  if (!repo.owner || !repo.repo_name) {
+  if (!(repo.owner && repo.repo_name)) {
     return ''
   }
 

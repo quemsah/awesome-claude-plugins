@@ -122,7 +122,7 @@ export function getCatalogLastModified() {
 }
 
 export function getRepoCanonicalPath(repo: CatalogRepo) {
-  if (!repo.owner || !repo.repo_name) {
+  if (!(repo.owner && repo.repo_name)) {
     return ''
   }
   return getGitHubRepoPath(repo.owner, repo.repo_name)
