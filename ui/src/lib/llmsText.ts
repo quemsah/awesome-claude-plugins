@@ -10,7 +10,9 @@ export interface CatalogSummary {
 }
 
 export function getCatalogSummary(repos: Repo[], stats: StatsItem[]): CatalogSummary {
-  const safeRepos = (Array.isArray(repos) ? repos : []).filter((repo): repo is Repo => repo != null)
+  const safeRepos = (Array.isArray(repos) ? repos : [])
+    .filter((repo): repo is Repo => repo != null)
+    .filter((repo): repo is Repo => repo.owner != null && repo.repo_name != null)
   const safeStats = (Array.isArray(stats) ? stats : []).filter((stat): stat is StatsItem => stat != null)
 
   let latestStat: StatsItem | undefined

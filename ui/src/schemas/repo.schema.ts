@@ -11,13 +11,17 @@ export const RepoSchema = z
     forks_count: z.number().nullable(),
     subscribers_count: z.number().nullable(),
     description: z.string().nullable(),
-    owner: GitHubSegmentSchema,
-    owner_url: z.string().url(),
-    repo_name: GitHubSegmentSchema,
+    owner: z.string().nullable(),
+    owner_url: z.string().url().nullable(),
+    repo_name: z.string().nullable(),
     plugins_count: z.number().nullable(),
     id: z.number(),
   })
   .superRefine((repo, context) => {
+    if (!repo.owner || !repo.repo_name) {
+      return
+    }
+
     if (repo.html_url !== getGitHubRepoUrl(repo.owner, repo.repo_name)) {
       context.addIssue({
         code: 'custom',

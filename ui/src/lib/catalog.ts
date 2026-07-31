@@ -19,7 +19,9 @@ if (!catalogResult.success) {
   throw new Error(`Invalid catalog data: ${catalogResult.error.issues.map((issue) => issue.message).join(', ')}`)
 }
 
-const catalogRepos: readonly CatalogRepo[] = catalogResult.data
+const catalogRepos: readonly CatalogRepo[] = catalogResult.data.filter(
+  (repo): repo is CatalogRepo => repo.owner != null && repo.repo_name != null
+)
 
 export type CatalogSearchResult = {
   hasMore: boolean
@@ -120,6 +122,9 @@ export function getCatalogLastModified() {
 }
 
 export function getRepoCanonicalPath(repo: CatalogRepo) {
+  if (!repo.owner || !repo.repo_name) {
+    return ''
+  }
   return getGitHubRepoPath(repo.owner, repo.repo_name)
 }
 

@@ -49,6 +49,10 @@ The data is generated from checked-in daily catalog snapshots.
 }
 
 export function buildRepoMarkdown(repo: Repo): string {
+  if (!repo.owner || !repo.repo_name) {
+    return ''
+  }
+
   const repoPath = getGitHubRepoPath(repo.owner, repo.repo_name)
   const marketplaceCommand = getMarketplaceAddCommand(repo.owner, repo.repo_name)
   const pluginCount =
