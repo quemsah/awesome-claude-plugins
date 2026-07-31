@@ -37,11 +37,11 @@ export function ThemeToggle() {
         >
           <Sun
             aria-hidden="true"
-            className={`h-[1.2rem] w-[1.2rem] transition-all ${isDark ? 'rotate-90 scale-0' : 'rotate-0 scale-100'}`}
+            className={`h-[1.2rem] w-[1.2rem] transition-all motion-reduce:transition-none ${isDark ? 'rotate-90 scale-0' : 'rotate-0 scale-100'}`}
           />
           <Moon
             aria-hidden="true"
-            className={`absolute inset-0 m-auto h-[1.2rem] w-[1.2rem] transition-all ${isDark ? 'rotate-0 scale-100' : 'rotate-90 scale-0'}`}
+            className={`absolute inset-0 m-auto h-[1.2rem] w-[1.2rem] transition-all motion-reduce:transition-none ${isDark ? 'rotate-0 scale-100' : 'rotate-90 scale-0'}`}
           />
         </Button>
       </DropdownMenuTrigger>

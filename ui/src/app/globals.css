@@ -18,6 +18,14 @@
     --accent: oklch(0.97 0 0);
     --accent-foreground: oklch(0.205 0 0);
     --destructive: oklch(0.577 0.245 27.325);
+    --success: oklch(0.45 0.15 145);
+    --success-foreground: oklch(0.985 0 0);
+    --danger: oklch(0.5 0.2 27);
+    --danger-foreground: oklch(0.985 0 0);
+    --status-positive: var(--success);
+    --status-positive-foreground: var(--success-foreground);
+    --status-negative: var(--danger);
+    --status-negative-foreground: var(--danger-foreground);
     --border: oklch(0.922 0 0);
     --input: oklch(0.922 0 0);
     --ring: oklch(0.708 0 0);
@@ -34,6 +42,7 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+    color-scheme: light dark;
   }
 
   .dark {
@@ -52,6 +61,14 @@
     --accent: oklch(0.269 0 0);
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
+    --success: oklch(0.72 0.17 145);
+    --success-foreground: oklch(0.145 0 0);
+    --danger: oklch(0.704 0.191 22.216);
+    --danger-foreground: oklch(0.145 0 0);
+    --status-positive: var(--success);
+    --status-positive-foreground: var(--success-foreground);
+    --status-negative: var(--danger);
+    --status-negative-foreground: var(--danger-foreground);
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.556 0 0);
@@ -87,6 +104,14 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-status-positive: var(--status-positive);
+  --color-status-positive-foreground: var(--status-positive-foreground);
+  --color-status-negative: var(--status-negative);
+  --color-status-negative-foreground: var(--status-negative-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -118,6 +143,14 @@
     color: var(--foreground);
     background-color: var(--background);
   }
+
+  html {
+    scroll-padding-top: 5rem;
+  }
+
+  #main-content {
+    scroll-margin-top: 5rem;
+  }
 }
 
 @keyframes wave {
@@ -136,7 +169,50 @@
   }
 }
 
-.animate-wave {
-  transform-origin: 9px 18px;
-  animation: wave 1.5s ease-in-out infinite;
+@media (prefers-reduced-motion: no-preference) {
+  .animate-wave {
+    transform-origin: 9px 18px;
+    animation: wave 1.5s ease-in-out infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto;
+  }
+
+  @media (max-width: 639px) {
+    .recharts-yAxis .recharts-cartesian-axis-tick text {
+      font-size: 10px;
+    }
+  }
+
+  .animate-wave {
+    animation: none;
+  }
+}
+
+@media (pointer: coarse) {
+  .touch-target,
+  [data-slot="button"] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  button,
+  input,
+  select,
+  textarea,
+  [data-slot="button"] {
+    border-color: ButtonText;
+  }
 }

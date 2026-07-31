@@ -174,7 +174,7 @@ export function StatsPage({ stats }: StatsPageProps) {
         {timeRange !== 'all' && trendData.periodDays > 0 && (
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm">Trend:</span>
-            <span className={`font-bold ${trendData.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            <span className={`font-bold ${trendData.growth >= 0 ? 'text-success' : 'text-danger'}`}>
               {trendData.growth >= 0 ? '+' : ''}
               {trendData.growth} ({trendData.percentage}%)
             </span>
@@ -186,7 +186,7 @@ export function StatsPage({ stats }: StatsPageProps) {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="font-medium text-sm">
-              <h3>Total Repositories</h3>
+              <h2>Total Repositories</h2>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -196,7 +196,7 @@ export function StatsPage({ stats }: StatsPageProps) {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="font-medium text-sm">
-              <h3>Avg Daily Increase</h3>
+              <h2>Avg Daily Increase</h2>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -210,7 +210,9 @@ export function StatsPage({ stats }: StatsPageProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Repository Count Over Time</CardTitle>
+          <CardTitle>
+            <h2>Repository Count Over Time</h2>
+          </CardTitle>
           <CardDescription>
             {timeRangeLabels[timeRange]} - Daily repository count from {chartData.length > 0 ? chartData[0].formattedDate : ''} to{' '}
             {chartData.length > 0 ? chartData[chartData.length - 1].formattedDate : ''}
@@ -226,8 +228,9 @@ export function StatsPage({ stats }: StatsPageProps) {
               },
             }}
             ref={chartRef}
+            role="img"
           >
-            <AreaChart aria-label="Repository growth over time" data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+            <AreaChart aria-label="Repository growth over time" data={chartData} margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="fillSize" x1="0" x2="0" y1="0" y2="1">
                   <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.8} />
@@ -242,10 +245,18 @@ export function StatsPage({ stats }: StatsPageProps) {
                 tickLine={false}
                 tickMargin={8}
               />
-              <YAxis aria-label="Repository count" axisLine={false} tickFormatter={(value) => `${value}`} tickLine={false} tickMargin={8} />
+              <YAxis
+                aria-label="Repository count"
+                axisLine={false}
+                tickFormatter={(value) =>
+                  value >= 1000 ? `${(value / 1000).toLocaleString('en-US', { maximumFractionDigits: 1 })}k` : `${value}`
+                }
+                tickLine={false}
+                tickMargin={4}
+                width={32}
+              />
               <Tooltip content={<ChartTooltipContent />} />
               <Area
-                aria-label="Repository count trend"
                 dataKey="size"
                 fill="url(#fillSize)"
                 fillOpacity={0.4}
@@ -256,6 +267,36 @@ export function StatsPage({ stats }: StatsPageProps) {
               />
             </AreaChart>
           </ChartContainer>
+          <details className="mt-6">
+            <summary className="cursor-pointer font-medium text-sm">View chart data as a table</summary>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <caption className="sr-only">Repository count over time</caption>
+                <thead>
+                  <tr className="border-b">
+                    <th className="p-2" scope="col">
+                      Date
+                    </th>
+                    <th className="p-2" scope="col">
+                      Repository count
+                    </th>
+                    <th className="p-2" scope="col">
+                      Snapshot type
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {chartData.map((item) => (
+                    <tr className="border-b" key={item.date}>
+                      <td className="p-2">{item.formattedDate}</td>
+                      <td className="p-2">{item.size.toLocaleString()}</td>
+                      <td className="p-2">{item.snapshotType}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
         </CardContent>
       </Card>
     </div>

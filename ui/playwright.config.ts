@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/style/useNamingConvention: Playwright config uses baseURL as an API option. */
 import { defineConfig, devices } from '@playwright/test'
 
-const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000'
+const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3001'
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -19,12 +19,21 @@ export default defineConfig({
   ...(process.env.PLAYWRIGHT_BASE_URL
     ? {}
     : {
-        webServer: {
-          command: 'npm run build && npm run start',
-          reuseExistingServer: !process.env.CI,
-          timeout: 120_000,
-          url: baseUrl,
-        },
+        webServer: [
+          {
+            command: 'node tests/e2e/mock-github-server.mjs',
+            reuseExistingServer: false,
+            timeout: 30_000,
+            url: 'http://127.0.0.1:3100/health',
+          },
+          {
+            command:
+              'GITHUB_API_URL=http://127.0.0.1:3100 GITHUB_RAW_URL=http://127.0.0.1:3100 npm run build && GITHUB_API_URL=http://127.0.0.1:3100 GITHUB_RAW_URL=http://127.0.0.1:3100 PORT=3001 npm run start',
+            reuseExistingServer: false,
+            timeout: 120_000,
+            url: baseUrl,
+          },
+        ],
       }),
   projects: [
     {

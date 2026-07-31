@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import ReactDom from 'react-dom'
 import { findCatalogRepo, getRepoCanonicalPath } from '../../lib/catalog.ts'
 import { BASE_URL } from '../../lib/constants.ts'
 
@@ -20,47 +21,29 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title,
     description,
-    keywords: [
-      'Claude Code plugins',
-      'GitHub repository',
-      'AI coding tools',
-      'MCP servers',
-      'Agent skills',
-      'Plugin adoption metrics',
-      'Repository analytics',
-      'AI development tools',
-      'Claude Code integration',
-      'Automated workflows',
-      title,
-      `${title} plugins`,
-      `${title} Claude Code`,
-    ],
     openGraph: {
       title,
       description,
       url: canonicalUrl,
       type: 'website',
-      images: [
-        {
-          url: '/android-chrome-512x512.png',
-          width: 512,
-          height: 512,
-          alt: title,
-        },
-      ],
+      images: [{ alt: title, height: 630, url: `${BASE_URL}/og/${canonicalPath}`, width: 1200 }],
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
-      images: ['/android-chrome-512x512.png'],
+      images: [`${BASE_URL}/og/${canonicalPath}`],
     },
     alternates: {
       canonical: canonicalUrl,
+      types: {
+        'text/markdown': `${canonicalUrl}.md`,
+      },
     },
   }
 }
 
 export default function RepoLayout({ children }: { children: React.ReactNode }) {
+  ReactDom.preconnect('https://avatars.githubusercontent.com', { crossOrigin: 'anonymous' })
   return <>{children}</>
 }

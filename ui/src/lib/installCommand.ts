@@ -9,6 +9,8 @@ export type PluginInstallCommandInput = {
   repoPath?: string
 }
 
+const PLUGIN_COMMAND_TOKEN_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i
+
 /**
  * Normalizes a plugin name for CLI usage.
  * Trims whitespace, lowercases, and collapses all whitespace sequences into hyphens.
@@ -17,7 +19,8 @@ export type PluginInstallCommandInput = {
  *   "  My   Plugin  " → "my-plugin"
  */
 export function normalizePluginName(pluginName?: string): string {
-  return pluginName ? pluginName.trim().toLowerCase().replace(/\s+/g, '-') : ''
+  const normalized = typeof pluginName === 'string' ? pluginName.trim().toLowerCase().replace(/\s+/g, '-') : ''
+  return PLUGIN_COMMAND_TOKEN_PATTERN.test(normalized) ? normalized : ''
 }
 
 /**
@@ -30,8 +33,8 @@ export function normalizePluginName(pluginName?: string): string {
  * A command composed only of a `pluginName` (with no `pluginId` or `repoPath`) is
  * unverified because the name alone may not resolve to an installed package.
  */
-export function isPluginInstallCommandVerified(pluginId?: string, repoPath?: string): boolean {
-  return Boolean(pluginId?.trim() || repoPath?.trim())
+export function isPluginInstallCommandVerified(pluginId?: string, _repoPath?: string): boolean {
+  return Boolean(typeof pluginId === 'string' && pluginId.trim() && PLUGIN_COMMAND_TOKEN_PATTERN.test(pluginId))
 }
 
 /**
@@ -47,14 +50,21 @@ export function isPluginInstallCommandVerified(pluginId?: string, repoPath?: str
  */
 export function getPluginInstallCommand({ pluginName, pluginId, repoPath }: PluginInstallCommandInput): string | null {
   let normalizedName = normalizePluginName(pluginName)
-  if (!normalizedName && repoPath) {
+  if (!(normalizedName || pluginId) && repoPath) {
     const lastPart = repoPath.split('/').filter(Boolean).pop()
     if (lastPart) {
       normalizedName = normalizePluginName(lastPart)
     }
   }
-  const normalizedRepoPath = repoPath ? repoPath.trim().replaceAll('/', '-') : undefined
-  const normalizedPluginId = pluginId?.trim()
+  const normalizedRepoPath = typeof repoPath === 'string' && repoPath.trim() ? repoPath.trim().replaceAll('/', '-') : undefined
+  const normalizedPluginId = typeof pluginId === 'string' ? pluginId.trim() : undefined
+
+  if (normalizedPluginId && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedPluginId)) {
+    return null
+  }
+  if (normalizedRepoPath && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedRepoPath)) {
+    return null
+  }
 
   if (normalizedName && normalizedPluginId) {
     return `/plugin install ${normalizedName}@${normalizedPluginId}`
@@ -82,10 +92,17 @@ export function getPluginInstallCommand({ pluginName, pluginId, repoPath }: Plug
  * Returns `null` when required data is missing.
  */
 export function getMarketplaceAddCommand(owner?: string | null, repoName?: string | null): string | null {
-  const trimmedOwner = owner?.trim() || null
-  const trimmedRepoName = repoName?.trim() || null
+  const trimmedOwner = typeof owner === 'string' ? owner.trim() || null : null
+  const trimmedRepoName = typeof repoName === 'string' ? repoName.trim() || null : null
 
-  if (!(trimmedOwner && trimmedRepoName)) {
+  if (
+    !(
+      trimmedOwner &&
+      trimmedRepoName &&
+      PLUGIN_COMMAND_TOKEN_PATTERN.test(trimmedOwner) &&
+      PLUGIN_COMMAND_TOKEN_PATTERN.test(trimmedRepoName)
+    )
+  ) {
     return null
   }
 

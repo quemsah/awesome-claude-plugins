@@ -3,10 +3,13 @@ import { Card, CardContent } from '../ui/card.tsx'
 import { InfiniteRepoGrid } from './InfiniteRepoGrid.tsx'
 
 interface LoadedContentProps {
+  hasMore: boolean
+  isLoading: boolean
+  onLoadMore: () => void
   repos: Repo[]
 }
 
-export function LoadedContent({ repos }: LoadedContentProps) {
+export function LoadedContent({ hasMore, isLoading, onLoadMore, repos }: LoadedContentProps) {
   return repos.length === 0 ? (
     <Card className="py-12 text-center">
       <CardContent>
@@ -14,6 +17,6 @@ export function LoadedContent({ repos }: LoadedContentProps) {
       </CardContent>
     </Card>
   ) : (
-    <InfiniteRepoGrid items={repos} />
+    <InfiniteRepoGrid hasMore={hasMore} isLoading={isLoading} items={repos} onLoadMore={onLoadMore} />
   )
 }

@@ -3,7 +3,8 @@
   "extends": ["config:recommended"],
   "timezone": "Europe/Athens",
   "lockFileMaintenance": {
-    "enabled": false
+    "enabled": true,
+    "schedule": ["before 9am on the first day of the month"]
   },
   "packageRules": [
     {

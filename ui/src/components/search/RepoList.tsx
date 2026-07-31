@@ -5,14 +5,17 @@ import { LoadedContent } from './LoadedContent.tsx'
 
 interface RepoListProps {
   hasLoadError: boolean
+  hasMore: boolean
+  isLoading: boolean
+  onLoadMore: () => void
   sortedRepos: Repo[]
 }
 
-export function RepoList({ hasLoadError, sortedRepos }: RepoListProps) {
+export function RepoList({ hasLoadError, hasMore, isLoading, onLoadMore, sortedRepos }: RepoListProps) {
   if (sortedRepos.length > 0) {
     return (
-      <div aria-live="polite">
-        <LoadedContent repos={sortedRepos} />
+      <div>
+        <LoadedContent hasMore={hasMore} isLoading={isLoading} onLoadMore={onLoadMore} repos={sortedRepos} />
       </div>
     )
   }
@@ -21,6 +24,9 @@ export function RepoList({ hasLoadError, sortedRepos }: RepoListProps) {
     <div className="py-8 text-center">
       <p className="text-muted-foreground">
         {hasLoadError ? 'Failed to load repositories. Please try again later' : 'No repositories match your search'}
+      </p>
+      <p aria-live="polite" className="sr-only" role="status">
+        {hasLoadError ? 'Repository search failed.' : 'Repository search returned no matches.'}
       </p>
     </div>
   )

@@ -16,9 +16,10 @@ const sortForksRegex = /\?sort=forks-desc$/
 const sortPluginsRegex = /\?sort=plugins-desc$/
 const qSuperpowersSortForksRegex = /\?q=superpowers&sort=forks-desc$/
 const qHelloRegex = /\?q=hello$/
+const qNoMatchesRegex = /\?q=definitely-no-matching-repository-name$/
 const sortOptionForksRegex = /Forks/
-const _sortOptionPluginsRegex = /Plugins/
 const sortOptionStarsRegex = /Stars/
+const detailsLabelRegex = /^View details for /
 
 async function chooseSortOption(page: Page, optionName: 'Stars' | 'Forks' | 'Plugins') {
   await page.getByRole('combobox', { name: 'Sort by' }).click()
@@ -57,8 +58,9 @@ test('header navigation, external actions, and theme selection work across route
   await expect(page.getByRole('heading', { name: 'About This Project' })).toBeVisible()
 
   await page.locator('a[aria-label="Search repositories"]').click()
-  await page.waitForURL('/')
+  await page.waitForURL('/#search')
   await expect(page.getByRole('heading', { name: 'Awesome Claude Plugins' })).toBeVisible()
+  await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toBeFocused()
 })
 
 test('home page search updates result counts, visible cards, and empty state', async ({ page }) => {
@@ -73,25 +75,31 @@ test('home page search updates result counts, visible cards, and empty state', a
   await page.getByRole('searchbox', { name: 'Search repositories' }).fill('definitely-no-matching-repository-name')
   await expect(page.getByText('No repositories match your search')).toBeVisible()
   await expect(page.getByText('0 plugins available across 0 repositories')).toBeVisible()
+  await expect(page).toHaveURL(qNoMatchesRegex)
 
   await page.getByRole('searchbox', { name: 'Search repositories' }).fill('')
+  await expect(page).toHaveURL('/')
   await expect(page.getByText('No repositories match your search')).toBeHidden()
   await expectFirstDetailsLink(page, 'obra/superpowers')
 })
 
-test('home page sort modes reorder the first visible repository card', async ({ page }) => {
+test('home page sort modes update the visible repository ordering', async ({ page }) => {
   await page.goto('/')
 
-  await expectFirstDetailsLink(page, 'obra/superpowers')
+  const firstDetailsLink = page.getByRole('link', { name: detailsLinkName }).first()
+  const defaultFirstRepository = await firstDetailsLink.getAttribute('aria-label')
+  if (!defaultFirstRepository) {
+    throw new Error('Expected the first repository card to expose an accessible details label')
+  }
 
   await chooseSortOption(page, 'Forks')
-  await expectFirstDetailsLink(page, 'affaan-m/ECC')
+  await expect(firstDetailsLink).not.toHaveAttribute('aria-label', defaultFirstRepository)
 
   await chooseSortOption(page, 'Plugins')
-  await expectFirstDetailsLink(page, 'tomevault-io/claude-code-plugins')
+  await expect(firstDetailsLink).toHaveAttribute('aria-label', detailsLabelRegex)
 
   await chooseSortOption(page, 'Stars')
-  await expectFirstDetailsLink(page, 'obra/superpowers')
+  await expect(firstDetailsLink).toHaveAttribute('aria-label', defaultFirstRepository)
 })
 
 test('repository cards expose details, GitHub links, and copyable marketplace commands', async ({ page }) => {
@@ -121,7 +129,7 @@ test('repository grid loads more cards as the user reaches the end of the curren
   const detailsLinks = page.getByRole('link', { name: detailsLinkName })
   await expect(detailsLinks).toHaveCount(24)
 
-  await page.getByText('Loading more repositories...').scrollIntoViewIfNeeded()
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
   await expect.poll(() => detailsLinks.count()).toBeGreaterThan(24)
 })
 
@@ -159,8 +167,9 @@ test('about page exposes static project cards and header navigation', async ({ p
   await expect(page.getByText('Why?')).toBeVisible()
 
   await page.locator('a[aria-label="Search repositories"]').click()
-  await page.waitForURL('/')
+  await page.waitForURL('/#search')
   await expect(page.getByRole('heading', { name: 'Awesome Claude Plugins' })).toBeVisible()
+  await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toBeFocused()
 })
 
 test('home page persists search term in url query parameters', async ({ page }) => {

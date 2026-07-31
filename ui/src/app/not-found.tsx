@@ -4,10 +4,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 
 export default function NotFound() {
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    <main className="flex min-h-dvh items-center justify-center p-4" id="main-content" tabIndex={-1}>
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="font-bold text-4xl text-muted-foreground">404</CardTitle>
+          <CardTitle className="font-bold text-4xl text-muted-foreground">
+            <h1>404</h1>
+          </CardTitle>
           <CardDescription className="text-lg">Page Not Found</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 text-center">
@@ -21,7 +23,7 @@ export default function NotFound() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </main>
   )
 }
 

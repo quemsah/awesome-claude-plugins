@@ -1,5 +1,6 @@
 import type { Repo } from '../schemas/repo.schema.ts'
 import type { StatsItem } from '../schemas/stats.schema.ts'
+import { BASE_URL } from './constants.ts'
 
 export interface CatalogSummary {
   repoCount: number
@@ -41,16 +42,16 @@ export function buildLlmsText(summary: CatalogSummary): string {
 
   return `# Awesome Claude Plugins
 
-> A comprehensive directory of Claude AI plugins that helps developers discover, evaluate, and integrate high-quality plugins for their AI applications.
+> A searchable directory of GitHub repositories related to Claude Code plugins, MCP servers, and agent skills.
 
-This website provides a curated collection of Claude plugins with advanced search capabilities, performance metrics, and seamless integration workflows to enhance AI development productivity. It also serves as a generated catalog of GitHub repositories related to Claude Code plugins, MCP servers, and agent skills.
+This website provides a generated catalog of GitHub repositories related to Claude Code plugins, MCP servers, and agent skills. Visitors can search and sort the catalog, inspect repository details, view historical catalog statistics, and copy available install commands.
 
 ## About This Website
 
 - **Website Name**: Awesome Claude Plugins
-- **Purpose**: Curated directory of Claude AI plugins and generated catalog of GitHub repositories related to Claude Code plugins, MCP servers, and agent skills
+- **Purpose**: Generated catalog of GitHub repositories related to Claude Code plugins, MCP servers, and agent skills
 - **Target Audience**: AI developers, plugin creators, and Claude AI users
-- **Unique Value**: Discover and integrate Claude plugins with performance analytics, curated recommendations, and automated GitHub repository discovery
+- **Unique Value**: Discover Claude-related repositories with repository metadata, plugin adoption counts, and historical catalog statistics
 
 ## Current Catalog Snapshot
 
@@ -61,32 +62,29 @@ This website provides a curated collection of Claude plugins with advanced searc
 
 ## Website Features
 
-- **Plugin Discovery**: Advanced search and filtering to find the perfect Claude plugins
-- **Performance Analytics**: Detailed metrics and usage statistics for each plugin
-- **Curated Collections**: Expertly selected plugins organized by category and use case
-- **Seamless Integration**: One-click integration workflows and API access
-- **Developer Resources**: Documentation, tutorials, and best practices for plugin development
-- **Repository Catalog**: Browse GitHub repository records, compare popularity signals, and copy install commands
+- **Plugin Discovery**: Search the catalog by repository text and sort results by stars, forks, or plugin count
+- **Repository Details**: Open catalog entries to view repository metadata and any available plugin manifest entries
+- **Statistics**: View historical repository-count snapshots
+- **Install Commands**: Copy a marketplace install command when the catalog entry exposes a plugin repository
+- **Repository Catalog**: Browse GitHub repository records and open their source repositories
 
-## Content Sections
+## Primary Resources
 
-- **Home Page**: Overview of featured plugins and search functionality
-- **Plugin Directory**: Comprehensive listing of all available Claude plugins
-- **Statistics Dashboard**: Performance metrics and usage trends
-- **Documentation**: Guides and tutorials for plugin integration
-- **About Section**: Information about the project and team
-- **Stats Page**: Historical repository count charts based on checked-in snapshot data
-- **Repository Detail**: \`/{owner}/{repo}\` pages for individual catalog entries
+- [Repository Catalog](${BASE_URL}/): Search and sort the catalog.
+- [Catalog Browse Pages](${BASE_URL}/browse/2): Crawlable pagination for the full catalog.
+- [Statistics](${BASE_URL}/stats): Historical repository-count charts.
+- [About](${BASE_URL}/about): Project purpose and discovery workflow.
+- [Sitemap](${BASE_URL}/sitemap.xml): All canonical repository URLs.
+- [Catalog feed](${BASE_URL}/feed.json): Latest catalog snapshot.
+- [Web App Manifest](${BASE_URL}/manifest.webmanifest): Installable-web-app metadata.
+- [API Catalog](${BASE_URL}/.well-known/api-catalog): Machine-readable discovery links.
 
-## Real Routes
+## Content Formats
 
-- \`/\`: repository catalog with search, sorting, and load-more browsing.
-- \`/stats\`: historical repository count charts based on checked-in snapshot data.
-- \`/about\`: project purpose and automated discovery summary.
-- \`/{owner}/{repo}\`: repository detail page for a catalog entry.
-- \`/sitemap.xml\`: sitemap for crawlers.
-- \`/manifest.webmanifest\`: web app manifest.
-- \`/llms.txt\`: this machine-readable project summary.
+- [Home page Markdown](${BASE_URL}/index.md)
+- [Statistics Markdown](${BASE_URL}/stats.md)
+- [About Markdown](${BASE_URL}/about.md)
+- Repository detail Markdown: \`${BASE_URL}/{owner}/{repo}.md\`
 
 ## Implemented Capabilities
 
@@ -102,19 +100,19 @@ This website provides a curated collection of Claude plugins with advanced searc
 - **Framework**: Next.js 16 with App Router for optimal performance
 - **Styling**: Tailwind CSS with custom themes and responsive design
 - **Animation**: CSS-based animations for enhanced user experience
-- **Search**: Advanced search algorithms with real-time filtering
-- **Analytics**: Performance tracking and usage statistics
+- **Search**: Repository-text search with sorting and load-more browsing
+- **Analytics**: Historical repository-count snapshots
 
 ## Usage Guidelines
 
-- **Search**: Use the search bar to find plugins by name, category, or functionality
-- **Filtering**: Apply filters to narrow down results based on specific criteria
-- **Integration**: Follow the integration guides to add plugins to your applications
-- **Contribution**: Submit new plugins through the contribution form
+- **Search**: Use the search bar to find catalog entries by repository text
+- **Sorting**: Sort results by stars, forks, or plugin count
+- **Details**: Open a repository entry for metadata and available plugin information
+- **Installation**: Copy the displayed marketplace install command when one is available
 
 ## Content Updates
 
-This website is updated regularly with new plugins, performance data, and documentation. Major updates occur weekly, while minor updates may happen daily.
+The catalog and statistics are generated from checked-in snapshot data. Their update cadence depends on the repository discovery pipeline.
 
 ## Source
 

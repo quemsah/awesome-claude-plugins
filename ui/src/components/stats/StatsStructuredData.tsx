@@ -1,5 +1,7 @@
 /** biome-ignore-all lint/security/noDangerouslySetInnerHtml: <Used to inject ld+json> */
+import { getStatsBreadcrumbs } from '../../lib/breadcrumbs.ts'
 import { BASE_URL } from '../../lib/constants.ts'
+import { serializeJsonLd } from '../../lib/jsonLd.ts'
 
 interface StatsStructuredDataProps {
   startDate?: string
@@ -40,26 +42,18 @@ export default function StatsStructuredData({ startDate, endDate }: StatsStructu
   const breadcrumb = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
-    itemListElement: [
-      {
-        '@type': 'ListItem',
-        position: 1,
-        name: 'Home',
-        item: BASE_URL,
-      },
-      {
-        '@type': 'ListItem',
-        position: 2,
-        name: 'Statistics',
-        item: `${BASE_URL}/stats`,
-      },
-    ],
+    itemListElement: getStatsBreadcrumbs().map((item, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: item.name,
+      item: item.url,
+    })),
   }
 
   return (
     <>
-      <script dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} type="application/ld+json" />
-      <script dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumb) }} type="application/ld+json" />
+      <script dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }} type="application/ld+json" />
+      <script dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumb) }} type="application/ld+json" />
     </>
   )
 }

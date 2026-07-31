@@ -1,5 +1,3 @@
-'use client'
-
 import type { components } from '@octokit/openapi-types'
 import type { Plugin } from '../../app/types/plugin.type.ts'
 import { Card, CardContent } from '../ui/card.tsx'
@@ -24,7 +22,7 @@ export function PluginCard({ plugin, repoPath, repo }: PluginCardProps) {
   return (
     <Card className="group w-full transition-all duration-300 hover:border-primary/30 hover:bg-linear-to-tl hover:from-muted hover:to-background">
       <PluginHeader category={plugin.category} name={plugin.name} version={plugin.version} />
-      {plugin.name ? <InstallCommand pluginId={plugin.id} pluginName={plugin.name} repoPath={repoPath} /> : null}
+      {plugin.name || plugin.id ? <InstallCommand pluginId={plugin.id} pluginName={plugin.name} repoPath={repoPath} /> : null}
       <CardContent className="pt-1">
         <dl className="space-y-2">
           <PluginDescription description={plugin.description} />

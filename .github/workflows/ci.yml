@@ -33,7 +33,15 @@ jobs:
         working-directory: ui
 
       - name: Run linter
-        run: npm run style
+        run: npm run lint
+        working-directory: ui
+
+      - name: Run unit tests
+        run: npm run test:unit
+        working-directory: ui
+
+      - name: Validate data
+        run: npm run validate:data
         working-directory: ui
 
       - name: Run production build
@@ -47,5 +55,3 @@ jobs:
       - name: Run browser e2e tests
         run: npm run test:e2e
         working-directory: ui
-
-
