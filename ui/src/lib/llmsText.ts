@@ -1,6 +1,6 @@
 import type { Repo } from '../schemas/repo.schema.ts'
 import type { StatsItem } from '../schemas/stats.schema.ts'
-import { BASE_URL } from './constants.ts'
+import { BASE_URL, SOURCE_REPOSITORY_URL } from './constants.ts'
 
 export interface CatalogSummary {
   repoCount: number
@@ -80,6 +80,7 @@ This website provides a generated catalog of GitHub repositories related to Clau
 - [Catalog feed](${BASE_URL}/feed.json): Latest catalog snapshot.
 - [Web App Manifest](${BASE_URL}/manifest.webmanifest): Installable-web-app metadata.
 - [API Catalog](${BASE_URL}/.well-known/api-catalog): Machine-readable discovery links.
+- [Security contact](${BASE_URL}/.well-known/security.txt): Where to report security issues.
 
 ## Content Formats
 
@@ -118,7 +119,7 @@ The catalog and statistics are generated from checked-in snapshot data. Their up
 
 ## Source
 
-- **GitHub Repository**: https://github.com/quemsah/awesome-claude-plugins
+- **GitHub Repository**: ${SOURCE_REPOSITORY_URL}
 
 ## Optional Resources
 

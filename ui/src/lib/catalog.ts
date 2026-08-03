@@ -3,13 +3,12 @@
 import reposData from '../data/repos.json' with { type: 'json' }
 import statsData from '../data/stats.json' with { type: 'json' }
 import { type Repo, ReposArraySchema } from '../schemas/repo.schema.ts'
-import { StatsItemSchema } from '../schemas/stats.schema.ts'
+import { getLatestValidStatsDate } from './catalogDates.ts'
 import { CATALOG_PAGE_SIZE } from './catalogPagination.ts'
+import { type CatalogQuality, getCatalogQuality } from './catalogQuality.ts'
 import { createFuseIndex } from './fuzzySearch.ts'
 import { getGitHubRepoPath } from './repositoryIdentity.ts'
 import type { SortOption } from './sortOptions.ts'
-
-const FALLBACK_LAST_MODIFIED = new Date('2026-01-01T00:00:00.000Z')
 
 export type CatalogRepo = Repo
 
@@ -22,6 +21,7 @@ if (!catalogResult.success) {
 const catalogRepos: readonly CatalogRepo[] = catalogResult.data.filter(
   (repo): repo is CatalogRepo => repo.owner != null && repo.repo_name != null
 )
+const canonicalCatalogRepos = getUniqueCatalogRepos(catalogRepos)
 
 export type CatalogSearchResult = {
   hasMore: boolean
@@ -42,8 +42,20 @@ export function getCatalogRepos(): readonly CatalogRepo[] {
  * (the sitemap, IndexNow) must therefore skip them.
  */
 export function getCanonicalCatalogRepos(): readonly CatalogRepo[] {
+  return canonicalCatalogRepos
+}
+
+export function getIndexableCatalogRepos(): readonly CatalogRepo[] {
+  return canonicalCatalogRepos.filter((repo) => getCatalogQuality(repo, true).publicationState === 'indexable')
+}
+
+export function getCatalogQualityForRepo(repo: CatalogRepo): CatalogQuality {
+  return getCatalogQuality(repo, canonicalCatalogRepos.includes(repo))
+}
+
+function getUniqueCatalogRepos(repos: readonly CatalogRepo[]): readonly CatalogRepo[] {
   const seen = new Set<string>()
-  return catalogRepos.filter((repo) => {
+  return repos.filter((repo) => {
     const key = `${repo.owner}/${repo.repo_name}`.toLowerCase()
     if (seen.has(key)) {
       return false
@@ -55,11 +67,12 @@ export function getCanonicalCatalogRepos(): readonly CatalogRepo[] {
 
 export function searchCatalogRepos(query: string, sortOption: SortOption, page = 0, pageSize = CATALOG_PAGE_SIZE): CatalogSearchResult {
   const normalizedQuery = query.trim().toLocaleLowerCase()
+  const searchableCatalogRepos = getCanonicalCatalogRepos()
   const matchingRepos = normalizedQuery
-    ? createFuseIndex(catalogRepos)
+    ? createFuseIndex(searchableCatalogRepos)
         .search(normalizedQuery)
         .map((result) => ({ repo: result.item, score: result.score ?? Number.POSITIVE_INFINITY }))
-    : catalogRepos.map((repo) => ({ repo, score: 0 }))
+    : searchableCatalogRepos.map((repo) => ({ repo, score: 0 }))
   const sortedRepos = [...matchingRepos].sort((left, right) => {
     if (normalizedQuery && left.score !== right.score) {
       return left.score - right.score
@@ -101,24 +114,7 @@ export function findCatalogRepo(repoPath: string) {
 }
 
 export function getCatalogLastModified() {
-  if (!Array.isArray(statsData) || statsData.length === 0) {
-    return FALLBACK_LAST_MODIFIED
-  }
-
-  const lastEntryRaw = statsData[statsData.length - 1]
-  const validationResult = StatsItemSchema.safeParse(lastEntryRaw)
-
-  if (!validationResult.success) {
-    return FALLBACK_LAST_MODIFIED
-  }
-
-  const parsedDate = new Date(validationResult.data.date)
-
-  if (Number.isNaN(parsedDate.getTime())) {
-    return FALLBACK_LAST_MODIFIED
-  }
-
-  return parsedDate
+  return getLatestValidStatsDate(statsData)
 }
 
 export function getRepoCanonicalPath(repo: CatalogRepo) {
@@ -126,8 +122,4 @@ export function getRepoCanonicalPath(repo: CatalogRepo) {
     return ''
   }
   return getGitHubRepoPath(repo.owner, repo.repo_name)
-}
-
-export function getRepoSitemapPriority(repo: CatalogRepo) {
-  return repo.plugins_count === null ? 0.3 : 0.5
 }

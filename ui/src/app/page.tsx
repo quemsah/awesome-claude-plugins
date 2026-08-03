@@ -11,10 +11,27 @@ interface HomeProps {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
-export const metadata: Metadata = {
-  alternates: {
-    canonical: `${BASE_URL}/`,
-  },
+export async function generateMetadata({ searchParams }: HomeProps): Promise<Metadata> {
+  const params = await searchParams
+  const hasSearchParams = params?.q !== undefined || params?.sort !== undefined
+
+  return {
+    alternates: {
+      canonical: `${BASE_URL}/`,
+    },
+    ...(hasSearchParams
+      ? {
+          robots: {
+            index: false,
+            follow: true,
+            googleBot: {
+              index: false,
+              follow: true,
+            },
+          },
+        }
+      : {}),
+  }
 }
 
 export default async function Home({ searchParams }: HomeProps) {

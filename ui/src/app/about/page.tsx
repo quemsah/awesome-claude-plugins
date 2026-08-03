@@ -4,6 +4,7 @@ import { AboutStructuredData } from '../../components/about/AboutStructuredData.
 import { Breadcrumbs } from '../../components/common/Breadcrumbs.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card.tsx'
 import { getAboutBreadcrumbs } from '../../lib/breadcrumbs.ts'
+import { SOURCE_REPOSITORY_URL } from '../../lib/constants.ts'
 
 export default function AboutPage() {
   return (
@@ -76,6 +77,33 @@ export default function AboutPage() {
             </CardContent>
           </Card>
         </div>
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Corrections, provenance, and limitations</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-muted-foreground">
+            <p>
+              The checked-in catalog is generated from public GitHub data and refreshed daily. Repository detail pages request current
+              public GitHub metadata when available and show a labeled catalog snapshot during temporary outages.
+            </p>
+            <p>
+              This directory does not certify security, quality, licensing, maintenance, or compatibility. Popularity metrics are
+              descriptive signals only; evaluate the source repository before installing anything.
+            </p>
+            <p>
+              To report a missing, duplicated, or inaccurate entry, open an issue in the{' '}
+              <a
+                className="underline-offset-4 hover:text-foreground hover:underline"
+                href={`${SOURCE_REPOSITORY_URL}/issues`}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                public source repository
+              </a>
+              .
+            </p>
+          </CardContent>
+        </Card>
         <p className="mt-6 text-center text-muted-foreground text-sm">
           For details on analytics, browser storage, and performance measurement, see our{' '}
           <Link className="underline-offset-4 hover:text-foreground hover:underline" href="/privacy">

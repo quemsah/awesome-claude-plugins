@@ -1,5 +1,5 @@
-import type { components } from '@octokit/openapi-types'
 import type { Plugin } from '../../app/types/plugin.type.ts'
+import type { GitHubRepository } from '../../schemas/github.schema.ts'
 import { Card, CardContent } from '../ui/card.tsx'
 import { InstallCommand } from './InstallCommand.tsx'
 import { PluginAuthor } from './PluginAuthor.tsx'
@@ -10,12 +10,10 @@ import { PluginKeywords } from './PluginKeywords.tsx'
 import { PluginList } from './PluginList.tsx'
 import { PluginSource } from './PluginSource.tsx'
 
-type Repository = components['schemas']['repository']
-
 type PluginCardProps = {
   plugin: Plugin
   repoPath: string
-  repo?: Repository | null
+  repo?: GitHubRepository | null
 }
 
 export function PluginCard({ plugin, repoPath, repo }: PluginCardProps) {

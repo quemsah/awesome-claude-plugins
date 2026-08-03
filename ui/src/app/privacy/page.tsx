@@ -59,8 +59,9 @@ export default function PrivacyPage() {
           <section>
             <h2 className="mb-2 font-semibold text-foreground text-xl">Performance measurement</h2>
             <p>
-              We collect anonymous Core Web Vitals names, values, and ratings to monitor site performance. These reports do not include your
-              search terms, repository choices, or other page content.
+              We collect anonymous Core Web Vitals names, values, ratings, the route pathname, navigation type, and an optional release
+              label to monitor site performance. These reports do not include your search terms, repository choices, full URLs, or other
+              page content.
             </p>
           </section>
           <section>
