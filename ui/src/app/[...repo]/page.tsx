@@ -90,11 +90,27 @@ export default async function RepoPage({ params }: RouteParams) {
     notFound()
   }
 
+  const buildFallbackRepository = (): GitHubRepository | null => {
+    try {
+      return createCatalogRepositorySnapshot(catalogRepo)
+    } catch (error) {
+      console.error('Failed to build catalog repository snapshot', {
+        error: error instanceof Error ? error.message : String(error),
+        repoPath,
+      })
+      return null
+    }
+  }
+
   if (!repositoryResponse) {
-    repository = createCatalogRepositorySnapshot(catalogRepo)
+    const fallback = buildFallbackRepository()
+    if (!fallback) notFound()
+    repository = fallback
     repositoryIsStale = true
   } else if (!repositoryResponse.ok) {
-    repository = createCatalogRepositorySnapshot(catalogRepo)
+    const fallback = buildFallbackRepository()
+    if (!fallback) notFound()
+    repository = fallback
     repositoryIsStale = true
   } else {
     try {
