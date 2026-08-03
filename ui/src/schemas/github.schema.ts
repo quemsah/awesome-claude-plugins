@@ -107,4 +107,3 @@ export const GitHubRepositorySchema = z
   })
 
 export type GitHubRepository = z.infer<typeof GitHubRepositorySchema>
-

@@ -7,7 +7,7 @@ import { findCatalogRepo, getCatalogQualityForRepo, getRelatedCatalogRepos, getR
 import { BASE_URL } from '../../lib/constants.ts'
 import { fetchGitHubRepository, fetchMarketplace } from '../../lib/github.ts'
 import { createCatalogRepositorySnapshot } from '../../lib/repositorySnapshot.ts'
-import { type GitHubRepository } from '../../schemas/github.schema.ts'
+import type { GitHubRepository } from '../../schemas/github.schema.ts'
 
 type RouteParams = {
   params: Promise<{ repo: string[] }>

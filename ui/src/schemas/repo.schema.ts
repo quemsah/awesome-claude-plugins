@@ -7,7 +7,7 @@ const _GitHubSegmentSchema = z.string().refine(isGitHubSegment, 'Must be a valid
 function isValidHttpUrl(value: unknown): boolean {
   if (typeof value !== 'string') return false
   try {
-    new URL(value)
+    const _url = new URL(value)
     return true
   } catch {
     return false
