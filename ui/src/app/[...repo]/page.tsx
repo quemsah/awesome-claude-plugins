@@ -3,7 +3,7 @@ import { notFound, permanentRedirect } from 'next/navigation'
 import { MarketplacePluginsSchema, type Plugin } from '../../app/types/plugin.type.ts'
 import { RepoPageClient } from '../../components/repo/RepoPageClient.tsx'
 import RepoStructuredData from '../../components/repo/RepoStructuredData.tsx'
-import { findCatalogRepo, getCatalogQualityForRepo, getRelatedCatalogRepos, getRepoCanonicalPath } from '../../lib/catalog.ts'
+import { findCatalogRepo, getCatalogQualityForRepo, getRepoCanonicalPath } from '../../lib/catalog.ts'
 import { BASE_URL } from '../../lib/constants.ts'
 import { fetchGitHubRepository, fetchMarketplace } from '../../lib/github.ts'
 import { createCatalogRepositorySnapshot } from '../../lib/repositorySnapshot.ts'
@@ -73,7 +73,6 @@ export default async function RepoPage({ params }: RouteParams) {
   if (repoPath !== canonicalPath) {
     permanentRedirect(`/${canonicalPath}`)
   }
-  const relatedRepos = getRelatedCatalogRepos(catalogRepo)
 
   let repository: GitHubRepository
   let repositoryIsStale = false
@@ -158,7 +157,6 @@ export default async function RepoPage({ params }: RouteParams) {
         plugins={plugins}
         pluginsError={pluginsError}
         pluginsStatus={pluginsStatus}
-        relatedRepos={relatedRepos}
         repo={repository}
         repoIsStale={repositoryIsStale}
         repoPath={repoPath}

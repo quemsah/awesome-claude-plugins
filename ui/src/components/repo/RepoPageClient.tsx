@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import type { Plugin } from '../../app/types/plugin.type.ts'
 import { BackToRepositoriesLink } from '../../components/repo/BackToRepositoriesLink.tsx'
 import { PluginCard } from '../../components/repo/PluginCard.tsx'
@@ -8,9 +7,7 @@ import { RepoInfoCard } from '../../components/repo/RepoInfoCard.tsx'
 import { Button } from '../../components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card.tsx'
 import { getRepoBreadcrumbs } from '../../lib/breadcrumbs.ts'
-import { getGitHubRepoPath } from '../../lib/repositoryIdentity.ts'
 import type { GitHubRepository } from '../../schemas/github.schema.ts'
-import type { Repo } from '../../schemas/repo.schema.ts'
 import { Breadcrumbs } from '../common/Breadcrumbs.tsx'
 import { RetryButton } from './RetryButton.tsx'
 
@@ -22,7 +19,6 @@ type RepoPageClientProps = {
   pluginsStatus?: 'missing' | 'error' | null
   repoError?: string | null
   repoIsStale?: boolean
-  relatedRepos?: readonly Repo[]
 }
 
 export function RepoPageClient({
@@ -33,7 +29,6 @@ export function RepoPageClient({
   pluginsStatus,
   repoError,
   repoIsStale = false,
-  relatedRepos = [],
 }: RepoPageClientProps) {
   if (!repo) {
     return (
@@ -126,29 +121,6 @@ export function RepoPageClient({
             </ol>
           </CardContent>
         </Card>
-
-        <section aria-labelledby="related-repositories" className="mt-8">
-          <h2 className="mb-4 font-semibold text-2xl" id="related-repositories">
-            Related repositories
-          </h2>
-          {relatedRepos.length > 0 ? (
-            <ul className="grid gap-4 sm:grid-cols-3">
-              {relatedRepos.map((relatedRepo) => (
-                <li className="rounded-lg border p-4" key={relatedRepo.id}>
-                  <Link
-                    className="font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"
-                    href={`/${getGitHubRepoPath(relatedRepo.owner ?? '', relatedRepo.repo_name ?? '')}`}
-                  >
-                    {relatedRepo.owner}/{relatedRepo.repo_name}
-                  </Link>
-                  <p className="mt-2 line-clamp-3 text-muted-foreground text-sm">{relatedRepo.description}</p>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-muted-foreground text-sm">No closely related catalog entries were found.</p>
-          )}
-        </section>
       </div>
     </main>
   )

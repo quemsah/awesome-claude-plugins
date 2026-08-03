@@ -53,30 +53,6 @@ export function getCatalogQualityForRepo(repo: CatalogRepo): CatalogQuality {
   return getCatalogQuality(repo, canonicalCatalogRepos.includes(repo))
 }
 
-export function getRelatedCatalogRepos(repo: CatalogRepo, limit = 3): readonly CatalogRepo[] {
-  const sourceTerms = getSearchTerms(repo)
-  if (sourceTerms.size === 0) {
-    return []
-  }
-
-  return getIndexableCatalogRepos()
-    .filter((candidate) => candidate !== repo)
-    .map((candidate) => {
-      const candidateTerms = getSearchTerms(candidate)
-      const overlap = [...sourceTerms].filter((term) => candidateTerms.has(term)).length
-      return { candidate, overlap }
-    })
-    .filter(({ overlap }) => overlap > 0)
-    .sort(
-      (left, right) =>
-        right.overlap - left.overlap ||
-        (right.candidate.stargazers_count ?? 0) - (left.candidate.stargazers_count ?? 0) ||
-        left.candidate.id - right.candidate.id
-    )
-    .slice(0, limit)
-    .map(({ candidate }) => candidate)
-}
-
 function getUniqueCatalogRepos(repos: readonly CatalogRepo[]): readonly CatalogRepo[] {
   const seen = new Set<string>()
   return repos.filter((repo) => {
@@ -88,21 +64,6 @@ function getUniqueCatalogRepos(repos: readonly CatalogRepo[]): readonly CatalogR
     return true
   })
 }
-
-function getSearchTerms(repo: CatalogRepo): Set<string> {
-  const searchableText = [
-    repo.description ?? '',
-    ...(repo.plugin_categories ?? []),
-    ...(repo.plugin_keywords ?? []),
-    ...(repo.plugin_names ?? []),
-  ]
-    .join(' ')
-    .toLocaleLowerCase()
-  const terms = searchableText.match(/[a-z0-9][a-z0-9-]{3,}/g) ?? []
-  return new Set(terms.filter((term) => !GENERIC_RELATED_TERMS.has(term)))
-}
-
-const GENERIC_RELATED_TERMS = new Set(['claude', 'code', 'plugin', 'plugins', 'repository', 'tool', 'tools'])
 
 export function searchCatalogRepos(query: string, sortOption: SortOption, page = 0, pageSize = CATALOG_PAGE_SIZE): CatalogSearchResult {
   const normalizedQuery = query.trim().toLocaleLowerCase()
