@@ -1,16 +1,16 @@
 /** biome-ignore-all lint/security/noDangerouslySetInnerHtml: <Used to inject ld+json> */
-import type { components } from '@octokit/openapi-types'
 import { getRepoBreadcrumbs } from '../../lib/breadcrumbs.ts'
 import { BASE_URL } from '../../lib/constants.ts'
 import { serializeJsonLd } from '../../lib/jsonLd.ts'
-
-type Repository = components['schemas']['repository']
+import { getGitHubRepoPath } from '../../lib/repositoryIdentity.ts'
+import type { GitHubRepository } from '../../schemas/github.schema.ts'
 
 interface RepoStructuredDataProps {
-  repo: Repository
+  repo: GitHubRepository
 }
 
 export default function RepoStructuredData({ repo }: RepoStructuredDataProps) {
+  const canonicalUrl = `${BASE_URL}/${getGitHubRepoPath(repo.owner.login, repo.name)}`
   const breadcrumb = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -26,12 +26,12 @@ export default function RepoStructuredData({ repo }: RepoStructuredDataProps) {
     '@context': 'https://schema.org',
     '@type': 'SoftwareSourceCode',
     name: repo.name,
-    description: repo.description || 'GitHub repository with Claude Code plugin adoption',
-    url: repo.html_url,
+    url: canonicalUrl,
     codeRepository: repo.html_url,
-    programmingLanguage: repo.language || 'Unknown',
-    dateCreated: repo.created_at,
-    dateModified: repo.pushed_at,
+    ...(repo.description ? { description: repo.description } : {}),
+    ...(repo.language ? { programmingLanguage: repo.language } : {}),
+    ...(repo.created_at ? { dateCreated: repo.created_at } : {}),
+    ...(repo.pushed_at ? { dateModified: repo.pushed_at } : {}),
     author:
       repo.owner.type === 'Organization'
         ? {
@@ -45,7 +45,7 @@ export default function RepoStructuredData({ repo }: RepoStructuredDataProps) {
             url: repo.owner.html_url,
           },
     ...(repo.license?.url ? { license: repo.license.url } : {}),
-    keywords: repo.topics?.join(', ') || 'Claude Code, plugin adoption, GitHub, metrics',
+    ...(repo.topics?.length ? { keywords: repo.topics.join(', ') } : {}),
     isPartOf: {
       '@type': 'WebSite',
       name: 'Awesome Claude Plugins',

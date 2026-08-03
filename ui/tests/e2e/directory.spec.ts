@@ -17,6 +17,9 @@ const sortPluginsRegex = /\?sort=plugins-desc$/
 const qSuperpowersSortForksRegex = /\?q=superpowers&sort=forks-desc$/
 const qHelloRegex = /\?q=hello$/
 const qNoMatchesRegex = /\?q=definitely-no-matching-repository-name$/
+const noindexFollowRobotsPattern = /noindex,\s*follow/
+const indexFollowRobotsPattern = /index,\s*follow/
+const rootCanonicalPattern = /awesomeclaudeplugins\.com\/?$/
 const sortOptionForksRegex = /Forks/
 const sortOptionStarsRegex = /Stars/
 const detailsLabelRegex = /^View details for /
@@ -81,6 +84,18 @@ test('home page search updates result counts, visible cards, and empty state', a
   await expect(page).toHaveURL('/')
   await expect(page.getByText('No repositories match your search')).toBeHidden()
   await expectFirstDetailsLink(page, 'obra/superpowers')
+})
+
+test('home page keeps query variants out of search indexes', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', indexFollowRobotsPattern)
+
+  await page.goto('/?q=superpowers')
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', noindexFollowRobotsPattern)
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', rootCanonicalPattern)
+
+  await page.goto('/?sort=forks-desc')
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', noindexFollowRobotsPattern)
 })
 
 test('home page sort modes update the visible repository ordering', async ({ page }) => {

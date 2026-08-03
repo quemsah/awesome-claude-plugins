@@ -1,0 +1,28 @@
+name: IndexNow
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * 1'
+
+jobs:
+  notify:
+    name: Submit canonical sitemap URLs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Submit sitemap URLs to IndexNow
+        run: npm run indexnow
+        working-directory: ui
+        env:
+          INDEXNOW_SITE_URL: ${{ vars.INDEXNOW_SITE_URL || 'https://awesomeclaudeplugins.com' }}

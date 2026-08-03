@@ -4,6 +4,7 @@ import { BarChart3, Github, Info, Search } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect } from 'react'
+import { SOURCE_REPOSITORY_URL } from '../../lib/constants.ts'
 import { Button } from '../ui/button.tsx'
 import { ClaudeIcon } from './ClaudeIcon.tsx'
 import { ThemeToggle } from './ThemeToggle.tsx'
@@ -93,12 +94,7 @@ export function Header() {
             </a>
           </Button>
           <Button asChild className="touch-target h-9 w-9" size="icon" variant="outline">
-            <a
-              aria-label="GitHub repository"
-              href="https://github.com/quemsah/awesome-claude-plugins"
-              rel="noopener noreferrer"
-              target="_blank"
-            >
+            <a aria-label="GitHub repository" href={SOURCE_REPOSITORY_URL} rel="noopener noreferrer" target="_blank">
               <Github />
             </a>
           </Button>

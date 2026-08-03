@@ -3,6 +3,10 @@ import { copiedText, mockClipboard } from './helpers.ts'
 
 const noPluginsText = 'No Claude Code plugins found in this repository.'
 const marketplaceErrorText = 'Failed to load marketplace manifest.'
+const marketplaceMissingText = 'No marketplace manifest was found in this repository.'
+const staleRepositoryText = 'Live GitHub data is temporarily unavailable.'
+const repoCanonicalPattern = /\/ykdojo\/claude-code-tips$/
+const repoMarkdownAlternatePattern = /\/ykdojo\/claude-code-tips\.md$/
 const installButtonPattern = /install/i
 
 test('repo detail page renders server-fetched repository and marketplace data', async ({ page }) => {
@@ -11,6 +15,20 @@ test('repo detail page renders server-fetched repository and marketplace data', 
 
   await expect(page.getByRole('heading', { name: 'claude-code-tips' })).toBeVisible()
   await expect(page.getByText('A mocked Claude Code plugin repository')).toBeVisible()
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', repoCanonicalPattern)
+  await expect(page.locator('link[rel="alternate"][type="text/markdown"]')).toHaveAttribute('href', repoMarkdownAlternatePattern)
+  const jsonLd = await page
+    .locator('script[type="application/ld+json"]')
+    .evaluateAll((scripts) => scripts.map((script) => JSON.parse(script.textContent ?? '')))
+  expect(jsonLd).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        '@type': 'SoftwareSourceCode',
+        url: expect.stringMatching(repoCanonicalPattern),
+      }),
+    ])
+  )
+  expect(JSON.stringify(jsonLd)).not.toContain('"Unknown"')
   const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Example Plugin@1.2.3' }) })
   await expect(plugin.getByText('/plugin install example-plugin@example-plugin')).toBeVisible()
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
@@ -48,7 +66,8 @@ test('repo detail page renders an empty plugin state when the manifest is missin
   await page.goto('/ZeframLou/call-me')
 
   await expect(page.getByRole('heading', { name: 'call-me' })).toBeVisible()
-  await expect(page.getByText(noPluginsText)).toBeVisible()
+  await expect(page.getByText(marketplaceMissingText)).toBeVisible()
+  await expect(page.getByText(noPluginsText)).toBeHidden()
 })
 
 test('repo detail page surfaces a recoverable error when the manifest fails to load', async ({ page }) => {
@@ -66,11 +85,12 @@ test('repo detail page renders 404 when GitHub does not know the repository', as
   await expect(page.getByRole('heading', { name: '404' })).toBeVisible()
 })
 
-test('repo detail page renders the error boundary when GitHub fails', async ({ page }) => {
+test('repo detail page renders a catalog snapshot when GitHub fails', async ({ page }) => {
   await page.goto('/todorkolev/lean-playground')
 
-  await expect(page.getByRole('heading', { name: 'Something went wrong' })).toBeVisible()
-  await page.getByRole('link', { name: 'Back to directory' }).click()
+  await expect(page.getByRole('heading', { name: 'lean-playground' })).toBeVisible()
+  await expect(page.getByText(staleRepositoryText)).toBeVisible()
+  await page.getByRole('link', { name: 'Back to all repositories' }).click()
   await expect(page).toHaveURL('/')
 })
 

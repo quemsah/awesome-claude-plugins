@@ -14,6 +14,6 @@ export function proxy(request: NextRequest) {
   }
 
   const rewriteUrl = request.nextUrl.clone()
-  rewriteUrl.pathname = `/_markdown/${segments.map(encodeURIComponent).join('/')}`
+  rewriteUrl.pathname = `/api/markdown/${segments.map(encodeURIComponent).join('/')}`
   return NextResponse.rewrite(rewriteUrl)
 }

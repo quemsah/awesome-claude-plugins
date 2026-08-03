@@ -1,13 +1,11 @@
-import type { components } from '@octokit/openapi-types'
 import { CircleDot, Code, ExternalLink, Eye, FileText, GitFork, Star } from 'lucide-react'
 import Image from 'next/image'
 import { formatDate as formatDateUtil } from '../../lib/utils.ts'
+import type { GitHubRepository } from '../../schemas/github.schema.ts'
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar.tsx'
 import { Badge } from '../ui/badge.tsx'
 import { Button } from '../ui/button.tsx'
 import { Card, CardContent, CardDescription, CardHeader } from '../ui/card.tsx'
-
-type Repository = components['schemas']['repository']
 
 function getSafeHomepageUrl(homepage: string | null): string | null {
   if (!homepage) return null
@@ -21,11 +19,10 @@ function getSafeHomepageUrl(homepage: string | null): string | null {
 }
 
 interface RepoInfoCardProps {
-  repo: Repository
+  repo: GitHubRepository
 }
 
 export function RepoInfoCard({ repo }: RepoInfoCardProps) {
-  const subscribersCount = (repo as Record<string, unknown>).subscribers_count
   const homepageUrl = getSafeHomepageUrl(repo.homepage)
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Unknown'
@@ -107,7 +104,7 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
           </Badge>
           <Badge className="gap-2 text-sm" variant="secondary">
             <Eye aria-hidden="true" className="h-5 w-5" />
-            <span className="font-semibold">{typeof subscribersCount === 'number' ? subscribersCount.toLocaleString() : 0}</span>
+            <span className="font-semibold">{repo.subscribers_count?.toLocaleString() ?? 0}</span>
             <span>watchers/subscribers</span>
           </Badge>
           <Badge className="gap-2 text-sm" variant="secondary">

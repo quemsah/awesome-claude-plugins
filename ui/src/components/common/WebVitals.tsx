@@ -12,7 +12,10 @@ export function WebVitals() {
       '/api/vitals',
       JSON.stringify({
         name: metric.name,
+        navigationType: metric.navigationType,
+        path: window.location.pathname,
         rating: metric.rating,
+        release: process.env.NEXT_PUBLIC_RELEASE,
         value: metric.value,
       })
     )
