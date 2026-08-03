@@ -18,7 +18,7 @@ const qSuperpowersSortForksRegex = /\?q=superpowers&sort=forks-desc$/
 const qHelloRegex = /\?q=hello$/
 const qNoMatchesRegex = /\?q=definitely-no-matching-repository-name$/
 const noindexFollowRobotsPattern = /noindex,\s*follow/
-const indexFollowRobotsPattern = /index,\s*follow/
+const indexFollowRobotsPattern = /(?:^|,\s*)index,\s*follow(?:\s*,|$)/
 const rootCanonicalPattern = /awesomeclaudeplugins\.com\/?$/
 const sortOptionForksRegex = /Forks/
 const sortOptionStarsRegex = /Stars/
