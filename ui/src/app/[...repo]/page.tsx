@@ -156,10 +156,12 @@ export default async function RepoPage({ params }: RouteParams) {
         if (parsedMarketplace.success) {
           plugins = parsedMarketplace.data
         } else {
+          console.error('Marketplace validation failed', { repoPath, issues: parsedMarketplace.error.issues })
           pluginsStatus = 'error'
           pluginsError = 'Marketplace manifest contains invalid data.'
         }
-      } catch {
+      } catch (error) {
+        console.error('Marketplace parsing failed', { repoPath, error })
         pluginsStatus = 'error'
         pluginsError = 'Marketplace manifest contains invalid data.'
       }
