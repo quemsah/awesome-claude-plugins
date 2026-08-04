@@ -1,21 +1,22 @@
 interface PluginListProps {
   title: string
-  items?: string[]
+  items?: string[] | Record<string, unknown>
   repoPath: string
   defaultBranch?: string
 }
 
 export function PluginList({ title, items, repoPath, defaultBranch }: PluginListProps) {
-  if (!(items?.length && defaultBranch)) return null
+  const listItems = Array.isArray(items) ? items : []
+  if (!(listItems.length && defaultBranch)) return null
 
   return (
     <div>
       <dt className="mb-0.5 font-medium text-sm">
-        {title} ({items.length})
+        {title} ({listItems.length})
       </dt>
       <dd>
         <ul className="list-inside list-disc space-y-0.5 text-muted-foreground text-sm">
-          {items.map((item) => {
+          {listItems.map((item) => {
             const fileUrl = `https://github.com/${repoPath}/blob/${defaultBranch}/${item}`
             return (
               <li className="break-all" key={item}>
