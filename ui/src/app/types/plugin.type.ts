@@ -151,6 +151,9 @@ export const MarketplacePluginsSchema = z.union([
   z.object({ plugins: z.array(PluginSchema) }).transform((marketplace) => marketplace.plugins),
   z.object({ marketplace: z.object({ plugins: z.array(PluginSchema) }) }).transform((marketplace) => marketplace.marketplace.plugins),
   z.object({ repositories: z.array(PluginSchema) }).transform((marketplace) => marketplace.repositories),
-  PluginSchema.transform((plugin) => [plugin]),
+  PluginSchema.refine((plugin) => {
+    const obj = plugin as Record<string, unknown>
+    return !('plugins' in obj || 'repositories' in obj || 'marketplace' in obj)
+  }, 'Must not contain marketplace wrapper keys').transform((plugin) => [plugin]),
   EmptyMarketplaceSchema,
 ])

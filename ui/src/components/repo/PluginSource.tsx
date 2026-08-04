@@ -4,6 +4,13 @@ const GIT_SUFFIX_PATTERN = /\.git$/
 const GITHUB_REPO_PATH_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
 const SAFE_SOURCE_PATH_PATTERN = /^(?!.*\.\.)(?!.*[\r\n]).+$/
 
+function encodeRef(ref: string): string {
+  return ref
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')
+}
+
 interface PluginSourceProps {
   source?: string | PluginSourceType
   repoPath: string
@@ -24,19 +31,19 @@ export function PluginSource({ source, repoPath, defaultBranch }: PluginSourcePr
         ? `https://github.com/${source.slice('github:'.length)}`
         : null
       : typeof source === 'string' && SAFE_SOURCE_PATH_PATTERN.test(source) && targetRepo && branch
-        ? `https://github.com/${targetRepo}/blob/${encodeURIComponent(branch)}/${source}`
+        ? `https://github.com/${targetRepo}/blob/${encodeRef(branch)}/${source}`
         : null
   const sourceUrl =
     typeof source === 'string'
       ? sourceStringUrl
       : sourceUrlValue
         ? source.path
-          ? `${GITHUB_REPO_PATH_PATTERN.test(sourceUrlValue) ? `https://github.com/${sourceUrlValue}` : sourceUrlValue.replace(GIT_SUFFIX_PATTERN, '')}/blob/${encodeURIComponent(branch ?? 'HEAD')}/${source.path}`
+          ? `${GITHUB_REPO_PATH_PATTERN.test(sourceUrlValue) ? `https://github.com/${sourceUrlValue}` : sourceUrlValue.replace(GIT_SUFFIX_PATTERN, '')}/blob/${encodeRef(branch ?? 'HEAD')}/${source.path}`
           : GITHUB_REPO_PATH_PATTERN.test(sourceUrlValue)
             ? `https://github.com/${sourceUrlValue}`
             : sourceUrlValue
         : targetRepo && branch
-          ? `https://github.com/${targetRepo}/blob/${encodeURIComponent(branch)}/${sourcePath}`
+          ? `https://github.com/${targetRepo}/blob/${encodeRef(branch)}/${sourcePath}`
           : null
 
   if (!sourceUrl) return null
