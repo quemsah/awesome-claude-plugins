@@ -37,6 +37,7 @@ export function RepoPageClient({
   const [plugins, setPlugins] = useState<Plugin[]>([])
   const [pluginsError, setPluginsError] = useState<string | null>(null)
   const [pluginsStatus, setPluginsStatus] = useState<'missing' | 'error' | null>(null)
+  const [pluginsLoading, setPluginsLoading] = useState(true)
   const [_retryCount, setRetryCount] = useState(0)
 
   const handleRetry = useCallback(() => {
@@ -47,6 +48,7 @@ export function RepoPageClient({
     let cancelled = false
 
     async function loadPlugins() {
+      setPluginsLoading(true)
       setPlugins([])
       setPluginsError(null)
       setPluginsStatus(null)
@@ -58,6 +60,7 @@ export function RepoPageClient({
 
         if (response.status === 404) {
           if (!cancelled) setPluginsStatus('missing')
+          if (!cancelled) setPluginsLoading(false)
           return
         }
 
@@ -65,6 +68,7 @@ export function RepoPageClient({
           if (!cancelled) {
             setPluginsStatus('error')
             setPluginsError('Failed to load marketplace manifest.')
+            setPluginsLoading(false)
           }
           return
         }
@@ -72,12 +76,16 @@ export function RepoPageClient({
         try {
           const parsedMarketplace = MarketplacePluginsSchema.safeParse(await response.json())
           if (parsedMarketplace.success) {
-            if (!cancelled) setPlugins(parsedMarketplace.data)
+            if (!cancelled) {
+              setPlugins(parsedMarketplace.data)
+              setPluginsLoading(false)
+            }
           } else {
             if (!cancelled) {
               console.error('Marketplace validation failed', { repoPath, issues: parsedMarketplace.error.issues })
               setPluginsStatus('error')
               setPluginsError('Marketplace manifest contains invalid data.')
+              setPluginsLoading(false)
             }
           }
         } catch (error) {
@@ -85,12 +93,14 @@ export function RepoPageClient({
             console.error('Marketplace parsing failed', { repoPath, error })
             setPluginsStatus('error')
             setPluginsError('Marketplace manifest contains invalid data.')
+            setPluginsLoading(false)
           }
         }
       } catch (_error) {
         if (!cancelled) {
           setPluginsStatus('error')
           setPluginsError('Failed to load marketplace manifest.')
+          setPluginsLoading(false)
         }
       }
     }
@@ -143,7 +153,11 @@ export function RepoPageClient({
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            {pluginsStatus === 'missing' ? (
+            {pluginsLoading && !pluginsStatus && !pluginsError ? (
+              <p className="py-4 text-center text-muted-foreground" role="status">
+                Loading plugins...
+              </p>
+            ) : pluginsStatus === 'missing' ? (
               <p className="py-4 text-center text-muted-foreground" role="status">
                 No marketplace manifest was found in this repository.
               </p>
