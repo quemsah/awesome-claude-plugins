@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/correctness/useExhaustiveDependencies: _retryCount must rerun the effect on retry. */
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
@@ -110,7 +111,7 @@ export function RepoPageClient({
     return () => {
       cancelled = true
     }
-  }, [owner, repoName, defaultBranch, repoPath, rawBaseUrl])
+  }, [owner, repoName, defaultBranch, repoPath, rawBaseUrl, _retryCount])
   if (!repo) {
     return (
       <main className="flex min-h-dvh items-center justify-center bg-background" id="main-content" tabIndex={-1}>
