@@ -1,6 +1,8 @@
 'use client'
 
+import { useCallback, useEffect, useState } from 'react'
 import type { Plugin } from '../../app/types/plugin.type.ts'
+import { MarketplacePluginsSchema } from '../../app/types/plugin.type.ts'
 import { BackToRepositoriesLink } from '../../components/repo/BackToRepositoriesLink.tsx'
 import { PluginCard } from '../../components/repo/PluginCard.tsx'
 import { RepoInfoCard } from '../../components/repo/RepoInfoCard.tsx'
@@ -14,9 +16,10 @@ import { RetryButton } from './RetryButton.tsx'
 type RepoPageClientProps = {
   repoPath: string
   repo: GitHubRepository | null
-  plugins: Plugin[]
-  pluginsError?: string | null
-  pluginsStatus?: 'missing' | 'error' | null
+  owner: string
+  repoName: string
+  defaultBranch: string
+  rawBaseUrl: string
   repoError?: string | null
   repoIsStale?: boolean
 }
@@ -24,12 +27,80 @@ type RepoPageClientProps = {
 export function RepoPageClient({
   repoPath,
   repo,
-  plugins,
-  pluginsError,
-  pluginsStatus,
+  owner,
+  repoName,
+  defaultBranch,
+  rawBaseUrl,
   repoError,
   repoIsStale = false,
 }: RepoPageClientProps) {
+  const [plugins, setPlugins] = useState<Plugin[]>([])
+  const [pluginsError, setPluginsError] = useState<string | null>(null)
+  const [pluginsStatus, setPluginsStatus] = useState<'missing' | 'error' | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
+
+  const handleRetry = useCallback(() => {
+    setRetryCount((count) => count + 1)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadPlugins() {
+      setPlugins([])
+      setPluginsError(null)
+      setPluginsStatus(null)
+
+      try {
+        const response = await fetch(
+          `${rawBaseUrl}/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/${encodeURIComponent(defaultBranch)}/.claude-plugin/marketplace.json`
+        )
+
+        if (response.status === 404) {
+          if (!cancelled) setPluginsStatus('missing')
+          return
+        }
+
+        if (!response.ok) {
+          if (!cancelled) {
+            setPluginsStatus('error')
+            setPluginsError('Failed to load marketplace manifest.')
+          }
+          return
+        }
+
+        try {
+          const parsedMarketplace = MarketplacePluginsSchema.safeParse(await response.json())
+          if (parsedMarketplace.success) {
+            if (!cancelled) setPlugins(parsedMarketplace.data)
+          } else {
+            if (!cancelled) {
+              console.error('Marketplace validation failed', { repoPath, issues: parsedMarketplace.error.issues })
+              setPluginsStatus('error')
+              setPluginsError('Marketplace manifest contains invalid data.')
+            }
+          }
+        } catch (error) {
+          if (!cancelled) {
+            console.error('Marketplace parsing failed', { repoPath, error })
+            setPluginsStatus('error')
+            setPluginsError('Marketplace manifest contains invalid data.')
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPluginsStatus('error')
+          setPluginsError('Failed to load marketplace manifest.')
+        }
+      }
+    }
+
+    loadPlugins()
+
+    return () => {
+      cancelled = true
+    }
+  }, [owner, repoName, defaultBranch, repoPath, retryCount])
   if (!repo) {
     return (
       <main className="flex min-h-dvh items-center justify-center bg-background" id="main-content" tabIndex={-1}>
@@ -79,10 +150,10 @@ export function RepoPageClient({
             ) : pluginsError ? (
               <div className="flex flex-wrap items-center justify-center gap-3 py-4" role="alert">
                 <p className="text-destructive">{pluginsError}</p>
-                <RetryButton />
+                <RetryButton onRetry={handleRetry} />
                 <a
                   className="text-sm underline underline-offset-4"
-                  href={`https://raw.githubusercontent.com/${encodeURIComponent(repoPath.split('/')[0])}/${encodeURIComponent(
+                  href={`${rawBaseUrl}/${encodeURIComponent(repoPath.split('/')[0])}/${encodeURIComponent(
                     repoPath.split('/')[1]
                   )}/HEAD/.claude-plugin/marketplace.json`}
                   rel="noreferrer"

@@ -1,11 +1,11 @@
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
-import { MarketplacePluginsSchema, type Plugin } from '../../app/types/plugin.type.ts'
+
 import { RepoPageClient } from '../../components/repo/RepoPageClient.tsx'
 import RepoStructuredData from '../../components/repo/RepoStructuredData.tsx'
 import { findCatalogRepo, getCatalogQualityForRepo, getRepoCanonicalPath } from '../../lib/catalog.ts'
 import { BASE_URL } from '../../lib/constants.ts'
-import { fetchGitHubRepository, fetchMarketplace } from '../../lib/github.ts'
+import { fetchGitHubRepository, GITHUB_RAW_URL } from '../../lib/github.ts'
 import { createCatalogRepositorySnapshot } from '../../lib/repositorySnapshot.ts'
 import type { GitHubRepository } from '../../schemas/github.schema.ts'
 
@@ -130,51 +130,14 @@ export default async function RepoPage({ params }: RouteParams) {
     }
   }
 
-  let marketplaceResult: Response
-  try {
-    marketplaceResult = await fetchMarketplace(repo[0], repo[1], repository.default_branch)
-  } catch (error) {
-    console.error('Failed to fetch marketplace manifest', {
-      error: error instanceof Error ? error.message : String(error),
-      repoPath,
-    })
-    marketplaceResult = new Response(null, { status: 503 })
-  }
-
-  let plugins: Plugin[] = []
-  let pluginsError: string | null = null
-  let pluginsStatus: 'missing' | 'error' | null = null
-  if (marketplaceResult.status === 404) {
-    pluginsStatus = 'missing'
-  } else {
-    if (!marketplaceResult.ok) {
-      pluginsStatus = 'error'
-      pluginsError = 'Failed to load marketplace manifest.'
-    } else {
-      try {
-        const parsedMarketplace = MarketplacePluginsSchema.safeParse(await marketplaceResult.json())
-        if (parsedMarketplace.success) {
-          plugins = parsedMarketplace.data
-        } else {
-          console.error('Marketplace validation failed', { repoPath, issues: parsedMarketplace.error.issues })
-          pluginsStatus = 'error'
-          pluginsError = 'Marketplace manifest contains invalid data.'
-        }
-      } catch (error) {
-        console.error('Marketplace parsing failed', { repoPath, error })
-        pluginsStatus = 'error'
-        pluginsError = 'Marketplace manifest contains invalid data.'
-      }
-    }
-  }
-
   return (
     <>
       <RepoStructuredData repo={repository} />
       <RepoPageClient
-        plugins={plugins}
-        pluginsError={pluginsError}
-        pluginsStatus={pluginsStatus}
+        owner={repo[0]}
+        repoName={repo[1]}
+        defaultBranch={repository.default_branch}
+        rawBaseUrl={GITHUB_RAW_URL}
         repo={repository}
         repoIsStale={repositoryIsStale}
         repoPath={repoPath}

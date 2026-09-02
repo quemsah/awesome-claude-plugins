@@ -84,12 +84,28 @@ const REPOSITORY_PATH_PATTERN = /^\/repos\/([^/]+)\/([^/]+)$/
 const MARKETPLACE_PATH_PATTERN = /^\/([^/]+)\/([^/]+)\/[^/]+\/\.claude-plugin\/marketplace\.json$/
 
 function sendJson(response, status, payload) {
-  response.writeHead(status, { 'content-type': 'application/json' })
+  response.writeHead(status, {
+    'content-type': 'application/json',
+    'access-control-allow-origin': '*',
+    'access-control-allow-methods': 'GET, OPTIONS',
+    'access-control-allow-headers': 'content-type',
+  })
   response.end(JSON.stringify(payload))
 }
 
 const server = createServer((request, response) => {
   const pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname
+  if (request.method === 'OPTIONS') {
+    response.writeHead(204, {
+      'access-control-allow-origin': '*',
+      'access-control-allow-methods': 'GET, OPTIONS',
+      'access-control-allow-headers': 'content-type',
+      'access-control-max-age': '86400',
+    })
+    response.end()
+    return
+  }
+
   if (pathname === '/health') {
     response.writeHead(204)
     response.end()

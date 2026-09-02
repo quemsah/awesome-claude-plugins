@@ -13,6 +13,15 @@ const scriptSource = [
   'https://scripts.simpleanalyticscdn.com',
 ].join(' ')
 
+const connectSource = [
+  "'self'",
+  'https://api.github.com',
+  'https://raw.githubusercontent.com',
+  'https://queue.simpleanalyticscdn.com',
+  'https://scripts.simpleanalyticscdn.com',
+  ...(process.env.PLAYWRIGHT_BASE_URL ? ['http://127.0.0.1:3100'] : []),
+].join(' ')
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
@@ -54,7 +63,7 @@ const nextConfig: NextConfig = {
             // `script-src` still needs 'unsafe-inline' because Next.js streams the RSC payload
             // through inline scripts; switching to a nonce would opt every page out of static
             // rendering. The JSON-LD payloads that could be injected are escaped in `serializeJsonLd`.
-            value: `default-src 'self'; script-src ${scriptSource}; img-src 'self' data: https://queue.simpleanalyticscdn.com https://avatars.githubusercontent.com; connect-src 'self' https://api.github.com https://raw.githubusercontent.com https://queue.simpleanalyticscdn.com https://scripts.simpleanalyticscdn.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
+            value: `default-src 'self'; script-src ${scriptSource}; img-src 'self' data: https://queue.simpleanalyticscdn.com https://avatars.githubusercontent.com; connect-src ${connectSource}; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
           },
         ],
       },
