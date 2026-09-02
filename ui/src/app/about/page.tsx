@@ -4,7 +4,6 @@ import { AboutStructuredData } from '../../components/about/AboutStructuredData.
 import { Breadcrumbs } from '../../components/common/Breadcrumbs.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card.tsx'
 import { getAboutBreadcrumbs } from '../../lib/breadcrumbs.ts'
-import { SOURCE_REPOSITORY_URL } from '../../lib/constants.ts'
 
 export default function AboutPage() {
   return (

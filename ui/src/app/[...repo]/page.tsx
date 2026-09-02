@@ -134,12 +134,12 @@ export default async function RepoPage({ params }: RouteParams) {
     <>
       <RepoStructuredData repo={repository} />
       <RepoPageClient
-        owner={repo[0]}
-        repoName={repo[1]}
         defaultBranch={repository.default_branch}
+        owner={repo[0]}
         rawBaseUrl={GITHUB_RAW_URL}
         repo={repository}
         repoIsStale={repositoryIsStale}
+        repoName={repo[1]}
         repoPath={repoPath}
       />
     </>

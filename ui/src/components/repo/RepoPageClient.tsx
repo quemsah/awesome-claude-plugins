@@ -37,7 +37,7 @@ export function RepoPageClient({
   const [plugins, setPlugins] = useState<Plugin[]>([])
   const [pluginsError, setPluginsError] = useState<string | null>(null)
   const [pluginsStatus, setPluginsStatus] = useState<'missing' | 'error' | null>(null)
-  const [retryCount, setRetryCount] = useState(0)
+  const [_retryCount, setRetryCount] = useState(0)
 
   const handleRetry = useCallback(() => {
     setRetryCount((count) => count + 1)
@@ -87,7 +87,7 @@ export function RepoPageClient({
             setPluginsError('Marketplace manifest contains invalid data.')
           }
         }
-      } catch (error) {
+      } catch (_error) {
         if (!cancelled) {
           setPluginsStatus('error')
           setPluginsError('Failed to load marketplace manifest.')
@@ -100,7 +100,7 @@ export function RepoPageClient({
     return () => {
       cancelled = true
     }
-  }, [owner, repoName, defaultBranch, repoPath, retryCount])
+  }, [owner, repoName, defaultBranch, repoPath, rawBaseUrl])
   if (!repo) {
     return (
       <main className="flex min-h-dvh items-center justify-center bg-background" id="main-content" tabIndex={-1}>
