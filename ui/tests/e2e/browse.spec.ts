@@ -9,7 +9,7 @@ const nextPageName = 'Next page'
 const pageCounterPattern = /^Page (\d+) of (\d+)$/
 const pageThreeCounterPattern = /^Page 3 of \d+$/
 const browsePageThreeUrlPattern = /\/browse\/3$/
-const browseCanonicalPattern = /awesomeclaudeplugins\.com\/browse\/\d+$/
+const browseCanonicalUrl = 'https://awesomeclaudeplugins.com/browse/2'
 
 function cardItems(page: Page) {
   return page.locator('main ul > li')
@@ -37,7 +37,7 @@ test('browse page 2 renders a full page of repository cards', async ({ page }) =
   expect(response?.status()).toBe(200)
   await expect(page.getByRole('heading', { name: browseHeading })).toBeVisible()
   await expect(cardItems(page)).toHaveCount(CATALOG_PAGE_SIZE)
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', browseCanonicalPattern)
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', browseCanonicalUrl)
 })
 
 test('browse pagination links pair adjacent pages and navigate', async ({ page }) => {
