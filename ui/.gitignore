@@ -27,6 +27,7 @@
 *.pem
 .local
 /.local
+stories
 
 # debug
 npm-debug.log*
