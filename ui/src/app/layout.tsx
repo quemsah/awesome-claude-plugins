@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Header } from '../components/common/Header.tsx'
 import { SimpleAnalytics } from '../components/common/SimpleAnalytics.tsx'
 import { WebVitals } from '../components/common/WebVitals.tsx'
+import { shouldLoadAnalytics } from '../lib/analytics.ts'
 import { BASE_URL, DEFAULT_OG_IMAGE } from '../lib/constants.ts'
 import { Providers } from '../providers/providers.tsx'
 import './globals.css'
@@ -97,12 +98,12 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  const shouldLoadAnalytics = process.env.NODE_ENV === 'production' && process.env.VERCEL_ENV !== 'preview'
+  const analyticsEnabled = shouldLoadAnalytics(process.env.RAILWAY_ENVIRONMENT_NAME)
 
   return (
     <html lang="en-US" suppressHydrationWarning>
       <body className="min-h-dvh">
-        {shouldLoadAnalytics ? <link crossOrigin="anonymous" href="https://scripts.simpleanalyticscdn.com" rel="preconnect" /> : null}
+        {analyticsEnabled ? <link crossOrigin="anonymous" href="https://scripts.simpleanalyticscdn.com" rel="preconnect" /> : null}
         <Providers>
           <Header />
           <noscript>
@@ -117,7 +118,7 @@ export default function RootLayout({
             </Link>
           </footer>
         </Providers>
-        <SimpleAnalytics enabled={shouldLoadAnalytics} />
+        <SimpleAnalytics enabled={analyticsEnabled} />
         <WebVitals />
       </body>
     </html>
