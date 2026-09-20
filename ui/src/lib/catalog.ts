@@ -8,6 +8,7 @@ import { CATALOG_PAGE_SIZE } from './catalogPagination.ts'
 import { type CatalogQuality, getCatalogQuality } from './catalogQuality.ts'
 import { createFuseIndex } from './fuzzySearch.ts'
 import { getGitHubRepoPath } from './repositoryIdentity.ts'
+import { normalizeSearchQuery } from './searchQuery.ts'
 import type { SortOption } from './sortOptions.ts'
 
 export type CatalogRepo = Repo
@@ -72,7 +73,8 @@ type SearchCacheEntry = { expiresAt: number; records: ScoredCatalogRepo[] }
 const SEARCH_CACHE_TTL_MS = 60_000
 const SEARCH_CACHE_MAX_ENTRIES = 64
 // A broad term matches ~20k of the 40k records, so entries are bounded by total records too: without
-// it, 64 popular terms would hold a copy of the whole catalog several times over.
+// it, 64 popular terms would hold a copy of the whole catalog several times over. Measured at the
+// cap: 250k wrappers add ~20MB of heap.
 const SEARCH_CACHE_MAX_RECORDS = 250_000
 const SEARCH_CACHE_GLOBAL_KEY = 'catalogSearchMatchesCache'
 
@@ -90,10 +92,15 @@ function getSearchCache(): Map<string, SearchCacheEntry> {
   return cache
 }
 
+function countCachedRecords(cache: Map<string, SearchCacheEntry>): number {
+  return [...cache.values()].reduce((total, entry) => total + entry.records.length, 0)
+}
+
 /**
  * The fuzzy scan is the only expensive step of a catalog request, and one search interaction runs it
  * twice within a second: once to server-render `/?q=…` and once for the `/api/catalog` call the
- * client fires for the same term. Keyed by query so sort and page variants reuse one scan.
+ * client fires for the same term. Keyed by the shared normalized query so sort and page variants,
+ * and both entry points, reuse one scan.
  */
 function getScoredMatches(normalizedQuery: string, repos: readonly CatalogRepo[]): ScoredCatalogRepo[] {
   const cache = getSearchCache()
@@ -121,12 +128,8 @@ function getScoredMatches(normalizedQuery: string, repos: readonly CatalogRepo[]
   return records
 }
 
-function countCachedRecords(cache: Map<string, SearchCacheEntry>): number {
-  return [...cache.values()].reduce((total, entry) => total + entry.records.length, 0)
-}
-
 export function searchCatalogRepos(query: string, sortOption: SortOption, page = 0, pageSize = CATALOG_PAGE_SIZE): CatalogSearchResult {
-  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const normalizedQuery = normalizeSearchQuery(query)
   const matchingRepos = getScoredMatches(normalizedQuery, getCanonicalCatalogRepos())
   const sortedRepos = [...matchingRepos].sort((left, right) => {
     if (normalizedQuery && left.score !== right.score) {

@@ -1,7 +1,10 @@
 /** biome-ignore-all lint/style/useNamingConvention: Playwright config uses baseURL as an API option. */
 import { defineConfig, devices } from '@playwright/test'
 
-const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3001'
+const appPort = process.env.PORT ?? '3001'
+const mockGithubPort = process.env.MOCK_GITHUB_PORT ?? '3100'
+const mockGithubUrl = `http://127.0.0.1:${mockGithubPort}`
+const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${appPort}`
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -27,11 +30,10 @@ export default defineConfig({
             command: 'node tests/e2e/mock-github-server.mjs',
             reuseExistingServer: false,
             timeout: 30_000,
-            url: 'http://127.0.0.1:3100/health',
+            url: `${mockGithubUrl}/health`,
           },
           {
-            command:
-              'cross-env-shell GITHUB_API_URL=http://127.0.0.1:3100 GITHUB_RAW_URL=http://127.0.0.1:3100 PORT=3001 "npm run build && npm run start"',
+            command: `cross-env-shell GITHUB_API_URL=${mockGithubUrl} GITHUB_RAW_URL=${mockGithubUrl} PORT=${appPort} "npm run build && npm run start"`,
             reuseExistingServer: false,
             timeout: 120_000,
             url: baseUrl,

@@ -59,9 +59,10 @@ export default function PrivacyPage() {
           <section>
             <h2 className="mb-2 font-semibold text-foreground text-xl">Performance measurement</h2>
             <p>
-              We collect anonymous Core Web Vitals names, values, ratings, the route pathname, navigation type, and an optional release
-              label to monitor site performance. These reports do not include your search terms, repository choices, full URLs, or other
-              page content.
+              In production, we collect Core Web Vitals measurements (CLS, FCP, INP, LCP and TTFB) with their value, rating and navigation
+              type, plus an optional release label. Your browser also sends the path of the page being measured, which we reduce to a route
+              template such as /, /browse/[page] or /[owner]/[repo] before recording it, so the owner and repository you opened are never
+              stored. These reports do not include your search terms, query parameters, full URLs, or other page content.
             </p>
           </section>
           <section>
