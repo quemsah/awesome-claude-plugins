@@ -58,8 +58,10 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     [pathname, router, searchParams]
   )
 
-  const debouncedReplaceSearchUrl = useDebouncedCallback((nextSearchTerm: string, nextSortOption: SortOption) => {
-    updateSearchUrl(nextSearchTerm, nextSortOption, 'replace')
+  // The deferred write resolves the state when it fires rather than when typing queued it, so a
+  // sort option chosen during the wait cannot be written back out by an outdated snapshot.
+  const debouncedReplaceSearchUrl = useDebouncedCallback(() => {
+    updateSearchUrl(searchTerm, sortOption, 'replace')
   }, 500)
 
   // Keystrokes update the input immediately but only settle into a catalog request once typing
@@ -70,17 +72,19 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     (nextSearchTerm: string) => {
       setSearchTerm(nextSearchTerm)
       debouncedQuerySearchTerm(nextSearchTerm)
-      debouncedReplaceSearchUrl(nextSearchTerm, sortOption)
+      debouncedReplaceSearchUrl()
     },
-    [debouncedQuerySearchTerm, debouncedReplaceSearchUrl, sortOption]
+    [debouncedQuerySearchTerm, debouncedReplaceSearchUrl]
   )
 
   const handleSortChange = useCallback(
     (nextSortOption: SortOption) => {
+      // The immediate write below is the newest view of the state, so it supersedes a queued one.
+      debouncedReplaceSearchUrl.cancel()
       setSortOption(nextSortOption)
       updateSearchUrl(searchTerm, nextSortOption)
     },
-    [searchTerm, updateSearchUrl]
+    [debouncedReplaceSearchUrl, searchTerm, updateSearchUrl]
   )
 
   useEffect(() => {
