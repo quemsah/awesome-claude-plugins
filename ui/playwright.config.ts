@@ -11,6 +11,9 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 2 : 2,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
+  // A search settles after 250 + 300 + 500 ms of debounces and a catalog render that a busy server
+  // runs one at a time, so the address bar can legitimately move seconds after the interaction.
+  expect: { timeout: 15_000 },
   use: {
     baseURL: baseUrl,
     screenshot: 'only-on-failure',

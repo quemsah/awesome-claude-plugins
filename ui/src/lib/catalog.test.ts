@@ -9,4 +9,20 @@ describe('searchCatalogRepos', () => {
 
     expect(results.repos).toEqual(expect.arrayContaining([expect.objectContaining({ owner: 'todorkolev', repo_name: 'lean-playground' })]))
   })
+
+  it('repeats a cached query identically', () => {
+    const first = searchCatalogRepos('claude', 'stars-desc', 1, 24)
+    const second = searchCatalogRepos('claude', 'stars-desc', 1, 24)
+
+    expect(second).toEqual(first)
+  })
+
+  it('does not let one sort order leak into the next request for the same query', () => {
+    const starsBefore = searchCatalogRepos('claude', 'stars-desc').repos
+
+    searchCatalogRepos('claude', 'forks-desc')
+    searchCatalogRepos('claude', 'plugins-desc')
+
+    expect(searchCatalogRepos('claude', 'stars-desc').repos).toEqual(starsBefore)
+  })
 })
