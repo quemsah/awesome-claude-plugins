@@ -29,13 +29,16 @@ function extractConnectOrigin(url: string): string {
 
 const rawOrigin = extractConnectOrigin(GITHUB_RAW_URL)
 
+const mockGithubUrl = `http://127.0.0.1:${process.env.MOCK_GITHUB_PORT ?? '3100'}`
+
 const connectSource = [
   "'self'",
   'https://api.github.com',
   rawOrigin,
   'https://queue.simpleanalyticscdn.com',
   'https://scripts.simpleanalyticscdn.com',
-  ...(process.env.PLAYWRIGHT_BASE_URL ? ['http://127.0.0.1:3100'] : []),
+  // Frozen at build time while the browser gets the mock origin from the runtime `rawBaseUrl` prop.
+  ...(process.env.PLAYWRIGHT_BASE_URL ? [mockGithubUrl] : []),
 ].join(' ')
 
 const nextConfig: NextConfig = {
