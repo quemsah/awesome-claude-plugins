@@ -143,4 +143,4 @@ const server = createServer((request, response) => {
   sendJson(response, 404, { message: 'Not Found' })
 })
 
-server.listen(3100, '127.0.0.1')
+server.listen(Number(process.env.MOCK_GITHUB_PORT ?? 3100), '127.0.0.1')

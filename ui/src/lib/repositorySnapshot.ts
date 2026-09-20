@@ -3,6 +3,9 @@
 import { type GitHubRepository, GitHubRepositorySchema } from '../schemas/github.schema.ts'
 import type { Repo } from '../schemas/repo.schema.ts'
 
+/** Why the repository page fell back to catalog data instead of live GitHub metadata. */
+export type CatalogSnapshotReason = 'github-not-found' | 'github-unavailable'
+
 export function createCatalogRepositorySnapshot(repo: Repo): GitHubRepository {
   if (!(repo.owner && repo.repo_name && repo.owner_url)) {
     throw new Error('Catalog repository is missing canonical identity fields')

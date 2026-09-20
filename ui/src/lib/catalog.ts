@@ -8,6 +8,7 @@ import { CATALOG_PAGE_SIZE } from './catalogPagination.ts'
 import { type CatalogQuality, getCatalogQuality } from './catalogQuality.ts'
 import { createFuseIndex } from './fuzzySearch.ts'
 import { getGitHubRepoPath } from './repositoryIdentity.ts'
+import { normalizeSearchQuery } from './searchQuery.ts'
 import type { SortOption } from './sortOptions.ts'
 
 export type CatalogRepo = Repo
@@ -66,7 +67,7 @@ function getUniqueCatalogRepos(repos: readonly CatalogRepo[]): readonly CatalogR
 }
 
 export function searchCatalogRepos(query: string, sortOption: SortOption, page = 0, pageSize = CATALOG_PAGE_SIZE): CatalogSearchResult {
-  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const normalizedQuery = normalizeSearchQuery(query)
   const searchableCatalogRepos = getCanonicalCatalogRepos()
   const matchingRepos = normalizedQuery
     ? createFuseIndex(searchableCatalogRepos)
