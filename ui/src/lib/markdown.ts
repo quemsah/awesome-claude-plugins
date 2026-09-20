@@ -62,24 +62,81 @@ The data is generated from checked-in daily catalog snapshots.
 `
 }
 
+const MISSING_DESCRIPTION = 'No repository description is available.'
+const INLINE_LINK_PATTERN = /\[([^\][]*)]\(([^)]*)\)/g
+const ATX_HEADING_PATTERN = /^#{1,6}(?= )/
+const QUOTED_OR_LIST_PATTERN = /^(>|-|\+|\*)(?= )/
+const ORDERED_LIST_PATTERN = /^(\d{1,9})([.)])(?= )/
+const CODE_FENCE_PATTERN = /^(`{3,}|~{3,})/
+
+/** YAML accepts JSON string syntax, so a quoted scalar keeps repository text inside its own property. */
+function toYamlProperty(key: string, value: string | number | null): string {
+  if (typeof value === 'number') {
+    return `${key}: ${value}`
+  }
+  if (value === null) {
+    return `${key}: null`
+  }
+  return `${key}: ${JSON.stringify(value)}`
+}
+
+/** GitHub descriptions are single-line, so any line break they carry would open a new block. */
+function foldToSingleLine(value: string | null): string {
+  return value?.replace(/\s+/g, ' ').trim() ?? ''
+}
+
+/**
+ * Keeps untrusted repository text a paragraph: raw HTML would swallow `<placeholder>` tokens,
+ * and line-initial markers would rewrite the outline of the generated document.
+ */
+function toMarkdownText(value: string): string {
+  return value
+    .replaceAll('<', '\\<')
+    .replace(INLINE_LINK_PATTERN, (_match, text: string, href: string) => `\\[${text}](${href})`)
+    .replace(ATX_HEADING_PATTERN, (marker) => `\\${marker}`)
+    .replace(QUOTED_OR_LIST_PATTERN, (marker) => `\\${marker}`)
+    .replace(ORDERED_LIST_PATTERN, (_match, digits: string, delimiter: string) => `${digits}\\${delimiter}`)
+    .replace(CODE_FENCE_PATTERN, (fence) => `\\${fence}`)
+}
+
 export function buildRepoMarkdown(repo: Repo): string {
   if (!(repo.owner && repo.repo_name)) {
     return ''
   }
 
   const repoPath = getGitHubRepoPath(repo.owner, repo.repo_name)
+  const canonicalUrl = `${BASE_URL}/${repoPath}`
   const marketplaceCommand = getMarketplaceAddCommand(repo.owner, repo.repo_name)
+  const description = foldToSingleLine(repo.description) || MISSING_DESCRIPTION
   const pluginCount =
     repo.plugins_count === null ? 'No validated plugin count is available.' : `${repo.plugins_count} plugin entries are reported.`
   const quality = getCatalogQualityForRepo(repo)
 
-  return `# ${repo.owner}/${repo.repo_name}
+  const frontmatter = [
+    '---',
+    toYamlProperty('title', `${repo.owner}/${repo.repo_name}`),
+    toYamlProperty('description', description),
+    toYamlProperty('canonical_url', canonicalUrl),
+    toYamlProperty('repository_url', repo.html_url),
+    toYamlProperty('stars', repo.stargazers_count ?? 0),
+    toYamlProperty('forks', repo.forks_count ?? 0),
+    toYamlProperty('plugins_count', repo.plugins_count),
+    toYamlProperty('publication_state', quality.publicationState),
+    toYamlProperty('quality_note', quality.qualityReason),
+    toYamlProperty('catalog_updated', getCatalogLastModified().toISOString()),
+    toYamlProperty('install_command', marketplaceCommand),
+    '---',
+  ].join('\n')
 
-${repo.description?.trim() || 'No repository description is available.'}
+  return `${frontmatter}
+
+# ${repo.owner}/${repo.repo_name}
+
+${toMarkdownText(description)}
 
 ## Repository
 
-- [Catalog detail page](${BASE_URL}/${repoPath})
+- [Catalog detail page](${canonicalUrl})
 - [GitHub repository](${repo.html_url})
 - Stars: ${repo.stargazers_count ?? 0}
 - Forks: ${repo.forks_count ?? 0}
