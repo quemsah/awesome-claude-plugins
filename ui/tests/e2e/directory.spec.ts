@@ -33,6 +33,16 @@ async function expectFirstDetailsLink(page: Page, repoPath: string) {
   await expect(page.getByRole('link', { name: detailsLinkName }).first()).toHaveAttribute('aria-label', `View details for ${repoPath}`)
 }
 
+/** A retried assertion passes on the first match, so a late timer that overwrites a settled state
+ * needs a hold window instead. */
+async function expectStable<T>(read: () => Promise<T>, expected: T, holdMs: number) {
+  const deadline = Date.now() + holdMs
+  do {
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(await read()).toEqual(expected)
+  } while (Date.now() < deadline)
+}
+
 test('header navigation, external actions, and theme selection work across routes', async ({ page }) => {
   await page.goto('/')
 
@@ -250,4 +260,41 @@ test('home page browser back and forward navigation restores persisted state', a
   await expect(page).toHaveURL(qSuperpowersSortForksRegex)
   await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toHaveValue('superpowers')
   await expect(page.getByRole('combobox', { name: 'Sort by' })).toHaveText(sortOptionForksRegex)
+})
+
+test('home page keeps url, sort control, and catalog results aligned when sort is chosen mid-debounce', async ({ page }) => {
+  const catalogSorts: (string | null)[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('/api/catalog')) {
+      catalogSorts.push(new URL(request.url()).searchParams.get('sort'))
+    }
+  })
+
+  const searchbox = page.getByRole('searchbox', { name: 'Search repositories' })
+  const combobox = page.getByRole('combobox', { name: 'Sort by' })
+  const screenState = async () => ({
+    // Compared as a parameter map: whichever write commits first decides whether the url reads
+    // `q=...&sort=...` or the other way around.
+    urlParams: Object.fromEntries(new URL(page.url()).searchParams),
+    searchInput: await searchbox.inputValue(),
+    sortControl: await combobox.innerText(),
+    resultsSortedBy: catalogSorts[catalogSorts.length - 1] ?? null,
+  })
+  const alignedState: Awaited<ReturnType<typeof screenState>> = {
+    urlParams: { q: 'superpowers', sort: 'forks-desc' },
+    searchInput: 'superpowers',
+    sortControl: 'Forks',
+    resultsSortedBy: 'forks-desc',
+  }
+
+  await page.goto('/')
+  await searchbox.fill('superpowers')
+
+  // The 250 ms input debounce registers the term just after this lead-in and queues a url write
+  // 500 ms later, so choosing a sort option in between races that queued write.
+  await page.waitForTimeout(400)
+  await chooseSortOption(page, 'Forks')
+
+  await expect.poll(screenState, { timeout: 10_000 }).toEqual(alignedState)
+  await expectStable(screenState, alignedState, 2_000)
 })
