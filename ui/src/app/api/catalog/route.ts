@@ -5,12 +5,6 @@ import { getRateLimitKey, RateLimiter } from '../../../lib/rateLimit.ts'
 import { parseSortOption } from '../../../lib/searchState.ts'
 
 const MAX_PAGE_SIZE = 100
-/**
- * Fuzzy search cost grows linearly past Fuse's 32-character bitap pattern limit, so longer
- * queries are truncated instead of rejected: the search box has no length limit and a 400 would
- * surface to the user as a load error.
- */
-const MAX_QUERY_LENGTH = 32
 const MAX_REQUESTS_PER_MINUTE = 100
 const rateLimiter = new RateLimiter(10_000, MAX_REQUESTS_PER_MINUTE, 60_000)
 
@@ -27,7 +21,9 @@ export function GET(request: Request) {
     return NextResponse.json({ message: 'Invalid pagination parameters' }, { status: 400 })
   }
 
-  const query = (searchParams.get('q') ?? '').slice(0, MAX_QUERY_LENGTH)
+  // `searchCatalogRepos` owns query normalization, including the length cap, so this route cannot
+  // drift from the server initial render it pages alongside.
+  const query = searchParams.get('q') ?? ''
 
   return NextResponse.json(searchCatalogRepos(query, parseSortOption(searchParams.get('sort')), page, pageSize), {
     headers: {
