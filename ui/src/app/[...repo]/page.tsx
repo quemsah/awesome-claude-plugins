@@ -30,14 +30,16 @@ export async function generateMetadata({ params }: RouteParams): Promise<Metadat
   const catalogQuality = getCatalogQualityForRepo(catalogRepo)
   const title = `${catalogRepo.owner}/${catalogRepo.repo_name}`
   const description = catalogRepo.description ?? `Explore ${title} in the Awesome Claude Plugins directory.`
+  const canonicalUrl = `${BASE_URL}/${canonicalPath}`
+  const imageUrl = `${BASE_URL}/og/${canonicalPath}`
 
   return {
     title,
     description,
     alternates: {
-      canonical: `${BASE_URL}/${canonicalPath}`,
+      canonical: canonicalUrl,
       types: {
-        'text/markdown': `${BASE_URL}/${canonicalPath}.md`,
+        'text/markdown': `${canonicalUrl}.md`,
       },
     },
     robots:
@@ -49,9 +51,16 @@ export async function generateMetadata({ params }: RouteParams): Promise<Metadat
           },
     openGraph: {
       type: 'website',
-      url: `${BASE_URL}/${canonicalPath}`,
+      url: canonicalUrl,
       title,
       description,
+      images: [{ alt: title, height: 630, url: imageUrl, width: 1200 }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: [imageUrl],
     },
   }
 }
