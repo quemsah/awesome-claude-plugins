@@ -37,6 +37,18 @@ describe('GitHubRepositorySchema', () => {
     }
   })
 
+  it('treats the empty homepage GitHub sends for a repository without one as absent', () => {
+    const result = GitHubRepositorySchema.safeParse({
+      ...validRepository,
+      homepage: '',
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.homepage).toBeNull()
+    }
+  })
+
   it('rejects non-HTTP(S) homepage URLs', () => {
     const result = GitHubRepositorySchema.safeParse({
       ...validRepository,
