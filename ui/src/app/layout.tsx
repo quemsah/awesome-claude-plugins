@@ -6,6 +6,7 @@ import { SimpleAnalytics } from '../components/common/SimpleAnalytics.tsx'
 import { WebVitals } from '../components/common/WebVitals.tsx'
 import { shouldLoadAnalytics } from '../lib/analytics.ts'
 import { BASE_URL, DEFAULT_OG_IMAGE } from '../lib/constants.ts'
+import { GITHUB_RAW_URL } from '../lib/github.ts'
 import { Providers } from '../providers/providers.tsx'
 import './globals.css'
 
@@ -104,6 +105,8 @@ export default function RootLayout({
     <html lang="en-US" suppressHydrationWarning>
       <body className="min-h-dvh">
         {analyticsEnabled ? <link crossOrigin="anonymous" href="https://scripts.simpleanalyticscdn.com" rel="preconnect" /> : null}
+        {/* The repository page fetches marketplace.json from this origin after hydration, so the hint follows the same GITHUB_RAW_URL override as connect-src. */}
+        <link crossOrigin="anonymous" href={GITHUB_RAW_URL} rel="preconnect" />
         <Providers>
           <Header />
           <noscript>

@@ -32,7 +32,7 @@ export async function GET(_: Request, { params }: RouteContext) {
     >
       <div style={{ color: '#b8b8b8', fontSize: 32 }}>Awesome Claude Plugins</div>
       <div style={{ fontSize: 64, fontWeight: 700, marginTop: 28, textAlign: 'center' }}>
-        {catalogRepo.owner}/{catalogRepo.repo_name}
+        {`${catalogRepo.owner}/${catalogRepo.repo_name}`}
       </div>
       <div style={{ color: '#d0d0d0', fontSize: 28, marginTop: 28, textAlign: 'center' }}>
         {(catalogRepo.description ?? 'Claude Code plugin repository').slice(0, 220)}
