@@ -20,6 +20,14 @@ describe('GET /api/markdown/[...repo]', () => {
     expect(response.headers.get('content-type')).toBe('text/markdown; charset=utf-8')
   })
 
+  it('opens the payload with repository frontmatter properties', async () => {
+    const response = await markdownRoute.GET(requestFor(CATALOG_REPO), context(CATALOG_REPO))
+    const markdown = await response.text()
+
+    expect(markdown.startsWith('---\ntitle: "ykdojo/claude-code-tips"\n')).toBe(true)
+    expect(markdown).toContain('\n---\n\n# ykdojo/claude-code-tips\n')
+  })
+
   it('lets any origin read the catalog markdown', async () => {
     const response = await markdownRoute.GET(requestFor(CATALOG_REPO), context(CATALOG_REPO))
 
