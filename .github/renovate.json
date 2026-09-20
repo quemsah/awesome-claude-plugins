@@ -6,10 +6,20 @@
     "enabled": true,
     "schedule": ["before 9am on the first day of the month"]
   },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Bump the Biome config schema URL together with the Biome version.",
+      "fileMatch": ["^ui/biome\\.json$"],
+      "matchStrings": ["\"\\$schema\": \"https://biomejs\\.dev/schemas/(?<currentValue>[0-9.]+)/schema\\.json\""],
+      "depNameTemplate": "@biomejs/biome",
+      "datasourceTemplate": "npm"
+    }
+  ],
   "packageRules": [
     {
       "description": "Keep framework updates isolated for focused review.",
-      "matchPackageNames": ["next", "react", "react-dom"],
+      "matchPackageNames": ["next", "react", "react-dom", "@next/bundle-analyzer"],
       "matchUpdateTypes": ["major", "minor", "patch"],
       "schedule": ["after 10am and before 11am on Monday"],
       "groupName": "framework dependency updates",
@@ -17,7 +27,7 @@
     },
     {
       "description": "Group lower-risk type and tooling updates.",
-      "matchPackageNames": ["@biomejs/biome", "@next/bundle-analyzer", "@octokit/openapi-types", "@playwright/test", "@tailwindcss/postcss", "husky", "tailwindcss", "typescript"],
+      "matchPackageNames": ["@biomejs/biome", "@octokit/openapi-types", "@playwright/test", "@tailwindcss/postcss", "husky", "tailwindcss", "typescript"],
       "matchPackagePatterns": ["^@types/"],
       "matchUpdateTypes": ["minor", "patch"],
       "schedule": ["after 2pm and before 3pm on Wednesday"],
