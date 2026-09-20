@@ -5,6 +5,8 @@ const noPluginsText = 'No Claude Code plugins found in this repository.'
 const marketplaceErrorText = 'Failed to load marketplace manifest.'
 const marketplaceMissingText = 'No marketplace manifest was found in this repository.'
 const staleRepositoryText = 'Live GitHub data is temporarily unavailable.'
+const unavailableRepositoryText = 'no longer available on GitHub'
+const mdserveCanonicalPattern = /\/jfernandez\/mdserve$/
 const repoCanonicalPattern = /\/ykdojo\/claude-code-tips$/
 const repoMarkdownAlternatePattern = /\/ykdojo\/claude-code-tips\.md$/
 const repoOpenGraphImagePattern = /\/og\/ykdojo\/claude-code-tips$/
@@ -81,10 +83,15 @@ test('repo detail page surfaces a recoverable error when the manifest fails to l
   await expect(page.getByRole('link', { name: 'View marketplace.json' })).toBeVisible()
 })
 
-test('repo detail page renders 404 when GitHub does not know the repository', async ({ page }) => {
+test('repo detail page renders a catalog snapshot when GitHub reports the repository missing', async ({ page }) => {
   await page.goto('/jfernandez/mdserve')
 
-  await expect(page.getByRole('heading', { name: '404' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'mdserve' })).toBeVisible()
+  await expect(page.getByText('[Archived] Markdown preview server for AI coding agents.')).toBeVisible()
+  await expect(page.getByText(unavailableRepositoryText)).toBeVisible()
+  await expect(page.getByText(staleRepositoryText)).toBeHidden()
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', mdserveCanonicalPattern)
+  await expect(page.getByText(marketplaceMissingText)).toBeVisible()
 })
 
 test('repo detail page renders a catalog snapshot when GitHub fails', async ({ page }) => {

@@ -6,7 +6,7 @@ import RepoStructuredData from '../../components/repo/RepoStructuredData.tsx'
 import { findCatalogRepo, getCatalogQualityForRepo, getRepoCanonicalPath } from '../../lib/catalog.ts'
 import { BASE_URL } from '../../lib/constants.ts'
 import { fetchGitHubRepository, GITHUB_RAW_URL } from '../../lib/github.ts'
-import { createCatalogRepositorySnapshot } from '../../lib/repositorySnapshot.ts'
+import { type CatalogSnapshotReason, createCatalogRepositorySnapshot } from '../../lib/repositorySnapshot.ts'
 import type { GitHubRepository } from '../../schemas/github.schema.ts'
 
 type RouteParams = {
@@ -82,7 +82,7 @@ export default async function RepoPage({ params }: RouteParams) {
   }
 
   let repository: GitHubRepository
-  let repositoryIsStale = false
+  let repositorySnapshotReason: CatalogSnapshotReason | undefined
   let repositoryResponse: Response | null = null
   try {
     repositoryResponse = await fetchGitHubRepository(repo[0], repo[1])
@@ -91,10 +91,6 @@ export default async function RepoPage({ params }: RouteParams) {
       error: error instanceof Error ? error.message : String(error),
       repoPath,
     })
-  }
-
-  if (repositoryResponse?.status === 404) {
-    notFound()
   }
 
   const buildFallbackRepository = (): GitHubRepository | null => {
@@ -109,16 +105,13 @@ export default async function RepoPage({ params }: RouteParams) {
     }
   }
 
-  if (!repositoryResponse) {
+  // Catalogued repositories are published in the sitemap, so a GitHub 404 (rename, move, deletion)
+  // must still render the catalog snapshot rather than drop the URL to a 404 page.
+  if (!repositoryResponse?.ok) {
     const fallback = buildFallbackRepository()
     if (!fallback) notFound()
     repository = fallback
-    repositoryIsStale = true
-  } else if (!repositoryResponse.ok) {
-    const fallback = buildFallbackRepository()
-    if (!fallback) notFound()
-    repository = fallback
-    repositoryIsStale = true
+    repositorySnapshotReason = repositoryResponse?.status === 404 ? 'github-not-found' : 'github-unavailable'
   } else {
     try {
       const repositoryPayload: unknown = await repositoryResponse.json()
@@ -132,8 +125,10 @@ export default async function RepoPage({ params }: RouteParams) {
         repoPath,
         stack: error instanceof Error ? error.stack : undefined,
       })
-      repository = createCatalogRepositorySnapshot(catalogRepo)
-      repositoryIsStale = true
+      const fallback = buildFallbackRepository()
+      if (!fallback) notFound()
+      repository = fallback
+      repositorySnapshotReason = 'github-unavailable'
     }
   }
 
@@ -145,9 +140,9 @@ export default async function RepoPage({ params }: RouteParams) {
         owner={repo[0]}
         rawBaseUrl={GITHUB_RAW_URL}
         repo={repository}
-        repoIsStale={repositoryIsStale}
         repoName={repo[1]}
         repoPath={repoPath}
+        repoSnapshotReason={repositorySnapshotReason}
       />
     </>
   )
