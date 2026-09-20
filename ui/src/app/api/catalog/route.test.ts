@@ -52,12 +52,14 @@ describe('/api/catalog parity with the server initial render', { timeout: 120_00
     expect(api.repos.map((repo) => repo.id)).toEqual(server.repos.map((repo) => repo.id))
   })
 
-  it('keeps the page indicator stable beyond the pattern limit', async () => {
-    const query = 'anthropic claude code plugin marketplace'
-    const initial = serverRender(query, 0)
+  it('serves a later page of the same query identically from both paths', async () => {
+    const query = 'claude-plugin'
+    const expected = serverRender(query, 1)
     const paged = await apiCatalog(query, 1)
 
-    expect(paged.hasMore).toBe(initial.hasMore)
-    expect(Math.ceil(paged.total / CATALOG_PAGE_SIZE)).toBe(Math.ceil(initial.total / CATALOG_PAGE_SIZE))
+    expect(paged.repos).toHaveLength(CATALOG_PAGE_SIZE)
+    expect(paged.hasMore).toBe(expected.hasMore)
+    expect(paged).toMatchObject({ pluginsCount: expected.pluginsCount, total: expected.total })
+    expect(paged.repos.map((repo) => repo.id)).toEqual(expected.repos.map((repo) => repo.id))
   })
 })
