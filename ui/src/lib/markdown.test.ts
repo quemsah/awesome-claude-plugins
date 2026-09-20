@@ -89,8 +89,15 @@ describe('buildRepoMarkdown', () => {
   it('quotes descriptions so they cannot add or close frontmatter properties', () => {
     const { frontmatter } = splitFrontmatter(buildRepoMarkdown(makeRepo({ description: 'evil"\ninstalled: true\n---\ntitle: injected' })))
 
-    expect(frontmatter).toContain('description: "evil\\" installed: true --- title: injected"')
+    expect(frontmatter).toContain('description: "evil\\"\\ninstalled: true\\n---\\ntitle: injected"')
     expect(frontmatter.split('\n')).toHaveLength(11)
+  })
+
+  it('keeps the description verbatim in frontmatter and folded in the body', () => {
+    const { frontmatter, body } = splitFrontmatter(buildRepoMarkdown(makeRepo({ description: '  first line\n\n## second line  ' })))
+
+    expect(frontmatter).toContain('description: "first line\\n\\n## second line"')
+    expect(body).toContain('first line ## second line')
   })
 
   it('keeps a heading-like description from changing the document outline', () => {

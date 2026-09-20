@@ -80,9 +80,9 @@ function toYamlProperty(key: string, value: string | number | null): string {
   return `${key}: ${JSON.stringify(value)}`
 }
 
-/** GitHub descriptions are single-line, so any line break they carry would open a new block. */
-function foldToSingleLine(value: string | null): string {
-  return value?.replace(/\s+/g, ' ').trim() ?? ''
+/** A line break would open a new block in the body, while a quoted YAML scalar escapes it instead. */
+function foldToSingleLine(value: string): string {
+  return value.replace(/\s+/g, ' ').trim()
 }
 
 /**
@@ -109,7 +109,8 @@ export function buildRepoMarkdown(repo: Repo): string {
   const repoPath = getGitHubRepoPath(repo.owner, repo.repo_name)
   const canonicalUrl = `${BASE_URL}/${repoPath}`
   const marketplaceCommand = getMarketplaceAddCommand(repo.owner, repo.repo_name)
-  const description = foldToSingleLine(repo.description) || MISSING_DESCRIPTION
+  const description = repo.description?.trim() || MISSING_DESCRIPTION
+  const descriptionBody = toMarkdownText(foldToSingleLine(description))
   const pluginCount =
     repo.plugins_count === null ? 'No validated plugin count is available.' : `${repo.plugins_count} plugin entries are reported.`
   const quality = getCatalogQualityForRepo(repo)
@@ -134,7 +135,7 @@ export function buildRepoMarkdown(repo: Repo): string {
 
 # ${repo.owner}/${repo.repo_name}
 
-${toMarkdownText(description)}
+${descriptionBody}
 
 ## Repository
 
