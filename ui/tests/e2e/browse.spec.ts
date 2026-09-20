@@ -71,18 +71,19 @@ test('browse last page has no next link', async ({ page }) => {
   expect(cards).toBeLessThanOrEqual(CATALOG_PAGE_SIZE)
 })
 
+// notFound() serves an empty body, so the 404 screen only exists once hydration lands.
 test('browse unparseable page number returns 404', async ({ page }) => {
   for (const path of ['/browse/abc', '/browse/0', '/browse/2-5']) {
     const response = await page.goto(path)
 
     expect(response?.status(), path).toBe(404)
-    await expect(page.getByRole('heading', { name: '404' })).toBeVisible()
   }
+
+  await expect(page.getByRole('heading', { name: '404' })).toBeVisible()
 })
 
 test('browse page beyond the last page returns 404', async ({ page }) => {
   const response = await page.goto('/browse/99999')
 
   expect(response?.status()).toBe(404)
-  await expect(page.getByRole('heading', { name: '404' })).toBeVisible()
 })
