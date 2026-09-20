@@ -4,6 +4,13 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDebouncedCallback } from 'use-debounce'
 import { CATALOG_PAGE_SIZE } from '../../lib/catalogPagination.ts'
+import {
+  catalogScrollKey,
+  clearScrollPosition,
+  isCatalogListPath,
+  readScrollPosition,
+  saveScrollPosition,
+} from '../../lib/catalogScroll.ts'
 import { buildSearchUrl, parseSortOption } from '../../lib/searchState.ts'
 import type { SortOption } from '../../lib/sortOptions.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
@@ -25,6 +32,12 @@ type CatalogApiResponse = {
   total: number
 }
 
+/**
+ * Filling the grid back to a remembered offset is one catalog request per page, and the endpoint
+ * rate limits each client, so restoration stops after this many pages and lets the scroll clamp.
+ */
+const MAX_RESTORE_FILL_PAGES = 10
+
 export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm, initialSortOption, initialTotal }: SearchPageProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -41,6 +54,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   const initialRequest = useRef(true)
   const nextPage = useRef(1)
   const loadingController = useRef<AbortController | null>(null)
+  const pendingScrollRestore = useRef<{ attempts: number; scrollY: number; url: string } | null>(null)
 
   const updateSearchUrl = useCallback(
     (nextSearchTerm: string, nextSortOption: SortOption, mode: 'push' | 'replace' = 'push') => {
@@ -187,6 +201,73 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     setSortOption(parseSortOption(searchParams.get('sort')))
     window.sessionStorage.setItem('last-search-url', `${pathname}${searchParams.size > 0 ? `?${searchParams}` : ''}`)
   }, [pathname, searchParams])
+
+  // The browser restores the offset against the document it finds on arrival, and the remounted list
+  // only holds the first catalog page, so any position past that page lands short. Re-applying it
+  // here once the grid has been refilled is what puts the visitor back where they left off.
+  useEffect(() => {
+    const url = catalogScrollKey(window.location.pathname, window.location.search)
+    const scrollY = readScrollPosition(window.sessionStorage, url)
+    if (scrollY > 0) {
+      pendingScrollRestore.current = { attempts: 0, scrollY, url }
+    }
+  }, [])
+
+  // The offset is taken from the interaction that starts the navigation, not from the scroll events
+  // it produces: committing a repository page scrolls this segment towards the top of `<main>` while
+  // the address bar still reports the list route, which would store that transient position instead.
+  useEffect(() => {
+    const remember = () => {
+      const { pathname, search } = window.location
+      if (isCatalogListPath(pathname)) {
+        saveScrollPosition(window.sessionStorage, catalogScrollKey(pathname, search), window.scrollY)
+      }
+    }
+
+    const onRequestStart = (event: Event) => {
+      if ((event.target as HTMLElement | null)?.closest('a[href]')) {
+        remember()
+      }
+    }
+
+    document.addEventListener('click', onRequestStart, true)
+    window.addEventListener('pagehide', remember)
+    return () => {
+      document.removeEventListener('click', onRequestStart, true)
+      window.removeEventListener('pagehide', remember)
+    }
+  }, [])
+
+  useEffect(() => {
+    const pending = pendingScrollRestore.current
+    if (pending === null || isLoading) {
+      return
+    }
+
+    const url = catalogScrollKey(window.location.pathname, window.location.search)
+    if (url !== pending.url) {
+      pendingScrollRestore.current = null
+      return
+    }
+
+    const liveParams = new URLSearchParams(window.location.search)
+    const isListInSyncWithUrl = (liveParams.get('q') ?? '') === queriedSearchTerm && parseSortOption(liveParams.get('sort')) === sortOption
+    if (!isListInSyncWithUrl) {
+      return
+    }
+
+    const maximumScroll = document.documentElement.scrollHeight - window.innerHeight
+    if (maximumScroll < pending.scrollY && hasMore && pending.attempts < MAX_RESTORE_FILL_PAGES) {
+      // The offset can sit past the lazily loaded pages, so keep filling the grid until it fits.
+      pendingScrollRestore.current = { ...pending, attempts: pending.attempts + 1 }
+      loadMore()
+      return
+    }
+
+    window.scrollTo(0, pending.scrollY)
+    clearScrollPosition(window.sessionStorage, pending.url)
+    pendingScrollRestore.current = null
+  }, [hasMore, isLoading, loadMore, queriedSearchTerm, sortOption])
 
   return (
     <>
