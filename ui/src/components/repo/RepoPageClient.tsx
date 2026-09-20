@@ -10,9 +10,17 @@ import { RepoInfoCard } from '../../components/repo/RepoInfoCard.tsx'
 import { Button } from '../../components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card.tsx'
 import { getRepoBreadcrumbs } from '../../lib/breadcrumbs.ts'
+import type { CatalogSnapshotReason } from '../../lib/repositorySnapshot.ts'
 import type { GitHubRepository } from '../../schemas/github.schema.ts'
 import { Breadcrumbs } from '../common/Breadcrumbs.tsx'
 import { RetryButton } from './RetryButton.tsx'
+
+const CATALOG_SNAPSHOT_NOTICES: Record<CatalogSnapshotReason, string> = {
+  'github-not-found':
+    'This repository is no longer available on GitHub. It may have been renamed, moved, or deleted. Showing the last catalog snapshot, so some details may be out of date.',
+  'github-unavailable':
+    'Live GitHub data is temporarily unavailable. Showing the latest catalog snapshot; some details may be out of date.',
+}
 
 type RepoPageClientProps = {
   repoPath: string
@@ -22,7 +30,7 @@ type RepoPageClientProps = {
   defaultBranch: string
   rawBaseUrl: string
   repoError?: string | null
-  repoIsStale?: boolean
+  repoSnapshotReason?: CatalogSnapshotReason
 }
 
 export function RepoPageClient({
@@ -33,7 +41,7 @@ export function RepoPageClient({
   defaultBranch,
   rawBaseUrl,
   repoError,
-  repoIsStale = false,
+  repoSnapshotReason,
 }: RepoPageClientProps) {
   const [plugins, setPlugins] = useState<Plugin[]>([])
   const [pluginsError, setPluginsError] = useState<string | null>(null)
@@ -139,9 +147,9 @@ export function RepoPageClient({
           <BackToRepositoriesLink />
         </Button>
 
-        {repoIsStale ? (
+        {repoSnapshotReason ? (
           <div className="mb-6 rounded-md border border-amber-500/50 bg-amber-500/10 p-4 text-sm" role="status">
-            Live GitHub data is temporarily unavailable. Showing the latest catalog snapshot; some details may be out of date.
+            {CATALOG_SNAPSHOT_NOTICES[repoSnapshotReason]}
           </div>
         ) : null}
 
