@@ -102,7 +102,6 @@ export function RepoCard({ repo, className }: RepoCardProps) {
                 <ClaudeIcon aria-hidden="true" />
                 <span className="text-xs">{formatNumber(repo.plugins_count ?? 0)}</span>
                 <span className="sr-only">plugins</span>
-                {(repo.stargazers_count ?? 0) < 10 && <span className="text-muted-foreground text-xs">(low signal)</span>}
               </div>
             )}
           </div>
