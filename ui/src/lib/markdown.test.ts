@@ -123,6 +123,24 @@ describe('buildRepoMarkdown', () => {
     expect(body).toContain('for \\[Testkube](https://testkube.io)')
   })
 
+  it('keeps a nested link label from staying an active link', () => {
+    const { body } = splitFrontmatter(buildRepoMarkdown(makeRepo({ description: 'Point at [Docs [mirror]](https://testkube.io) now' })))
+
+    expect(body).toContain('Point at \\[Docs \\[mirror]](https://testkube.io) now')
+  })
+
+  it('keeps a doubly nested link label from staying an active link', () => {
+    const { body } = splitFrontmatter(buildRepoMarkdown(makeRepo({ description: 'See [a [b [c]]](https://testkube.io) too' })))
+
+    expect(body).toContain('See \\[a \\[b \\[c]]](https://testkube.io) too')
+  })
+
+  it('leaves brackets that open no link alone', () => {
+    const { body } = splitFrontmatter(buildRepoMarkdown(makeRepo({ description: 'Labels [stable] and [beta] ship here' })))
+
+    expect(body).toContain('Labels [stable] and [beta] ship here')
+  })
+
   it('escapes block syntax that would start a new structure', () => {
     const cases: Record<string, string> = {
       '> quoted start': '\\> quoted start',

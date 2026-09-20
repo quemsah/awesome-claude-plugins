@@ -63,7 +63,7 @@ The data is generated from checked-in daily catalog snapshots.
 }
 
 const MISSING_DESCRIPTION = 'No repository description is available.'
-const INLINE_LINK_PATTERN = /\[([^\][]*)]\(([^)]*)\)/g
+const LINK_DESTINATION_PATTERN = /]\(/
 const ATX_HEADING_PATTERN = /^#{1,6}(?= )/
 const QUOTED_OR_LIST_PATTERN = /^(>|-|\+|\*)(?= )/
 const ORDERED_LIST_PATTERN = /^(\d{1,9})([.)])(?= )/
@@ -87,12 +87,14 @@ function foldToSingleLine(value: string | null): string {
 
 /**
  * Keeps untrusted repository text a paragraph: raw HTML would swallow `<placeholder>` tokens,
- * and line-initial markers would rewrite the outline of the generated document.
+ * a link label would open a third-party link, and line-initial markers would rewrite the
+ * outline of the generated document. Labels nest brackets, so one cannot escape only the outer one.
  */
 function toMarkdownText(value: string): string {
-  return value
+  const withoutLinks = LINK_DESTINATION_PATTERN.test(value) ? value.replaceAll('[', '\\[') : value
+
+  return withoutLinks
     .replaceAll('<', '\\<')
-    .replace(INLINE_LINK_PATTERN, (_match, text: string, href: string) => `\\[${text}](${href})`)
     .replace(ATX_HEADING_PATTERN, (marker) => `\\${marker}`)
     .replace(QUOTED_OR_LIST_PATTERN, (marker) => `\\${marker}`)
     .replace(ORDERED_LIST_PATTERN, (_match, digits: string, delimiter: string) => `${digits}\\${delimiter}`)
