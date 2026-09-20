@@ -25,7 +25,7 @@ export function GET(_request: Request, { params }: RouteContext) {
     return new Response(buildRepoMarkdown(catalogRepo), {
       headers: {
         ...CORS_HEADERS,
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800',
         'Content-Type': 'text/markdown; charset=utf-8',
       },
     })
