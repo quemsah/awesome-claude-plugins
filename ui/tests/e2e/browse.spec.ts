@@ -10,9 +10,18 @@ const pageCounterPattern = /^Page (\d+) of (\d+)$/
 const pageThreeCounterPattern = /^Page 3 of \d+$/
 const browsePageThreeUrlPattern = /\/browse\/3$/
 const browseCanonicalUrl = 'https://awesomeclaudeplugins.com/browse/2'
+const browsePageThreeCanonicalUrl = /awesomeclaudeplugins\.com\/browse\/3$/
+const browsePageTwoTitlePattern = /- Page 2 \| Awesome Claude Plugins$/
+const browsePageThreeTitlePattern = /- Page 3 \| Awesome Claude Plugins$/
+const detailsLinkName = /View details for /
+const indexFollowRobotsPattern = /(?:^|,\s*)index,\s*follow(?:\s*,|$)/
 
 function cardItems(page: Page) {
   return page.locator('main ul > li')
+}
+
+function cardRepoPaths(page: Page) {
+  return page.getByRole('link', { name: detailsLinkName }).evaluateAll((links) => links.map((link) => link.getAttribute('href') ?? ''))
 }
 
 async function reportedPageCount(page: Page) {
@@ -38,10 +47,13 @@ test('browse page 2 renders a full page of repository cards', async ({ page }) =
   await expect(page.getByRole('heading', { name: browseHeading })).toBeVisible()
   await expect(cardItems(page)).toHaveCount(CATALOG_PAGE_SIZE)
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', browseCanonicalUrl)
+  // The sitemap publishes every /browse/N page, so each one has to stay indexable on its own.
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', indexFollowRobotsPattern)
 })
 
 test('browse pagination links pair adjacent pages and navigate', async ({ page }) => {
   await page.goto('/browse/2')
+  const secondPageCards = await cardRepoPaths(page)
 
   const pagination = page.getByRole('navigation', { name: paginationName })
   await expect(pagination.getByRole('link', { name: previousPageName })).toHaveAttribute('href', '/browse/1')
@@ -51,6 +63,21 @@ test('browse pagination links pair adjacent pages and navigate', async ({ page }
   await expect(page).toHaveURL(browsePageThreeUrlPattern)
   await expect(page.getByText(pageThreeCounterPattern)).toBeVisible()
   await expect(cardItems(page)).toHaveCount(CATALOG_PAGE_SIZE)
+
+  // Card counts alone pass when the page offset is fixed, so the two batches must not repeat.
+  const thirdPageCards = await cardRepoPaths(page)
+  expect(secondPageCards).toHaveLength(CATALOG_PAGE_SIZE)
+  expect(thirdPageCards).toHaveLength(CATALOG_PAGE_SIZE)
+  expect(thirdPageCards.filter((path) => secondPageCards.includes(path))).toEqual([])
+})
+
+test('browse pages publish their own number in the title and canonical url', async ({ page }) => {
+  await page.goto('/browse/2')
+  await expect(page).toHaveTitle(browsePageTwoTitlePattern)
+
+  await page.goto('/browse/3')
+  await expect(page).toHaveTitle(browsePageThreeTitlePattern)
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', browsePageThreeCanonicalUrl)
 })
 
 test('browse last page has no next link', async ({ page }) => {
