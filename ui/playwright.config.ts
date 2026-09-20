@@ -28,7 +28,7 @@ export default defineConfig({
           },
           {
             command:
-              'GITHUB_API_URL=http://127.0.0.1:3100 GITHUB_RAW_URL=http://127.0.0.1:3100 npm run build && GITHUB_API_URL=http://127.0.0.1:3100 GITHUB_RAW_URL=http://127.0.0.1:3100 PORT=3001 npm run start',
+              'cross-env-shell GITHUB_API_URL=http://127.0.0.1:3100 GITHUB_RAW_URL=http://127.0.0.1:3100 PORT=3001 "npm run build && npm run start"',
             reuseExistingServer: false,
             timeout: 120_000,
             url: baseUrl,
