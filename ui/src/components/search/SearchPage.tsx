@@ -101,12 +101,16 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     [debouncedReplaceSearchUrl, searchTerm, updateSearchUrl]
   )
 
+  // Strips a sort parameter the catalog cannot sort by. The test is the parameter against its own
+  // parsed value, not against component state: state trails the url by a render, and writing it back
+  // undid a forward navigation that had already applied the newer sort.
   useEffect(() => {
     const rawSortOption = searchParams.get('sort')
-    if (rawSortOption && rawSortOption !== sortOption) {
-      updateSearchUrl(searchTerm, sortOption, 'replace')
+    if (rawSortOption === null || parseSortOption(rawSortOption) === rawSortOption) {
+      return
     }
-  }, [searchParams, searchTerm, sortOption, updateSearchUrl])
+    updateSearchUrl(searchParams.get('q') ?? '', parseSortOption(rawSortOption), 'replace')
+  }, [searchParams, updateSearchUrl])
 
   useEffect(() => {
     if (initialRequest.current) {
