@@ -1,6 +1,7 @@
 import type { Repo } from '../schemas/repo.schema.ts'
 import type { StatsItem } from '../schemas/stats.schema.ts'
 import { BASE_URL, SOURCE_REPOSITORY_URL } from './constants.ts'
+import { renderCatalogApiContract } from './discovery.ts'
 
 export interface CatalogSummary {
   repoCount: number
@@ -82,12 +83,20 @@ This website provides a generated catalog of GitHub repositories related to Clau
 - [API Catalog](${BASE_URL}/.well-known/api-catalog): Machine-readable discovery links.
 - [Security contact](${BASE_URL}/.well-known/security.txt): Where to report security issues.
 
+## Catalog API
+
+${renderCatalogApiContract()}
+
+Discover the full machine-readable surface at [API Catalog](${BASE_URL}/.well-known/api-catalog), served as an RFC 9264 linkset, and read [agent instructions](${BASE_URL}/SKILL.md) for the recommended crawl order.
+
 ## Content Formats
 
 - [Home page Markdown](${BASE_URL}/index.md)
 - [Statistics Markdown](${BASE_URL}/stats.md)
 - [About Markdown](${BASE_URL}/about.md)
 - Repository detail Markdown: \`${BASE_URL}/{owner}/{repo}.md\`
+
+Every HTML page announces its Markdown rendition with a \`<link rel="alternate" type="text/markdown">\`, and every response carries a \`Link\` header with \`rel="api-catalog"\`, \`rel="describedby"\` and \`rel="sitemap"\`.
 
 ## Implemented Capabilities
 
