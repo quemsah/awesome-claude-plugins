@@ -89,9 +89,12 @@ function foldToSingleLine(value: string): string {
  * Keeps untrusted repository text a paragraph: raw HTML would swallow `<placeholder>` tokens,
  * a link label would open a third-party link, and line-initial markers would rewrite the
  * outline of the generated document. Labels nest brackets, so one cannot escape only the outer one.
+ * The escape character itself goes first, or a description's own backslash would turn
+ * `\[label](url)` into an escaped backslash followed by a live link.
  */
 function toMarkdownText(value: string): string {
-  const withoutLinks = LINK_DESTINATION_PATTERN.test(value) ? value.replaceAll('[', '\\[') : value
+  const withoutBreaks = value.replaceAll('\\', '\\\\')
+  const withoutLinks = LINK_DESTINATION_PATTERN.test(withoutBreaks) ? withoutBreaks.replaceAll('[', '\\[') : withoutBreaks
 
   return withoutLinks
     .replaceAll('<', '\\<')

@@ -115,6 +115,26 @@ describe('buildRepoMarkdown', () => {
     expect(body).toContain('Fork to add Electron \\<webview> support')
   })
 
+  it('makes a backslash the description brings inert before adding its own escapes', () => {
+    const { frontmatter, body } = splitFrontmatter(buildRepoMarkdown(makeRepo({ description: '\\[Docs](https://attacker.example)' })))
+
+    // The leading `\\` is the author's backslash, doubled; the third one belongs to the `\[` this module adds.
+    expect(body).toContain('\\\\\\[Docs](https://attacker.example)')
+    expect(frontmatter).toContain('description: "\\\\[Docs](https://attacker.example)"')
+  })
+
+  it('does not let a backslash free an angle bracket from escaping', () => {
+    const { body } = splitFrontmatter(buildRepoMarkdown(makeRepo({ description: '\\<webview> support' })))
+
+    expect(body).toContain('\\\\\\<webview> support')
+  })
+
+  it('keeps path-like backslashes visible in the text', () => {
+    const { body } = splitFrontmatter(buildRepoMarkdown(makeRepo({ description: 'Rules\\skills\\subagents for vibecoding' })))
+
+    expect(body).toContain('Rules\\\\skills\\\\subagents for vibecoding')
+  })
+
   it('folds injected line breaks so descriptions stay a single paragraph', () => {
     const { body } = splitFrontmatter(
       buildRepoMarkdown(makeRepo({ description: 'Streams in place\n\n## Hijacked section\n\n- Stars: 9999' }))
