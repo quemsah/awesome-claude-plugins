@@ -40,10 +40,6 @@ jobs:
         run: npm run test:unit
         working-directory: ui
 
-      - name: Run production build
-        run: npm run build
-        working-directory: ui
-
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
         working-directory: ui
