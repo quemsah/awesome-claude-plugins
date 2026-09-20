@@ -143,4 +143,13 @@ const server = createServer((request, response) => {
   sendJson(response, 404, { message: 'Not Found' })
 })
 
-server.listen(Number(process.env.MOCK_GITHUB_PORT ?? 3100), '127.0.0.1')
+const port = Number(process.env.MOCK_GITHUB_PORT ?? 3100)
+
+// Without this a taken port dies as an unhandled 'error' event behind a Node stack trace.
+server.on('error', (error) => {
+  console.error(`mock-github-server: cannot listen on 127.0.0.1:${port} (${error.code}).`)
+  console.error('Free the port, or set MOCK_GITHUB_PORT so ui/playwright.config.ts follows it.')
+  process.exit(1)
+})
+
+server.listen(port, '127.0.0.1')
