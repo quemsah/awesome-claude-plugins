@@ -7,6 +7,7 @@ const marketplaceMissingText = 'No marketplace manifest was found in this reposi
 const staleRepositoryText = 'Live GitHub data is temporarily unavailable.'
 const repoCanonicalPattern = /\/ykdojo\/claude-code-tips$/
 const repoMarkdownAlternatePattern = /\/ykdojo\/claude-code-tips\.md$/
+const repoOpenGraphImagePattern = /\/og\/ykdojo\/claude-code-tips$/
 const installButtonPattern = /install/i
 
 test('repo detail page renders server-fetched repository and marketplace data', async ({ page }) => {
@@ -17,6 +18,7 @@ test('repo detail page renders server-fetched repository and marketplace data', 
   await expect(page.getByText('A mocked Claude Code plugin repository')).toBeVisible()
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', repoCanonicalPattern)
   await expect(page.locator('link[rel="alternate"][type="text/markdown"]')).toHaveAttribute('href', repoMarkdownAlternatePattern)
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', repoOpenGraphImagePattern)
   const jsonLd = await page
     .locator('script[type="application/ld+json"]')
     .evaluateAll((scripts) => scripts.map((script) => JSON.parse(script.textContent ?? '')))
