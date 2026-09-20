@@ -18,7 +18,9 @@ export function GET(_request: Request, { params }: RouteContext) {
 
     return new Response(buildRepoMarkdown(catalogRepo), {
       headers: {
-        'Cache-Control': 'public, max-age=3600',
+        // `proxy.ts` rewrites /{owner}/{repo}.md onto this handler, so the policy has to travel
+        // with the Response: `next.config.ts` headers match the pre-rewrite path.
+        'Cache-Control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800',
         'Content-Type': 'text/markdown; charset=utf-8',
       },
     })
