@@ -1,4 +1,5 @@
 import { BASE_URL } from '../../lib/constants.ts'
+import { renderCatalogApiContract, renderCatalogResourceLinks } from '../../lib/discovery.ts'
 
 export const dynamic = 'force-static'
 
@@ -23,11 +24,19 @@ Install commands use this form:
 /plugin marketplace add owner/repo
 \`\`\`
 
+## Query the catalog API
+
+${renderCatalogApiContract()}
+
+Repository detail pages are also published as Markdown at \`/{owner}/{repo}.md\`, which serves \`text/markdown; charset=utf-8\` with the same install command shown above.
+
 ## Machine-readable resources
 
-- [llms.txt](${BASE_URL}/llms.txt)
-- [API catalog](${BASE_URL}/.well-known/api-catalog)
-- [Agent skills index](${BASE_URL}/.well-known/agent-skills/index.json)
+Every response also carries a \`Link\` header pointing at [the API catalog](${BASE_URL}/.well-known/api-catalog), which publishes the resources below as an RFC 9264 linkset (\`application/linkset+json\`).
+
+${renderCatalogResourceLinks()}
+- [API catalog](${BASE_URL}/.well-known/api-catalog): this document in machine-readable form.
+- [Security contact](${BASE_URL}/.well-known/security.txt): where to report issues.
 `
 
   return new Response(content, {
