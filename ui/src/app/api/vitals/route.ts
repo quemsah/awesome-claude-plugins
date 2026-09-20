@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getRateLimitKey, RateLimiter } from '../../../lib/rateLimit.ts'
+import { toRouteTemplate } from '../../../lib/webVitalsPath.ts'
 
 const MAX_REPORTS_PER_MINUTE = 30
 const MAX_BODY_BYTES = 4_096
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
   console.warn('Web vital', {
     name: payload.name,
     navigationType: payload.navigationType ?? null,
-    path: payload.path ?? null,
+    path: payload.path === undefined ? null : toRouteTemplate(payload.path),
     rating: VALID_RATINGS.has(payload.rating) ? payload.rating : 'unknown',
     release: payload.release ?? null,
     value: payload.value,
