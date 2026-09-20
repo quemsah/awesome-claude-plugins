@@ -6,6 +6,7 @@ import { formatDate } from '../../lib/utils.ts'
 import type { StatsItem } from '../../schemas/stats.schema.ts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card.tsx'
 import { ChartContainer, ChartTooltipContent } from '../ui/chart.tsx'
+import { resolveStatsDisplay } from './statsView.ts'
 import { TimeFilter } from './TimeFilter.tsx'
 
 const timeRangeLabels: Record<string, string> = {
@@ -22,23 +23,6 @@ interface StatsPageProps {
 
 type ChartStatsItem = StatsItem & {
   interpolated?: boolean
-}
-
-export function filterStatsByTimeRange(stats: StatsItem[], timeRange: string): StatsItem[] {
-  if (timeRange === 'all') {
-    return stats
-  }
-
-  const now = new Date()
-  const cutoffDate = new Date()
-
-  if (timeRange === '7days') {
-    cutoffDate.setDate(now.getDate() - 7)
-  } else if (timeRange === '30days') {
-    cutoffDate.setDate(now.getDate() - 30)
-  }
-
-  return stats.filter((item) => new Date(item.date) >= cutoffDate)
 }
 
 export function calculateTrend(filteredStats: StatsItem[]): { growth: number; percentage: number; periodDays: number } {
@@ -121,10 +105,10 @@ export function StatsPage({ stats }: StatsPageProps) {
   const chartRef = useRef<HTMLDivElement>(null)
   const [timeRange, setTimeRange] = useState('all')
 
-  const filteredStats = useMemo(() => filterStatsByTimeRange(stats, timeRange), [stats, timeRange])
+  const { isEmptyRange, displayStats } = useMemo(() => resolveStatsDisplay(stats, timeRange), [stats, timeRange])
 
   const chartData = useMemo(() => {
-    const filledData = fillMissingDates(filteredStats)
+    const filledData = fillMissingDates(displayStats)
     return filledData.map((item) => ({
       date: item.date,
       interpolated: item.interpolated ?? false,
@@ -132,9 +116,12 @@ export function StatsPage({ stats }: StatsPageProps) {
       formattedDate: formatDate(new Date(item.date)),
       snapshotType: item.interpolated ? 'Interpolated' : 'Observed',
     }))
-  }, [filteredStats])
+  }, [displayStats])
 
-  const trendData = useMemo(() => calculateTrend(filteredStats), [filteredStats])
+  const trendData = useMemo(() => calculateTrend(displayStats), [displayStats])
+
+  const activeRangeLabel = isEmptyRange ? timeRangeLabels.all : timeRangeLabels[timeRange]
+  const latestSnapshotLabel = chartData.length > 0 ? chartData[chartData.length - 1].formattedDate : ''
 
   const overallTrends = useMemo(() => {
     if (stats.length <= 1) {
@@ -171,7 +158,7 @@ export function StatsPage({ stats }: StatsPageProps) {
     <div className="space-y-6">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <TimeFilter onTimeRangeChange={setTimeRange} value={timeRange} />
-        {timeRange !== 'all' && trendData.periodDays > 0 && (
+        {!isEmptyRange && timeRange !== 'all' && trendData.periodDays > 0 && (
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm">Trend:</span>
             <span className={`font-bold ${trendData.growth >= 0 ? 'text-success' : 'text-danger'}`}>
@@ -181,6 +168,13 @@ export function StatsPage({ stats }: StatsPageProps) {
           </div>
         )}
       </div>
+
+      {isEmptyRange ? (
+        <div className="rounded-md border border-border bg-muted px-4 py-3 text-muted-foreground text-sm" role="status">
+          No snapshots were recorded for {timeRangeLabels[timeRange]}. Showing the latest snapshot from{' '}
+          <span className="font-medium text-foreground">{latestSnapshotLabel}</span>.
+        </div>
+      ) : null}
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
@@ -214,7 +208,7 @@ export function StatsPage({ stats }: StatsPageProps) {
             <h2>Repository Count Over Time</h2>
           </CardTitle>
           <CardDescription>
-            {timeRangeLabels[timeRange]} - Daily repository count from {chartData.length > 0 ? chartData[0].formattedDate : ''} to{' '}
+            {activeRangeLabel} - Daily repository count from {chartData.length > 0 ? chartData[0].formattedDate : ''} to{' '}
             {chartData.length > 0 ? chartData[chartData.length - 1].formattedDate : ''}
           </CardDescription>
         </CardHeader>
