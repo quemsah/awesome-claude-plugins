@@ -52,6 +52,13 @@ export async function generateMetadata({ params }: RouteParams): Promise<Metadat
       url: `${BASE_URL}/${canonicalPath}`,
       title,
       description,
+      images: [{ alt: title, height: 630, url: `${BASE_URL}/og/${canonicalPath}`, width: 1200 }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: [`${BASE_URL}/og/${canonicalPath}`],
     },
   }
 }

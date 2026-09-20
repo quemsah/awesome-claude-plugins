@@ -17,13 +17,3 @@ export async function fetchGitHubRepository(owner: string, repoName: string, tim
     next: { revalidate: 3_600, tags: [`github-repo:${owner}/${repoName}`] },
   })
 }
-
-export async function fetchMarketplace(owner: string, repoName: string, branch = 'HEAD', timeoutMs = 5_000): Promise<Response> {
-  return fetch(
-    `${GITHUB_RAW_URL}/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/${encodeURIComponent(branch)}/.claude-plugin/marketplace.json`,
-    {
-      next: { revalidate: 3_600, tags: [`github-marketplace:${owner}/${repoName}`] },
-      signal: AbortSignal.timeout(timeoutMs),
-    }
-  )
-}
