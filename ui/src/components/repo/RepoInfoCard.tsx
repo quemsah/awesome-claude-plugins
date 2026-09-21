@@ -24,13 +24,9 @@ interface RepoInfoCardProps {
 
 export function RepoInfoCard({ repo }: RepoInfoCardProps) {
   const homepageUrl = getSafeHomepageUrl(repo.homepage)
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return 'Unknown'
-    return formatDateUtil(new Date(dateString))
-  }
+  const formatDate = (dateString: string) => formatDateUtil(new Date(dateString))
 
-  const formatSize = (size: number | null) => {
-    if (size === null || size === undefined) return 'Unknown'
+  const formatSize = (size: number) => {
     const kb = size
     if (kb < 1024) return `${kb} KB`
     const mb = kb / 1024
@@ -43,9 +39,11 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-4">
             <Avatar className="h-12 w-12 sm:h-16 sm:w-16">
-              <AvatarImage asChild>
-                <Image alt={repo.owner.login} height={64} src={repo.owner.avatar_url} width={64} />
-              </AvatarImage>
+              {repo.owner.avatar_url !== null && (
+                <AvatarImage asChild>
+                  <Image alt={repo.owner.login} height={64} src={repo.owner.avatar_url} width={64} />
+                </AvatarImage>
+              )}
               <AvatarFallback>{repo.owner.login.slice(0, 2).toUpperCase()}</AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
@@ -107,11 +105,13 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
             <span className="font-semibold">{repo.subscribers_count?.toLocaleString() ?? 0}</span>
             <span>watchers/subscribers</span>
           </Badge>
-          <Badge className="gap-2 text-sm" variant="secondary">
-            <CircleDot aria-hidden="true" className="h-5 w-5" />
-            <span className="font-semibold">{repo.open_issues_count?.toLocaleString() ?? 0}</span>
-            <span>issues</span>
-          </Badge>
+          {repo.open_issues_count !== null && (
+            <Badge className="gap-2 text-sm" variant="secondary">
+              <CircleDot aria-hidden="true" className="h-5 w-5" />
+              <span className="font-semibold">{repo.open_issues_count.toLocaleString()}</span>
+              <span>issues</span>
+            </Badge>
+          )}
         </div>
 
         {!!repo.topics && repo.topics.length > 0 && (
@@ -143,22 +143,30 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
               <dd className="text-foreground">{repo.license.name}</dd>
             </div>
           )}
-          <div>
-            <dt className="font-medium text-muted-foreground text-sm">Size</dt>
-            <dd className="text-foreground">{formatSize(repo.size)}</dd>
-          </div>
-          <div>
-            <dt className="font-medium text-muted-foreground text-sm">Created</dt>
-            <dd className="text-foreground">{formatDate(repo.created_at)}</dd>
-          </div>
-          <div>
-            <dt className="font-medium text-muted-foreground text-sm">Last Updated</dt>
-            <dd className="text-foreground">{formatDate(repo.updated_at)}</dd>
-          </div>
-          <div>
-            <dt className="font-medium text-muted-foreground text-sm">Last Pushed</dt>
-            <dd className="text-foreground">{formatDate(repo.pushed_at)}</dd>
-          </div>
+          {repo.size !== null && (
+            <div>
+              <dt className="font-medium text-muted-foreground text-sm">Size</dt>
+              <dd className="text-foreground">{formatSize(repo.size)}</dd>
+            </div>
+          )}
+          {repo.created_at !== null && (
+            <div>
+              <dt className="font-medium text-muted-foreground text-sm">Created</dt>
+              <dd className="text-foreground">{formatDate(repo.created_at)}</dd>
+            </div>
+          )}
+          {repo.updated_at !== null && (
+            <div>
+              <dt className="font-medium text-muted-foreground text-sm">Last Updated</dt>
+              <dd className="text-foreground">{formatDate(repo.updated_at)}</dd>
+            </div>
+          )}
+          {repo.pushed_at !== null && (
+            <div>
+              <dt className="font-medium text-muted-foreground text-sm">Last Pushed</dt>
+              <dd className="text-foreground">{formatDate(repo.pushed_at)}</dd>
+            </div>
+          )}
         </dl>
       </CardContent>
     </Card>

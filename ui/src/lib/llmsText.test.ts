@@ -3,11 +3,23 @@
 import { describe, expect, it } from 'vitest'
 import { GET as feedJson } from '../app/feed.json/route.ts'
 import { GET as llmsTxt } from '../app/llms.txt/route.ts'
-import { getCanonicalCatalogRepos, getCatalogRepos, searchCatalogRepos } from './catalog.ts'
+import { getCanonicalCatalogRepos, searchCatalogRepos } from './catalog.ts'
+import { getCatalogSummary } from './llmsText.ts'
 
 describe('catalog totals the machine surfaces publish', () => {
-  it('reports fewer repositories than there are records, so duplicate spellings are not counted twice', () => {
-    expect(getCatalogRepos().length).toBeGreaterThan(getCanonicalCatalogRepos().length)
+  it('deduplicates repository paths case-insensitively even when given raw-style records', () => {
+    const repo = getCanonicalCatalogRepos()[0]
+    if (!(repo?.owner && repo.repo_name)) {
+      throw new Error('Expected the canonical catalog to contain a repository')
+    }
+
+    const duplicate = {
+      ...repo,
+      owner: repo.owner.toUpperCase(),
+      repo_name: repo.repo_name.toUpperCase(),
+    }
+
+    expect(getCatalogSummary([repo, duplicate], []).repoCount).toBe(1)
   })
 
   it('matches the repository and plugin totals the home page shows', async () => {

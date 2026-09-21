@@ -9,6 +9,7 @@ import { PluginCard } from '../../components/repo/PluginCard.tsx'
 import { RepoInfoCard } from '../../components/repo/RepoInfoCard.tsx'
 import { Button } from '../../components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card.tsx'
+import { useLiveRepository } from '../../hooks/useLiveRepository.ts'
 import { getRepoBreadcrumbs } from '../../lib/breadcrumbs.ts'
 import type { CatalogSnapshotReason } from '../../lib/repositorySnapshot.ts'
 import type { GitHubRepository } from '../../schemas/github.schema.ts'
@@ -22,32 +23,26 @@ const CATALOG_SNAPSHOT_NOTICES: Record<CatalogSnapshotReason, string> = {
     'Live GitHub data is temporarily unavailable. Showing the latest catalog snapshot; some details may be out of date.',
 }
 
+/** Raw serves `HEAD` as the repository default branch, so the manifest needs no live metadata. */
+const MARKETPLACE_REF = 'HEAD'
+
 type RepoPageClientProps = {
+  apiBaseUrl: string
   repoPath: string
-  repo: GitHubRepository | null
+  repo: GitHubRepository
   owner: string
   repoName: string
-  defaultBranch: string
   rawBaseUrl: string
-  repoError?: string | null
-  repoSnapshotReason?: CatalogSnapshotReason
 }
 
-export function RepoPageClient({
-  repoPath,
-  repo,
-  owner,
-  repoName,
-  defaultBranch,
-  rawBaseUrl,
-  repoError,
-  repoSnapshotReason,
-}: RepoPageClientProps) {
+export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, rawBaseUrl }: RepoPageClientProps) {
   const [plugins, setPlugins] = useState<Plugin[]>([])
   const [pluginsError, setPluginsError] = useState<string | null>(null)
   const [pluginsStatus, setPluginsStatus] = useState<'missing' | 'error' | null>(null)
   const [pluginsLoading, setPluginsLoading] = useState(true)
   const [_retryCount, setRetryCount] = useState(0)
+  const { liveRepo, liveReason } = useLiveRepository(apiBaseUrl, { owner, repoName })
+  const displayedRepo = liveRepo ?? repo
 
   const handleRetry = useCallback(() => {
     setRetryCount((count) => count + 1)
@@ -64,7 +59,7 @@ export function RepoPageClient({
 
       try {
         const response = await fetch(
-          `${rawBaseUrl}/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/${encodeURIComponent(defaultBranch)}/.claude-plugin/marketplace.json`
+          `${rawBaseUrl}/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/${MARKETPLACE_REF}/.claude-plugin/marketplace.json`
         )
 
         if (response.status === 404) {
@@ -119,41 +114,23 @@ export function RepoPageClient({
     return () => {
       cancelled = true
     }
-  }, [owner, repoName, defaultBranch, repoPath, rawBaseUrl, _retryCount])
-  if (!repo) {
-    return (
-      <main className="flex min-h-dvh items-center justify-center bg-background" id="main-content" tabIndex={-1}>
-        <Card className="p-8 text-center" role="alert">
-          <CardHeader>
-            <CardTitle>
-              <h1>{pluginsError ?? repoError ?? 'Repository not found'}</h1>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Button asChild>
-              <BackToRepositoriesLink />
-            </Button>
-          </CardContent>
-        </Card>
-      </main>
-    )
-  }
+  }, [owner, repoName, repoPath, rawBaseUrl, _retryCount])
 
   return (
     <main className="min-h-dvh bg-background" id="main-content" tabIndex={-1}>
       <div className="container mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
-        <Breadcrumbs items={getRepoBreadcrumbs(repo)} />
+        <Breadcrumbs items={getRepoBreadcrumbs(displayedRepo)} />
         <Button asChild className="mb-6" variant="ghost">
           <BackToRepositoriesLink />
         </Button>
 
-        {repoSnapshotReason ? (
+        {liveReason ? (
           <div className="mb-6 rounded-md border border-amber-500/50 bg-amber-500/10 p-4 text-sm" role="status">
-            {CATALOG_SNAPSHOT_NOTICES[repoSnapshotReason]}
+            {CATALOG_SNAPSHOT_NOTICES[liveReason]}
           </div>
         ) : null}
 
-        <RepoInfoCard repo={repo} />
+        <RepoInfoCard repo={displayedRepo} />
 
         <Card className="mt-8 p-6">
           <CardHeader className="mb-4 p-0">
@@ -189,7 +166,7 @@ export function RepoPageClient({
               <div className="space-y-4">
                 {plugins.map((plugin, index) => (
                   <article key={`${plugin.id || ''}-${plugin.name || ''}-${index}`}>
-                    <PluginCard plugin={plugin} repo={repo} repoPath={repoPath} />
+                    <PluginCard plugin={plugin} repo={displayedRepo} repoPath={repoPath} />
                   </article>
                 ))}
               </div>
