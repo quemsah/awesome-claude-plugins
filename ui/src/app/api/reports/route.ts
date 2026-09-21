@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getRateLimitKey, RateLimiter } from '../../../lib/rateLimit.ts'
+import { toRouteTemplate } from '../../../lib/webVitalsPath.ts'
 
 const MAX_REPORTS_PER_MINUTE = 30
 const MAX_BODY_BYTES = 16_384
@@ -28,16 +29,31 @@ export async function POST(request: Request) {
 
   const payload = parseJson(body)
   const reports = Array.isArray(payload) ? payload : [payload]
+  const seen = new Set<string>()
   for (const report of reports) {
     const normalized = normalizeReport(report)
     if (!normalized) {
       continue
     }
 
-    console.warn('CSP violation report', {
-      document: getPathname(normalized.documentUri),
-      directive: sanitize(normalized.violatedDirective),
-    })
+    const document = getPathname(normalized.documentUri)
+    const route = document === null ? null : toRouteTemplate(document)
+    const directive = sanitize(normalized.violatedDirective)
+    const key = JSON.stringify([route, directive])
+    if (seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+
+    console.info(
+      JSON.stringify({
+        message: 'CSP violation report',
+        level: 'warn',
+        event: 'csp_violation',
+        route,
+        directive,
+      })
+    )
   }
 
   return new NextResponse(null, { status: 204 })
