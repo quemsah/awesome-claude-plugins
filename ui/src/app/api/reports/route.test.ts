@@ -27,10 +27,7 @@ describe('POST /api/reports', () => {
   it('keeps distinct directives as distinct events', async () => {
     const info = mockInfo()
     await post(
-      [
-        cspReport('https://awesomeclaudeplugins.com/stats', 'script-src'),
-        cspReport('https://awesomeclaudeplugins.com/stats', 'style-src'),
-      ],
+      [cspReport('https://awesomeclaudeplugins.com/stats', 'script-src'), cspReport('https://awesomeclaudeplugins.com/stats', 'style-src')],
       '198.51.100.2'
     )
 
