@@ -254,6 +254,34 @@ test('a layout move that scrolls nothing loads no further page', async ({ page }
   await expect(detailsLinks).toHaveCount(cards)
 })
 
+
+test('automatic paging rearms after a replacement shortens the document', async ({ page }) => {
+  await page.goto('/')
+
+  const detailsLinks = page.getByRole('link', { name: detailsLinkName })
+  await expect(detailsLinks).toHaveCount(24)
+
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await expect(detailsLinks).toHaveCount(48)
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await expect(detailsLinks).toHaveCount(72)
+
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+  const beforeReplaceScrollY = await page.evaluate(() => window.scrollY)
+  expect(beforeReplaceScrollY).toBeGreaterThan(0)
+
+  await page.getByRole('searchbox', { name: 'Search repositories' }).fill('hello')
+  await expect(detailsLinks).toHaveCount(24)
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(beforeReplaceScrollY)
+
+  // The replacement has shortened the document below the old request-start offset. Moving away from
+  // the footer and back again must re-arm automatic paging without requiring an impossible scrollY.
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await page.waitForTimeout(500)
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await expect.poll(() => detailsLinks.count()).toBeGreaterThan(24)
+})
+
 test('replacing a complete short list says it is searching without a pagination footer', async ({ page }) => {
   await page.goto('/?q=nemotron')
 
