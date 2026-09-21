@@ -16,7 +16,7 @@ export function RepoCardSkeleton() {
     <Card aria-hidden="true" className="relative h-full">
       <CardHeader className="-space-y-2 pr-14 sm:pr-16">
         <Bar className="h-6 w-2/5 bg-clip-content pb-1 sm:h-7 sm:pb-2" />
-        <Bar className="absolute top-4 right-4 h-8 w-8 rounded-md border sm:top-6 sm:right-6" />
+        <Bar className="touch-target absolute top-4 right-4 h-8 w-8 rounded-md border sm:top-6 sm:right-6" />
         <Bar className="h-5 w-1/4 bg-clip-content pb-1" />
       </CardHeader>
       <CardContent className="flex h-full flex-col">
@@ -41,12 +41,12 @@ export function RepoCardSkeleton() {
               <Bar className="h-4 w-5" />
             </div>
           </div>
-          <Bar className="h-9 w-full sm:h-8 sm:w-20" />
+          <Bar className="touch-target h-9 w-full sm:h-8 sm:w-20" />
         </div>
         <div className="mt-3 border-border border-t">
           <div className="flex items-center gap-2 rounded-md bg-muted/50 p-2 text-xs">
             <Bar className="h-4 grow" />
-            <Bar className="h-8 w-8 shrink-0" />
+            <Bar className="touch-target h-8 w-8 shrink-0" />
           </div>
         </div>
       </CardContent>

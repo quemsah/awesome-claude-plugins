@@ -112,6 +112,34 @@ test('home page search updates result counts, visible cards, and empty state', a
   await expectFirstDetailsLink(page, 'obra/superpowers')
 })
 
+test('repository skeleton mirrors coarse-pointer touch target geometry', async ({ page }) => {
+  const release = await holdCatalogRequests(page)
+  await page.goto('/')
+
+  await expect(page.getByRole('link', { name: detailsLinkName }).first()).toBeVisible()
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+
+  const skeleton = page.locator('#repo-results > ul > li[aria-hidden="true"] [data-slot="card"]').first()
+  await expect(skeleton).toBeVisible()
+
+  if (await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) {
+    const touchTargets = skeleton.locator('.touch-target')
+    await expect(touchTargets).toHaveCount(3)
+    const sizes = await touchTargets.evaluateAll((targets) =>
+      targets.map((target) => {
+        const rect = target.getBoundingClientRect()
+        return { height: rect.height, width: rect.width }
+      })
+    )
+    for (const size of sizes) {
+      expect(size.height).toBeGreaterThanOrEqual(44)
+      expect(size.width).toBeGreaterThanOrEqual(44)
+    }
+  }
+
+  release()
+})
+
 test('a search that replaces the results reports searching rather than loading more', async ({ page }) => {
   const release = await holdCatalogRequests(page)
   await page.goto('/')
