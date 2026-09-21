@@ -10,7 +10,7 @@ const baseRepo = {
   subscribers_count: 1,
   description: 'Reports the types of incoming requests',
   owner: 'schema-sift',
-  owner_url: 'https://github.com/schema-sift',
+  owner_url: 'https://github.com/owner-url-only',
   repo_name: 'type-detector',
   plugins_count: 2,
   id: 1,
@@ -25,6 +25,8 @@ describe('createFuseIndex', () => {
   })
 
   it('does not search the URL columns', () => {
-    expect(createFuseIndex([baseRepo]).search('example')).toHaveLength(0)
+    const fuse = createFuseIndex([baseRepo])
+    expect(fuse.search('example')).toHaveLength(0)
+    expect(fuse.search('owner-url-only')).toHaveLength(0)
   })
 })
