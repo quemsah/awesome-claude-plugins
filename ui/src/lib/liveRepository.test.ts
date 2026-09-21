@@ -45,6 +45,10 @@ describe('readLiveRepository', () => {
     expect(readLiveRepository(500, { message: 'Server Error' }, requested)).toEqual({ ok: false, reason: 'github-unavailable' })
   })
 
+  it.each([403, 500])('rejects a schema-valid repository returned with HTTP %s', (status) => {
+    expect(readLiveRepository(status, liveRepository, requested)).toEqual({ ok: false, reason: 'github-unavailable' })
+  })
+
   it('keeps the catalog data for a payload that is not a repository', () => {
     const notARepository = { ...liveRepository, owner: undefined }
 
