@@ -239,7 +239,7 @@ test('a layout move that scrolls nothing loads no further page', async ({ page }
   // later than any settle window, with the scroll position never having moved. That is the document
   // moving rather than the visitor arriving, and it must not start another page.
   const broughtIntoView = await page.evaluate(() => {
-    const grid = document.querySelector('#repo-results > ul')
+    const grid = document.querySelector<HTMLElement>('#repo-results > ul')
     const trigger = document.querySelector('#repo-results > div')
     if (!(grid && trigger)) return false
     grid.style.marginBottom = `${-(trigger.getBoundingClientRect().top - window.innerHeight / 2)}px`
