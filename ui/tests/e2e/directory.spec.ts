@@ -50,6 +50,11 @@ async function holdCatalogRequests(page: Page): Promise<() => void> {
   return release
 }
 
+/** Requests the page itself made to the catalog endpoint, read off the browser's resource timings. */
+function catalogRequestCount(page: Page) {
+  return page.evaluate(() => performance.getEntriesByType('resource').filter((r) => r.name.includes('/api/catalog')).length)
+}
+
 function statCardValue(page: Page, title: string) {
   return page.locator('[data-slot=card]', { has: page.getByRole('heading', { name: title }) }).locator('[data-slot=card-content] > div')
 }
@@ -216,6 +221,65 @@ test('repository grid loads more cards as the user reaches the end of the curren
 
   await page.getByText('More repositories available').scrollIntoViewIfNeeded()
   await expect.poll(() => detailsLinks.count()).toBeGreaterThan(24)
+})
+
+test('a layout move that scrolls nothing loads no further page', async ({ page }) => {
+  await page.goto('/')
+
+  const detailsLinks = page.getByRole('link', { name: detailsLinkName })
+  await expect(detailsLinks).toHaveCount(24)
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await expect.poll(() => detailsLinks.count()).toBeGreaterThan(24)
+
+  const cards = await detailsLinks.count()
+  const requests = await catalogRequestCount(page)
+  const scrolledTo = await page.evaluate(() => window.scrollY)
+
+  // A landing whose rows come out shorter than the placeholder rows lifts the trigger back into view
+  // later than any settle window, with the scroll position never having moved. That is the document
+  // moving rather than the visitor arriving, and it must not start another page.
+  const broughtIntoView = await page.evaluate(() => {
+    const grid = document.querySelector('#repo-results > ul')
+    const trigger = document.querySelector('#repo-results > div')
+    if (!(grid && trigger)) return false
+    grid.style.marginBottom = `${-(trigger.getBoundingClientRect().top - window.innerHeight / 2)}px`
+    const rect = trigger.getBoundingClientRect()
+    return rect.top < window.innerHeight && rect.bottom > 0
+  })
+  expect(broughtIntoView).toBe(true)
+  await page.waitForTimeout(3_000)
+
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrolledTo)
+  expect(await catalogRequestCount(page)).toBe(requests)
+  await expect(detailsLinks).toHaveCount(cards)
+})
+
+test('replacing a complete short list says it is searching without a pagination footer', async ({ page }) => {
+  await page.goto('/?q=nemotron')
+
+  await expect(page.getByRole('link', { name: detailsLinkName })).toHaveCount(3)
+  await expect(page.locator('#repo-results > div')).toHaveCount(0)
+
+  const release = await holdCatalogRequests(page)
+  await page.getByRole('searchbox', { name: 'Search repositories' }).fill('hello')
+  await expect(page.getByText('Searching repositories...')).toBeVisible()
+
+  release()
+  await expect(page.getByRole('link', { name: detailsLinkName })).toHaveCount(24)
+})
+
+test('a replacement that lands a longer first page does not announce more repositories', async ({ page }) => {
+  await page.goto('/?q=nemotron')
+
+  const detailsLinks = page.getByRole('link', { name: detailsLinkName })
+  await expect(detailsLinks).toHaveCount(3)
+  const loadStatus = page.locator('#repo-results > p[role="status"]')
+
+  // Three matches become 24, so the list grows and the first card can well be the same repository: the
+  // only thing that says whether this was an append is the operation that issued the request.
+  await page.getByRole('searchbox', { name: 'Search repositories' }).fill('')
+  await expect(detailsLinks).toHaveCount(24)
+  await expect(loadStatus).toHaveText('')
 })
 
 test('stats page filters chart ranges and trend state', async ({ page }) => {

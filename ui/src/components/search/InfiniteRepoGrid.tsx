@@ -24,9 +24,13 @@ const PENDING_LOAD_ANNOUNCEMENTS: Record<Exclude<PendingCatalogLoad, null>, stri
   replace: 'Searching repositories.',
 }
 
+/** Shown while a search or sort change replaces the list, wherever the list happens to sit. */
+const SEARCHING_LABEL = 'Searching repositories...'
+
 /**
- * Two placeholder rows while the next page is in flight. The grid gains a column at sm, lg and xl, so
- * a trailing pair stays hidden until the breakpoint that gives it its own column.
+ * Two placeholder rows while a request is in flight, for an append and for a replacement alike. The grid
+ * gains a column at sm, lg and xl, so a trailing pair stays hidden until the breakpoint that gives it
+ * its own column.
  */
 const SKELETON_ITEM_CLASSES = [
   '',
@@ -43,12 +47,18 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad }: In
   const isLoading = pendingLoad !== null
   const observerTarget = useRef<HTMLDivElement>(null)
   const previousItemCount = useRef(items.length)
-  const firstItemId = items[0]?.id
-  const previousFirstItemId = useRef(firstItemId)
-  const itemSignature = `${items.length}:${firstItemId ?? ''}:${items[items.length - 1]?.id ?? ''}`
+  const itemSignature = `${items.length}:${items[0]?.id ?? ''}:${items[items.length - 1]?.id ?? ''}`
   const previousItemSignature = useRef(itemSignature)
   const [loadStatus, setLoadStatus] = useState('')
   const loadActivityAt = useRef(0)
+  // Which operation the in-flight and the just-finished request were. The grid cannot recover that from
+  // `items`: a replacement can leave the first card in place and still return a longer page than the set
+  // it displaced, so only `SearchPage` knows whether this list grew or started over.
+  const inFlightLoad = useRef<PendingCatalogLoad>(null)
+  const finishedLoad = useRef<PendingCatalogLoad>(null)
+  // Where the page was scrolled to when the last request started, so an intersection that arrives with
+  // the scroll position untouched can be recognised as the layout moving under a stationary viewport.
+  const lastLoadScrollY = useRef(-1)
 
   // Read by the observer instead of closing over it: a fresh IntersectionObserver reports the target's
   // current state immediately, so an observer recreated whenever `isLoading` toggled answered "still on
@@ -56,14 +66,20 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad }: In
   const loadMoreState = useRef({ hasMore, isLoading, onLoadMore })
   useEffect(() => {
     loadMoreState.current = { hasMore, isLoading, onLoadMore }
-    if (isLoading) {
-      loadActivityAt.current = Date.now()
-      // The completion line from the previous request has to leave the live region before the next one
-      // lands: the frame between a response arriving and the count being recomputed would otherwise
-      // announce the old "Loaded N more" under a list that has just been replaced.
-      setLoadStatus('')
+    if (!isLoading) {
+      finishedLoad.current = inFlightLoad.current
+      inFlightLoad.current = null
+      return
     }
-  }, [hasMore, isLoading, onLoadMore])
+
+    inFlightLoad.current = pendingLoad
+    loadActivityAt.current = Date.now()
+    lastLoadScrollY.current = window.scrollY
+    // The completion line from the previous request has to leave the live region before the next one
+    // lands: the frame between a response arriving and the count being recomputed would otherwise
+    // announce the old "Loaded N more" under a list that has just been replaced.
+    setLoadStatus('')
+  }, [hasMore, isLoading, onLoadMore, pendingLoad])
 
   useEffect(() => {
     if (!hasMore) return
@@ -76,6 +92,12 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad }: In
         // the end. An edge that soon is the layout moving, not the visitor: the next one, or the "Load
         // more" button, is what starts another page.
         if (Date.now() - loadActivityAt.current < SETTLE_MS) return
+
+        // The settle window only covers edges that arrive while it is open. A landing whose rows come
+        // out shorter than the placeholder rows lifts the trigger back into view later still, with the
+        // scroll position never having moved. Measured: shifting the grid by hand at a standstill takes
+        // the list from 48 cards to 72 without a single input event.
+        if (window.scrollY <= lastLoadScrollY.current) return
 
         if (entries[0]?.isIntersecting && state.hasMore && !state.isLoading) {
           state.onLoadMore()
@@ -95,15 +117,15 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad }: In
     if (itemSignature === previousItemSignature.current) return
 
     const appendedCount = items.length - previousItemCount.current
-    // "More" only fits a list that kept what it was showing: a replacement can land a longer first page
-    // than the set it displaced, and a search's totals are announced by the controls above the grid.
-    const isAppend = appendedCount > 0 && firstItemId === previousFirstItemId.current
-    setLoadStatus(isAppend ? `Loaded ${appendedCount} more repositories.` : '')
+    // "More" only fits a list that kept what it was showing, and only `SearchPage` knows that: a
+    // replacement can land a longer first page than the set it displaced. A search's totals are
+    // announced by the controls above the grid, so a replacement leaves this region empty.
+    setLoadStatus(finishedLoad.current === 'append' && appendedCount > 0 ? `Loaded ${appendedCount} more repositories.` : '')
+    finishedLoad.current = null
     previousItemCount.current = items.length
-    previousFirstItemId.current = firstItemId
     previousItemSignature.current = itemSignature
     loadActivityAt.current = Date.now()
-  }, [firstItemId, itemSignature, items.length])
+  }, [itemSignature, items.length])
 
   return (
     <section aria-label="Claude plugins" id="repo-results">
@@ -113,7 +135,7 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad }: In
             <RepoCard repo={repo} />
           </li>
         ))}
-        {isLoading && hasMore
+        {isLoading
           ? SKELETON_ITEM_CLASSES.map((className, index) => (
               // `overflow-anchor: none`: these rows sit at the bottom of the viewport while the request
               // is in flight, and Chrome keeps its scroll anchor still when it disappears. Anchoring to
@@ -126,6 +148,12 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad }: In
           : null}
       </ul>
 
+      {/* The footer below doubles as the pagination trigger, so a list that is already complete has no
+          footer at all: without this line a replacement of it would be visible only to a screen reader. */}
+      {pendingLoad === 'replace' && hasMore === false && (
+        <p className="py-8 text-center text-muted-foreground text-sm">{SEARCHING_LABEL}</p>
+      )}
+
       {hasMore === true && (
         // The trigger is also kept out of anchor selection: while a page is in flight this row sits at
         // the bottom of the viewport, and an anchor here would be held still by scrolling down onto it.
@@ -137,7 +165,7 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad }: In
               changes height between loading and idle is a document whose saved scroll offsets clamp.
               An append hides the text because its placeholder rows already say what is happening. */}
           <span className={pendingLoad === 'append' ? 'invisible' : undefined}>
-            {pendingLoad === 'replace' ? 'Searching repositories...' : 'More repositories available'}
+            {pendingLoad === 'replace' ? SEARCHING_LABEL : 'More repositories available'}
           </span>
           <button
             className="rounded-md border px-4 py-2 font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
