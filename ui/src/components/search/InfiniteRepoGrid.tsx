@@ -83,14 +83,50 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad }: In
   }, [hasMore, isLoading, onLoadMore, pendingLoad])
 
   useEffect(() => {
+    let pendingRearm: number | null = null
+
+    const loadIfTargetIsVisible = () => {
+      const state = loadMoreState.current
+      const target = observerTarget.current
+      if (state.isLoading || !state.hasMore || !target) return
+
+      const rect = target.getBoundingClientRect()
+      if (rect.top >= window.innerHeight || rect.bottom <= 0) return
+
+      // Disarm before calling out for the same reason as the observer callback below: React has not
+      // necessarily published the new pending-load state by the time another callback can run.
+      autoLoadArmed.current = false
+      state.onLoadMore()
+    }
+
     const rearmAutoLoad = () => {
       const state = loadMoreState.current
-      if (state.isLoading || Date.now() - loadActivityAt.current < SETTLE_MS) return
+      if (state.isLoading) return
+
+      const elapsed = Date.now() - loadActivityAt.current
+      if (elapsed < SETTLE_MS) {
+        // A real user scroll during the settle window is intent, not layout movement. Defer that scroll
+        // until the window closes instead of dropping it; pure IntersectionObserver edges still stay
+        // suppressed because they do not schedule this timer.
+        if (pendingRearm !== null) window.clearTimeout(pendingRearm)
+        pendingRearm = window.setTimeout(() => {
+          pendingRearm = null
+          if (loadMoreState.current.isLoading) return
+          autoLoadArmed.current = true
+          loadIfTargetIsVisible()
+        }, SETTLE_MS - elapsed)
+        return
+      }
+
       autoLoadArmed.current = true
+      loadIfTargetIsVisible()
     }
 
     window.addEventListener('scroll', rearmAutoLoad, { passive: true })
-    return () => window.removeEventListener('scroll', rearmAutoLoad)
+    return () => {
+      window.removeEventListener('scroll', rearmAutoLoad)
+      if (pendingRearm !== null) window.clearTimeout(pendingRearm)
+    }
   }, [])
 
   useEffect(() => {

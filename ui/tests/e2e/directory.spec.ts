@@ -223,6 +223,21 @@ test('repository grid loads more cards as the user reaches the end of the curren
   await expect.poll(() => detailsLinks.count()).toBeGreaterThan(24)
 })
 
+test('a footer arrival during the settle window is deferred instead of dropped', async ({ page }) => {
+  await page.goto('/')
+
+  const detailsLinks = page.getByRole('link', { name: detailsLinkName })
+  await expect(detailsLinks).toHaveCount(24)
+
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await expect(detailsLinks).toHaveCount(48)
+
+  // The previous page has only just landed, so this second arrival is inside SETTLE_MS. It must be
+  // remembered and replayed after the landing layout settles rather than requiring another scroll.
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await expect(detailsLinks).toHaveCount(72)
+})
+
 test('a layout move that scrolls nothing loads no further page', async ({ page }) => {
   await page.goto('/')
 
