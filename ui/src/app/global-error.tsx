@@ -17,6 +17,7 @@ type Theme = {
 
 const DEFAULT_THEME: ResolvedTheme = 'dark'
 const THEME_STORAGE_KEY = 'theme-preference'
+const THEME_CLASS_SEPARATOR = /\s+/
 
 function isResolvedTheme(theme: string | null): theme is ResolvedTheme {
   return theme === 'light' || theme === 'dark'
@@ -43,7 +44,7 @@ function readTheme(): Theme {
   if (typeof document === 'undefined') return { className: DEFAULT_THEME, colorScheme: DEFAULT_THEME }
 
   const { className, style } = document.documentElement
-  const appliedTheme = className.split(/\s+/).find(isResolvedTheme)
+  const appliedTheme = className.split(THEME_CLASS_SEPARATOR).find(isResolvedTheme)
   if (appliedTheme) {
     return {
       className,
@@ -66,12 +67,7 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
   const theme = readTheme()
 
   return (
-    <html
-      className={theme.className}
-      lang="en-US"
-      style={{ colorScheme: theme.colorScheme }}
-      suppressHydrationWarning
-    >
+    <html className={theme.className} lang="en-US" style={{ colorScheme: theme.colorScheme }} suppressHydrationWarning>
       <body className="bg-background text-foreground">
         <main className="flex min-h-dvh items-center justify-center p-4" id="main-content" tabIndex={-1}>
           <section aria-live="assertive" className="max-w-md text-center" role="alert">
