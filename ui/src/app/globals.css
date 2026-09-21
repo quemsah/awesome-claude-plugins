@@ -183,12 +183,6 @@
     scroll-behavior: auto;
   }
 
-  @media (max-width: 639px) {
-    .recharts-yAxis .recharts-cartesian-axis-tick text {
-      font-size: 10px;
-    }
-  }
-
   .animate-wave {
     animation: none;
   }
