@@ -10,7 +10,12 @@ export interface CatalogSummary {
   updatedAt: string | null
 }
 
-export function getCatalogSummary(repos: Repo[], stats: StatsItem[]): CatalogSummary {
+/**
+ * `repos` must already hold one record per repository path: the catalog has case-only duplicates
+ * whose URLs redirect to the canonical spelling, so counting them twice would overstate the size of
+ * the catalog every other surface publishes.
+ */
+export function getCatalogSummary(repos: readonly Repo[], stats: readonly StatsItem[]): CatalogSummary {
   const safeRepos = (Array.isArray(repos) ? repos : [])
     .filter((repo): repo is Repo => repo != null)
     .filter((repo): repo is Repo => repo.owner != null && repo.repo_name != null)
@@ -77,7 +82,7 @@ This website provides a generated catalog of GitHub repositories related to Clau
 - [Catalog Browse Pages](${BASE_URL}/browse/2): Crawlable pagination for the full catalog.
 - [Statistics](${BASE_URL}/stats): Historical repository-count charts.
 - [About](${BASE_URL}/about): Project purpose and discovery workflow.
-- [Sitemap](${BASE_URL}/sitemap.xml): All canonical repository URLs.
+- [Sitemap](${BASE_URL}/sitemap.xml): Canonical repository URLs that are indexable, which is a subset of the catalog.
 - [Catalog feed](${BASE_URL}/feed.json): Latest catalog snapshot.
 - [Web App Manifest](${BASE_URL}/manifest.webmanifest): Installable-web-app metadata.
 - [API Catalog](${BASE_URL}/.well-known/api-catalog): Machine-readable discovery links.
