@@ -33,13 +33,6 @@ export const RepoSchema = z
     owner_url: z.string().refine(isValidHttpUrl, 'Must be a valid URL').nullable(),
     repo_name: z.string().nullable(),
     plugins_count: z.number().nullable(),
-    plugin_names: z.array(z.string().min(1).max(160)).max(500).optional(),
-    plugin_descriptions: z.array(z.string().min(1).max(4_000)).max(500).optional(),
-    plugin_categories: z.array(z.string().min(1).max(100)).max(500).optional(),
-    plugin_keywords: z.array(z.string().min(1).max(100)).max(2_000).optional(),
-    plugin_commands: z.array(z.string().min(1).max(512)).max(2_000).optional(),
-    plugin_agents: z.array(z.string().min(1).max(512)).max(2_000).optional(),
-    plugin_mcp_servers: z.array(z.string().min(1).max(512)).max(2_000).optional(),
     id: z.number(),
   })
   .superRefine((repo, context) => {
