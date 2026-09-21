@@ -254,7 +254,6 @@ test('a layout move that scrolls nothing loads no further page', async ({ page }
   await expect(detailsLinks).toHaveCount(cards)
 })
 
-
 test('automatic paging rearms after a replacement shortens the document', async ({ page }) => {
   await page.goto('/')
 
