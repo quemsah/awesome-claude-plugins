@@ -153,7 +153,7 @@ test('repository grid loads more cards as the user reaches the end of the curren
 })
 
 test('stats page filters chart ranges and trend state', async ({ page }) => {
-  await page.clock.setFixedTime(new Date('2026-06-24T12:00:00Z'))
+  await page.clock.setFixedTime(new Date('2026-09-21T12:00:00Z'))
   await page.goto('/stats')
 
   const averageDailyIncrease = statCardValue(page, 'Avg Daily Increase')

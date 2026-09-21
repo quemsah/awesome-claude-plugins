@@ -48,7 +48,11 @@ export function calculateTrend(filteredStats: StatsItem[]): {
     growth: totalGrowth,
     percentage,
     periodDays,
-    averageDailyIncrease: Math.round((totalGrowth / periodDays) * 100) / 100,
+    averageDailyIncrease: (() => {
+      const average = totalGrowth / periodDays
+      const roundedMagnitude = Number(`${Math.round(Number(`${Math.abs(average)}e2`))}e-2`)
+      return roundedMagnitude === 0 ? 0 : Math.sign(average) * roundedMagnitude
+    })(),
   }
 }
 

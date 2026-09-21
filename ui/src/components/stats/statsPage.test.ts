@@ -28,6 +28,20 @@ describe('calculateTrend', () => {
     expect(calculateTrend(lastWeek).averageDailyIncrease).toBe(16.67)
   })
 
+  it('rounds midpoint averages symmetrically for growth and decline', () => {
+    const growth = snapshots([
+      { daysAgo: 200, size: 1000 },
+      { daysAgo: 0, size: 1201 },
+    ])
+    const decline = snapshots([
+      { daysAgo: 200, size: 1201 },
+      { daysAgo: 0, size: 1000 },
+    ])
+
+    expect(calculateTrend(growth).averageDailyIncrease).toBe(1.01)
+    expect(calculateTrend(decline).averageDailyIncrease).toBe(-1.01)
+  })
+
   it('reports zero for a range too short to measure', () => {
     expect(calculateTrend(lastWeek.slice(1)).averageDailyIncrease).toBe(0)
     expect(calculateTrend([]).averageDailyIncrease).toBe(0)
