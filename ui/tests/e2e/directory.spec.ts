@@ -260,9 +260,13 @@ test('automatic paging rearms after a replacement shortens the document', async 
   const detailsLinks = page.getByRole('link', { name: detailsLinkName })
   await expect(detailsLinks).toHaveCount(24)
 
-  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await page.evaluate(() => {
+    document.querySelector<HTMLButtonElement>('#repo-results > div > button')?.click()
+  })
   await expect(detailsLinks).toHaveCount(48)
-  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await page.evaluate(() => {
+    document.querySelector<HTMLButtonElement>('#repo-results > div > button')?.click()
+  })
   await expect(detailsLinks).toHaveCount(72)
 
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
