@@ -32,7 +32,12 @@ const GitHubOwnerSchema = z.object({
   avatar_url: HttpUrlSchema.nullable().optional().default(null),
   html_url: GitHubUrlSchema,
   login: GitHubSegmentSchema,
-  type: z.string().regex(/^[A-Za-z][A-Za-z0-9_-]*$/, 'Must be a valid GitHub owner type'),
+  type: z
+    .string()
+    .regex(/^[A-Za-z][A-Za-z0-9_-]*$/, 'Must be a valid GitHub owner type')
+    .nullable()
+    .optional()
+    .default(null),
 })
 
 const GitHubLicenseSchema = z.object({

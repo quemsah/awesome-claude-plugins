@@ -30,7 +30,7 @@ export function createCatalogRepositorySnapshot(repo: Repo): GitHubRepository {
       avatar_url: null,
       html_url: repo.owner_url,
       login: repo.owner,
-      type: 'User',
+      type: null,
     },
     pushed_at: null,
     size: null,
