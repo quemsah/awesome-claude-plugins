@@ -270,7 +270,14 @@ test('automatic paging rearms after a replacement shortens the document', async 
   const beforeReplaceScrollY = await page.evaluate(() => window.scrollY)
   expect(beforeReplaceScrollY).toBeGreaterThan(0)
 
-  await page.getByRole('searchbox', { name: 'Search repositories' }).fill('hello')
+  const scrollBeforeInput = await page.evaluate(() => window.scrollY)
+  await page.getByRole('searchbox', { name: 'Search repositories' }).evaluate((input) => {
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    valueSetter?.call(input, 'hello')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrollBeforeInput)
+
   await expect(detailsLinks).toHaveCount(24)
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(beforeReplaceScrollY)
 
