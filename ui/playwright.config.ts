@@ -14,8 +14,8 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 2 : 2,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
-  // A search settles after 250 + 300 + 500 ms of debounces and a catalog render that a busy server
-  // runs one at a time, so the address bar can legitimately move seconds after the interaction.
+  // A search reaches the catalog 250 ms after the last keystroke and the address bar 500 ms after that,
+  // on top of a catalog render a busy server runs one at a time, so the url can move seconds later.
   expect: { timeout: 15_000 },
   use: {
     baseURL: baseUrl,

@@ -38,6 +38,8 @@ export function SearchControls({
     }
   }, [])
 
+  // The input echoes every keystroke from local state, while the search itself waits for the typing to
+  // pause so one burst costs a single catalog request instead of one per character.
   const debouncedSearch = useDebouncedCallback((value: string) => {
     onSearchChange(value)
   }, 250)
