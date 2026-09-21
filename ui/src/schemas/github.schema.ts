@@ -59,7 +59,8 @@ export const GitHubRepositorySchema = z
     language: z.string().max(100).nullable().optional().default(null),
     license: GitHubLicenseSchema.nullable().optional().default(null),
     name: GitHubSegmentSchema,
-    open_issues_count: z.number().int().nonnegative().nullable().optional().default(0),
+    // The catalog never records issue counts and GitHub may omit the field, so 0 would read as a confirmed count.
+    open_issues_count: z.number().int().nonnegative().nullable().optional().default(null),
     owner: GitHubOwnerSchema,
     pushed_at: z.string().datetime({ offset: true }).nullable().optional().default(null),
     size: z.number().int().nonnegative().nullable().optional().default(null),
