@@ -79,6 +79,13 @@ describe('buildRepoMarkdown', () => {
     expect(body).toContain('No validated plugin count is available.')
   })
 
+  it('attributes every field to the catalog snapshot the route actually reads', () => {
+    const { body } = splitFrontmatter(buildRepoMarkdown(makeRepo()))
+
+    expect(body).toContain('- Repository metadata source: catalog snapshot dated Sep 19, 2026, not live GitHub API data')
+    expect(body).not.toContain('when available')
+  })
+
   it('reports no install command for a repository path it cannot build one from', () => {
     const { frontmatter, body } = splitFrontmatter(buildRepoMarkdown(makeRepo({ owner: 'not a segment' })))
 
