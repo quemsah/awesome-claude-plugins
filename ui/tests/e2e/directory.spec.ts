@@ -252,6 +252,56 @@ test('a footer arrival during the settle window is deferred instead of dropped',
   await expect(detailsLinks).toHaveCount(72)
 })
 
+test('a deferred paging scroll cannot leak into a replacement result set', async ({ page }) => {
+  await page.goto('/')
+
+  const detailsLinks = page.getByRole('link', { name: detailsLinkName })
+  await expect(detailsLinks).toHaveCount(24)
+
+  // Cache a replacement response so the replacement can start and finish inside SETTLE_MS
+  // deterministically, even on a busy CI worker.
+  const replacement = await page.evaluate(async () => {
+    const response = await fetch('/api/catalog?page=0&pageSize=24&q=hello&sort=stars-desc')
+    return response.json()
+  })
+  await page.route('**/api/catalog*', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('q') === 'hello' && url.searchParams.get('page') === '0') {
+      await route.fulfill({ body: JSON.stringify(replacement), contentType: 'application/json', status: 200 })
+      return
+    }
+    await route.continue()
+  })
+
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await expect(detailsLinks).toHaveCount(48)
+
+  // Queue a real scroll during the landing settle window, then replace the result set before its
+  // deferred re-arm fires.
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await page.getByRole('searchbox', { name: 'Search repositories' }).evaluate((input) => {
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    valueSetter?.call(input, 'hello')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await expect(detailsLinks).toHaveCount(24)
+
+  // Put the new footer in view without scrolling. A stale timer from the old result set would now
+  // append page 2 of the replacement even though the visitor never scrolled after the search.
+  const broughtIntoView = await page.evaluate(() => {
+    const grid = document.querySelector<HTMLElement>('#repo-results > ul')
+    const trigger = document.querySelector('#repo-results > div')
+    if (!(grid && trigger)) return false
+    grid.style.marginBottom = `${-(trigger.getBoundingClientRect().top - window.innerHeight / 2)}px`
+    const rect = trigger.getBoundingClientRect()
+    return rect.top < window.innerHeight && rect.bottom > 0
+  })
+  expect(broughtIntoView).toBe(true)
+
+  await page.waitForTimeout(600)
+  await expect(detailsLinks).toHaveCount(24)
+})
+
 test('a layout move that scrolls nothing loads no further page', async ({ page }) => {
   await page.goto('/')
 

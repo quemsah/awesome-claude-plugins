@@ -53,6 +53,9 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad, repl
   const previousReplaceCompletion = useRef(replaceCompletion)
   const [loadStatus, setLoadStatus] = useState('')
   const loadActivityAt = useRef(0)
+  // Invalidates deferred scroll intent whenever another request starts. A timer queued for one result
+  // set must never re-arm pagination after a later append or replacement has already changed the layout.
+  const loadGeneration = useRef(0)
   // Which operation the in-flight and the just-finished request were. The grid cannot recover that from
   // `items`: a replacement can leave the first card in place and still return a longer page than the set
   // it displaced, so only `SearchPage` knows whether this list grew or started over.
@@ -77,6 +80,7 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad, repl
 
     inFlightLoad.current = pendingLoad
     autoLoadArmed.current = false
+    loadGeneration.current += 1
     loadActivityAt.current = Date.now()
     // The completion line from the previous request has to leave the live region before the next one
     // lands: the frame between a response arriving and the count being recomputed would otherwise
@@ -109,11 +113,14 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad, repl
       if (elapsed < SETTLE_MS) {
         // A real user scroll during the settle window is intent, not layout movement. Defer that scroll
         // until the window closes instead of dropping it; pure IntersectionObserver edges still stay
-        // suppressed because they do not schedule this timer.
+        // suppressed because they do not schedule this timer. Bind the timer to this load generation:
+        // another request may start and finish before the timeout fires, and that old scroll must not
+        // be applied to the new result set.
+        const generation = loadGeneration.current
         if (pendingRearm !== null) window.clearTimeout(pendingRearm)
         pendingRearm = window.setTimeout(() => {
           pendingRearm = null
-          if (loadMoreState.current.isLoading) return
+          if (loadGeneration.current !== generation || loadMoreState.current.isLoading) return
           autoLoadArmed.current = true
           loadIfTargetIsVisible()
         }, SETTLE_MS - elapsed)
