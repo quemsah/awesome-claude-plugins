@@ -45,15 +45,15 @@ export default function PrivacyPage() {
           <section>
             <h2 className="mb-2 font-semibold text-foreground text-xl">Browser storage</h2>
             <p>
-              We store your theme preference in local storage and your most recent catalog search URL in session storage. Both are
-              functional preferences and can be cleared in your browser settings.
+              We store your theme preference in local storage and your most recent catalog search URL in session storage. Both are functional
+              preferences and can be cleared in your browser settings.
             </p>
           </section>
           <section>
             <h2 className="mb-2 font-semibold text-foreground text-xl">Security reports</h2>
             <p>
-              Browsers may send a Content Security Policy violation report when a page attempts to load a disallowed resource. We reduce
-              the page path to a route template and use it with the violated policy directive to investigate site security.
+              Browsers may send a Content Security Policy violation report when a page attempts to load a disallowed resource. We reduce the
+              page path to a route template and use it with the violated policy directive to investigate site security.
             </p>
           </section>
           <section>
