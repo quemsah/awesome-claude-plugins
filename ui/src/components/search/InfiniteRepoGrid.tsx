@@ -1,9 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { cn } from '../../lib/utils.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { RepoCard } from './RepoCard.tsx'
+import { RepoCardSkeleton } from './RepoCardSkeleton.tsx'
 
 interface InfiniteRepoGridProps {
   hasMore: boolean
@@ -12,31 +14,66 @@ interface InfiniteRepoGridProps {
   onLoadMore: () => void
 }
 
+/** How long after a batch lands an intersection edge is still attributable to the layout settling. */
+const SETTLE_MS = 400
+
+/**
+ * Two placeholder rows while the next page is in flight. The grid gains a column at sm, lg and xl, so
+ * a trailing pair stays hidden until the breakpoint that gives it its own column.
+ */
+const SKELETON_ITEM_CLASSES = [
+  '',
+  '',
+  'hidden sm:block',
+  'hidden sm:block',
+  'hidden lg:block',
+  'hidden lg:block',
+  'hidden xl:block',
+  'hidden xl:block',
+]
+
 export function InfiniteRepoGrid({ hasMore, isLoading, items, onLoadMore }: InfiniteRepoGridProps) {
   const observerTarget = useRef<HTMLDivElement>(null)
   const previousItemCount = useRef(items.length)
   const itemSignature = `${items.length}:${items[0]?.id ?? ''}:${items[items.length - 1]?.id ?? ''}`
   const previousItemSignature = useRef(itemSignature)
   const [loadStatus, setLoadStatus] = useState('')
+  const loadActivityAt = useRef(0)
 
-  const handleIntersection = useCallback(
-    (entries: IntersectionObserverEntry[]) => {
-      if (entries[0]?.isIntersecting && hasMore && !isLoading) {
-        onLoadMore()
-      }
-    },
-    [hasMore, isLoading, onLoadMore]
-  )
+  // Read by the observer instead of closing over it: a fresh IntersectionObserver reports the target's
+  // current state immediately, so an observer recreated whenever `isLoading` toggled answered "still on
+  // screen" the moment a landing page unmounted its placeholders and started the next load by itself.
+  const loadMoreState = useRef({ hasMore, isLoading, onLoadMore })
+  useEffect(() => {
+    loadMoreState.current = { hasMore, isLoading, onLoadMore }
+    if (isLoading) loadActivityAt.current = Date.now()
+  }, [hasMore, isLoading, onLoadMore])
 
   useEffect(() => {
-    const observer = new IntersectionObserver(handleIntersection, { threshold: 0.1 })
+    if (!hasMore) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const state = loadMoreState.current
+        // A request starting or landing rearranges the grid under the trigger and the browser can carry
+        // the viewport onto it in the same beat, which is indistinguishable from the visitor arriving at
+        // the end. An edge that soon is the layout moving, not the visitor: the next one, or the "Load
+        // more" button, is what starts another page.
+        if (Date.now() - loadActivityAt.current < SETTLE_MS) return
+
+        if (entries[0]?.isIntersecting && state.hasMore && !state.isLoading) {
+          state.onLoadMore()
+        }
+      },
+      { threshold: 0.1 }
+    )
 
     if (observerTarget.current) {
       observer.observe(observerTarget.current)
     }
 
     return () => observer.disconnect()
-  }, [handleIntersection])
+  }, [hasMore])
 
   useEffect(() => {
     if (itemSignature === previousItemSignature.current) return
@@ -45,6 +82,7 @@ export function InfiniteRepoGrid({ hasMore, isLoading, items, onLoadMore }: Infi
     setLoadStatus(loadedCount > 0 ? `Loaded ${loadedCount} more repositories.` : '')
     previousItemCount.current = items.length
     previousItemSignature.current = itemSignature
+    loadActivityAt.current = Date.now()
   }, [itemSignature, items.length])
 
   return (
@@ -55,11 +93,29 @@ export function InfiniteRepoGrid({ hasMore, isLoading, items, onLoadMore }: Infi
             <RepoCard repo={repo} />
           </li>
         ))}
+        {isLoading && hasMore
+          ? SKELETON_ITEM_CLASSES.map((className, index) => (
+              // `overflow-anchor: none`: these rows sit at the bottom of the viewport while the request
+              // is in flight, and Chrome keeps its scroll anchor still when it disappears. Anchoring to
+              // a placeholder therefore scrolled the page down onto the trigger and started the next
+              // load.
+              <li className={cn('m-0 list-none p-0 [overflow-anchor:none]', className)} key={index}>
+                <RepoCardSkeleton />
+              </li>
+            ))
+          : null}
       </ul>
 
       {hasMore === true && (
-        <div className="flex w-full flex-col items-center justify-center gap-2 py-8 text-muted-foreground text-sm" ref={observerTarget}>
-          <span>{isLoading ? 'Loading more repositories...' : 'More repositories available'}</span>
+        // The trigger is also kept out of anchor selection: while a page is in flight this row sits at
+        // the bottom of the viewport, and an anchor here would be held still by scrolling down onto it.
+        <div
+          className="flex w-full flex-col items-center justify-center gap-2 py-8 text-muted-foreground text-sm [overflow-anchor:none]"
+          ref={observerTarget}
+        >
+          {/* `invisible` rather than dropping the node: the row keeps its 28px, and a document that
+              changes height between loading and idle is a document whose saved scroll offsets clamp. */}
+          <span className={isLoading ? 'invisible' : undefined}>More repositories available</span>
           <button
             className="rounded-md border px-4 py-2 font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
             disabled={isLoading}
