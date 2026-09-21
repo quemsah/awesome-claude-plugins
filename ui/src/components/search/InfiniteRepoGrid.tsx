@@ -56,9 +56,10 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad }: In
   // it displaced, so only `SearchPage` knows whether this list grew or started over.
   const inFlightLoad = useRef<PendingCatalogLoad>(null)
   const finishedLoad = useRef<PendingCatalogLoad>(null)
-  // Where the page was scrolled to when the last request started, so an intersection that arrives with
-  // the scroll position untouched can be recognised as the layout moving under a stationary viewport.
-  const lastLoadScrollY = useRef(-1)
+  // Automatic pagination is disarmed for every request and re-armed only after scrolling resumes once
+  // the landing layout has settled. This avoids using an absolute scrollY watermark: a replacement can
+  // shorten the document so far that the old request-start position is no longer reachable.
+  const autoLoadArmed = useRef(true)
 
   // Read by the observer instead of closing over it: a fresh IntersectionObserver reports the target's
   // current state immediately, so an observer recreated whenever `isLoading` toggled answered "still on
@@ -73,13 +74,24 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad }: In
     }
 
     inFlightLoad.current = pendingLoad
+    autoLoadArmed.current = false
     loadActivityAt.current = Date.now()
-    lastLoadScrollY.current = window.scrollY
     // The completion line from the previous request has to leave the live region before the next one
     // lands: the frame between a response arriving and the count being recomputed would otherwise
     // announce the old "Loaded N more" under a list that has just been replaced.
     setLoadStatus('')
   }, [hasMore, isLoading, onLoadMore, pendingLoad])
+
+  useEffect(() => {
+    const rearmAutoLoad = () => {
+      const state = loadMoreState.current
+      if (state.isLoading || Date.now() - loadActivityAt.current < SETTLE_MS) return
+      autoLoadArmed.current = true
+    }
+
+    window.addEventListener('scroll', rearmAutoLoad, { passive: true })
+    return () => window.removeEventListener('scroll', rearmAutoLoad)
+  }, [])
 
   useEffect(() => {
     if (!hasMore) return
@@ -93,13 +105,16 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad }: In
         // more" button, is what starts another page.
         if (Date.now() - loadActivityAt.current < SETTLE_MS) return
 
-        // The settle window only covers edges that arrive while it is open. A landing whose rows come
-        // out shorter than the placeholder rows lifts the trigger back into view later still, with the
-        // scroll position never having moved. Measured: shifting the grid by hand at a standstill takes
-        // the list from 48 cards to 72 without a single input event.
-        if (window.scrollY <= lastLoadScrollY.current) return
+        // A layout-only move must not re-arm pagination. Once a request starts, a later intersection is
+        // ignored until scrolling resumes after the landing settles. Unlike comparing against the
+        // request-start scrollY, this still works when a replacement shortens the document below that
+        // old position.
+        if (!autoLoadArmed.current) return
 
         if (entries[0]?.isIntersecting && state.hasMore && !state.isLoading) {
+          // Disarm synchronously so repeated observer callbacks cannot start parallel pages before
+          // SearchPage publishes the new pending-load state.
+          autoLoadArmed.current = false
           state.onLoadMore()
         }
       },
@@ -141,7 +156,7 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad }: In
               // is in flight, and Chrome keeps its scroll anchor still when it disappears. Anchoring to
               // a placeholder therefore scrolled the page down onto the trigger and started the next
               // load.
-              <li className={cn('m-0 list-none p-0 [overflow-anchor:none]', className)} key={index}>
+              <li aria-hidden="true" className={cn('m-0 list-none p-0 [overflow-anchor:none]', className)} key={index}>
                 <RepoCardSkeleton />
               </li>
             ))
