@@ -50,6 +50,11 @@ export function getIndexableCatalogRepos(): readonly CatalogRepo[] {
   return canonicalCatalogRepos.filter((repo) => getCatalogQuality(repo, true).publicationState === 'indexable')
 }
 
+/** Pages the browse route serves: it paginates the whole canonical catalog, which is larger than the indexable subset. */
+export function getBrowsePageCount(): number {
+  return Math.ceil(canonicalCatalogRepos.length / CATALOG_PAGE_SIZE)
+}
+
 export function getCatalogQualityForRepo(repo: CatalogRepo): CatalogQuality {
   return getCatalogQuality(repo, canonicalCatalogRepos.includes(repo))
 }

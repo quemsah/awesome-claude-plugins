@@ -15,6 +15,7 @@ const scriptSource = [
 
 const GITHUB_RAW_URL = process.env.GITHUB_RAW_URL ?? 'https://raw.githubusercontent.com'
 const GITHUB_API_URL = process.env.GITHUB_API_URL ?? 'https://api.github.com'
+const release = process.env.NEXT_PUBLIC_RELEASE ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? ''
 
 function extractConnectOrigin(url: string, fallback: string): string {
   try {
@@ -47,10 +48,14 @@ const connectSource = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  env: {
+    // biome-ignore lint/style/useNamingConvention: Next.js env keys must match the public environment variable name.
+    NEXT_PUBLIC_RELEASE: release,
+  },
   // Dev-only: `next dev` allow-lists the `localhost` hostname but not the `127.0.0.1` IP literal.
   allowedDevOrigins: ['127.0.0.1'],
   compiler: {
-    removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error', 'warn'] } : false,
+    removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error', 'warn', 'info'] } : false,
   },
   experimental: {
     optimizePackageImports: ['lucide-react', 'recharts'],

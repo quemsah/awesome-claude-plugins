@@ -1,20 +1,16 @@
 /** biome-ignore-all lint/style/useNamingConvention: <n8n> */
 import type { MetadataRoute } from 'next'
-import { getCanonicalCatalogRepos, getCatalogLastModified, getIndexableCatalogRepos, getRepoCanonicalPath } from '../lib/catalog.ts'
-import { CATALOG_PAGE_SIZE } from '../lib/catalogPagination.ts'
+import { getBrowsePageCount, getCatalogLastModified, getIndexableCatalogRepos, getRepoCanonicalPath } from '../lib/catalog.ts'
 import { BASE_URL } from '../lib/constants.ts'
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const catalogLastModified = getCatalogLastModified()
-  const indexableCatalogRepos = getIndexableCatalogRepos()
-  const totalBrowsePages = Math.ceil(indexableCatalogRepos.length / CATALOG_PAGE_SIZE)
+  const totalBrowsePages = getBrowsePageCount()
 
-  const indexableRepoSet = new Set(indexableCatalogRepos)
-  const repoUrls: MetadataRoute.Sitemap = getCanonicalCatalogRepos()
-    .filter((repo) => indexableRepoSet.has(repo))
-    .map((repo) => ({
-      url: `${BASE_URL}/${getRepoCanonicalPath(repo)}`,
-    }))
+  const repoUrls: MetadataRoute.Sitemap = getIndexableCatalogRepos().map((repo) => ({
+    url: `${BASE_URL}/${getRepoCanonicalPath(repo)}`,
+    lastModified: catalogLastModified,
+  }))
   const browseUrls: MetadataRoute.Sitemap = Array.from({ length: Math.max(totalBrowsePages - 1, 0) }, (_, index) => ({
     url: `${BASE_URL}/browse/${index + 2}`,
     lastModified: catalogLastModified,

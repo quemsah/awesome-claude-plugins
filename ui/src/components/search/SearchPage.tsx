@@ -44,7 +44,6 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   const searchParams = useSearchParams()
   const [sortOption, setSortOption] = useState<SortOption>(parseSortOption(initialSortOption))
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm)
-  const [queriedSearchTerm, setQueriedSearchTerm] = useState(initialSearchTerm)
   const [repos, setRepos] = useState<readonly Repo[]>(initialRepos)
   const [pluginsCount, setPluginsCount] = useState(initialPluginCount)
   const [total, setTotal] = useState(initialTotal)
@@ -72,23 +71,19 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     [pathname, router, searchParams]
   )
 
-  // The deferred write resolves the state when it fires rather than when typing queued it, so a
-  // sort option chosen during the wait cannot be written back out by an outdated snapshot.
+  // The address bar lags the results on purpose: each write is a router round trip that re-renders the
+  // server component. It resolves the state when it fires rather than when typing queued it, so a sort
+  // option chosen during the wait cannot be written back out by an outdated snapshot.
   const debouncedReplaceSearchUrl = useDebouncedCallback(() => {
     updateSearchUrl(searchTerm, sortOption, 'replace')
   }, 500)
 
-  // Keystrokes update the input immediately but only settle into a catalog request once typing
-  // pauses, so a single search costs one round trip instead of one per character.
-  const debouncedQuerySearchTerm = useDebouncedCallback(setQueriedSearchTerm, 300)
-
   const handleSearchChange = useCallback(
     (nextSearchTerm: string) => {
       setSearchTerm(nextSearchTerm)
-      debouncedQuerySearchTerm(nextSearchTerm)
       debouncedReplaceSearchUrl()
     },
-    [debouncedQuerySearchTerm, debouncedReplaceSearchUrl]
+    [debouncedReplaceSearchUrl]
   )
 
   const handleSortChange = useCallback(
@@ -124,7 +119,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     nextPage.current = 1
     setPendingLoad('replace')
     setHasLoadError(false)
-    const params = new URLSearchParams({ page: '0', pageSize: `${CATALOG_PAGE_SIZE}`, q: queriedSearchTerm, sort: sortOption })
+    const params = new URLSearchParams({ page: '0', pageSize: `${CATALOG_PAGE_SIZE}`, q: searchTerm, sort: sortOption })
 
     ;(async () => {
       try {
@@ -157,7 +152,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         loadingController.current = null
       }
     }
-  }, [queriedSearchTerm, sortOption])
+  }, [searchTerm, sortOption])
 
   const loadMore = useCallback(async () => {
     if (pendingLoad !== null || !hasMore) {
@@ -171,7 +166,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     const params = new URLSearchParams({
       page: `${nextPage.current}`,
       pageSize: `${CATALOG_PAGE_SIZE}`,
-      q: queriedSearchTerm,
+      q: searchTerm,
       sort: sortOption,
     })
 
@@ -196,7 +191,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         setPendingLoad(null)
       }
     }
-  }, [hasMore, pendingLoad, queriedSearchTerm, sortOption])
+  }, [hasMore, pendingLoad, searchTerm, sortOption])
 
   useEffect(() => {
     window.sessionStorage.setItem('last-search-url', `${window.location.pathname}${window.location.search}`)
@@ -205,7 +200,6 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   useEffect(() => {
     const urlSearchTerm = searchParams.get('q') ?? ''
     setSearchTerm(urlSearchTerm)
-    setQueriedSearchTerm(urlSearchTerm)
     setSortOption(parseSortOption(searchParams.get('sort')))
     window.sessionStorage.setItem('last-search-url', `${pathname}${searchParams.size > 0 ? `?${searchParams}` : ''}`)
   }, [pathname, searchParams])
@@ -259,7 +253,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     }
 
     const liveParams = new URLSearchParams(window.location.search)
-    const isListInSyncWithUrl = (liveParams.get('q') ?? '') === queriedSearchTerm && parseSortOption(liveParams.get('sort')) === sortOption
+    const isListInSyncWithUrl = (liveParams.get('q') ?? '') === searchTerm && parseSortOption(liveParams.get('sort')) === sortOption
     if (!isListInSyncWithUrl) {
       return
     }
@@ -275,7 +269,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     window.scrollTo(0, pending.scrollY)
     clearScrollPosition(window.sessionStorage, pending.url)
     pendingScrollRestore.current = null
-  }, [hasMore, loadMore, pendingLoad, queriedSearchTerm, sortOption])
+  }, [hasMore, loadMore, pendingLoad, searchTerm, sortOption])
 
   return (
     <>
