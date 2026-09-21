@@ -14,6 +14,10 @@ export function readLiveRepository(status: number, payload: unknown, requested: 
     return { ok: false, reason: 'github-not-found' }
   }
 
+  if (status < 200 || status >= 300) {
+    return { ok: false, reason: 'github-unavailable' }
+  }
+
   const parsed = GitHubRepositorySchema.safeParse(payload)
   if (!parsed.success) {
     return { ok: false, reason: 'github-unavailable' }
