@@ -65,6 +65,9 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad, repl
   // the landing layout has settled. This avoids using an absolute scrollY watermark: a replacement can
   // shorten the document so far that the old request-start position is no longer reachable.
   const autoLoadArmed = useRef(true)
+  // Tracks scroll direction as well as position. Replacements can shorten the document and make the
+  // browser clamp scrollY upward; that emits a scroll event but is not intent to approach the footer.
+  const lastObservedScrollY = useRef(0)
 
   // Read by the observer instead of closing over it: a fresh IntersectionObserver reports the target's
   // current state immediately, so an observer recreated whenever `isLoading` toggled answered "still on
@@ -80,6 +83,7 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad, repl
 
     inFlightLoad.current = pendingLoad
     autoLoadArmed.current = false
+    lastObservedScrollY.current = window.scrollY
     loadGeneration.current += 1
     loadActivityAt.current = Date.now()
     // The completion line from the previous request has to leave the live region before the next one
@@ -90,6 +94,7 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad, repl
 
   useEffect(() => {
     let pendingRearm: number | null = null
+    lastObservedScrollY.current = window.scrollY
 
     const loadIfTargetIsVisible = () => {
       const state = loadMoreState.current
@@ -106,6 +111,14 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad, repl
     }
 
     const rearmAutoLoad = () => {
+      const scrollY = window.scrollY
+      const movedTowardEnd = scrollY > lastObservedScrollY.current
+      lastObservedScrollY.current = scrollY
+
+      // A shorter replacement can clamp the viewport upward and dispatch a regular scroll event.
+      // Record that new baseline, but do not mistake it for the visitor moving toward the footer.
+      if (!movedTowardEnd) return
+
       const state = loadMoreState.current
       if (state.isLoading) return
 
