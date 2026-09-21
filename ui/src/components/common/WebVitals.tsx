@@ -15,7 +15,7 @@ export function WebVitals() {
         navigationType: metric.navigationType,
         path: window.location.pathname,
         rating: metric.rating,
-        release: process.env.NEXT_PUBLIC_RELEASE,
+        release: process.env.NEXT_PUBLIC_RELEASE || undefined,
         value: metric.value,
       })
     )
