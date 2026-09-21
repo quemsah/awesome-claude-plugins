@@ -27,14 +27,20 @@ export async function POST(request: Request) {
   }
 
   // Only the validated fields are logged so attacker-supplied keys never reach production logs.
-  console.warn('Web vital', {
-    name: payload.name,
-    navigationType: payload.navigationType ?? null,
-    path: payload.path === undefined ? null : toRouteTemplate(payload.path),
-    rating: VALID_RATINGS.has(payload.rating) ? payload.rating : 'unknown',
-    release: payload.release ?? null,
-    value: payload.value,
-  })
+  const rating = VALID_RATINGS.has(payload.rating) ? payload.rating : 'unknown'
+  console.info(
+    JSON.stringify({
+      message: 'Web vital',
+      level: rating === 'good' ? 'info' : 'warn',
+      event: 'web_vital',
+      metric: payload.name,
+      navigationType: payload.navigationType ?? null,
+      path: payload.path === undefined ? null : toRouteTemplate(payload.path),
+      rating,
+      release: payload.release ?? null,
+      value: payload.value,
+    })
+  )
   return new NextResponse(null, { status: 204 })
 }
 
