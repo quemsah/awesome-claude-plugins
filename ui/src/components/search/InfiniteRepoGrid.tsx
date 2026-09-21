@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
+import type { PendingCatalogLoad } from '../../lib/searchState.ts'
 import { cn } from '../../lib/utils.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { RepoCard } from './RepoCard.tsx'
@@ -9,13 +10,19 @@ import { RepoCardSkeleton } from './RepoCardSkeleton.tsx'
 
 interface InfiniteRepoGridProps {
   hasMore: boolean
-  isLoading: boolean
   items: Repo[]
   onLoadMore: () => void
+  pendingLoad: PendingCatalogLoad
 }
 
 /** How long after a batch lands an intersection edge is still attributable to the layout settling. */
 const SETTLE_MS = 400
+
+/** What each in-flight request says while it runs. Only an append adds to what is already on screen. */
+const PENDING_LOAD_ANNOUNCEMENTS: Record<Exclude<PendingCatalogLoad, null>, string> = {
+  append: 'Loading more repositories.',
+  replace: 'Searching repositories.',
+}
 
 /**
  * Two placeholder rows while the next page is in flight. The grid gains a column at sm, lg and xl, so
@@ -32,10 +39,13 @@ const SKELETON_ITEM_CLASSES = [
   'hidden xl:block',
 ]
 
-export function InfiniteRepoGrid({ hasMore, isLoading, items, onLoadMore }: InfiniteRepoGridProps) {
+export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad }: InfiniteRepoGridProps) {
+  const isLoading = pendingLoad !== null
   const observerTarget = useRef<HTMLDivElement>(null)
   const previousItemCount = useRef(items.length)
-  const itemSignature = `${items.length}:${items[0]?.id ?? ''}:${items[items.length - 1]?.id ?? ''}`
+  const firstItemId = items[0]?.id
+  const previousFirstItemId = useRef(firstItemId)
+  const itemSignature = `${items.length}:${firstItemId ?? ''}:${items[items.length - 1]?.id ?? ''}`
   const previousItemSignature = useRef(itemSignature)
   const [loadStatus, setLoadStatus] = useState('')
   const loadActivityAt = useRef(0)
@@ -46,7 +56,13 @@ export function InfiniteRepoGrid({ hasMore, isLoading, items, onLoadMore }: Infi
   const loadMoreState = useRef({ hasMore, isLoading, onLoadMore })
   useEffect(() => {
     loadMoreState.current = { hasMore, isLoading, onLoadMore }
-    if (isLoading) loadActivityAt.current = Date.now()
+    if (isLoading) {
+      loadActivityAt.current = Date.now()
+      // The completion line from the previous request has to leave the live region before the next one
+      // lands: the frame between a response arriving and the count being recomputed would otherwise
+      // announce the old "Loaded N more" under a list that has just been replaced.
+      setLoadStatus('')
+    }
   }, [hasMore, isLoading, onLoadMore])
 
   useEffect(() => {
@@ -78,12 +94,16 @@ export function InfiniteRepoGrid({ hasMore, isLoading, items, onLoadMore }: Infi
   useEffect(() => {
     if (itemSignature === previousItemSignature.current) return
 
-    const loadedCount = items.length - previousItemCount.current
-    setLoadStatus(loadedCount > 0 ? `Loaded ${loadedCount} more repositories.` : '')
+    const appendedCount = items.length - previousItemCount.current
+    // "More" only fits a list that kept what it was showing: a replacement can land a longer first page
+    // than the set it displaced, and a search's totals are announced by the controls above the grid.
+    const isAppend = appendedCount > 0 && firstItemId === previousFirstItemId.current
+    setLoadStatus(isAppend ? `Loaded ${appendedCount} more repositories.` : '')
     previousItemCount.current = items.length
+    previousFirstItemId.current = firstItemId
     previousItemSignature.current = itemSignature
     loadActivityAt.current = Date.now()
-  }, [itemSignature, items.length])
+  }, [firstItemId, itemSignature, items.length])
 
   return (
     <section aria-label="Claude plugins" id="repo-results">
@@ -114,8 +134,11 @@ export function InfiniteRepoGrid({ hasMore, isLoading, items, onLoadMore }: Infi
           ref={observerTarget}
         >
           {/* `invisible` rather than dropping the node: the row keeps its 28px, and a document that
-              changes height between loading and idle is a document whose saved scroll offsets clamp. */}
-          <span className={isLoading ? 'invisible' : undefined}>More repositories available</span>
+              changes height between loading and idle is a document whose saved scroll offsets clamp.
+              An append hides the text because its placeholder rows already say what is happening. */}
+          <span className={pendingLoad === 'append' ? 'invisible' : undefined}>
+            {pendingLoad === 'replace' ? 'Searching repositories...' : 'More repositories available'}
+          </span>
           <button
             className="rounded-md border px-4 py-2 font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
             disabled={isLoading}
@@ -130,7 +153,7 @@ export function InfiniteRepoGrid({ hasMore, isLoading, items, onLoadMore }: Infi
         </div>
       )}
       <p aria-atomic="true" aria-live="polite" className="sr-only" role="status">
-        {isLoading ? 'Loading more repositories.' : loadStatus || null}
+        {pendingLoad ? PENDING_LOAD_ANNOUNCEMENTS[pendingLoad] : loadStatus || null}
       </p>
     </section>
   )

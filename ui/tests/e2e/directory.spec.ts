@@ -33,6 +33,23 @@ async function expectFirstDetailsLink(page: Page, repoPath: string) {
   await expect(page.getByRole('link', { name: detailsLinkName }).first()).toHaveAttribute('aria-label', `View details for ${repoPath}`)
 }
 
+/**
+ * Holds every catalog request until the returned release runs, so a test can read what the grid says
+ * while a request is still in flight instead of racing the response, whose duration the test controls.
+ */
+async function holdCatalogRequests(page: Page): Promise<() => void> {
+  let release: () => void = () => {}
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/catalog*', async (route) => {
+    await held
+    const response = await route.fetch()
+    await route.fulfill({ response })
+  })
+  return release
+}
+
 test('header navigation, external actions, and theme selection work across routes', async ({ page }) => {
   await page.goto('/')
 
@@ -84,6 +101,55 @@ test('home page search updates result counts, visible cards, and empty state', a
   await expect(page).toHaveURL('/')
   await expect(page.getByText('No repositories match your search')).toBeHidden()
   await expectFirstDetailsLink(page, 'obra/superpowers')
+})
+
+test('a search that replaces the results reports searching rather than loading more', async ({ page }) => {
+  const release = await holdCatalogRequests(page)
+  await page.goto('/')
+
+  await expect(page.getByRole('link', { name: detailsLinkName }).first()).toBeVisible()
+  const loadStatus = page.locator('#repo-results > p[role="status"]')
+
+  await page.getByRole('searchbox', { name: 'Search repositories' }).fill('superpowers')
+  await expect(page.getByText('Searching repositories...')).toBeVisible()
+  await expect(loadStatus).toHaveText('Searching repositories.')
+  await expect(page.getByText('Loading more repositories')).toHaveCount(0)
+
+  release()
+  await expect(page.getByRole('link', { name: 'View details for obra/superpowers' }).first()).toBeVisible()
+  await expect(loadStatus).toHaveText('')
+})
+
+test('reaching the end of the grid reports loading more rather than searching', async ({ page }) => {
+  const release = await holdCatalogRequests(page)
+  await page.goto('/')
+
+  await expect(page.getByRole('link', { name: detailsLinkName }).first()).toBeVisible()
+  const loadStatus = page.locator('#repo-results > p[role="status"]')
+
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await expect(loadStatus).toHaveText('Loading more repositories.')
+  await expect(page.getByText('Searching repositories')).toHaveCount(0)
+
+  release()
+  await expect(page.getByRole('link', { name: detailsLinkName })).toHaveCount(48)
+  await expect(loadStatus).toHaveText('Loaded 24 more repositories.')
+})
+
+test('a search started from an empty result set reports searching instead of no matches', async ({ page }) => {
+  const release = await holdCatalogRequests(page)
+  await page.goto('/?q=definitely-no-matching-repository-name')
+
+  const noMatches = page.getByText('No repositories match your search')
+  await expect(noMatches).toBeVisible()
+  await expect(page.locator('#repo-results')).toHaveCount(0)
+
+  await page.getByRole('searchbox', { name: 'Search repositories' }).fill('superpowers')
+  await expect(page.getByText('Searching repositories...')).toBeVisible()
+  await expect(noMatches).toBeHidden()
+
+  release()
+  await expect(page.getByRole('link', { name: 'View details for obra/superpowers' }).first()).toBeVisible()
 })
 
 test('home page keeps query variants out of search indexes', async ({ page }) => {

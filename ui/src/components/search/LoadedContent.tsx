@@ -1,15 +1,16 @@
+import type { PendingCatalogLoad } from '../../lib/searchState.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { Card, CardContent } from '../ui/card.tsx'
 import { InfiniteRepoGrid } from './InfiniteRepoGrid.tsx'
 
 interface LoadedContentProps {
   hasMore: boolean
-  isLoading: boolean
   onLoadMore: () => void
+  pendingLoad: PendingCatalogLoad
   repos: Repo[]
 }
 
-export function LoadedContent({ hasMore, isLoading, onLoadMore, repos }: LoadedContentProps) {
+export function LoadedContent({ hasMore, onLoadMore, pendingLoad, repos }: LoadedContentProps) {
   return repos.length === 0 ? (
     <Card className="py-12 text-center">
       <CardContent>
@@ -17,6 +18,6 @@ export function LoadedContent({ hasMore, isLoading, onLoadMore, repos }: LoadedC
       </CardContent>
     </Card>
   ) : (
-    <InfiniteRepoGrid hasMore={hasMore} isLoading={isLoading} items={repos} onLoadMore={onLoadMore} />
+    <InfiniteRepoGrid hasMore={hasMore} items={repos} onLoadMore={onLoadMore} pendingLoad={pendingLoad} />
   )
 }
