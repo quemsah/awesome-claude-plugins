@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, permanentRedirect } from 'next/navigation'
 import { RepoCard } from '../../../components/search/RepoCard.tsx'
-import { searchCatalogRepos } from '../../../lib/catalog.ts'
+import { getBrowsePageCount, searchCatalogRepos } from '../../../lib/catalog.ts'
 import { CATALOG_PAGE_SIZE } from '../../../lib/catalogPagination.ts'
 import { BASE_URL } from '../../../lib/constants.ts'
 
@@ -54,7 +54,7 @@ export default async function BrowsePage({ params }: BrowsePageProps) {
       <div className="container mx-auto px-4 py-6 sm:px-6 sm:py-8">
         <h1 className="mb-2 font-bold text-3xl">Browse Claude Code plugin repositories</h1>
         <p className="mb-6 text-muted-foreground">
-          Page {page} of {Math.ceil(result.total / CATALOG_PAGE_SIZE)}
+          Page {page} of {getBrowsePageCount()}
         </p>
         <ul className="m-0 grid list-none grid-cols-1 gap-6 p-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {result.repos.map((repo) => (
