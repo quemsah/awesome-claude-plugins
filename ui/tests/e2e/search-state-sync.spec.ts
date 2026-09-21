@@ -7,7 +7,7 @@ async function chooseSortOption(page: Page, optionName: 'Stars' | 'Forks' | 'Plu
 
 /** A retried assertion passes on its first match, so a late timer that overwrites a settled state
  * needs a hold window instead. */
-async function expectStable<T>(read: () => Promise<T>, expected: T, holdMs: number) {
+async function expectStable<T extends Record<string, unknown>>(read: () => Promise<T>, expected: T, holdMs: number) {
   const deadline = Date.now() + holdMs
   do {
     await new Promise((resolve) => setTimeout(resolve, 100))
