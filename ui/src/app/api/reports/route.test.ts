@@ -8,13 +8,7 @@ afterEach(() => {
 describe('POST /api/reports', () => {
   it('deduplicates repeated reports and logs a route template as one structured warning', async () => {
     const info = mockInfo()
-    const report = {
-      type: 'csp-violation',
-      body: {
-        documentURL: 'https://awesomeclaudeplugins.com/alexjx/skills',
-        effectiveDirective: 'require-trusted-types-for',
-      },
-    }
+    const report = cspReport('https://awesomeclaudeplugins.com/alexjx/skills', 'require-trusted-types-for')
 
     const response = await post([report, report, report])
 
@@ -34,14 +28,8 @@ describe('POST /api/reports', () => {
     const info = mockInfo()
     await post(
       [
-        {
-          type: 'csp-violation',
-          body: { documentURL: 'https://awesomeclaudeplugins.com/stats', effectiveDirective: 'script-src' },
-        },
-        {
-          type: 'csp-violation',
-          body: { documentURL: 'https://awesomeclaudeplugins.com/stats', effectiveDirective: 'style-src' },
-        },
+        cspReport('https://awesomeclaudeplugins.com/stats', 'script-src'),
+        cspReport('https://awesomeclaudeplugins.com/stats', 'style-src'),
       ],
       '198.51.100.2'
     )
@@ -49,6 +37,17 @@ describe('POST /api/reports', () => {
     expect(info).toHaveBeenCalledTimes(2)
   })
 })
+
+function cspReport(documentUrl: string, effectiveDirective: string) {
+  return {
+    type: 'csp-violation',
+    body: {
+      // biome-ignore lint/style/useNamingConvention: Reporting API uses the standard documentURL field name.
+      documentURL: documentUrl,
+      effectiveDirective,
+    },
+  }
+}
 
 function mockInfo() {
   return vi.spyOn(console, 'info').mockImplementation(() => {})
