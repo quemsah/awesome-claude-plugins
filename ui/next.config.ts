@@ -46,6 +46,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   env: {
+    // biome-ignore lint/style/useNamingConvention: Next.js env keys must match the public environment variable name.
     NEXT_PUBLIC_RELEASE: release,
   },
   // Dev-only: `next dev` allow-lists the `localhost` hostname but not the `127.0.0.1` IP literal.
