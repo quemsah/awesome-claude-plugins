@@ -52,8 +52,8 @@ export default function PrivacyPage() {
           <section>
             <h2 className="mb-2 font-semibold text-foreground text-xl">Security reports</h2>
             <p>
-              Browsers may send a Content Security Policy violation report when a page attempts to load a disallowed resource. We use the
-              page path and violated policy directive to investigate site security.
+              Browsers may send a Content Security Policy violation report when a page attempts to load a disallowed resource. We reduce
+              the page path to a route template and use it with the violated policy directive to investigate site security.
             </p>
           </section>
           <section>
