@@ -1,13 +1,13 @@
 /** biome-ignore-all lint/style/useNamingConvention: JSON Feed requires snake_case fields. */
-import reposData from '../../data/repos.json' with { type: 'json' }
 import statsData from '../../data/stats.json' with { type: 'json' }
+import { getCanonicalCatalogRepos } from '../../lib/catalog.ts'
 import { BASE_URL } from '../../lib/constants.ts'
 import { getCatalogSummary } from '../../lib/llmsText.ts'
 
 export const dynamic = 'force-static'
 
 export function GET() {
-  const summary = getCatalogSummary(reposData, statsData)
+  const summary = getCatalogSummary(getCanonicalCatalogRepos(), statsData)
   const updatedAt = summary.updatedAt ? new Date(summary.updatedAt).toISOString() : undefined
   const content = `The catalog contains ${summary.repoCount} repositories, ${summary.pluginRepositoryCount} repositories with validated plugin counts, and ${summary.pluginCount} reported plugin entries.`
 
