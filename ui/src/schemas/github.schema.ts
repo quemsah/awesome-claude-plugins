@@ -29,16 +29,24 @@ const GitHubUrlSchema = z.string().refine(isValidGitHubUrl, 'Must be a secure Gi
 const GitHubSegmentSchema = z.string().min(1).max(100).refine(isGitHubSegment, 'Must be a valid GitHub path segment')
 
 const GitHubOwnerSchema = z.object({
-  avatar_url: HttpUrlSchema,
+  avatar_url: HttpUrlSchema.nullable().optional().default(null),
   html_url: GitHubUrlSchema,
   login: GitHubSegmentSchema,
-  type: z.string().regex(/^[A-Za-z][A-Za-z0-9_-]*$/, 'Must be a valid GitHub owner type'),
+  type: z
+    .string()
+    .regex(/^[A-Za-z][A-Za-z0-9_-]*$/, 'Must be a valid GitHub owner type')
+    .nullable()
+    .optional()
+    .default(null),
 })
 
 const GitHubLicenseSchema = z.object({
   name: z.string().min(1).max(160),
   url: HttpUrlSchema.nullable().optional(),
 })
+
+/** GitHub sends an empty string for a repository without a homepage, which is absent rather than malformed. */
+const HomepageUrlSchema = z.preprocess((value) => (value === '' ? null : value), HttpUrlSchema.nullable().optional().default(null))
 
 export const GitHubRepositorySchema = z
   .object({
@@ -47,11 +55,12 @@ export const GitHubRepositorySchema = z
     description: z.string().max(10_000).nullable().optional().default(null),
     forks_count: z.number().int().nonnegative().nullable().optional().default(0),
     html_url: GitHubUrlSchema,
-    homepage: HttpUrlSchema.nullable().optional().default(null),
+    homepage: HomepageUrlSchema,
     language: z.string().max(100).nullable().optional().default(null),
     license: GitHubLicenseSchema.nullable().optional().default(null),
     name: GitHubSegmentSchema,
-    open_issues_count: z.number().int().nonnegative().nullable().optional().default(0),
+    // The catalog never records issue counts and GitHub may omit the field, so 0 would read as a confirmed count.
+    open_issues_count: z.number().int().nonnegative().nullable().optional().default(null),
     owner: GitHubOwnerSchema,
     pushed_at: z.string().datetime({ offset: true }).nullable().optional().default(null),
     size: z.number().int().nonnegative().nullable().optional().default(null),

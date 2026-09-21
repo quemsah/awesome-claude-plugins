@@ -12,12 +12,24 @@ const repoMarkdownAlternatePattern = /\/ykdojo\/claude-code-tips\.md$/
 const repoOpenGraphImagePattern = /\/og\/ykdojo\/claude-code-tips$/
 const installButtonPattern = /install/i
 
-test('repo detail page renders server-fetched repository and marketplace data', async ({ page }) => {
+test('repo detail page serves catalog repository data in its HTML without contacting GitHub', async ({ page }) => {
+  const html = await (await page.request.get('/ykdojo/claude-code-tips')).text()
+
+  expect(html).toContain('45+ tips for getting the most out of Claude Code')
+  expect(html).not.toContain('A mocked Claude Code plugin repository')
+  expect(html).not.toContain('>Unknown<')
+  expect(html).not.toContain(staleRepositoryText)
+  expect(html).not.toContain(unavailableRepositoryText)
+})
+
+test('repo detail page refreshes repository and marketplace data in the browser', async ({ page }) => {
   await mockClipboard(page)
   await page.goto('/ykdojo/claude-code-tips')
 
   await expect(page.getByRole('heading', { name: 'claude-code-tips' })).toBeVisible()
   await expect(page.getByText('A mocked Claude Code plugin repository')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Visit repository homepage' })).toBeVisible()
+  await expect(page.locator('[data-slot="badge"]').filter({ hasText: 'issues' })).toHaveCount(1)
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', repoCanonicalPattern)
   await expect(page.locator('link[rel="alternate"][type="text/markdown"]')).toHaveAttribute('href', repoMarkdownAlternatePattern)
   await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', repoOpenGraphImagePattern)
@@ -90,6 +102,7 @@ test('repo detail page renders a catalog snapshot when GitHub reports the reposi
   await expect(page.getByText('[Archived] Markdown preview server for AI coding agents.')).toBeVisible()
   await expect(page.getByText(unavailableRepositoryText)).toBeVisible()
   await expect(page.getByText(staleRepositoryText)).toBeHidden()
+  await expect(page.locator('[data-slot="badge"]').filter({ hasText: 'issues' })).toHaveCount(0)
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', mdserveCanonicalPattern)
   await expect(page.getByText(marketplaceMissingText)).toBeVisible()
 })

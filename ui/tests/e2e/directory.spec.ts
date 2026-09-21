@@ -50,6 +50,10 @@ async function holdCatalogRequests(page: Page): Promise<() => void> {
   return release
 }
 
+function statCardValue(page: Page, title: string) {
+  return page.locator('[data-slot=card]', { has: page.getByRole('heading', { name: title }) }).locator('[data-slot=card-content] > div')
+}
+
 test('header navigation, external actions, and theme selection work across routes', async ({ page }) => {
   await page.goto('/')
 
@@ -215,8 +219,11 @@ test('repository grid loads more cards as the user reaches the end of the curren
 })
 
 test('stats page filters chart ranges and trend state', async ({ page }) => {
-  await page.clock.setFixedTime(new Date('2026-06-24T12:00:00Z'))
+  await page.clock.setFixedTime(new Date('2026-09-21T12:00:00Z'))
   await page.goto('/stats')
+
+  const averageDailyIncrease = statCardValue(page, 'Avg Daily Increase')
+  const allTimeAverage = (await averageDailyIncrease.textContent()) ?? ''
 
   await expect(page.getByRole('heading', { name: 'Repositories Statistics' })).toBeVisible()
   await expect(page.getByText(allTimeChartText)).toBeVisible()
@@ -228,16 +235,20 @@ test('stats page filters chart ranges and trend state', async ({ page }) => {
   await page.getByRole('option', { name: 'Last 30 days' }).click()
   await expect(page.getByText(last30DaysChartText)).toBeVisible()
   await expect(page.getByText('Trend:')).toBeVisible()
+  await expect(averageDailyIncrease).not.toHaveText(allTimeAverage)
+  const last30DaysAverage = (await averageDailyIncrease.textContent()) ?? ''
 
   await page.getByRole('combobox').click()
   await page.getByRole('option', { name: 'Last 7 days' }).click()
   await expect(page.getByText(last7DaysChartText)).toBeVisible()
   await expect(page.getByText('Trend:')).toBeVisible()
+  await expect(averageDailyIncrease).not.toHaveText(last30DaysAverage)
 
   await page.getByRole('combobox').click()
   await page.getByRole('option', { name: 'All time' }).click()
   await expect(page.getByText(allTimeChartText)).toBeVisible()
   await expect(page.getByText('Trend:')).toBeHidden()
+  await expect(averageDailyIncrease).toHaveText(allTimeAverage)
 })
 
 test('about page exposes static project cards and header navigation', async ({ page }) => {
