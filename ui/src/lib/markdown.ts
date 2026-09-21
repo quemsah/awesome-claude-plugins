@@ -152,8 +152,7 @@ ${descriptionBody}
 
 - Publication state: ${quality.publicationState}
 - Quality note: ${quality.qualityReason}
-- Catalog snapshot: ${formatDate(getCatalogLastModified())}
-- Repository metadata source: public GitHub API when available
+- Repository metadata source: catalog snapshot dated ${formatDate(getCatalogLastModified())}, not live GitHub API data
 
 ## Installation
 

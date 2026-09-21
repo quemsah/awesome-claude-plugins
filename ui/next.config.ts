@@ -14,27 +14,30 @@ const scriptSource = [
 ].join(' ')
 
 const GITHUB_RAW_URL = process.env.GITHUB_RAW_URL ?? 'https://raw.githubusercontent.com'
+const GITHUB_API_URL = process.env.GITHUB_API_URL ?? 'https://api.github.com'
 const release = process.env.NEXT_PUBLIC_RELEASE ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? ''
 
-function extractConnectOrigin(url: string): string {
+function extractConnectOrigin(url: string, fallback: string): string {
   try {
     const parsed = new URL(url)
     if (!['http:', 'https:'].includes(parsed.protocol)) {
-      return 'https://raw.githubusercontent.com'
+      return fallback
     }
     return parsed.origin
   } catch {
-    return 'https://raw.githubusercontent.com'
+    return fallback
   }
 }
 
-const rawOrigin = extractConnectOrigin(GITHUB_RAW_URL)
+const rawOrigin = extractConnectOrigin(GITHUB_RAW_URL, 'https://raw.githubusercontent.com')
+// The browser reads both origins from runtime props, so an override has to move the policy with it.
+const apiOrigin = extractConnectOrigin(GITHUB_API_URL, 'https://api.github.com')
 
 const mockGithubUrl = `http://127.0.0.1:${process.env.MOCK_GITHUB_PORT ?? '3100'}`
 
 const connectSource = [
   "'self'",
-  'https://api.github.com',
+  apiOrigin,
   rawOrigin,
   'https://queue.simpleanalyticscdn.com',
   'https://scripts.simpleanalyticscdn.com',

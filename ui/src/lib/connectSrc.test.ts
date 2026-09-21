@@ -43,4 +43,16 @@ describe('connect-src and the e2e mock server', () => {
     ])
     expect(value).not.toContain('127.0.0.1')
   })
+
+  it('allows the origin GITHUB_API_URL points the browser at, apart from the raw origin', async () => {
+    const value = await connectSrc([['GITHUB_API_URL', 'https://gh-api.internal.example']])
+
+    expect(value).toContain('https://gh-api.internal.example')
+  })
+
+  it('keeps api.github.com in the policy when no API override is given', async () => {
+    const value = await connectSrc([['GITHUB_API_URL', undefined]])
+
+    expect(value).toContain('https://api.github.com')
+  })
 })

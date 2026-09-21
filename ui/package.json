@@ -10,14 +10,14 @@
     "build": "next build",
     "build:analyze": "cross-env ANALYZE=true next build --webpack",
     "start": "next start",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "indexnow": "node scripts/indexnow.mjs",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "lint": "biome check .",
     "fix": "biome check --write --unsafe .",
     "format": "biome format --write .",
-    "prepare": "husky"
+    "prepare": "cd .. && husky ui/.husky"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.2.6",
