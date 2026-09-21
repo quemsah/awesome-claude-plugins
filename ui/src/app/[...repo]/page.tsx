@@ -5,8 +5,8 @@ import { RepoPageClient } from '../../components/repo/RepoPageClient.tsx'
 import RepoStructuredData from '../../components/repo/RepoStructuredData.tsx'
 import { findCatalogRepo, getCatalogQualityForRepo, getRepoCanonicalPath } from '../../lib/catalog.ts'
 import { BASE_URL } from '../../lib/constants.ts'
-import { fetchGitHubRepository, GITHUB_RAW_URL } from '../../lib/github.ts'
-import { type CatalogSnapshotReason, createCatalogRepositorySnapshot } from '../../lib/repositorySnapshot.ts'
+import { GITHUB_API_URL, GITHUB_RAW_URL } from '../../lib/github.ts'
+import { createCatalogRepositorySnapshot } from '../../lib/repositorySnapshot.ts'
 import type { GitHubRepository } from '../../schemas/github.schema.ts'
 
 type RouteParams = {
@@ -82,67 +82,27 @@ export default async function RepoPage({ params }: RouteParams) {
   }
 
   let repository: GitHubRepository
-  let repositorySnapshotReason: CatalogSnapshotReason | undefined
-  let repositoryResponse: Response | null = null
   try {
-    repositoryResponse = await fetchGitHubRepository(repo[0], repo[1])
+    // No GitHub request here: the server renders catalog data and the browser refreshes it live.
+    repository = createCatalogRepositorySnapshot(catalogRepo)
   } catch (error) {
-    console.error('Failed to fetch repository from GitHub', {
+    console.error('Failed to build catalog repository snapshot', {
       error: error instanceof Error ? error.message : String(error),
       repoPath,
     })
-  }
-
-  const buildFallbackRepository = (): GitHubRepository | null => {
-    try {
-      return createCatalogRepositorySnapshot(catalogRepo)
-    } catch (error) {
-      console.error('Failed to build catalog repository snapshot', {
-        error: error instanceof Error ? error.message : String(error),
-        repoPath,
-      })
-      return null
-    }
-  }
-
-  // Catalogued repositories are published in the sitemap, so a GitHub 404 (rename, move, deletion)
-  // must still render the catalog snapshot rather than drop the URL to a 404 page.
-  if (!repositoryResponse?.ok) {
-    const fallback = buildFallbackRepository()
-    if (!fallback) notFound()
-    repository = fallback
-    repositorySnapshotReason = repositoryResponse?.status === 404 ? 'github-not-found' : 'github-unavailable'
-  } else {
-    try {
-      const repositoryPayload: unknown = await repositoryResponse.json()
-      if (typeof repositoryPayload !== 'object' || repositoryPayload === null) {
-        throw new TypeError('GitHub repository response is not an object')
-      }
-      repository = repositoryPayload as GitHubRepository
-    } catch (error) {
-      console.error('Failed to parse GitHub repository response', {
-        error: error instanceof Error ? error.message : String(error),
-        repoPath,
-        stack: error instanceof Error ? error.stack : undefined,
-      })
-      const fallback = buildFallbackRepository()
-      if (!fallback) notFound()
-      repository = fallback
-      repositorySnapshotReason = 'github-unavailable'
-    }
+    notFound()
   }
 
   return (
     <>
       <RepoStructuredData repo={repository} />
       <RepoPageClient
-        defaultBranch={repository.default_branch}
+        apiBaseUrl={GITHUB_API_URL}
         owner={repo[0]}
         rawBaseUrl={GITHUB_RAW_URL}
         repo={repository}
         repoName={repo[1]}
         repoPath={repoPath}
-        repoSnapshotReason={repositorySnapshotReason}
       />
     </>
   )

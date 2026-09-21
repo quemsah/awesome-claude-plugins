@@ -37,6 +37,42 @@ describe('GitHubRepositorySchema', () => {
     }
   })
 
+  it('treats the empty homepage GitHub sends for a repository without one as absent', () => {
+    const result = GitHubRepositorySchema.safeParse({
+      ...validRepository,
+      homepage: '',
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.homepage).toBeNull()
+    }
+  })
+
+  it('treats an open issue count GitHub omits as unknown rather than zero', () => {
+    const repositoryWithoutIssues: Partial<typeof validRepository> = { ...validRepository }
+    delete repositoryWithoutIssues.open_issues_count
+
+    const result = GitHubRepositorySchema.safeParse(repositoryWithoutIssues)
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.open_issues_count).toBeNull()
+    }
+  })
+
+  it('keeps a genuine zero open issue count as zero', () => {
+    const result = GitHubRepositorySchema.safeParse({
+      ...validRepository,
+      open_issues_count: 0,
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.open_issues_count).toBe(0)
+    }
+  })
+
   it('rejects non-HTTP(S) homepage URLs', () => {
     const result = GitHubRepositorySchema.safeParse({
       ...validRepository,

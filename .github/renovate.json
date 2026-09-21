@@ -27,7 +27,7 @@
     },
     {
       "description": "Group lower-risk type and tooling updates.",
-      "matchPackageNames": ["@biomejs/biome", "@octokit/openapi-types", "@playwright/test", "@tailwindcss/postcss", "husky", "tailwindcss", "typescript"],
+      "matchPackageNames": ["@biomejs/biome", "@playwright/test", "@tailwindcss/postcss", "husky", "tailwindcss", "typescript"],
       "matchPackagePatterns": ["^@types/"],
       "matchUpdateTypes": ["minor", "patch"],
       "schedule": ["after 2pm and before 3pm on Wednesday"],
