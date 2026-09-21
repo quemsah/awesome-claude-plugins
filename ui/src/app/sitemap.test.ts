@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getIndexableCatalogRepos, getRepoCanonicalPath, searchCatalogRepos } from '../lib/catalog.ts'
+import { getCatalogLastModified, getIndexableCatalogRepos, getRepoCanonicalPath, searchCatalogRepos } from '../lib/catalog.ts'
 import { CATALOG_PAGE_SIZE } from '../lib/catalogPagination.ts'
 import { BASE_URL } from '../lib/constants.ts'
 import sitemap from './sitemap.ts'
@@ -31,10 +31,12 @@ describe('sitemap', () => {
   })
 
   it('gives every repository url the catalog last-modified date', () => {
-    const lastModifiedByUrl = new Map(entries.map((entry) => [entry.url, entry.lastModified]))
+    const catalogTimestamp = getCatalogLastModified().getTime()
+    const timestampByUrl = new Map(entries.map((entry) => [entry.url, entry.lastModified ? new Date(entry.lastModified).getTime() : null]))
     const repoUrls = getIndexableCatalogRepos().map((repo) => `${BASE_URL}/${getRepoCanonicalPath(repo)}`)
+    const wrongDate = repoUrls.filter((url) => timestampByUrl.get(url) !== catalogTimestamp)
 
     expect(repoUrls.length).toBeGreaterThan(0)
-    expect(repoUrls.filter((url) => lastModifiedByUrl.get(url) === undefined)).toHaveLength(0)
+    expect(wrongDate).toHaveLength(0)
   })
 })
