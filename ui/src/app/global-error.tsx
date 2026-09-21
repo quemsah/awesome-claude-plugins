@@ -7,13 +7,28 @@ type GlobalErrorProps = {
   reset: () => void
 }
 
+type Theme = {
+  className?: string
+  colorScheme?: string
+}
+
+// next-themes writes the theme onto the <html> element that app/layout.tsx rendered, and this boundary replaces
+// that element, so the theme has to be carried over from the element that is still current while rendering.
+function readTheme(): Theme {
+  if (typeof document === 'undefined') return {}
+  const { className, style } = document.documentElement
+  return { className, colorScheme: style.colorScheme }
+}
+
 export default function GlobalError({ error, reset }: GlobalErrorProps) {
   useEffect(() => {
     console.error(error)
   }, [error])
 
+  const theme = readTheme()
+
   return (
-    <html lang="en-US">
+    <html className={theme.className} lang="en-US" style={{ colorScheme: theme.colorScheme }}>
       <body className="bg-background text-foreground">
         <main className="flex min-h-dvh items-center justify-center p-4" id="main-content" tabIndex={-1}>
           <section aria-live="assertive" className="max-w-md text-center" role="alert">
