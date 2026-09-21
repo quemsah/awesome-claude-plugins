@@ -25,9 +25,14 @@ type ChartStatsItem = StatsItem & {
   interpolated?: boolean
 }
 
-export function calculateTrend(filteredStats: StatsItem[]): { growth: number; percentage: number; periodDays: number } {
+export function calculateTrend(filteredStats: StatsItem[]): {
+  growth: number
+  percentage: number
+  periodDays: number
+  averageDailyIncrease: number
+} {
   if (filteredStats.length <= 1) {
-    return { growth: 0, percentage: 0, periodDays: 0 }
+    return { growth: 0, percentage: 0, periodDays: 0, averageDailyIncrease: 0 }
   }
 
   const firstSize = filteredStats[0].size
@@ -43,6 +48,7 @@ export function calculateTrend(filteredStats: StatsItem[]): { growth: number; pe
     growth: totalGrowth,
     percentage,
     periodDays,
+    averageDailyIncrease: Math.round((totalGrowth / periodDays) * 100) / 100,
   }
 }
 
@@ -123,20 +129,6 @@ export function StatsPage({ stats }: StatsPageProps) {
   const activeRangeLabel = isEmptyRange ? timeRangeLabels.all : timeRangeLabels[timeRange]
   const latestSnapshotLabel = chartData.length > 0 ? chartData[chartData.length - 1].formattedDate : ''
 
-  const overallTrends = useMemo(() => {
-    if (stats.length <= 1) {
-      return { averageDailyIncrease: 0, totalDays: 0 }
-    }
-    const firstSize = stats[0].size
-    const lastSize = stats[stats.length - 1].size
-    const totalGrowth = lastSize - firstSize
-    const totalDays = calculateTrend(stats).periodDays
-    return {
-      averageDailyIncrease: Math.round((totalGrowth / totalDays) * 100) / 100,
-      totalDays,
-    }
-  }, [stats])
-
   useEffect(() => {
     if (!chartRef.current) return
 
@@ -195,8 +187,8 @@ export function StatsPage({ stats }: StatsPageProps) {
           </CardHeader>
           <CardContent>
             <div className="font-bold text-2xl">
-              {overallTrends.averageDailyIncrease >= 0 ? '+' : ''}
-              {overallTrends.averageDailyIncrease}
+              {trendData.averageDailyIncrease >= 0 ? '+' : ''}
+              {trendData.averageDailyIncrease}
             </div>
           </CardContent>
         </Card>
