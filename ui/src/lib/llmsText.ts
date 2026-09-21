@@ -94,7 +94,7 @@ Discover the full machine-readable surface at [API Catalog](${BASE_URL}/.well-kn
 - [Home page Markdown](${BASE_URL}/index.md)
 - [Statistics Markdown](${BASE_URL}/stats.md)
 - [About Markdown](${BASE_URL}/about.md)
-- Repository detail Markdown: \`${BASE_URL}/{owner}/{repo}.md\`
+- Repository detail Markdown: \`${BASE_URL}/{owner}/{repo}.md\`, or \`${BASE_URL}/{owner}/{repo}.md.md\` for a repository whose name already ends in \`.md\` (\`${BASE_URL}/sstklen/yes.md\` is a repository, not a rendition)
 
 Every HTML page announces its Markdown rendition with a \`<link rel="alternate" type="text/markdown">\`, and every response carries a \`Link\` header with \`rel="api-catalog"\`, \`rel="describedby"\` and \`rel="sitemap"\`.
 

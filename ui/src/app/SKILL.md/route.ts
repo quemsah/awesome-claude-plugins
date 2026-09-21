@@ -28,7 +28,7 @@ Install commands use this form:
 
 ${renderCatalogApiContract()}
 
-Repository detail pages are also published as Markdown at \`/{owner}/{repo}.md\`, which serves \`text/markdown; charset=utf-8\` with the same install command shown above.
+Repository detail pages are also published as Markdown at \`/{owner}/{repo}.md\`, which serves \`text/markdown; charset=utf-8\` with the same install command shown above. A repository whose own name already ends in \`.md\` keeps that path as its HTML page, so its Markdown is served one suffix further out (\`/sstklen/yes.md.md\`); each detail page announces its own address in a \`<link rel="alternate" type="text/markdown">\`.
 
 ## Machine-readable resources
 
