@@ -126,7 +126,7 @@ test('a search that replaces the results reports searching rather than loading m
 
   release()
   await expect(page.getByRole('link', { name: 'View details for obra/superpowers' }).first()).toBeVisible()
-  await expect(loadStatus).toHaveText('')
+  await expect(loadStatus).toHaveText('Repository results updated.')
 })
 
 test('reaching the end of the grid reports loading more rather than searching', async ({ page }) => {
@@ -171,6 +171,20 @@ test('home page keeps query variants out of search indexes', async ({ page }) =>
 
   await page.goto('/?sort=forks-desc')
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', noindexFollowRobotsPattern)
+})
+
+test('a completed sort announces that repository results were updated', async ({ page }) => {
+  const release = await holdCatalogRequests(page)
+  await page.goto('/')
+
+  await expect(page.getByRole('link', { name: detailsLinkName }).first()).toBeVisible()
+  const loadStatus = page.locator('#repo-results > p[role="status"]')
+
+  await chooseSortOption(page, 'Forks')
+  await expect(loadStatus).toHaveText('Searching repositories.')
+
+  release()
+  await expect(loadStatus).toHaveText('Repository results updated.')
 })
 
 test('home page sort modes update the visible repository ordering', async ({ page }) => {
@@ -332,7 +346,7 @@ test('a replacement that lands a longer first page does not announce more reposi
   // only thing that says whether this was an append is the operation that issued the request.
   await page.getByRole('searchbox', { name: 'Search repositories' }).fill('')
   await expect(detailsLinks).toHaveCount(24)
-  await expect(loadStatus).toHaveText('')
+  await expect(loadStatus).toHaveText('Repository results updated.')
 })
 
 test('stats page filters chart ranges and trend state', async ({ page }) => {

@@ -13,6 +13,7 @@ interface InfiniteRepoGridProps {
   items: Repo[]
   onLoadMore: () => void
   pendingLoad: PendingCatalogLoad
+  replaceCompletion: number
 }
 
 /** How long after a batch lands an intersection edge is still attributable to the layout settling. */
@@ -43,12 +44,13 @@ const SKELETON_ITEM_CLASSES = [
   'hidden xl:block',
 ]
 
-export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad }: InfiniteRepoGridProps) {
+export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad, replaceCompletion }: InfiniteRepoGridProps) {
   const isLoading = pendingLoad !== null
   const observerTarget = useRef<HTMLDivElement>(null)
   const previousItemCount = useRef(items.length)
   const itemSignature = `${items.length}:${items[0]?.id ?? ''}:${items[items.length - 1]?.id ?? ''}`
   const previousItemSignature = useRef(itemSignature)
+  const previousReplaceCompletion = useRef(replaceCompletion)
   const [loadStatus, setLoadStatus] = useState('')
   const loadActivityAt = useRef(0)
   // Which operation the in-flight and the just-finished request were. The grid cannot recover that from
@@ -171,12 +173,21 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad }: In
     // "More" only fits a list that kept what it was showing, and only `SearchPage` knows that: a
     // replacement can land a longer first page than the set it displaced. A search's totals are
     // announced by the controls above the grid, so a replacement leaves this region empty.
-    setLoadStatus(finishedLoad.current === 'append' && appendedCount > 0 ? `Loaded ${appendedCount} more repositories.` : '')
+    if (finishedLoad.current === 'append') {
+      setLoadStatus(appendedCount > 0 ? `Loaded ${appendedCount} more repositories.` : '')
+    }
     finishedLoad.current = null
     previousItemCount.current = items.length
     previousItemSignature.current = itemSignature
     loadActivityAt.current = Date.now()
   }, [itemSignature, items.length])
+
+  useEffect(() => {
+    if (replaceCompletion === previousReplaceCompletion.current) return
+
+    previousReplaceCompletion.current = replaceCompletion
+    setLoadStatus('Repository results updated.')
+  }, [replaceCompletion])
 
   return (
     <section aria-label="Claude plugins" id="repo-results">

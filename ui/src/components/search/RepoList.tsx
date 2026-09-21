@@ -9,6 +9,7 @@ interface RepoListProps {
   hasMore: boolean
   onLoadMore: () => void
   pendingLoad: PendingCatalogLoad
+  replaceCompletion: number
   sortedRepos: Repo[]
 }
 
@@ -16,11 +17,17 @@ const searchingNotice = { announcement: 'Searching repositories.', visible: 'Sea
 const failedNotice = { announcement: 'Repository search failed.', visible: 'Failed to load repositories. Please try again later' }
 const noMatchesNotice = { announcement: 'Repository search returned no matches.', visible: 'No repositories match your search' }
 
-export function RepoList({ hasLoadError, hasMore, onLoadMore, pendingLoad, sortedRepos }: RepoListProps) {
+export function RepoList({ hasLoadError, hasMore, onLoadMore, pendingLoad, replaceCompletion, sortedRepos }: RepoListProps) {
   if (sortedRepos.length > 0) {
     return (
       <div>
-        <LoadedContent hasMore={hasMore} onLoadMore={onLoadMore} pendingLoad={pendingLoad} repos={sortedRepos} />
+        <LoadedContent
+          hasMore={hasMore}
+          onLoadMore={onLoadMore}
+          pendingLoad={pendingLoad}
+          replaceCompletion={replaceCompletion}
+          repos={sortedRepos}
+        />
       </div>
     )
   }

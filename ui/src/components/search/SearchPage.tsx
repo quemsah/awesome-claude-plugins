@@ -49,6 +49,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   const [total, setTotal] = useState(initialTotal)
   const [hasMore, setHasMore] = useState(initialTotal > initialRepos.length)
   const [pendingLoad, setPendingLoad] = useState<PendingCatalogLoad>(null)
+  const [replaceCompletion, setReplaceCompletion] = useState(0)
   const [hasLoadError, setHasLoadError] = useState(false)
   const initialRequest = useRef(true)
   const nextPage = useRef(1)
@@ -135,6 +136,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         setPluginsCount(result.pluginsCount)
         setTotal(result.total)
         setHasMore(result.hasMore)
+        setReplaceCompletion((current) => current + 1)
       } catch {
         if (!controller.signal.aborted) {
           setHasLoadError(true)
@@ -281,7 +283,14 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         searchTerm={searchTerm}
         sortOption={sortOption}
       />
-      <RepoList hasLoadError={hasLoadError} hasMore={hasMore} onLoadMore={loadMore} pendingLoad={pendingLoad} sortedRepos={[...repos]} />
+      <RepoList
+        hasLoadError={hasLoadError}
+        hasMore={hasMore}
+        onLoadMore={loadMore}
+        pendingLoad={pendingLoad}
+        replaceCompletion={replaceCompletion}
+        sortedRepos={[...repos]}
+      />
     </>
   )
 }
