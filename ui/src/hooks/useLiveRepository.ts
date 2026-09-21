@@ -15,6 +15,8 @@ export function useLiveRepository(apiBaseUrl: string, { owner, repoName }: Reque
   const [state, setState] = useState<LiveRepositoryState>({ liveRepo: null, liveReason: null })
 
   useEffect(() => {
+    setState({ liveRepo: null, liveReason: null })
+
     const controller = new AbortController()
     let cancelled = false
 
