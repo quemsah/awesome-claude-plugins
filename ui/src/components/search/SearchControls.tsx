@@ -38,8 +38,9 @@ export function SearchControls({
     }
   }, [])
 
-  // The input echoes every keystroke from local state, while the search itself waits for the typing to
-  // pause so one burst costs a single catalog request instead of one per character.
+  // The input echoes every keystroke from local state, while the search itself waits for typing to
+  // pause. A pause longer than 250 ms may issue an intermediate catalog request; keeping this as the
+  // only search debounce is intentional so results do not pay another fixed delay.
   const debouncedSearch = useDebouncedCallback((value: string) => {
     onSearchChange(value)
   }, 250)
