@@ -10,10 +10,7 @@ export type LiveRepositoryState = {
   liveReason: CatalogSnapshotReason | null
 }
 
-/**
- * No custom headers here: an `accept` header would turn this cross-origin GET into a CORS
- * preflight that GitHub answers on top of the simple request.
- */
+/** GitHub's REST API answers JSON without an `accept` header, so the request stays header-free. */
 export function useLiveRepository(apiBaseUrl: string, { owner, repoName }: RequestedRepository): LiveRepositoryState {
   const [state, setState] = useState<LiveRepositoryState>({ liveRepo: null, liveReason: null })
 
