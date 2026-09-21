@@ -3,29 +3,30 @@
 import { describe, expect, it } from 'vitest'
 import { createFuseIndex } from './fuzzySearch.ts'
 
-describe('createFuseIndex', () => {
-  it('matches optional marketplace capability fields when catalog data provides them', () => {
-    const repo = {
-      html_url: 'https://github.com/example/repository',
-      stargazers_count: 10,
-      forks_count: 1,
-      subscribers_count: 1,
-      description: 'A repository description.',
-      owner: 'example',
-      owner_url: 'https://github.com/example',
-      repo_name: 'repository',
-      plugins_count: 1,
-      plugin_names: ['Code Reviewer'],
-      plugin_descriptions: ['Reviews pull requests'],
-      plugin_categories: ['Development'],
-      plugin_keywords: ['review'],
-      plugin_commands: ['commands/review.md'],
-      plugin_agents: ['agents/reviewer.md'],
-      plugin_mcp_servers: ['mcp/review.json'],
-      id: 1,
-    }
+const baseRepo = {
+  html_url: 'https://github.com/example/type-detector',
+  stargazers_count: 10,
+  forks_count: 1,
+  subscribers_count: 1,
+  description: 'Reports the types of incoming requests',
+  owner: 'schema-sift',
+  owner_url: 'https://github.com/owner-url-only',
+  repo_name: 'type-detector',
+  plugins_count: 2,
+  id: 1,
+} as const
 
-    expect(createFuseIndex([repo]).search('reviewer')).toHaveLength(1)
-    expect(createFuseIndex([repo]).search('pull requests')).toHaveLength(1)
+describe('createFuseIndex', () => {
+  it('searches every catalog field the index is configured with', () => {
+    const fuse = createFuseIndex([baseRepo])
+    expect(fuse.search('detector')).toHaveLength(1)
+    expect(fuse.search('sift')).toHaveLength(1)
+    expect(fuse.search('incoming requests')).toHaveLength(1)
+  })
+
+  it('does not search the URL columns', () => {
+    const fuse = createFuseIndex([baseRepo])
+    expect(fuse.search('example')).toHaveLength(0)
+    expect(fuse.search('owner-url-only')).toHaveLength(0)
   })
 })

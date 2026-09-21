@@ -2,18 +2,7 @@ import Fuse from 'fuse.js'
 import type { Repo } from '../schemas/repo.schema.ts'
 
 export const fuseOptions = {
-  keys: [
-    'repo_name',
-    'owner',
-    'description',
-    'plugin_names',
-    'plugin_descriptions',
-    'plugin_categories',
-    'plugin_keywords',
-    'plugin_commands',
-    'plugin_agents',
-    'plugin_mcp_servers',
-  ],
+  keys: ['repo_name', 'owner', 'description'],
   includeScore: true,
   threshold: 0.2,
   ignoreLocation: true,
