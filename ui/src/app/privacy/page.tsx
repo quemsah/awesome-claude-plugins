@@ -45,8 +45,8 @@ export default function PrivacyPage() {
           <section>
             <h2 className="mb-2 font-semibold text-foreground text-xl">Browser storage</h2>
             <p>
-              We store your theme preference in local storage and your most recent catalog search URL in session storage. Both are functional
-              preferences and can be cleared in your browser settings.
+              We store your theme preference in local storage and your most recent catalog search URL in session storage. Both are
+              functional preferences and can be cleared in your browser settings.
             </p>
           </section>
           <section>
