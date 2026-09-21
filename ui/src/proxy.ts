@@ -1,15 +1,23 @@
 import { type NextRequest, NextResponse } from 'next/server'
 
+import { isRepoPageEndingInMd } from './lib/markdownPaths.ts'
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  if (!pathname.endsWith('.md')) {
+  if (!pathname.toLowerCase().endsWith('.md')) {
     return NextResponse.next()
   }
 
-  const repoPath = pathname.slice(1, -3)
-  const segments = repoPath.split('/').filter(Boolean)
+  const requestedPath = pathname.slice(1)
+  const segments = requestedPath.slice(0, -3).split('/').filter(Boolean)
   if (segments.length !== 2) {
+    return NextResponse.next()
+  }
+
+  // A repository name can itself end in `.md`, which makes its HTML page indistinguishable from the
+  // markdown representation of a different repository.
+  if (isRepoPageEndingInMd(requestedPath)) {
     return NextResponse.next()
   }
 

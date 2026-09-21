@@ -34,4 +34,11 @@ describe('catalog discovery inventory', () => {
     }
     expect(llms).toContain(`${BASE_URL}/.well-known/api-catalog`)
   })
+
+  it('tells agents that a repository named after the suffix answers to the doubled one', async () => {
+    const skill = await (await skillMarkdown()).text()
+
+    expect(skill).toContain('/sstklen/yes.md.md')
+    expect(buildLlmsText(summary)).toContain('{owner}/{repo}.md.md')
+  })
 })
