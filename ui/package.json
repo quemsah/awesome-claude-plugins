@@ -17,7 +17,7 @@
     "lint": "biome check .",
     "fix": "biome check --write --unsafe .",
     "format": "biome format --write .",
-    "prepare": "husky"
+    "prepare": "cd .. && husky ui/.husky"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.2.6",
