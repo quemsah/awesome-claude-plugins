@@ -255,6 +255,21 @@ test('repository cards expose details, GitHub links, and copyable marketplace co
   await expect.poll(() => copiedText(page)).toBe('/plugin marketplace add obra/superpowers')
 })
 
+test('the whole catalog grid shares one live region for copy confirmations', async ({ page }) => {
+  await mockClipboard(page)
+  await page.goto('/')
+
+  // One announcer serves every card, so a full grid contributes a fixed handful of live regions rather
+  // than one each. A per-card region also arrived too late to be tracked by a running screen reader.
+  // Next contributes its own route announcer, which is not this app's region to count.
+  await expect(page.getByRole('link', { name: detailsLinkName })).toHaveCount(24)
+  await expect(page.locator('[aria-live]:not(#__next-route-announcer__)')).toHaveCount(4)
+
+  const superpowersCard = page.locator('li').filter({ has: page.getByRole('link', { name: 'View details for obra/superpowers' }) })
+  await superpowersCard.getByRole('button', { name: 'Copy marketplace command' }).click()
+  await expect(page.locator('#status-polite')).toHaveText('Marketplace command copied')
+})
+
 test('repository grid loads more cards as the user reaches the end of the current batch', async ({ page }) => {
   await page.goto('/')
 

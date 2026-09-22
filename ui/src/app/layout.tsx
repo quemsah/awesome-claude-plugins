@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import Link from 'next/link'
 import { Header } from '../components/common/Header.tsx'
 import { SimpleAnalytics } from '../components/common/SimpleAnalytics.tsx'
+import { StatusAnnouncer } from '../components/common/StatusAnnouncer.tsx'
 import { WebVitals } from '../components/common/WebVitals.tsx'
 import { shouldLoadAnalytics } from '../lib/analytics.ts'
 import { BASE_URL, DEFAULT_OG_IMAGE } from '../lib/constants.ts'
@@ -122,6 +123,7 @@ export default function RootLayout({
           </footer>
         </Providers>
         <SimpleAnalytics enabled={analyticsEnabled} />
+        <StatusAnnouncer />
         <WebVitals />
       </body>
     </html>

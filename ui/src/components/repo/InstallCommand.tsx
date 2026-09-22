@@ -33,9 +33,8 @@ export function InstallCommand({ pluginName, pluginId, repoPath }: InstallComman
           {isCopied ? <CopiedIcon /> : <CopyIcon />}
         </button>
       </div>
-      <p aria-live="polite" className="mt-2 text-destructive text-xs" role={copyError ? 'alert' : undefined}>
-        {copyError ?? (isCopied ? 'Install command copied.' : '')}
-      </p>
+      {/* Visible only: the shared announcer reports the same state to assistive technology. */}
+      <p className="mt-2 text-destructive text-xs">{copyError ?? (isCopied ? 'Install command copied.' : '')}</p>
     </div>
   )
 }

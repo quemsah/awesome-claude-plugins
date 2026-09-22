@@ -6,6 +6,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { copyText } from '../../lib/clipboard.ts'
 import { getMarketplaceAddCommand } from '../../lib/installCommand.ts'
 import { getGitHubOwnerUrl, getGitHubRepoPath } from '../../lib/repositoryIdentity.ts'
+import { announceStatus } from '../../lib/statusAnnouncer.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { ClaudeIcon } from '../common/ClaudeIcon.tsx'
 import { CopiedIcon } from '../common/CopiedIcon.tsx'
@@ -29,7 +30,6 @@ interface RepoCardProps {
 export function RepoCard({ repo, className }: RepoCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isCopied, setIsCopied] = useState(false)
-  const [copyError, setCopyError] = useState<string | null>(null)
   const marketplaceCommand = useMemo(() => getMarketplaceAddCommand(repo.owner, repo.repo_name), [repo.owner, repo.repo_name])
   const hasValidRepoInfo = Boolean(marketplaceCommand)
 
@@ -46,11 +46,11 @@ export function RepoCard({ repo, className }: RepoCardProps) {
 
     const copied = await copyText(marketplaceCommand)
     if (copied) {
-      setCopyError(null)
       setIsCopied(true)
+      announceStatus('Marketplace command copied')
       setTimeout(() => setIsCopied(false), 2_000)
     } else {
-      setCopyError('Unable to copy the marketplace command. Select and copy it manually.')
+      announceStatus('Unable to copy the marketplace command. Select and copy it manually.', 'assertive')
     }
   }, [marketplaceCommand])
 
@@ -134,9 +134,6 @@ export function RepoCard({ repo, className }: RepoCardProps) {
           </div>
         ) : null}
       </CardContent>
-      <span aria-atomic="true" aria-live="polite" className="sr-only">
-        {copyError ?? (isCopied ? 'Marketplace command copied' : '')}
-      </span>
     </Card>
   )
 }

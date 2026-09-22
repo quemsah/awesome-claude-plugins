@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { copyText } from '../lib/clipboard.ts'
 import { getPluginInstallCommand, isPluginInstallCommandVerified } from '../lib/installCommand.ts'
+import { announceStatus } from '../lib/statusAnnouncer.ts'
 
 export function useInstallCommand(pluginName?: string, pluginId?: string, repoPath?: string) {
   const [isCopied, setIsCopied] = useState(false)
@@ -16,9 +17,12 @@ export function useInstallCommand(pluginName?: string, pluginId?: string, repoPa
     if (copied) {
       setCopyError(null)
       setIsCopied(true)
+      announceStatus('Install command copied.')
       setTimeout(() => setIsCopied(false), 2_000)
     } else {
-      setCopyError('Unable to copy the install command. Select and copy it manually.')
+      const message = 'Unable to copy the install command. Select and copy it manually.'
+      setCopyError(message)
+      announceStatus(message, 'assertive')
     }
   }
 
