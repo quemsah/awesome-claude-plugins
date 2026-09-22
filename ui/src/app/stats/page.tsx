@@ -6,6 +6,8 @@ import { getStatsBreadcrumbs } from '../../lib/breadcrumbs.ts'
 import type { StatsItem } from '../../schemas/stats.schema.ts'
 import { StatsArraySchema } from '../../schemas/stats.schema.ts'
 
+export const dynamic = 'force-dynamic'
+
 export default function StatsPageRoute() {
   let stats: StatsItem[] = []
 
