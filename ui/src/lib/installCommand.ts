@@ -33,8 +33,13 @@ export function normalizePluginName(pluginName?: string): string {
  * A command composed only of a `pluginName` (with no `pluginId` or `repoPath`) is
  * unverified because the name alone may not resolve to an installed package.
  */
-export function isPluginInstallCommandVerified(pluginId?: string, _repoPath?: string): boolean {
-  return Boolean(typeof pluginId === 'string' && pluginId.trim() && PLUGIN_COMMAND_TOKEN_PATTERN.test(pluginId))
+export function isPluginInstallCommandVerified(pluginId?: string, repoPath?: string): boolean {
+  const normalizedPluginId = typeof pluginId === 'string' ? pluginId.trim() : ''
+  const normalizedRepoPath = typeof repoPath === 'string' ? repoPath.trim().replaceAll('/', '-') : ''
+  return Boolean(
+    (normalizedPluginId && PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedPluginId)) ||
+      (normalizedRepoPath && PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedRepoPath))
+  )
 }
 
 /**

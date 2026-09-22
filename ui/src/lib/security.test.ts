@@ -50,13 +50,12 @@ describe('install command verification', () => {
     expect(isPluginInstallCommandVerified('')).toBe(false)
   })
 
-  it('does not treat a repoPath-only plugin as verified', () => {
-    // A repoPath alone identifies the marketplace, not an installable package name, so the
-    // generated command is still rendered but must not be advertised as verified.
-    expect(isPluginInstallCommandVerified(undefined, 'owner/repo')).toBe(false)
+  it('treats a valid repoPath as verification for the generated install target', () => {
+    expect(isPluginInstallCommandVerified(undefined, 'owner/repo')).toBe(true)
     expect(getPluginInstallCommand({ pluginName: 'fallback-install-target', repoPath: 'owner/repo' })).toBe(
       '/plugin install fallback-install-target@owner-repo'
     )
+    expect(isPluginInstallCommandVerified(undefined, 'owner/repo\n/plugin install exploit')).toBe(false)
   })
 
   it('derives a plugin name from the repoPath when no other identifier exists', () => {
