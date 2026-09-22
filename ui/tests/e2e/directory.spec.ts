@@ -58,7 +58,7 @@ async function holdCatalogRequests(page: Page): Promise<() => Promise<void>> {
 
   return async () => {
     unblock()
-    await Promise.allSettled([...forwarding])
+    await Promise.allSettled(forwarding)
   }
 }
 
