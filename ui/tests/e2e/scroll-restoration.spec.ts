@@ -1,7 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 
 const detailsLinkName = /View details for /
-const loadMoreButtonName = /Load more/
 const backToRepositoriesName = /Back to all repositories/
 
 function scrollY(page: Page) {
@@ -28,6 +27,16 @@ async function openDetailWithoutScrolling(page: Page, index: number) {
   await expect(page).not.toHaveURL('/')
 }
 
+/**
+ * `click()` scrolls the button into view first, and arriving at the end of the list is itself a way to
+ * load a page, so a test that wants exactly one more page has to dispatch the click from the DOM.
+ */
+async function clickLoadMoreWithoutScrolling(page: Page) {
+  await page.evaluate(() => {
+    document.querySelector<HTMLButtonElement>('#repo-results > div > button')?.click()
+  })
+}
+
 async function expectRestored(page: Page, offset: number) {
   await expect.poll(() => scrollY(page), { timeout: 10_000 }).toBeGreaterThanOrEqual(offset - 5)
 }
@@ -48,7 +57,7 @@ test('browser Back keeps an offset held past the first lazily loaded catalog pag
   await page.goto('/')
   await expect(page.getByRole('link', { name: detailsLinkName }).first()).toBeVisible()
 
-  await page.getByRole('button', { name: loadMoreButtonName }).click()
+  await clickLoadMoreWithoutScrolling(page)
   await expect(page.getByRole('link', { name: detailsLinkName })).toHaveCount(48)
 
   await scrollToOffset(page, 2_400)

@@ -1,32 +1,46 @@
 'use client'
 
+import type { PendingCatalogLoad } from '../../lib/searchState.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { LoadedContent } from './LoadedContent.tsx'
 
 interface RepoListProps {
   hasLoadError: boolean
   hasMore: boolean
-  isLoading: boolean
   onLoadMore: () => void
+  pendingLoad: PendingCatalogLoad
+  replaceCompletion: number
   sortedRepos: Repo[]
 }
 
-export function RepoList({ hasLoadError, hasMore, isLoading, onLoadMore, sortedRepos }: RepoListProps) {
+const searchingNotice = { announcement: 'Searching repositories.', visible: 'Searching repositories...' }
+const failedNotice = { announcement: 'Repository search failed.', visible: 'Failed to load repositories. Please try again later' }
+const noMatchesNotice = { announcement: 'Repository search returned no matches.', visible: 'No repositories match your search' }
+
+export function RepoList({ hasLoadError, hasMore, onLoadMore, pendingLoad, replaceCompletion, sortedRepos }: RepoListProps) {
   if (sortedRepos.length > 0) {
     return (
       <div>
-        <LoadedContent hasMore={hasMore} isLoading={isLoading} onLoadMore={onLoadMore} repos={sortedRepos} />
+        <LoadedContent
+          hasMore={hasMore}
+          onLoadMore={onLoadMore}
+          pendingLoad={pendingLoad}
+          replaceCompletion={replaceCompletion}
+          repos={sortedRepos}
+        />
       </div>
     )
   }
 
+  // Reaching this branch with a request in flight means the previous result set was already empty, so
+  // the standing message here would report a verdict the catalog has not delivered yet.
+  const notice = pendingLoad !== null ? searchingNotice : hasLoadError ? failedNotice : noMatchesNotice
+
   return (
     <div className="py-8 text-center">
-      <p className="text-muted-foreground">
-        {hasLoadError ? 'Failed to load repositories. Please try again later' : 'No repositories match your search'}
-      </p>
+      <p className="text-muted-foreground">{notice.visible}</p>
       <p aria-live="polite" className="sr-only" role="status">
-        {hasLoadError ? 'Repository search failed.' : 'Repository search returned no matches.'}
+        {notice.announcement}
       </p>
     </div>
   )

@@ -11,7 +11,7 @@ import {
   readScrollPosition,
   saveScrollPosition,
 } from '../../lib/catalogScroll.ts'
-import { buildSearchUrl, parseSortOption } from '../../lib/searchState.ts'
+import { buildSearchUrl, type PendingCatalogLoad, parseSortOption } from '../../lib/searchState.ts'
 import type { SortOption } from '../../lib/sortOptions.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { RepoList } from './RepoList.tsx'
@@ -48,7 +48,8 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   const [pluginsCount, setPluginsCount] = useState(initialPluginCount)
   const [total, setTotal] = useState(initialTotal)
   const [hasMore, setHasMore] = useState(initialTotal > initialRepos.length)
-  const [isLoading, setIsLoading] = useState(false)
+  const [pendingLoad, setPendingLoad] = useState<PendingCatalogLoad>(null)
+  const [replaceCompletion, setReplaceCompletion] = useState(0)
   const [hasLoadError, setHasLoadError] = useState(false)
   const initialRequest = useRef(true)
   const nextPage = useRef(1)
@@ -117,7 +118,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     loadingController.current?.abort()
     loadingController.current = controller
     nextPage.current = 1
-    setIsLoading(true)
+    setPendingLoad('replace')
     setHasLoadError(false)
     const params = new URLSearchParams({ page: '0', pageSize: `${CATALOG_PAGE_SIZE}`, q: searchTerm, sort: sortOption })
 
@@ -135,13 +136,14 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         setPluginsCount(result.pluginsCount)
         setTotal(result.total)
         setHasMore(result.hasMore)
+        setReplaceCompletion((current) => current + 1)
       } catch {
         if (!controller.signal.aborted) {
           setHasLoadError(true)
         }
       } finally {
         if (!controller.signal.aborted) {
-          setIsLoading(false)
+          setPendingLoad(null)
         }
       }
     })()
@@ -155,14 +157,14 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   }, [searchTerm, sortOption])
 
   const loadMore = useCallback(async () => {
-    if (isLoading || !hasMore) {
+    if (pendingLoad !== null || !hasMore) {
       return
     }
 
     const controller = new AbortController()
     loadingController.current?.abort()
     loadingController.current = controller
-    setIsLoading(true)
+    setPendingLoad('append')
     const params = new URLSearchParams({
       page: `${nextPage.current}`,
       pageSize: `${CATALOG_PAGE_SIZE}`,
@@ -188,10 +190,10 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
       }
     } finally {
       if (!controller.signal.aborted) {
-        setIsLoading(false)
+        setPendingLoad(null)
       }
     }
-  }, [hasMore, isLoading, searchTerm, sortOption])
+  }, [hasMore, pendingLoad, searchTerm, sortOption])
 
   useEffect(() => {
     window.sessionStorage.setItem('last-search-url', `${window.location.pathname}${window.location.search}`)
@@ -242,7 +244,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
 
   useEffect(() => {
     const pending = pendingScrollRestore.current
-    if (pending === null || isLoading) {
+    if (pending === null || pendingLoad !== null) {
       return
     }
 
@@ -269,7 +271,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     window.scrollTo(0, pending.scrollY)
     clearScrollPosition(window.sessionStorage, pending.url)
     pendingScrollRestore.current = null
-  }, [hasMore, isLoading, loadMore, searchTerm, sortOption])
+  }, [hasMore, loadMore, pendingLoad, searchTerm, sortOption])
 
   return (
     <>
@@ -281,7 +283,14 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         searchTerm={searchTerm}
         sortOption={sortOption}
       />
-      <RepoList hasLoadError={hasLoadError} hasMore={hasMore} isLoading={isLoading} onLoadMore={loadMore} sortedRepos={[...repos]} />
+      <RepoList
+        hasLoadError={hasLoadError}
+        hasMore={hasMore}
+        onLoadMore={loadMore}
+        pendingLoad={pendingLoad}
+        replaceCompletion={replaceCompletion}
+        sortedRepos={[...repos]}
+      />
     </>
   )
 }

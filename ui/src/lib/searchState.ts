@@ -1,5 +1,11 @@
 import { type SortOption, sortOptionValues } from './sortOptions.ts'
 
+/**
+ * Which catalog request is in flight: `append` extends the rendered list with the next page, while
+ * `replace` discards it and starts over after a search or sort change. `null` means nothing is loading.
+ */
+export type PendingCatalogLoad = 'append' | 'replace' | null
+
 export const defaultSortOption: SortOption = sortOptionValues[0]
 export const validSortOptions: readonly SortOption[] = sortOptionValues
 

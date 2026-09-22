@@ -33,6 +33,28 @@ async function expectFirstDetailsLink(page: Page, repoPath: string) {
   await expect(page.getByRole('link', { name: detailsLinkName }).first()).toHaveAttribute('aria-label', `View details for ${repoPath}`)
 }
 
+/**
+ * Holds every catalog request until the returned release runs, so a test can read what the grid says
+ * while a request is still in flight instead of racing the response, whose duration the test controls.
+ */
+async function holdCatalogRequests(page: Page): Promise<() => void> {
+  let release: () => void = () => {}
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/catalog*', async (route) => {
+    await held
+    const response = await route.fetch()
+    await route.fulfill({ response })
+  })
+  return release
+}
+
+/** Requests the page itself made to the catalog endpoint, read off the browser's resource timings. */
+function catalogRequestCount(page: Page) {
+  return page.evaluate(() => performance.getEntriesByType('resource').filter((r) => r.name.includes('/api/catalog')).length)
+}
+
 function statCardValue(page: Page, title: string) {
   return page.locator('[data-slot=card]', { has: page.getByRole('heading', { name: title }) }).locator('[data-slot=card-content] > div')
 }
@@ -90,6 +112,83 @@ test('home page search updates result counts, visible cards, and empty state', a
   await expectFirstDetailsLink(page, 'obra/superpowers')
 })
 
+test('repository skeleton mirrors coarse-pointer touch target geometry', async ({ page }) => {
+  const release = await holdCatalogRequests(page)
+  await page.goto('/')
+
+  await expect(page.getByRole('link', { name: detailsLinkName }).first()).toBeVisible()
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+
+  const skeleton = page.locator('#repo-results > ul > li[aria-hidden="true"] [data-slot="card"]').first()
+  await expect(skeleton).toBeVisible()
+
+  if (await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) {
+    const touchTargets = skeleton.locator('.touch-target')
+    await expect(touchTargets).toHaveCount(3)
+    const sizes = await touchTargets.evaluateAll((targets) =>
+      targets.map((target) => {
+        const rect = target.getBoundingClientRect()
+        return { height: rect.height, width: rect.width }
+      })
+    )
+    for (const size of sizes) {
+      expect(size.height).toBeGreaterThanOrEqual(44)
+      expect(size.width).toBeGreaterThanOrEqual(44)
+    }
+  }
+
+  release()
+})
+
+test('a search that replaces the results reports searching rather than loading more', async ({ page }) => {
+  const release = await holdCatalogRequests(page)
+  await page.goto('/')
+
+  await expect(page.getByRole('link', { name: detailsLinkName }).first()).toBeVisible()
+  const loadStatus = page.locator('#repo-results > p[role="status"]')
+
+  await page.getByRole('searchbox', { name: 'Search repositories' }).fill('superpowers')
+  await expect(page.getByText('Searching repositories...')).toBeVisible()
+  await expect(loadStatus).toHaveText('Searching repositories.')
+  await expect(page.getByText('Loading more repositories')).toHaveCount(0)
+
+  release()
+  await expect(page.getByRole('link', { name: 'View details for obra/superpowers' }).first()).toBeVisible()
+  await expect(loadStatus).toHaveText('Repository results updated.')
+})
+
+test('reaching the end of the grid reports loading more rather than searching', async ({ page }) => {
+  const release = await holdCatalogRequests(page)
+  await page.goto('/')
+
+  await expect(page.getByRole('link', { name: detailsLinkName }).first()).toBeVisible()
+  const loadStatus = page.locator('#repo-results > p[role="status"]')
+
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await expect(loadStatus).toHaveText('Loading more repositories.')
+  await expect(page.getByText('Searching repositories')).toHaveCount(0)
+
+  release()
+  await expect(page.getByRole('link', { name: detailsLinkName })).toHaveCount(48)
+  await expect(loadStatus).toHaveText('Loaded 24 more repositories.')
+})
+
+test('a search started from an empty result set reports searching instead of no matches', async ({ page }) => {
+  const release = await holdCatalogRequests(page)
+  await page.goto('/?q=definitely-no-matching-repository-name')
+
+  const noMatches = page.getByText('No repositories match your search')
+  await expect(noMatches).toBeVisible()
+  await expect(page.locator('#repo-results')).toHaveCount(0)
+
+  await page.getByRole('searchbox', { name: 'Search repositories' }).fill('superpowers')
+  await expect(page.getByText('Searching repositories...')).toBeVisible()
+  await expect(noMatches).toBeHidden()
+
+  release()
+  await expect(page.getByRole('link', { name: 'View details for obra/superpowers' }).first()).toBeVisible()
+})
+
 test('home page keeps query variants out of search indexes', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', indexFollowRobotsPattern)
@@ -100,6 +199,20 @@ test('home page keeps query variants out of search indexes', async ({ page }) =>
 
   await page.goto('/?sort=forks-desc')
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', noindexFollowRobotsPattern)
+})
+
+test('a completed sort announces that repository results were updated', async ({ page }) => {
+  const release = await holdCatalogRequests(page)
+  await page.goto('/')
+
+  await expect(page.getByRole('link', { name: detailsLinkName }).first()).toBeVisible()
+  const loadStatus = page.locator('#repo-results > p[role="status"]')
+
+  await chooseSortOption(page, 'Forks')
+  await expect(loadStatus).toHaveText('Searching repositories.')
+
+  release()
+  await expect(loadStatus).toHaveText('Repository results updated.')
 })
 
 test('home page sort modes update the visible repository ordering', async ({ page }) => {
@@ -150,6 +263,168 @@ test('repository grid loads more cards as the user reaches the end of the curren
 
   await page.getByText('More repositories available').scrollIntoViewIfNeeded()
   await expect.poll(() => detailsLinks.count()).toBeGreaterThan(24)
+})
+
+test('a footer arrival during the settle window is deferred instead of dropped', async ({ page }) => {
+  await page.goto('/')
+
+  const detailsLinks = page.getByRole('link', { name: detailsLinkName })
+  await expect(detailsLinks).toHaveCount(24)
+
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await expect(detailsLinks).toHaveCount(48)
+
+  // The previous page has only just landed, so this second arrival is inside SETTLE_MS. It must be
+  // remembered and replayed after the landing layout settles rather than requiring another scroll.
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await expect(detailsLinks).toHaveCount(72)
+})
+
+test('a deferred paging scroll cannot leak into a replacement result set', async ({ page }) => {
+  await page.goto('/')
+
+  const detailsLinks = page.getByRole('link', { name: detailsLinkName })
+  await expect(detailsLinks).toHaveCount(24)
+
+  // Cache a replacement response so the replacement can start and finish inside SETTLE_MS
+  // deterministically, even on a busy CI worker.
+  const replacement = await page.evaluate(async () => {
+    const response = await fetch('/api/catalog?page=0&pageSize=24&q=hello&sort=stars-desc')
+    return response.json()
+  })
+  await page.route('**/api/catalog*', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('q') === 'hello' && url.searchParams.get('page') === '0') {
+      await route.fulfill({ body: JSON.stringify(replacement), contentType: 'application/json', status: 200 })
+      return
+    }
+    await route.continue()
+  })
+
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await expect(detailsLinks).toHaveCount(48)
+
+  // Queue a real scroll during the landing settle window, then replace the result set before its
+  // deferred re-arm fires.
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await page.getByRole('searchbox', { name: 'Search repositories' }).evaluate((input) => {
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    valueSetter?.call(input, 'hello')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await expect(detailsLinks).toHaveCount(24)
+
+  // Put the new footer in view without scrolling. A stale timer from the old result set would now
+  // append page 2 of the replacement even though the visitor never scrolled after the search.
+  const broughtIntoView = await page.evaluate(() => {
+    const grid = document.querySelector<HTMLElement>('#repo-results > ul')
+    const trigger = document.querySelector('#repo-results > div')
+    if (!(grid && trigger)) return false
+    grid.style.marginBottom = `${-(trigger.getBoundingClientRect().top - window.innerHeight / 2)}px`
+    const rect = trigger.getBoundingClientRect()
+    return rect.top < window.innerHeight && rect.bottom > 0
+  })
+  expect(broughtIntoView).toBe(true)
+
+  await page.waitForTimeout(600)
+  await expect(detailsLinks).toHaveCount(24)
+})
+
+test('a layout move that scrolls nothing loads no further page', async ({ page }) => {
+  await page.goto('/')
+
+  const detailsLinks = page.getByRole('link', { name: detailsLinkName })
+  await expect(detailsLinks).toHaveCount(24)
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await expect.poll(() => detailsLinks.count()).toBeGreaterThan(24)
+
+  const cards = await detailsLinks.count()
+  const requests = await catalogRequestCount(page)
+  const scrolledTo = await page.evaluate(() => window.scrollY)
+
+  // A landing whose rows come out shorter than the placeholder rows lifts the trigger back into view
+  // later than any settle window, with the scroll position never having moved. That is the document
+  // moving rather than the visitor arriving, and it must not start another page.
+  const broughtIntoView = await page.evaluate(() => {
+    const grid = document.querySelector<HTMLElement>('#repo-results > ul')
+    const trigger = document.querySelector('#repo-results > div')
+    if (!(grid && trigger)) return false
+    grid.style.marginBottom = `${-(trigger.getBoundingClientRect().top - window.innerHeight / 2)}px`
+    const rect = trigger.getBoundingClientRect()
+    return rect.top < window.innerHeight && rect.bottom > 0
+  })
+  expect(broughtIntoView).toBe(true)
+  await page.waitForTimeout(3_000)
+
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrolledTo)
+  expect(await catalogRequestCount(page)).toBe(requests)
+  await expect(detailsLinks).toHaveCount(cards)
+})
+
+test('automatic paging rearms after a replacement shortens the document', async ({ page }) => {
+  await page.goto('/')
+
+  const detailsLinks = page.getByRole('link', { name: detailsLinkName })
+  await expect(detailsLinks).toHaveCount(24)
+
+  await page.evaluate(() => {
+    document.querySelector<HTMLButtonElement>('#repo-results > div > button')?.click()
+  })
+  await expect(detailsLinks).toHaveCount(48)
+  await page.evaluate(() => {
+    document.querySelector<HTMLButtonElement>('#repo-results > div > button')?.click()
+  })
+  await expect(detailsLinks).toHaveCount(72)
+
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+  const beforeReplaceScrollY = await page.evaluate(() => window.scrollY)
+  expect(beforeReplaceScrollY).toBeGreaterThan(0)
+
+  const scrollBeforeInput = await page.evaluate(() => window.scrollY)
+  await page.getByRole('searchbox', { name: 'Search repositories' }).evaluate((input) => {
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    valueSetter?.call(input, 'hello')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrollBeforeInput)
+
+  await expect(detailsLinks).toHaveCount(24)
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(beforeReplaceScrollY)
+
+  // The replacement has shortened the document below the old request-start offset. Moving away from
+  // the footer and back again must re-arm automatic paging without requiring an impossible scrollY.
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await page.waitForTimeout(500)
+  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await expect.poll(() => detailsLinks.count()).toBeGreaterThan(24)
+})
+
+test('replacing a complete short list says it is searching without a pagination footer', async ({ page }) => {
+  await page.goto('/?q=nemotron')
+
+  await expect(page.getByRole('link', { name: detailsLinkName })).toHaveCount(3)
+  await expect(page.locator('#repo-results > div')).toHaveCount(0)
+
+  const release = await holdCatalogRequests(page)
+  await page.getByRole('searchbox', { name: 'Search repositories' }).fill('hello')
+  await expect(page.getByText('Searching repositories...')).toBeVisible()
+
+  release()
+  await expect(page.getByRole('link', { name: detailsLinkName })).toHaveCount(24)
+})
+
+test('a replacement that lands a longer first page does not announce more repositories', async ({ page }) => {
+  await page.goto('/?q=nemotron')
+
+  const detailsLinks = page.getByRole('link', { name: detailsLinkName })
+  await expect(detailsLinks).toHaveCount(3)
+  const loadStatus = page.locator('#repo-results > p[role="status"]')
+
+  // Three matches become 24, so the list grows and the first card can well be the same repository: the
+  // only thing that says whether this was an append is the operation that issued the request.
+  await page.getByRole('searchbox', { name: 'Search repositories' }).fill('')
+  await expect(detailsLinks).toHaveCount(24)
+  await expect(loadStatus).toHaveText('Repository results updated.')
 })
 
 test('stats page filters chart ranges and trend state', async ({ page }) => {
