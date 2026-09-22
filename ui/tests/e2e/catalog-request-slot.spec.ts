@@ -26,8 +26,12 @@ test('a stale pagination callback cannot preempt a replacement before pending lo
         probe.calls.push(url.search)
 
         if (!probe.staleCallbackInvoked && url.searchParams.get('q') === 'hello' && url.searchParams.get('page') === '0') {
+          const loadMoreButton = document.querySelector<HTMLButtonElement>('#repo-results > div > button')
+          if (loadMoreButton === null || loadMoreButton.disabled) {
+            throw new Error('Expected enabled pagination button to be available')
+          }
+          loadMoreButton.click()
           probe.staleCallbackInvoked = true
-          document.querySelector<HTMLButtonElement>('#repo-results > div > button')?.click()
         }
       }
 
