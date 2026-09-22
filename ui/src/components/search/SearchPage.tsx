@@ -54,6 +54,10 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   const initialRequest = useRef(true)
   const nextPage = useRef(1)
   const loadingController = useRef<AbortController | null>(null)
+  // The in-flight kind, readable at call time. `pendingLoad` is React state, so a callback created by
+  // the render before the replacement committed still sees `null` and would happily start an append -
+  // which aborts the replacement in flight and throws its result away.
+  const inFlightLoadKind = useRef<PendingCatalogLoad>(null)
   const pendingScrollRestore = useRef<{ attempts: number; scrollY: number; url: string } | null>(null)
 
   const updateSearchUrl = useCallback(
@@ -117,6 +121,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     const controller = new AbortController()
     loadingController.current?.abort()
     loadingController.current = controller
+    inFlightLoadKind.current = 'replace'
     nextPage.current = 1
     setPendingLoad('replace')
     setHasLoadError(false)
@@ -132,6 +137,11 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
           throw new Error(`Catalog request failed with status ${response.status}`)
         }
         const result = (await response.json()) as CatalogApiResponse
+        // Reading the body is a second await: a replacement that started while this append was parsing
+        // has already aborted it, and its pages must not be appended to the fresh result set.
+        if (controller.signal.aborted) {
+          return
+        }
         setRepos(result.repos)
         setPluginsCount(result.pluginsCount)
         setTotal(result.total)
@@ -142,8 +152,11 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
           setHasLoadError(true)
         }
       } finally {
-        if (!controller.signal.aborted) {
-          setPendingLoad(null)
+        if (loadingController.current === controller) {
+          inFlightLoadKind.current = null
+          if (!controller.signal.aborted) {
+            setPendingLoad(null)
+          }
         }
       }
     })()
@@ -157,13 +170,14 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   }, [searchTerm, sortOption])
 
   const loadMore = useCallback(async () => {
-    if (pendingLoad !== null || !hasMore) {
+    if (inFlightLoadKind.current !== null || !hasMore) {
       return
     }
 
     const controller = new AbortController()
     loadingController.current?.abort()
     loadingController.current = controller
+    inFlightLoadKind.current = 'append'
     setPendingLoad('append')
     const params = new URLSearchParams({
       page: `${nextPage.current}`,
@@ -181,6 +195,11 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         throw new Error(`Catalog request failed with status ${response.status}`)
       }
       const result = (await response.json()) as CatalogApiResponse
+      // Same window as the replacement above: the body read is its own await, so an append that was
+      // aborted mid-parse would otherwise glue a page of the previous query under fresh results.
+      if (controller.signal.aborted) {
+        return
+      }
       setRepos((currentRepos) => [...currentRepos, ...result.repos])
       setHasMore(result.hasMore)
       nextPage.current += 1
@@ -189,11 +208,14 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         setHasLoadError(true)
       }
     } finally {
-      if (!controller.signal.aborted) {
-        setPendingLoad(null)
+      if (loadingController.current === controller) {
+        inFlightLoadKind.current = null
+        if (!controller.signal.aborted) {
+          setPendingLoad(null)
+        }
       }
     }
-  }, [hasMore, pendingLoad, searchTerm, sortOption])
+  }, [hasMore, searchTerm, sortOption])
 
   useEffect(() => {
     window.sessionStorage.setItem('last-search-url', `${window.location.pathname}${window.location.search}`)
