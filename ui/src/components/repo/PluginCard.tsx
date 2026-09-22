@@ -21,9 +21,7 @@ export function PluginCard({ marketplaceName, plugin, repoPath, repo }: PluginCa
   return (
     <Card className="group w-full transition-all duration-300 hover:border-primary/30 hover:bg-linear-to-tl hover:from-muted hover:to-background">
       <PluginHeader category={plugin.category} name={plugin.name} version={plugin.version} />
-      {plugin.name || plugin.id ? (
-        <InstallCommand marketplaceName={marketplaceName} pluginId={plugin.id} pluginName={plugin.name} />
-      ) : null}
+      {plugin.name || plugin.id ? <InstallCommand marketplaceName={marketplaceName} pluginId={plugin.id} pluginName={plugin.name} /> : null}
       <CardContent className="pt-1">
         <dl className="space-y-2">
           <PluginDescription description={plugin.description} />
