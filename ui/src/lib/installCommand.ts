@@ -51,11 +51,7 @@ export function isPluginInstallCommandVerified(pluginId?: string, marketplaceNam
  *
  * Returns `null` when no identifier is provided or a supplied identifier is unsafe.
  */
-export function getPluginInstallCommand({
-  pluginName,
-  pluginId,
-  marketplaceName,
-}: PluginInstallCommandInput): string | null {
+export function getPluginInstallCommand({ pluginName, pluginId, marketplaceName }: PluginInstallCommandInput): string | null {
   const normalizedName = normalizePluginName(pluginName)
   const normalizedPluginId = typeof pluginId === 'string' ? pluginId.trim() : undefined
   const normalizedMarketplaceName = typeof marketplaceName === 'string' ? marketplaceName.trim() : undefined
