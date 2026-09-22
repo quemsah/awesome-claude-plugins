@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import type { Plugin } from '../../app/types/plugin.type.ts'
-import { MarketplacePluginsSchema } from '../../app/types/plugin.type.ts'
+import { getMarketplaceName, MarketplacePluginsSchema } from '../../app/types/plugin.type.ts'
 import { BackToRepositoriesLink } from '../../components/repo/BackToRepositoriesLink.tsx'
 import { PluginCard } from '../../components/repo/PluginCard.tsx'
 import { RepoInfoCard } from '../../components/repo/RepoInfoCard.tsx'
@@ -23,7 +23,6 @@ const CATALOG_SNAPSHOT_NOTICES: Record<CatalogSnapshotReason, string> = {
     'Live GitHub data is temporarily unavailable. Showing the latest catalog snapshot; some details may be out of date.',
 }
 
-/** Raw serves `HEAD` as the repository default branch, so the manifest needs no live metadata. */
 const MARKETPLACE_REF = 'HEAD'
 
 type RepoPageClientProps = {
@@ -37,6 +36,7 @@ type RepoPageClientProps = {
 
 export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, rawBaseUrl }: RepoPageClientProps) {
   const [plugins, setPlugins] = useState<Plugin[]>([])
+  const [marketplaceName, setMarketplaceName] = useState<string | undefined>(undefined)
   const [pluginsError, setPluginsError] = useState<string | null>(null)
   const [pluginsStatus, setPluginsStatus] = useState<'missing' | 'error' | null>(null)
   const [pluginsLoading, setPluginsLoading] = useState(true)
@@ -44,9 +44,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
   const { liveRepo, liveReason } = useLiveRepository(apiBaseUrl, { owner, repoName })
   const displayedRepo = liveRepo ?? repo
 
-  const handleRetry = useCallback(() => {
-    setRetryCount((count) => count + 1)
-  }, [])
+  const handleRetry = useCallback(() => setRetryCount((count) => count + 1), [])
 
   useEffect(() => {
     let cancelled = false
@@ -55,6 +53,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
     async function loadPlugins() {
       setPluginsLoading(true)
       setPlugins([])
+      setMarketplaceName(undefined)
       setPluginsError(null)
       setPluginsStatus(null)
 
@@ -80,19 +79,19 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
         }
 
         try {
-          const parsedMarketplace = MarketplacePluginsSchema.safeParse(await response.json())
+          const payload: unknown = await response.json()
+          const parsedMarketplace = MarketplacePluginsSchema.safeParse(payload)
           if (parsedMarketplace.success) {
             if (!cancelled) {
               setPlugins(parsedMarketplace.data)
+              setMarketplaceName(getMarketplaceName(payload))
               setPluginsLoading(false)
             }
-          } else {
-            if (!cancelled) {
-              console.error('Marketplace validation failed', { repoPath, issues: parsedMarketplace.error.issues })
-              setPluginsStatus('error')
-              setPluginsError('Marketplace manifest contains invalid data.')
-              setPluginsLoading(false)
-            }
+          } else if (!cancelled) {
+            console.error('Marketplace validation failed', { repoPath, issues: parsedMarketplace.error.issues })
+            setPluginsStatus('error')
+            setPluginsError('Marketplace manifest contains invalid data.')
+            setPluginsLoading(false)
           }
         } catch (error) {
           if (!cancelled) {
@@ -114,8 +113,6 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
     loadPlugins()
 
     return () => {
-      // Flag before aborting, as `useLiveRepository` does: the rejection the abort raises must not
-      // reach the error state, and the in-flight request must not survive a retry or a navigation.
       cancelled = true
       controller.abort()
     }
@@ -125,77 +122,25 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
     <main className="min-h-dvh bg-background" id="main-content" tabIndex={-1}>
       <div className="container mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <Breadcrumbs items={getRepoBreadcrumbs(displayedRepo)} />
-        <Button asChild className="mb-6" variant="ghost">
-          <BackToRepositoriesLink />
-        </Button>
-
-        {liveReason ? (
-          <div className="mb-6 rounded-md border border-amber-500/50 bg-amber-500/10 p-4 text-sm" role="status">
-            {CATALOG_SNAPSHOT_NOTICES[liveReason]}
-          </div>
-        ) : null}
-
+        <Button asChild className="mb-6" variant="ghost"><BackToRepositoriesLink /></Button>
+        {liveReason ? <div className="mb-6 rounded-md border border-amber-500/50 bg-amber-500/10 p-4 text-sm" role="status">{CATALOG_SNAPSHOT_NOTICES[liveReason]}</div> : null}
         <RepoInfoCard repo={displayedRepo} />
-
         <Card className="mt-8 p-6">
-          <CardHeader className="mb-4 p-0">
-            <CardTitle className="text-2xl">
-              <h2>Available Plugins</h2>
-            </CardTitle>
-          </CardHeader>
+          <CardHeader className="mb-4 p-0"><CardTitle className="text-2xl"><h2>Available Plugins</h2></CardTitle></CardHeader>
           <CardContent className="p-0">
-            {pluginsLoading && !pluginsStatus && !pluginsError ? (
-              <p className="py-4 text-center text-muted-foreground" role="status">
-                Loading plugins...
-              </p>
-            ) : pluginsStatus === 'missing' ? (
-              <p className="py-4 text-center text-muted-foreground" role="status">
-                No marketplace manifest was found in this repository.
-              </p>
-            ) : pluginsError ? (
+            {pluginsLoading && !pluginsStatus && !pluginsError ? <p className="py-4 text-center text-muted-foreground" role="status">Loading plugins...</p> : pluginsStatus === 'missing' ? <p className="py-4 text-center text-muted-foreground" role="status">No marketplace manifest was found in this repository.</p> : pluginsError ? (
               <div className="flex flex-wrap items-center justify-center gap-3 py-4" role="alert">
-                <p className="text-destructive">{pluginsError}</p>
-                <RetryButton onRetry={handleRetry} />
-                <a
-                  className="text-sm underline underline-offset-4"
-                  href={`${rawBaseUrl}/${encodeURIComponent(repoPath.split('/')[0])}/${encodeURIComponent(
-                    repoPath.split('/')[1]
-                  )}/HEAD/.claude-plugin/marketplace.json`}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  View marketplace.json
-                </a>
+                <p className="text-destructive">{pluginsError}</p><RetryButton onRetry={handleRetry} />
+                <a className="text-sm underline underline-offset-4" href={`${rawBaseUrl}/${encodeURIComponent(repoPath.split('/')[0])}/${encodeURIComponent(repoPath.split('/')[1])}/HEAD/.claude-plugin/marketplace.json`} rel="noreferrer" target="_blank">View marketplace.json</a>
               </div>
             ) : plugins.length > 0 ? (
-              <div className="space-y-4">
-                {plugins.map((plugin, index) => (
-                  <article key={`${plugin.id || ''}-${plugin.name || ''}-${index}`}>
-                    <PluginCard plugin={plugin} repo={displayedRepo} repoPath={repoPath} />
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p className="py-4 text-center text-muted-foreground" role="status">
-                No Claude Code plugins found in this repository.
-              </p>
-            )}
+              <div className="space-y-4">{plugins.map((plugin, index) => <article key={`${plugin.id || ''}-${plugin.name || ''}-${index}`}><PluginCard marketplaceName={marketplaceName} plugin={plugin} repo={displayedRepo} repoPath={repoPath} /></article>)}</div>
+            ) : <p className="py-4 text-center text-muted-foreground" role="status">No Claude Code plugins found in this repository.</p>}
           </CardContent>
         </Card>
-
         <Card className="mt-8 p-6">
-          <CardHeader className="p-0">
-            <CardTitle className="text-2xl">
-              <h2>Evaluate before installing</h2>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0 pt-4 text-muted-foreground text-sm">
-            <ol className="list-decimal space-y-2 pl-5">
-              <li>Review the source repository, recent maintenance, and license on GitHub.</li>
-              <li>Read the marketplace manifest and plugin source files before running commands.</li>
-              <li>Start with the smallest required permission set and validate behavior in a safe environment.</li>
-            </ol>
-          </CardContent>
+          <CardHeader className="p-0"><CardTitle className="text-2xl"><h2>Evaluate before installing</h2></CardTitle></CardHeader>
+          <CardContent className="p-0 pt-4 text-muted-foreground text-sm"><ol className="list-decimal space-y-2 pl-5"><li>Review the source repository, recent maintenance, and license on GitHub.</li><li>Read the marketplace manifest and plugin source files before running commands.</li><li>Start with the smallest required permission set and validate behavior in a safe environment.</li></ol></CardContent>
         </Card>
       </div>
     </main>
