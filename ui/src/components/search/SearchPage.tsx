@@ -167,7 +167,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   }, [_replaceRetry, searchTerm, sortOption])
 
   const loadMore = useCallback(async () => {
-    if (!(hasMore && mayStartCatalogRequest(inFlightCatalogRequest.current, 'append'))) {
+    if (failedLoad === 'replace' || !(hasMore && mayStartCatalogRequest(inFlightCatalogRequest.current, 'append'))) {
       return
     }
 
@@ -205,7 +205,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         setPendingLoad(null)
       }
     }
-  }, [hasMore, searchTerm, sortOption])
+  }, [failedLoad, hasMore, searchTerm, sortOption])
 
   const retryFailedLoad = useCallback(() => {
     if (failedLoad === 'append') {
@@ -304,7 +304,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         sortOption={sortOption}
       />
       <RepoList
-        hasLoadError={failedLoad !== null}
+        failedLoad={failedLoad}
         hasMore={hasMore}
         onLoadMore={loadMore}
         onRetry={retryFailedLoad}
