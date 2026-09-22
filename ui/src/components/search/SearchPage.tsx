@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDebouncedCallback } from 'use-debounce'
 import { CATALOG_PAGE_SIZE } from '../../lib/catalogPagination.ts'
+import { type CatalogRequestKind, mayStartCatalogRequest } from '../../lib/catalogRequestSlot.ts'
 import {
   catalogScrollKey,
   clearScrollPosition,
@@ -54,6 +55,10 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   const initialRequest = useRef(true)
   const nextPage = useRef(1)
   const loadingController = useRef<AbortController | null>(null)
+  // Which request owns the single catalog slot, claimed at dispatch rather than at commit. `pendingLoad`
+  // only reaches the grid on the next render, and a pagination trigger firing inside that gap used to
+  // read "nothing in flight", abort the running replacement and append onto the list it was replacing.
+  const inFlightCatalogRequest = useRef<CatalogRequestKind | null>(null)
   const pendingScrollRestore = useRef<{ attempts: number; scrollY: number; url: string } | null>(null)
 
   const updateSearchUrl = useCallback(
@@ -117,6 +122,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     const controller = new AbortController()
     loadingController.current?.abort()
     loadingController.current = controller
+    inFlightCatalogRequest.current = 'replace'
     nextPage.current = 1
     setPendingLoad('replace')
     setHasLoadError(false)
@@ -143,6 +149,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         }
       } finally {
         if (!controller.signal.aborted) {
+          inFlightCatalogRequest.current = null
           setPendingLoad(null)
         }
       }
@@ -157,13 +164,13 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   }, [searchTerm, sortOption])
 
   const loadMore = useCallback(async () => {
-    if (pendingLoad !== null || !hasMore) {
+    if (!(hasMore && mayStartCatalogRequest(inFlightCatalogRequest.current, 'append'))) {
       return
     }
 
     const controller = new AbortController()
-    loadingController.current?.abort()
     loadingController.current = controller
+    inFlightCatalogRequest.current = 'append'
     setPendingLoad('append')
     const params = new URLSearchParams({
       page: `${nextPage.current}`,
@@ -190,10 +197,11 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
       }
     } finally {
       if (!controller.signal.aborted) {
+        inFlightCatalogRequest.current = null
         setPendingLoad(null)
       }
     }
-  }, [hasMore, pendingLoad, searchTerm, sortOption])
+  }, [hasMore, searchTerm, sortOption])
 
   useEffect(() => {
     window.sessionStorage.setItem('last-search-url', `${window.location.pathname}${window.location.search}`)
