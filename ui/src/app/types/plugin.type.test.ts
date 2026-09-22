@@ -1,20 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { MarketplacePluginsSchema } from './plugin.type.ts'
+import { getMarketplaceName, MarketplacePluginsSchema } from './plugin.type.ts'
 
 describe('MarketplacePluginsSchema', () => {
-  it('preserves the marketplace name alongside parsed plugins', () => {
-    const result = MarketplacePluginsSchema.safeParse({
-      name: 'ykdojo',
-      plugins: [{ name: 'dx', source: './' }],
-    })
-
-    expect(result.success).toBe(true)
-    if (result.success) {
-      expect(result.data).toEqual({
-        name: 'ykdojo',
-        plugins: [{ name: 'dx', source: './' }],
-      })
-    }
+  it('extracts marketplace names only from marketplace wrappers', () => {
+    expect(getMarketplaceName({ name: 'ykdojo', plugins: [{ name: 'dx', source: './' }] })).toBe('ykdojo')
+    expect(getMarketplaceName({ marketplace: { name: 'nested-market', plugins: [{ name: 'nested-plugin' }] } })).toBe(
+      'nested-market'
+    )
+    expect(getMarketplaceName({ name: 'single-plugin', source: './plugins/single-plugin' })).toBeUndefined()
+    expect(getMarketplaceName({ name: 'bad/name', plugins: [] })).toBeUndefined()
   })
 
   it('accepts current Claude marketplace source objects', () => {
