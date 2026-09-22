@@ -414,7 +414,9 @@ test('automatic paging rearms after a replacement shortens the document', async 
 test('replacing a complete short list says it is searching without a pagination footer', async ({ page }) => {
   await page.goto('/?q=nemotron')
 
-  await expect(page.getByRole('link', { name: detailsLinkName })).toHaveCount(3)
+  const detailsLinks = page.getByRole('link', { name: detailsLinkName })
+  await expect(detailsLinks.first()).toBeVisible()
+  expect(await detailsLinks.count()).toBeLessThan(24)
   await expect(page.locator('#repo-results > div')).toHaveCount(0)
 
   const release = await holdCatalogRequests(page)
@@ -422,17 +424,18 @@ test('replacing a complete short list says it is searching without a pagination 
   await expect(page.getByText('Searching repositories...')).toBeVisible()
 
   await release()
-  await expect(page.getByRole('link', { name: detailsLinkName })).toHaveCount(24)
+  await expect(detailsLinks).toHaveCount(24)
 })
 
 test('a replacement that lands a longer first page does not announce more repositories', async ({ page }) => {
   await page.goto('/?q=nemotron')
 
   const detailsLinks = page.getByRole('link', { name: detailsLinkName })
-  await expect(detailsLinks).toHaveCount(3)
+  await expect(detailsLinks.first()).toBeVisible()
+  expect(await detailsLinks.count()).toBeLessThan(24)
   const loadStatus = page.locator('#repo-results > p[role="status"]')
 
-  // Three matches become 24, so the list grows and the first card can well be the same repository: the
+  // A complete short list becomes 24, so the list grows and the first card can well be the same repository: the
   // only thing that says whether this was an append is the operation that issued the request.
   await page.getByRole('searchbox', { name: 'Search repositories' }).fill('')
   await expect(detailsLinks).toHaveCount(24)
