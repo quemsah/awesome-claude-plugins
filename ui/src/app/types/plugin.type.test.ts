@@ -4,9 +4,7 @@ import { getMarketplaceName, MarketplacePluginsSchema } from './plugin.type.ts'
 describe('MarketplacePluginsSchema', () => {
   it('extracts marketplace names only from marketplace wrappers', () => {
     expect(getMarketplaceName({ name: 'ykdojo', plugins: [{ name: 'dx', source: './' }] })).toBe('ykdojo')
-    expect(getMarketplaceName({ marketplace: { name: 'nested-market', plugins: [{ name: 'nested-plugin' }] } })).toBe(
-      'nested-market'
-    )
+    expect(getMarketplaceName({ marketplace: { name: 'nested-market', plugins: [{ name: 'nested-plugin' }] } })).toBe('nested-market')
     expect(getMarketplaceName({ name: 'single-plugin', source: './plugins/single-plugin' })).toBeUndefined()
     expect(getMarketplaceName({ name: 'bad/name', plugins: [] })).toBeUndefined()
   })
