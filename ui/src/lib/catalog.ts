@@ -137,29 +137,28 @@ export function searchCatalogRepos(query: string, sortOption: SortOption, page =
   const normalizedQuery = normalizeSearchQuery(query)
   const matchingRepos = getScoredMatches(normalizedQuery, getCanonicalCatalogRepos())
   const sortedRepos = [...matchingRepos].sort((left, right) => {
-    if (normalizedQuery && left.score !== right.score) {
-      return left.score - right.score
-    }
-
     const leftRepo = left.repo
     const rightRepo = right.repo
     const descriptionSignal = (repo: CatalogRepo) => (repo.description?.trim() ? 1 : 0)
+    let sortResult: number
     switch (sortOption) {
       case 'forks-desc':
-        return (rightRepo.forks_count ?? 0) - (leftRepo.forks_count ?? 0)
+        sortResult = (rightRepo.forks_count ?? 0) - (leftRepo.forks_count ?? 0)
+        break
       case 'plugins-desc': {
         const pluginSignal = (repo: CatalogRepo) => {
           const pluginCount = repo.plugins_count ?? 0
           const stars = repo.stargazers_count ?? 0
           return pluginCount * Math.log10(stars + 10)
         }
-        return pluginSignal(rightRepo) - pluginSignal(leftRepo) || (rightRepo.plugins_count ?? 0) - (leftRepo.plugins_count ?? 0)
+        sortResult = pluginSignal(rightRepo) - pluginSignal(leftRepo) || (rightRepo.plugins_count ?? 0) - (leftRepo.plugins_count ?? 0)
+        break
       }
       default:
-        return (
-          descriptionSignal(rightRepo) - descriptionSignal(leftRepo) || (rightRepo.stargazers_count ?? 0) - (leftRepo.stargazers_count ?? 0)
-        )
+        sortResult =
+          (rightRepo.stargazers_count ?? 0) - (leftRepo.stargazers_count ?? 0) || descriptionSignal(rightRepo) - descriptionSignal(leftRepo)
     }
+    return sortResult || (normalizedQuery ? left.score - right.score : 0)
   })
   const start = page * pageSize
 
