@@ -5,6 +5,7 @@ describe('statusAnnouncer', () => {
   afterEach(() => {
     announceStatus('', 'polite')
     announceStatus('', 'assertive')
+    vi.useRealTimers()
   })
 
   it('keeps the two priorities apart', () => {
@@ -37,6 +38,37 @@ describe('statusAnnouncer', () => {
 
   it('renders nothing while no message has been announced', () => {
     expect(getStatusAnnouncement(getStatusMessage('assertive'))).toBe('')
+  })
+
+  it('clears an announcement after its live window', () => {
+    vi.useFakeTimers()
+    const listener = vi.fn()
+    const unsubscribe = subscribeToStatus(listener)
+
+    announceStatus('Install command copied.')
+    expect(listener).toHaveBeenCalledTimes(1)
+
+    vi.advanceTimersByTime(4_999)
+    expect(getStatusMessage('polite').text).toBe('Install command copied.')
+
+    vi.advanceTimersByTime(1)
+    expect(getStatusMessage('polite').text).toBe('')
+    expect(listener).toHaveBeenCalledTimes(2)
+    unsubscribe()
+  })
+
+  it('gives a newer announcement its full live window', () => {
+    vi.useFakeTimers()
+
+    announceStatus('First message')
+    vi.advanceTimersByTime(2_500)
+    announceStatus('Second message')
+
+    vi.advanceTimersByTime(2_500)
+    expect(getStatusMessage('polite').text).toBe('Second message')
+
+    vi.advanceTimersByTime(2_500)
+    expect(getStatusMessage('polite').text).toBe('')
   })
 
   it('notifies subscribers and stops after unsubscribe', () => {

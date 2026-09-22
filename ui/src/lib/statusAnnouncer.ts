@@ -14,9 +14,15 @@ const EMPTY_MESSAGE: StatusMessage = { parity: false, text: '' }
 
 /** A zero-width space: invisible, read out as nothing, and enough to make repeated text a change. */
 const REPEAT_MARKER = '\u200B'
+const CLEAR_AFTER_MS = 5_000
 
 const messages: Record<StatusPriority, StatusMessage> = { polite: EMPTY_MESSAGE, assertive: EMPTY_MESSAGE }
 const listeners = new Set<() => void>()
+const clearTimers: Partial<Record<StatusPriority, ReturnType<typeof setTimeout>>> = {}
+
+function notifyListeners(): void {
+  for (const listener of listeners) listener()
+}
 
 export function getStatusMessage(priority: StatusPriority): StatusMessage {
   return messages[priority]
@@ -29,8 +35,24 @@ export function getStatusAnnouncement(message: StatusMessage): string {
 }
 
 export function announceStatus(text: string, priority: StatusPriority = 'polite'): void {
-  messages[priority] = { parity: !messages[priority].parity, text }
-  for (const listener of listeners) listener()
+  const previousTimer = clearTimers[priority]
+  if (previousTimer !== undefined) clearTimeout(previousTimer)
+
+  const message = { parity: !messages[priority].parity, text }
+  messages[priority] = message
+  notifyListeners()
+
+  if (!text) {
+    delete clearTimers[priority]
+    return
+  }
+
+  clearTimers[priority] = setTimeout(() => {
+    if (messages[priority] !== message) return
+    messages[priority] = { parity: message.parity, text: '' }
+    delete clearTimers[priority]
+    notifyListeners()
+  }, CLEAR_AFTER_MS)
 }
 
 export function subscribeToStatus(listener: () => void): () => void {
