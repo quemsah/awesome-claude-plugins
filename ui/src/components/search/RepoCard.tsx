@@ -31,10 +31,17 @@ export function RepoCard({ repo, className }: RepoCardProps) {
   const [isCopied, setIsCopied] = useState(false)
   const [copyError, setCopyError] = useState<string | null>(null)
   const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const isMounted = useRef(true)
   const marketplaceCommand = useMemo(() => getMarketplaceAddCommand(repo.owner, repo.repo_name), [repo.owner, repo.repo_name])
   const hasValidRepoInfo = Boolean(marketplaceCommand)
 
-  useEffect(() => () => clearTimeout(resetTimer.current), [])
+  useEffect(() => {
+    isMounted.current = true
+    return () => {
+      isMounted.current = false
+      clearTimeout(resetTimer.current)
+    }
+  }, [])
 
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true)
@@ -48,6 +55,8 @@ export function RepoCard({ repo, className }: RepoCardProps) {
     if (!marketplaceCommand) return
 
     const copied = await copyText(marketplaceCommand)
+    if (!isMounted.current) return
+
     if (copied) {
       setCopyError(null)
       setIsCopied(true)

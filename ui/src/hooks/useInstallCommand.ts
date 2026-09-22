@@ -6,8 +6,15 @@ export function useInstallCommand(pluginName?: string, pluginId?: string, repoPa
   const [isCopied, setIsCopied] = useState(false)
   const [copyError, setCopyError] = useState<string | null>(null)
   const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const isMounted = useRef(true)
 
-  useEffect(() => () => clearTimeout(resetTimer.current), [])
+  useEffect(() => {
+    isMounted.current = true
+    return () => {
+      isMounted.current = false
+      clearTimeout(resetTimer.current)
+    }
+  }, [])
 
   const installCommand = getPluginInstallCommand({ pluginName, pluginId, repoPath })
   const isVerified = isPluginInstallCommandVerified(pluginId, repoPath)
@@ -16,6 +23,8 @@ export function useInstallCommand(pluginName?: string, pluginId?: string, repoPa
     if (!(installCommand && isVerified)) return
 
     const copied = await copyText(installCommand)
+    if (!isMounted.current) return
+
     if (copied) {
       setCopyError(null)
       setIsCopied(true)
