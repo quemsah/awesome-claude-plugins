@@ -50,6 +50,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
 
   useEffect(() => {
     let cancelled = false
+    const controller = new AbortController()
 
     async function loadPlugins() {
       setPluginsLoading(true)
@@ -59,7 +60,8 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
 
       try {
         const response = await fetch(
-          `${rawBaseUrl}/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/${MARKETPLACE_REF}/.claude-plugin/marketplace.json`
+          `${rawBaseUrl}/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/${MARKETPLACE_REF}/.claude-plugin/marketplace.json`,
+          { signal: controller.signal }
         )
 
         if (response.status === 404) {
@@ -112,7 +114,10 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
     loadPlugins()
 
     return () => {
+      // Flag before aborting, as `useLiveRepository` does: the rejection the abort raises must not
+      // reach the error state, and the in-flight request must not survive a retry or a navigation.
       cancelled = true
+      controller.abort()
     }
   }, [owner, repoName, repoPath, rawBaseUrl, _retryCount])
 
