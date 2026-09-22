@@ -58,7 +58,11 @@ async function holdCatalogRequests(page: Page): Promise<() => Promise<void>> {
 
   return async () => {
     unblock()
-    await Promise.allSettled(forwarding)
+    const results = await Promise.allSettled(forwarding)
+    const failures = results.flatMap((result) => (result.status === 'rejected' ? [result.reason] : []))
+    if (failures.length > 0) {
+      throw new AggregateError(failures, 'Catalog request forwarding failed')
+    }
   }
 }
 
@@ -497,7 +501,6 @@ test('home page persists search term in url query parameters', async ({ page }) 
   await page.getByRole('searchbox', { name: 'Search repositories' }).fill('hello')
   await expect(page).toHaveURL(qHelloRegex)
   await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toHaveValue('hello')
-
   await page.getByRole('searchbox', { name: 'Search repositories' }).fill('')
   await expect(page).toHaveURL('/')
 })
