@@ -83,9 +83,8 @@ test('the offset is captured from the interaction that starts the navigation', a
 
 test('"Back to all repositories" returns to the searched list at the offset the visitor left', async ({ page }) => {
   await page.goto('/?q=superpowers')
-  // The statically rendered page holds the default ordering until the filtered request lands, so wait
-  // for the searched list or the offset would be measured against content the visitor never saw.
-  await expect(page.getByRole('link', { name: 'View details for dxc-danny/superpowers' })).toBeVisible()
+  await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toHaveValue('superpowers')
+  await expect(page.getByRole('link', { name: detailsLinkName }).first()).toBeVisible()
 
   const offset = await page.evaluate(() => Math.round((document.documentElement.scrollHeight - window.innerHeight) / 2))
   expect(offset).toBeGreaterThan(0)
