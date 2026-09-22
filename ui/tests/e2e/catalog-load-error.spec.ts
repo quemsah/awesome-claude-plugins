@@ -52,3 +52,32 @@ test('a failed replacement reports the error before the retained results', async
 
   expect(errorPrecedesGrid).toBe(true)
 })
+
+test('a failed search from an empty result set can be retried', async ({ page }) => {
+  let catalogRequests = 0
+  await page.route('**/api/catalog*', async (route) => {
+    catalogRequests += 1
+    if (catalogRequests === 1) {
+      await route.fulfill({ status: 500 })
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ hasMore: false, pluginsCount: 0, repos: [], total: 0 }),
+    })
+  })
+  await page.goto('/?q=definitely-no-matching-repository-name')
+
+  const searchbox = page.getByRole('searchbox', { name: 'Search repositories' })
+  const noMatches = page.getByText('No repositories match your search')
+  await expect(noMatches).toBeVisible()
+  await searchbox.fill('superpowers')
+
+  await expect(page.getByText(loadErrorText)).toBeVisible()
+  await expect(noMatches).toBeHidden()
+  await page.getByRole('button', { name: 'Retry' }).click()
+
+  await expect(noMatches).toBeVisible()
+  expect(catalogRequests).toBe(2)
+})
