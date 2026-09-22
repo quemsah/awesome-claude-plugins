@@ -15,6 +15,12 @@ describe('encodeGitHubPath', () => {
     expect(encodeGitHubPath('notes/todo list.md')).toBe('notes/todo%20list.md')
     expect(encodeGitHubPath('src/[entry]/index.ts')).toBe('src/%5Bentry%5D/index.ts')
   })
+
+  it('replaces malformed UTF-16 without corrupting valid surrogate pairs', () => {
+    expect(encodeGitHubPath('commands/high-\uD800.md')).toBe('commands/high-%EF%BF%BD.md')
+    expect(encodeGitHubPath('commands/low-\uDC00.md')).toBe('commands/low-%EF%BF%BD.md')
+    expect(encodeGitHubPath('commands/emoji-\uD83D\uDE00.md')).toBe('commands/emoji-%F0%9F%98%80.md')
+  })
 })
 
 describe('getGitHubBlobUrl', () => {
