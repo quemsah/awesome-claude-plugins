@@ -2,7 +2,7 @@
 
 import { GitFork, Star } from 'lucide-react'
 import Link from 'next/link'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { copyText } from '../../lib/clipboard.ts'
 import { getMarketplaceAddCommand } from '../../lib/installCommand.ts'
 import { getGitHubOwnerUrl, getGitHubRepoPath } from '../../lib/repositoryIdentity.ts'
@@ -30,8 +30,11 @@ export function RepoCard({ repo, className }: RepoCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isCopied, setIsCopied] = useState(false)
   const [copyError, setCopyError] = useState<string | null>(null)
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const marketplaceCommand = useMemo(() => getMarketplaceAddCommand(repo.owner, repo.repo_name), [repo.owner, repo.repo_name])
   const hasValidRepoInfo = Boolean(marketplaceCommand)
+
+  useEffect(() => () => clearTimeout(resetTimer.current), [])
 
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true)
@@ -48,7 +51,10 @@ export function RepoCard({ repo, className }: RepoCardProps) {
     if (copied) {
       setCopyError(null)
       setIsCopied(true)
-      setTimeout(() => setIsCopied(false), 2_000)
+      // Restart rather than stack: a second copy while the first countdown runs would otherwise be
+      // cut short by the older timer, dropping the confirmation before its two seconds are up.
+      clearTimeout(resetTimer.current)
+      resetTimer.current = setTimeout(() => setIsCopied(false), 2_000)
     } else {
       setCopyError('Unable to copy the marketplace command. Select and copy it manually.')
     }
