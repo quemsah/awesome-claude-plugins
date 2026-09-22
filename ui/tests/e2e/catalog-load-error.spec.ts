@@ -43,9 +43,11 @@ test('a failed replacement reports the error before the retained results', async
   await expect(page.getByText(loadErrorText)).toBeVisible()
 
   const errorPrecedesGrid = await page.locator('body').evaluate((body) => {
-    const error = [...body.querySelectorAll('p')].find((element) => element.textContent === 'Failed to load repositories. Please try again later')
+    const error = [...body.querySelectorAll('p')].find(
+      (element) => element.textContent === 'Failed to load repositories. Please try again later'
+    )
     const grid = body.querySelector('#repo-results')
-    return Boolean(error && grid && (error.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING))
+    return Boolean(error && grid && error.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING)
   })
 
   expect(errorPrecedesGrid).toBe(true)
