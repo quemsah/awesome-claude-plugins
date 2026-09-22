@@ -61,7 +61,7 @@ const unnamedPlugin = {
  */
 const fixtures = {
   'ykdojo/claude-code-tips': {
-    marketplace: { status: 200, body: { plugins: [examplePlugin, fallbackPlugin, unnamedPlugin] } },
+    marketplace: { status: 200, body: { name: 'ykdojo', plugins: [examplePlugin, fallbackPlugin, unnamedPlugin] } },
   },
   'mksglu/context-mode': {
     marketplace: { status: 200, body: [examplePlugin] },
@@ -145,7 +145,6 @@ const server = createServer((request, response) => {
 
 const port = Number(process.env.MOCK_GITHUB_PORT ?? 3100)
 
-// Without this a taken port dies as an unhandled 'error' event behind a Node stack trace.
 server.on('error', (error) => {
   console.error(`mock-github-server: cannot listen on 127.0.0.1:${port} (${error.code}).`)
   console.error('Free the port, or set MOCK_GITHUB_PORT so ui/playwright.config.ts follows it.')
