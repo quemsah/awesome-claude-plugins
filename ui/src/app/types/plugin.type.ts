@@ -84,7 +84,7 @@ export const PluginSchema: z.ZodType<Plugin> = z
       .union([
         PluginSourceStringSchema,
         z.object({
-          source: z.string().min(1).max(512),
+          source: PluginPathSchema,
           repo: GitHubRepoPathSchema.optional(),
           url: z.union([SourceUrlSchema, GitHubRepoPathSchema]).optional(),
           branch: SourceRefSchema.optional(),

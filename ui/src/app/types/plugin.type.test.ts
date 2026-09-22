@@ -40,6 +40,19 @@ describe('MarketplacePluginsSchema', () => {
     expect(result.success).toBe(false)
   })
 
+  it('rejects traversal in source object fallback paths', () => {
+    const result = MarketplacePluginsSchema.safeParse({
+      plugins: [
+        {
+          name: 'unsafe-plugin',
+          source: { source: '../../../../attacker/repo', repo: 'elsewhere/shared-plugins', branch: 'main' },
+        },
+      ],
+    })
+
+    expect(result.success).toBe(false)
+  })
+
   it('accepts common marketplace wrappers and a single plugin entry', () => {
     const wrapped = MarketplacePluginsSchema.safeParse({
       marketplace: {
