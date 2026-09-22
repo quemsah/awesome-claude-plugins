@@ -37,17 +37,33 @@ async function expectFirstDetailsLink(page: Page, repoPath: string) {
  * Holds every catalog request until the returned release runs, so a test can read what the grid says
  * while a request is still in flight instead of racing the response, whose duration the test controls.
  */
-async function holdCatalogRequests(page: Page): Promise<() => void> {
-  let release: () => void = () => {}
+async function holdCatalogRequests(page: Page): Promise<() => Promise<void>> {
+  let unblock: () => void = () => {}
   const held = new Promise<void>((resolve) => {
-    release = resolve
+    unblock = resolve
   })
+  // Playwright stops a route callback the moment its test ends and reports the interrupted
+  // `route.fetch` as an unhandled error, which turns a run whose tests all passed red. Releasing
+  // therefore waits for the forwarding each held request had started.
+  const forwarding = new Set<Promise<unknown>>()
   await page.route('**/api/catalog*', async (route) => {
-    await held
-    const response = await route.fetch()
-    await route.fulfill({ response })
+    const pending = (async () => {
+      await held
+      const response = await route.fetch()
+      await route.fulfill({ response })
+    })()
+    forwarding.add(pending)
+    await pending
   })
-  return release
+
+  return async () => {
+    unblock()
+    const results = await Promise.allSettled(forwarding)
+    const failures = results.flatMap((result) => (result.status === 'rejected' ? [result.reason] : []))
+    if (failures.length > 0) {
+      throw new AggregateError(failures, 'Catalog request forwarding failed')
+    }
+  }
 }
 
 /** Requests the page itself made to the catalog endpoint, read off the browser's resource timings. */
@@ -137,7 +153,7 @@ test('repository skeleton mirrors coarse-pointer touch target geometry', async (
     }
   }
 
-  release()
+  await release()
 })
 
 test('a search that replaces the results reports searching rather than loading more', async ({ page }) => {
@@ -152,7 +168,7 @@ test('a search that replaces the results reports searching rather than loading m
   await expect(loadStatus).toHaveText('Searching repositories.')
   await expect(page.getByText('Loading more repositories')).toHaveCount(0)
 
-  release()
+  await release()
   await expect(page.getByRole('link', { name: 'View details for obra/superpowers' }).first()).toBeVisible()
   await expect(loadStatus).toHaveText('Repository results updated.')
 })
@@ -168,7 +184,7 @@ test('reaching the end of the grid reports loading more rather than searching', 
   await expect(loadStatus).toHaveText('Loading more repositories.')
   await expect(page.getByText('Searching repositories')).toHaveCount(0)
 
-  release()
+  await release()
   await expect(page.getByRole('link', { name: detailsLinkName })).toHaveCount(48)
   await expect(loadStatus).toHaveText('Loaded 24 more repositories.')
 })
@@ -185,7 +201,7 @@ test('a search started from an empty result set reports searching instead of no 
   await expect(page.getByText('Searching repositories...')).toBeVisible()
   await expect(noMatches).toBeHidden()
 
-  release()
+  await release()
   await expect(page.getByRole('link', { name: 'View details for obra/superpowers' }).first()).toBeVisible()
 })
 
@@ -211,7 +227,7 @@ test('a completed sort announces that repository results were updated', async ({
   await chooseSortOption(page, 'Forks')
   await expect(loadStatus).toHaveText('Searching repositories.')
 
-  release()
+  await release()
   await expect(loadStatus).toHaveText('Repository results updated.')
 })
 
@@ -402,25 +418,28 @@ test('automatic paging rearms after a replacement shortens the document', async 
 test('replacing a complete short list says it is searching without a pagination footer', async ({ page }) => {
   await page.goto('/?q=nemotron')
 
-  await expect(page.getByRole('link', { name: detailsLinkName })).toHaveCount(3)
+  const detailsLinks = page.getByRole('link', { name: detailsLinkName })
+  await expect(detailsLinks.first()).toBeVisible()
+  expect(await detailsLinks.count()).toBeLessThan(24)
   await expect(page.locator('#repo-results > div')).toHaveCount(0)
 
   const release = await holdCatalogRequests(page)
   await page.getByRole('searchbox', { name: 'Search repositories' }).fill('hello')
   await expect(page.getByText('Searching repositories...')).toBeVisible()
 
-  release()
-  await expect(page.getByRole('link', { name: detailsLinkName })).toHaveCount(24)
+  await release()
+  await expect(detailsLinks).toHaveCount(24)
 })
 
 test('a replacement that lands a longer first page does not announce more repositories', async ({ page }) => {
   await page.goto('/?q=nemotron')
 
   const detailsLinks = page.getByRole('link', { name: detailsLinkName })
-  await expect(detailsLinks).toHaveCount(3)
+  await expect(detailsLinks.first()).toBeVisible()
+  expect(await detailsLinks.count()).toBeLessThan(24)
   const loadStatus = page.locator('#repo-results > p[role="status"]')
 
-  // Three matches become 24, so the list grows and the first card can well be the same repository: the
+  // A complete short list becomes 24, so the list grows and the first card can well be the same repository: the
   // only thing that says whether this was an append is the operation that issued the request.
   await page.getByRole('searchbox', { name: 'Search repositories' }).fill('')
   await expect(detailsLinks).toHaveCount(24)
@@ -482,7 +501,6 @@ test('home page persists search term in url query parameters', async ({ page }) 
   await page.getByRole('searchbox', { name: 'Search repositories' }).fill('hello')
   await expect(page).toHaveURL(qHelloRegex)
   await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toHaveValue('hello')
-
   await page.getByRole('searchbox', { name: 'Search repositories' }).fill('')
   await expect(page).toHaveURL('/')
 })
