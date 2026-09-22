@@ -9,6 +9,7 @@ const PluginPathSchema = z
   .refine((value) => !(value.includes('..') || CONTROL_CHARACTER_PATTERN.test(value)), 'Must be a safe repository path')
 const GitHubRepoPathSchema = z.string().regex(GITHUB_REPO_PATH_PATTERN, 'Must be a GitHub repository path')
 const PluginIdSchema = z.string().regex(/^[A-Za-z0-9._-]+$/, 'Must be a safe plugin identifier')
+const MarketplaceNameSchema = PluginIdSchema
 const SourceRefSchema = z
   .string()
   .min(1)
@@ -157,3 +158,23 @@ export const MarketplacePluginsSchema = z.union([
   }, 'Must not contain marketplace wrapper keys').transform((plugin) => [plugin]),
   EmptyMarketplaceSchema,
 ])
+
+export function getMarketplaceName(value: unknown): string | undefined {
+  if (!(value && typeof value === 'object') || Array.isArray(value)) return undefined
+  const object = value as Record<string, unknown>
+
+  if (Array.isArray(object.plugins)) {
+    const parsedName = MarketplaceNameSchema.safeParse(object.name)
+    return parsedName.success ? parsedName.data : undefined
+  }
+
+  if (object.marketplace && typeof object.marketplace === 'object' && !Array.isArray(object.marketplace)) {
+    const marketplace = object.marketplace as Record<string, unknown>
+    if (Array.isArray(marketplace.plugins)) {
+      const parsedName = MarketplaceNameSchema.safeParse(marketplace.name)
+      return parsedName.success ? parsedName.data : undefined
+    }
+  }
+
+  return undefined
+}
