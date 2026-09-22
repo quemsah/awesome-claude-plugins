@@ -2,6 +2,21 @@ import { describe, expect, it } from 'vitest'
 import { MarketplacePluginsSchema } from './plugin.type.ts'
 
 describe('MarketplacePluginsSchema', () => {
+  it('preserves the marketplace name alongside parsed plugins', () => {
+    const result = MarketplacePluginsSchema.safeParse({
+      name: 'ykdojo',
+      plugins: [{ name: 'dx', source: './' }],
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data).toEqual({
+        name: 'ykdojo',
+        plugins: [{ name: 'dx', source: './' }],
+      })
+    }
+  })
+
   it('accepts current Claude marketplace source objects', () => {
     const result = MarketplacePluginsSchema.safeParse({
       plugins: [
