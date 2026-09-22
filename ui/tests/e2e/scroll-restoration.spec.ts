@@ -38,7 +38,16 @@ async function clickLoadMoreWithoutScrolling(page: Page) {
 }
 
 async function expectRestored(page: Page, offset: number) {
-  await expect.poll(() => scrollY(page), { timeout: 10_000 }).toBeGreaterThanOrEqual(offset - 5)
+  await expect
+    .poll(
+      () =>
+        page.evaluate((savedOffset) => {
+          const maximumScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
+          return Math.abs(window.scrollY - Math.min(savedOffset, maximumScroll))
+        }, offset),
+      { timeout: 10_000 }
+    )
+    .toBeLessThanOrEqual(5)
 }
 
 test('browser Back keeps the catalog scroll position', async ({ page }) => {
@@ -86,7 +95,7 @@ test('"Back to all repositories" returns to the searched list at the offset the 
   await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toHaveValue('superpowers')
   await expect(page.getByRole('link', { name: detailsLinkName }).first()).toBeVisible()
 
-  const offset = await page.evaluate(() => Math.min(1_000, Math.round((document.documentElement.scrollHeight - window.innerHeight) / 2)))
+  const offset = await page.evaluate(() => Math.round((document.documentElement.scrollHeight - window.innerHeight) / 2))
   expect(offset).toBeGreaterThan(0)
   await scrollToOffset(page, offset)
 
@@ -95,7 +104,7 @@ test('"Back to all repositories" returns to the searched list at the offset the 
 
   await page.getByRole('link', { name: backToRepositoriesName }).click()
   await expect(page).toHaveURL('/?q=superpowers')
-  await expect.poll(() => scrollY(page)).toBeGreaterThanOrEqual(offset - 50)
+  await expectRestored(page, offset)
 })
 
 test('an offset stored for one search state is not applied to another', async ({ page }) => {
