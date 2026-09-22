@@ -51,13 +51,14 @@ test('repo detail page refreshes repository and marketplace data in the browser'
   await expect.poll(() => copiedText(page)).toBe('/plugin install example-plugin@example-plugin')
 })
 
-test('repo detail page marks a repoPath-only plugin command as unverified', async ({ page }) => {
+test('repo detail page lets users copy an install command verified by its repoPath', async ({ page }) => {
+  await mockClipboard(page)
   await page.goto('/ykdojo/claude-code-tips')
 
   const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Fallback Install Target' }) })
   await expect(plugin.getByText('/plugin install fallback-install-target@ykdojo-claude-code-tips')).toBeVisible()
-  await expect(plugin.getByText('unverified')).toBeVisible()
-  await expect(plugin.getByRole('button', { name: 'Copy install command unavailable' })).toBeDisabled()
+  await plugin.getByRole('button', { name: 'Copy installation command' }).click()
+  await expect.poll(() => copiedText(page)).toBe('/plugin install fallback-install-target@ykdojo-claude-code-tips')
   await expect(plugin.getByRole('link', { name: 'Open source file plugins/fallback.json in a new tab' })).toHaveAttribute(
     'href',
     'https://github.com/elsewhere/shared-plugins/blob/main/plugins/fallback.json'
