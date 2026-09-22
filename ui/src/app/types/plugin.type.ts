@@ -160,7 +160,7 @@ export const MarketplacePluginsSchema = z.union([
 ])
 
 export function getMarketplaceName(value: unknown): string | undefined {
-  if (!(value && typeof value === 'object') || Array.isArray(value)) return undefined
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
   const object = value as Record<string, unknown>
 
   if (Array.isArray(object.plugins)) {
@@ -168,13 +168,10 @@ export function getMarketplaceName(value: unknown): string | undefined {
     return parsedName.success ? parsedName.data : undefined
   }
 
-  if (object.marketplace && typeof object.marketplace === 'object' && !Array.isArray(object.marketplace)) {
-    const marketplace = object.marketplace as Record<string, unknown>
-    if (Array.isArray(marketplace.plugins)) {
-      const parsedName = MarketplaceNameSchema.safeParse(marketplace.name)
-      return parsedName.success ? parsedName.data : undefined
-    }
-  }
+  if (!object.marketplace || typeof object.marketplace !== 'object' || Array.isArray(object.marketplace)) return undefined
+  const marketplace = object.marketplace as Record<string, unknown>
+  if (!Array.isArray(marketplace.plugins)) return undefined
 
-  return undefined
+  const parsedName = MarketplaceNameSchema.safeParse(marketplace.name)
+  return parsedName.success ? parsedName.data : undefined
 }
