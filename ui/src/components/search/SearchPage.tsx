@@ -1,3 +1,5 @@
+/** biome-ignore-all lint/correctness/useExhaustiveDependencies: _replaceRetry reruns a failed replacement request. */
+
 'use client'
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -51,7 +53,8 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   const [hasMore, setHasMore] = useState(initialTotal > initialRepos.length)
   const [pendingLoad, setPendingLoad] = useState<PendingCatalogLoad>(null)
   const [replaceCompletion, setReplaceCompletion] = useState(0)
-  const [hasLoadError, setHasLoadError] = useState(false)
+  const [failedLoad, setFailedLoad] = useState<PendingCatalogLoad>(null)
+  const [_replaceRetry, setReplaceRetry] = useState(0)
   const initialRequest = useRef(true)
   const nextPage = useRef(1)
   const loadingController = useRef<AbortController | null>(null)
@@ -125,7 +128,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     inFlightCatalogRequest.current = 'replace'
     nextPage.current = 1
     setPendingLoad('replace')
-    setHasLoadError(false)
+    setFailedLoad(null)
     const params = new URLSearchParams({ page: '0', pageSize: `${CATALOG_PAGE_SIZE}`, q: searchTerm, sort: sortOption })
 
     ;(async () => {
@@ -145,7 +148,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         setReplaceCompletion((current) => current + 1)
       } catch {
         if (!controller.signal.aborted) {
-          setHasLoadError(true)
+          setFailedLoad('replace')
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -161,7 +164,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         loadingController.current = null
       }
     }
-  }, [searchTerm, sortOption])
+  }, [_replaceRetry, searchTerm, sortOption])
 
   const loadMore = useCallback(async () => {
     if (!(hasMore && mayStartCatalogRequest(inFlightCatalogRequest.current, 'append'))) {
@@ -172,6 +175,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     loadingController.current = controller
     inFlightCatalogRequest.current = 'append'
     setPendingLoad('append')
+    setFailedLoad(null)
     const params = new URLSearchParams({
       page: `${nextPage.current}`,
       pageSize: `${CATALOG_PAGE_SIZE}`,
@@ -193,7 +197,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
       nextPage.current += 1
     } catch {
       if (!controller.signal.aborted) {
-        setHasLoadError(true)
+        setFailedLoad('append')
       }
     } finally {
       if (!controller.signal.aborted) {
@@ -202,6 +206,14 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
       }
     }
   }, [hasMore, searchTerm, sortOption])
+
+  const retryFailedLoad = useCallback(() => {
+    if (failedLoad === 'append') {
+      loadMore()
+    } else if (failedLoad === 'replace') {
+      setReplaceRetry((current) => current + 1)
+    }
+  }, [failedLoad, loadMore])
 
   useEffect(() => {
     window.sessionStorage.setItem('last-search-url', `${window.location.pathname}${window.location.search}`)
@@ -292,9 +304,10 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         sortOption={sortOption}
       />
       <RepoList
-        hasLoadError={hasLoadError}
+        hasLoadError={failedLoad !== null}
         hasMore={hasMore}
         onLoadMore={loadMore}
+        onRetry={retryFailedLoad}
         pendingLoad={pendingLoad}
         replaceCompletion={replaceCompletion}
         sortedRepos={[...repos]}
