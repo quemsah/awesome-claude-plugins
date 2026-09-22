@@ -11,11 +11,7 @@ interface InstallCommandProps {
 }
 
 export function InstallCommand({ marketplaceName, pluginName, pluginId }: InstallCommandProps) {
-  const { copyError, handleCopyClick, installCommand, isCopied, isVerified } = useInstallCommand(
-    pluginName,
-    pluginId,
-    marketplaceName
-  )
+  const { copyError, handleCopyClick, installCommand, isCopied, isVerified } = useInstallCommand(pluginName, pluginId, marketplaceName)
 
   const isDisabled = !(installCommand && isVerified)
 
