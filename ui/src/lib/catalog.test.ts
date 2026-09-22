@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/style/useNamingConvention: Test assertion mirrors catalog field names. */
 
 import { describe, expect, it } from 'vitest'
-import { getCanonicalCatalogRepos, searchCatalogRepos, type CatalogRepo } from './catalog.ts'
+import { type CatalogRepo, getCanonicalCatalogRepos, searchCatalogRepos } from './catalog.ts'
 import { createFuseIndex } from './fuzzySearch.ts'
 
 function repoKey(repo: CatalogRepo) {
