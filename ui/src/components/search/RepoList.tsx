@@ -28,6 +28,14 @@ export function RepoList({ hasLoadError, hasMore, onLoadMore, pendingLoad, repla
           replaceCompletion={replaceCompletion}
           repos={sortedRepos}
         />
+        {hasLoadError ? (
+          <div className="py-8 text-center">
+            <p className="text-muted-foreground">{failedNotice.visible}</p>
+            <p aria-live="polite" className="sr-only" role="status">
+              {failedNotice.announcement}
+            </p>
+          </div>
+        ) : null}
       </div>
     )
   }

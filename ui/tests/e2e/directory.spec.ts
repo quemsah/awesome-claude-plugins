@@ -189,6 +189,19 @@ test('reaching the end of the grid reports loading more rather than searching', 
   await expect(loadStatus).toHaveText('Loaded 24 more repositories.')
 })
 
+test('a failed page load keeps the results visible and reports the error', async ({ page }) => {
+  await page.goto('/')
+
+  const firstResult = page.getByRole('link', { name: detailsLinkName }).first()
+  await expect(firstResult).toBeVisible()
+  await page.route('**/api/catalog*', (route) => route.fulfill({ status: 500 }))
+
+  await page.getByRole('button', { name: 'Load more' }).click()
+
+  await expect(page.getByText('Failed to load repositories. Please try again later')).toBeVisible()
+  await expect(firstResult).toBeVisible()
+})
+
 test('a search started from an empty result set reports searching instead of no matches', async ({ page }) => {
   const release = await holdCatalogRequests(page)
   await page.goto('/?q=definitely-no-matching-repository-name')
