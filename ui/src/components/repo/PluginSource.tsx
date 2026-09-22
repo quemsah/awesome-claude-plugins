@@ -1,15 +1,9 @@
 import type { PluginSource as PluginSourceType } from '../../app/types/plugin.type.ts'
+import { encodeGitHubPath, getGitHubBlobUrl } from '../../lib/repositoryIdentity.ts'
 
 const GIT_SUFFIX_PATTERN = /\.git$/
 const GITHUB_REPO_PATH_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
 const SAFE_SOURCE_PATH_PATTERN = /^(?!.*\.\.)(?!.*[\r\n]).+$/
-
-function encodeRef(ref: string): string {
-  return ref
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/')
-}
 
 interface PluginSourceProps {
   source?: string | PluginSourceType
@@ -31,19 +25,23 @@ export function PluginSource({ source, repoPath, defaultBranch }: PluginSourcePr
         ? `https://github.com/${source.slice('github:'.length)}`
         : null
       : typeof source === 'string' && SAFE_SOURCE_PATH_PATTERN.test(source) && targetRepo && branch
-        ? `https://github.com/${targetRepo}/blob/${encodeRef(branch)}/${source}`
+        ? getGitHubBlobUrl(targetRepo, branch, source)
         : null
   const sourceUrl =
     typeof source === 'string'
       ? sourceStringUrl
       : sourceUrlValue
         ? source.path
-          ? `${GITHUB_REPO_PATH_PATTERN.test(sourceUrlValue) ? `https://github.com/${sourceUrlValue}` : sourceUrlValue.replace(GIT_SUFFIX_PATTERN, '')}/blob/${encodeRef(branch ?? 'HEAD')}/${source.path}`
+          ? GITHUB_REPO_PATH_PATTERN.test(sourceUrlValue)
+            ? getGitHubBlobUrl(sourceUrlValue, branch ?? 'HEAD', source.path)
+            : // A manifest may name another host outright, so only the segments added here are encoded:
+              // the base is already a complete URL, and re-encoding it would double its own `%` escapes.
+              `${sourceUrlValue.replace(GIT_SUFFIX_PATTERN, '')}/blob/${encodeGitHubPath(branch ?? 'HEAD')}/${encodeGitHubPath(source.path)}`
           : GITHUB_REPO_PATH_PATTERN.test(sourceUrlValue)
             ? `https://github.com/${sourceUrlValue}`
             : sourceUrlValue
         : targetRepo && branch
-          ? `https://github.com/${targetRepo}/blob/${encodeRef(branch)}/${sourcePath}`
+          ? getGitHubBlobUrl(targetRepo, branch, sourcePath)
           : null
 
   if (!sourceUrl) return null

@@ -1,3 +1,5 @@
+import { getGitHubBlobUrl } from '../../lib/repositoryIdentity.ts'
+
 interface PluginListProps {
   title: string
   items?: string[] | Record<string, unknown>
@@ -17,7 +19,7 @@ export function PluginList({ title, items, repoPath, defaultBranch }: PluginList
       <dd>
         <ul className="list-inside list-disc space-y-0.5 text-muted-foreground text-sm">
           {listItems.map((item) => {
-            const fileUrl = `https://github.com/${repoPath}/blob/${defaultBranch}/${item}`
+            const fileUrl = getGitHubBlobUrl(repoPath, defaultBranch, item)
             return (
               <li className="break-all" key={item}>
                 <a
