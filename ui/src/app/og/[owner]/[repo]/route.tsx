@@ -1,7 +1,6 @@
 import { ImageResponse } from 'next/og'
 import { findCatalogRepo } from '../../../../lib/catalog.ts'
 
-export const contentType = 'image/png'
 export const runtime = 'nodejs'
 
 type RouteContext = {
