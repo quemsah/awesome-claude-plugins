@@ -1,4 +1,5 @@
 import type { components } from '@octokit/openapi-types'
+import { isValidGitBranch, isValidGitHubOwner, isValidGitHubRepository, isValidGitSha } from '../github/identifiers.js'
 import { throwIfShutdown } from '../shutdown.js'
 
 export type GitBranchHead = { sha: string; treeSha: string }
@@ -72,15 +73,13 @@ function nonempty(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0
 }
 
-const shaPattern = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i
-
 function sha(value: unknown): string {
-  if (typeof value !== 'string' || !shaPattern.test(value)) throw new GitHubGitResponseError()
+  if (!isValidGitSha(value)) throw new GitHubGitResponseError()
   return value
 }
 
 function inputSha(value: unknown): string {
-  if (typeof value !== 'string' || !shaPattern.test(value)) throw new GitHubGitError('Valid Git SHA is required')
+  if (!isValidGitSha(value)) throw new GitHubGitError('Valid Git SHA is required')
   return value
 }
 
@@ -116,27 +115,13 @@ export class GitHubGitClient implements GitHubGit {
         throw new GitHubGitError(`GitHub Git ${field} is required`)
       }
     }
-    if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(options.owner)) {
+    if (!isValidGitHubOwner(options.owner)) {
       throw new GitHubGitError('Invalid GitHub Git owner')
     }
-    if (options.repo.length > 100 || options.repo === '.' || options.repo === '..' || !/^[A-Za-z0-9._-]+$/.test(options.repo)) {
+    if (!isValidGitHubRepository(options.repo)) {
       throw new GitHubGitError('Invalid GitHub Git repo')
     }
-    if (
-      options.branch === '@' ||
-      options.branch.includes('@{') ||
-      options.branch
-        .split('/')
-        .some(
-          (part) =>
-            !part ||
-            part.startsWith('.') ||
-            part.endsWith('.') ||
-            part.endsWith('.lock') ||
-            part.includes('..') ||
-            /[\\~^:?*[\]\s]/u.test(part),
-        )
-    ) {
+    if (!isValidGitBranch(options.branch)) {
       throw new GitHubGitError('Invalid GitHub Git branch')
     }
     this.token = options.token
