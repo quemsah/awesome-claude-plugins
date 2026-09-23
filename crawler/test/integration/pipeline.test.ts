@@ -55,10 +55,7 @@ it('runs discovery, enrichment, snapshot generation and Git publication through 
       })
     }
     if (url.pathname === '/repos/acme/catalog/contents/.claude-plugin/marketplace.json') {
-      return Response.json({
-        encoding: 'base64',
-        content: Buffer.from(JSON.stringify({ plugins: [{ name: 'one' }, { name: 'two' }] })).toString('base64'),
-      })
+      return Response.json({ plugins: [{ name: 'one' }, { name: 'two' }] })
     }
     throw new Error(`Unexpected read request: ${url.pathname}`)
   }) as typeof fetch
