@@ -8,6 +8,7 @@ import type { TelegramSummary } from '../notify/telegram.js'
 import { TelegramNotificationError, type TelegramNotifier } from '../notify/telegram.js'
 import type { GitHubGit } from '../publish/githubGit.js'
 import { PublicationError, prepareDraft, publishRun } from '../publish/publishRun.js'
+import { ShutdownError } from '../shutdown.js'
 import { listPublishable } from '../storage/repositories.js'
 import { getActiveRun, getRun, getSetting, listRunErrors, recordRunError, setSetting } from '../storage/runs.js'
 
@@ -177,6 +178,7 @@ function summary(db: Database.Database, runId: string, counts?: CrawlSummary, bu
 }
 
 function logDelivery(db: Database.Database, runId: string, now: () => Date, log: (event: LogEvent) => void, error: unknown): void {
+  if (error instanceof ShutdownError) return
   const failure = error instanceof TelegramNotificationError ? error.category : 'delivery_failed'
   log({ level: 'error', phase: 'notify', category: failure, runId })
   if (!getRun(db, runId)) return
