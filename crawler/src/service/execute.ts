@@ -36,6 +36,7 @@ export type CrawlOptions = ExecuteOptions & {
 
 export type RunReport = Pick<CrawlSummary, 'discovery' | 'enrichment' | 'warningCount' | 'errorCategories'> & {
   rateBuckets?: GitHubRateBuckets
+  durationMs?: number
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -117,12 +118,14 @@ function storedReport(db: Database.Database, runId: string): Partial<RunReport> 
   ) {
     throw new Error('Invalid stored GitHub rate report')
   }
+  if (value.durationMs !== undefined && !nonnegative(value.durationMs)) throw new Error('Invalid stored crawl duration')
   return {
     discovery: value.discovery,
     enrichment: value.enrichment,
     warningCount: value.warningCount,
     errorCategories: value.errorCategories as Record<string, number>,
     ...(rate === undefined ? {} : { rateBuckets: rate as GitHubRateBuckets }),
+    ...(value.durationMs === undefined ? {} : { durationMs: value.durationMs }),
   }
 }
 
@@ -134,7 +137,7 @@ function category(error: unknown): string {
 function summary(db: Database.Database, runId: string, counts?: CrawlSummary, buckets?: GitHubRateBuckets): TelegramSummary {
   const errors = listRunErrors(db, runId)
   const run = getRun(db, runId)
-  const saved = counts ? null : storedReport(db, runId)
+  const saved = storedReport(db, runId)
   const report = counts?.enrichment ?? saved?.enrichment
   const errorCategories: Record<string, number> = counts?.errorCategories ?? saved?.errorCategories ?? {}
   if (!counts && !saved?.errorCategories) {
@@ -149,6 +152,7 @@ function summary(db: Database.Database, runId: string, counts?: CrawlSummary, bu
     ...(report ? { enrichment: report } : {}),
     ...(counts || saved || Object.keys(errorCategories).length ? { errorCategories } : {}),
     ...((buckets ?? saved?.rateBuckets) ? { rateBuckets: buckets ?? saved?.rateBuckets } : {}),
+    ...(saved?.durationMs === undefined ? {} : { durationMs: saved.durationMs }),
     problematicRanges: [
       ...new Set(
         errors
@@ -287,6 +291,7 @@ export async function executeCrawl(
   let size: number
   let report: RunReport
   let startRecorded = false
+  const crawlStartedAt = performance.now()
   try {
     counts = await runCrawl(db, reader, runId, { ranges: options.ranges, now })
     if (startError) {
@@ -294,12 +299,14 @@ export async function executeCrawl(
       startRecorded = true
     }
     size = prepareDraft(db, runId, now()).size
+    const durationMs = Math.round(performance.now() - crawlStartedAt)
     report = {
       discovery: counts.discovery,
       enrichment: counts.enrichment,
       warningCount: counts.warningCount,
       errorCategories: counts.errorCategories,
       ...(options.rateBuckets ? { rateBuckets: options.rateBuckets() } : {}),
+      durationMs,
     }
     setSetting(db, `run_report_${runId}`, JSON.stringify(report))
   } catch (error) {

@@ -204,12 +204,12 @@ describe('CLI', () => {
     expect(opened).toBe(false)
   })
 
-  it('skips before 72 hours without constructing reader/notifier/Git; force runs a read-only draft', async () => {
+  it('skips before 24 hours without constructing reader/notifier/Git; force runs a read-only draft', async () => {
     const path = databasePath()
     const files = ['--repos', join(fixtures, 'repos.csv'), '--stats', join(fixtures, 'stats.csv')]
     expect(cli(['seed', ...files], path).status).toBe(0)
     const setup = openDatabase(path)
-    setSetting(setup, 'last_published_at', '2026-09-21T00:00:00.000Z')
+    setSetting(setup, 'last_published_at', '2026-09-22T12:01:00.000Z')
     setup.close()
     const reader = readerFixture()
     const createReader = vi.fn(() => reader)

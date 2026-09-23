@@ -11,6 +11,7 @@ export type TelegramSummary = {
   enrichment?: EnrichmentCounts
   errorCategories?: Record<string, number>
   rateBuckets?: GitHubRateBuckets
+  durationMs?: number
 }
 
 export type TelegramNotificationCategory =
@@ -107,6 +108,12 @@ function summaryText(summary: TelegramSummary): string {
     for (const bucket of ['code_search', 'core'] as const) {
       details.push(`${bucket} requests: ${summary.rateBuckets[bucket].requests}; wait ms: ${summary.rateBuckets[bucket].waitMs}`)
     }
+  }
+  if (summary.durationMs !== undefined) {
+    const seconds = Math.floor(summary.durationMs / 1000)
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    details.push(`duration: ${hours}h ${minutes}m ${seconds % 60}s`)
   }
   const lines = [
     `run_id: ${summary.runId}`,

@@ -88,10 +88,11 @@ describe('orchestration', () => {
           rateBuckets,
         },
       })
+      expect(result.report.durationMs).toEqual(expect.any(Number))
       const report = JSON.parse(getSetting(db, 'run_report_report') ?? 'null')
       expect(report).toMatchObject(result.report)
       expect(notify.notifyDryRun).toHaveBeenCalledWith(
-        expect.objectContaining({ enrichment: result.report.enrichment, errorCategories: {}, rateBuckets }),
+        expect.objectContaining({ enrichment: result.report.enrichment, errorCategories: {}, rateBuckets, durationMs: result.report.durationMs }),
       )
     } finally {
       db.close()

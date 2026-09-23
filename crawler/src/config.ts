@@ -22,7 +22,7 @@ export function parseConfig(command: 'crawl' | 'publish', env: NodeJS.ProcessEnv
   if (!env.DB_PATH?.trim()) throw new ConfigurationError()
   const flag = env.PUBLISH_ENABLED ?? 'false'
   if (flag !== 'true' && flag !== 'false') throw new ConfigurationError()
-  const interval = env.CRAWL_INTERVAL_HOURS ?? '72'
+  const interval = env.CRAWL_INTERVAL_HOURS ?? '24'
   if (!/^[1-9]\d*$/.test(interval) || !Number.isSafeInteger(Number(interval)) || Number(interval) > Number.MAX_SAFE_INTEGER / 3_600_000) {
     throw new ConfigurationError()
   }

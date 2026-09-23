@@ -4,8 +4,12 @@ import { parseConfig } from './config.js'
 const base = { DB_PATH: 'catalog.sqlite', GITHUB_READ_TOKEN: 'read-secret' }
 
 describe('parseConfig', () => {
-  it('defaults to a disabled pilot and 72-hour interval', () => {
-    expect(parseConfig('crawl', base)).toMatchObject({ publishEnabled: false, intervalHours: 72, readToken: 'read-secret' })
+  it('defaults to a disabled pilot and 24-hour interval', () => {
+    expect(parseConfig('crawl', base)).toMatchObject({ publishEnabled: false, intervalHours: 24, readToken: 'read-secret' })
+  })
+
+  it('allows overriding the default crawl interval', () => {
+    expect(parseConfig('crawl', { ...base, CRAWL_INTERVAL_HOURS: '48' }).intervalHours).toBe(48)
   })
 
   it.each(['TRUE', '1', 'maybe', ''])('refuses invalid PUBLISH_ENABLED=%j', (value) => {

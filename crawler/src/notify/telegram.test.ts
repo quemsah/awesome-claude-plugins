@@ -46,6 +46,11 @@ describe('TelegramNotifier', () => {
     expect(body(test.requests[0]).text).toContain('Dry run completed')
     expect(body(test.requests[0]).text).not.toMatch(/SHA|unconfirmed-sha|Publication succeeded/)
   })
+  it('includes total crawl duration in the completion report', async () => {
+    const test = harness([Response.json({ ok: true })])
+    await test.notifier.notifyDryRun({ ...summary, durationMs: 3_661_000 })
+    expect(body(test.requests[0]).text).toContain('duration: 1h 1m 1s')
+  })
   it('sends a start summary as plain text over POST with a deadline and no published SHA', async () => {
     const test = harness([Response.json({ ok: true, result: { message_id: 1 } })])
     const accidentalSha = { ...summary, confirmedGitSha: 'accidental-unconfirmed-sha' }
