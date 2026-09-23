@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import { GitHubFatalError, type GitHubReader, GitHubTemporaryError } from '../github/client.js'
 import { SIZE_RANGES, type SizeRange } from '../github/sizeRanges.js'
+import { ShutdownError, throwIfShutdown } from '../shutdown.js'
 import {
   beginRun,
   completeRun,
@@ -10,6 +11,7 @@ import {
   listRunErrors,
   PublicationLeaseError,
   recordRunError,
+  terminateRun,
 } from '../storage/runs.js'
 import { type DiscoverySummary, discover } from './discover.js'
 import { type EnrichmentCounts, enrichRepositories } from './enrich.js'
@@ -17,6 +19,7 @@ import { type EnrichmentCounts, enrichRepositories } from './enrich.js'
 export type RunCrawlOptions = {
   ranges?: readonly SizeRange[]
   now?: () => Date
+  signal?: AbortSignal
 }
 
 export type CrawlSummary = {
@@ -37,6 +40,7 @@ export type CrawlFailureCategory =
   | 'run_not_active'
   | 'run_already_active'
   | 'publication_locked'
+  | 'terminated'
 
 export class CrawlError extends Error {
   constructor(
@@ -50,6 +54,7 @@ export class CrawlError extends Error {
 
 function failureCategory(error: unknown): CrawlFailureCategory {
   if (error instanceof CrawlError) return error.category
+  if (error instanceof ShutdownError) return 'terminated'
   if (error instanceof GitHubFatalError) return 'github_fatal_error'
   if (error instanceof GitHubTemporaryError && (error.status === 401 || error.status === 422)) return 'github_fatal_error'
   if (
@@ -84,8 +89,10 @@ async function crawlAndComplete(
   now: () => string,
 ): Promise<CrawlSummary> {
   const heartbeat = () => {
+    throwIfShutdown(options.signal)
     if (!heartbeatRun(db, runId, now())) throw new CrawlError('run_not_active')
   }
+  throwIfShutdown(options.signal)
   const discovery = await discover(db, reader, runId, options.ranges ?? SIZE_RANGES, heartbeat, now)
   heartbeat()
   const enrichment = await enrichRepositories(db, reader, runId, heartbeat, now)
@@ -119,7 +126,7 @@ function failCrawl(db: Database.Database, runId: string, error: unknown, categor
   }
   let failed = false
   try {
-    failed = failRun(db, runId, now(), category)
+    failed = category === 'terminated' ? terminateRun(db, runId, now()) : failRun(db, runId, now(), category)
   } catch (error) {
     persistenceError ??= error
   }
