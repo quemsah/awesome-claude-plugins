@@ -1,8 +1,10 @@
+import { ShutdownError, throwIfShutdown } from '../shutdown.js'
+
 export type RateResource = 'code_search' | 'core'
 
 export type Clock = {
   now: () => number
-  sleep: (milliseconds: number) => Promise<void>
+  sleep: (milliseconds: number, signal?: AbortSignal) => Promise<void>
 }
 
 export type RateLog = (event: { bucket: RateResource; request?: true; remaining?: number; waitMs?: number }) => void
@@ -15,7 +17,20 @@ const rules: Record<RateResource, { limit: number; windowMs: number; spacingMs: 
 
 const systemClock: Clock = {
   now: Date.now,
-  sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  sleep: (milliseconds, signal) =>
+    new Promise((resolve, reject) => {
+      throwIfShutdown(signal)
+      const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort)
+        resolve()
+      }, milliseconds)
+      const onAbort = () => {
+        clearTimeout(timer)
+        signal?.removeEventListener('abort', onAbort)
+        reject(new ShutdownError())
+      }
+      signal?.addEventListener('abort', onAbort, { once: true })
+    }),
 }
 
 export class RateBudget {
@@ -30,10 +45,12 @@ export class RateBudget {
     private readonly pacingMs: Partial<Record<RateResource, number>> = {},
   ) {}
 
-  acquire(bucket: RateResource): Promise<void> {
+  acquire(bucket: RateResource, signal?: AbortSignal): Promise<void> {
     const reservation = this.reservations.then(async () => {
+      throwIfShutdown(signal)
       const rule = rules[bucket]
       while (true) {
+        throwIfShutdown(signal)
         const now = this.clock.now()
         const recent = this.sent[bucket]
         while (recent.length && recent[0] <= now - rule.windowMs) recent.shift()
@@ -46,12 +63,13 @@ export class RateBudget {
         if (deadline <= now) {
           recent.push(now)
           this.lastSent[bucket] = now
+          throwIfShutdown(signal)
           this.log?.({ bucket, request: true })
           return
         }
         const waitMs = deadline - now
         this.log?.({ bucket, waitMs })
-        await this.clock.sleep(waitMs)
+        await this.clock.sleep(waitMs, signal)
       }
     })
     this.reservations = reservation.catch(() => {})
