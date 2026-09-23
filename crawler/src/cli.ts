@@ -15,6 +15,7 @@ import { ActiveRunError, executeCrawl, executePublish, type Notifier } from './s
 import { ShutdownError } from './shutdown.js'
 import { openDatabase } from './storage/db.js'
 import { inspect } from './storage/inspect.js'
+import { optimizeDatabase, runMaintenance } from './storage/maintenance.js'
 import { listPublishable } from './storage/repositories.js'
 import { getActiveRun, getPublicationLease, getSetting, PublicationLeaseError, recoverStoppedCrawl, setSetting } from './storage/runs.js'
 
@@ -53,7 +54,7 @@ function notifierFor(config: RuntimeConfig, dependencies: CliDependencies): Noti
   )
 }
 
-type CliCommand = 'inspect' | 'crawl' | 'publish' | 'recover-crawl' | 'export'
+type CliCommand = 'inspect' | 'crawl' | 'publish' | 'recover-crawl' | 'export' | 'maintenance'
 type ParsedOptions = {
   dryRun: boolean
   publishId?: string
@@ -97,15 +98,15 @@ function parseOptions(command: CliCommand, args: string[]): ParsedOptions {
     const exportId = parseRunId(args, command)
     return { ...defaults, exportId, exportDirectory: args[3] }
   }
-  if (command === 'inspect' && args.length) throw new Error('Unknown inspect option')
+  if ((command === 'inspect' || command === 'maintenance') && args.length) throw new Error(`Unknown ${command} option`)
   return defaults
 }
 
 function parseCommand(value: string | undefined): CliCommand {
-  if (value && ['inspect', 'crawl', 'publish', 'recover-crawl', 'export'].includes(value)) {
+  if (value && ['inspect', 'crawl', 'publish', 'recover-crawl', 'export', 'maintenance'].includes(value)) {
     return value as CliCommand
   }
-  throw new Error('Unknown command. Available: inspect, crawl, publish, recover-crawl, export')
+  throw new Error('Unknown command. Available: inspect, crawl, publish, recover-crawl, export, maintenance')
 }
 
 async function notifyBlockedCrawl(
@@ -214,7 +215,16 @@ async function runCrawlCommand(
   output: (line: string) => void,
 ): Promise<void> {
   await ensureCrawlAvailable(db, config, dependencies)
-  await runCrawl(db, config, dependencies, options, now, output, rateTracker())
+  runMaintenance(db, now())
+  try {
+    await runCrawl(db, config, dependencies, options, now, output, rateTracker())
+  } finally {
+    try {
+      optimizeDatabase(db)
+    } catch {
+      console.error(JSON.stringify({ level: 'error', phase: 'maintenance', category: 'optimize_failed' }))
+    }
+  }
 }
 
 async function runPublishCommand(
@@ -250,6 +260,16 @@ async function runLocalCommand(
 ): Promise<boolean> {
   if (command === 'inspect') {
     output(JSON.stringify(inspect(db)))
+    return true
+  }
+  if (command === 'maintenance') {
+    const result = runMaintenance(db, now())
+    try {
+      optimizeDatabase(db)
+    } catch {
+      console.error(JSON.stringify({ level: 'error', phase: 'maintenance', category: 'optimize_failed' }))
+    }
+    output(JSON.stringify({ status: 'maintained', ...result }))
     return true
   }
   if (command === 'export' && parsed.exportId && parsed.exportDirectory) {
