@@ -183,7 +183,7 @@ export function readDraftSnapshot(db: Database.Database, runId: string): GitSnap
   return checkedSnapshot(db, runId).files
 }
 
-function recordPublication(db: Database.Database, runId: string, draft: RunDraft, sha: string, owner: string): void {
+function recordPublication(db: Database.Database, runId: string, draft: RunDraft, sha: string, owner: string, publishedAt: string): void {
   try {
     markPublished(
       db,
@@ -192,7 +192,7 @@ function recordPublication(db: Database.Database, runId: string, draft: RunDraft
         date: draft.date,
         size: draft.size,
         commitSha: sha,
-        publishedAt: new Date().toISOString(),
+        publishedAt,
       },
       owner,
     )
@@ -260,9 +260,10 @@ async function resumePendingCommit(
   run: RunRow,
   draft: RunDraft,
   owner: string,
+  now: () => Date,
 ): Promise<string | { snapshot: ReturnType<typeof checkedSnapshot> }> {
   if (run.pending_commit_sha && (await reachable(git, run.pending_commit_sha))) {
-    recordPublication(db, runId, draft, run.pending_commit_sha, owner)
+    recordPublication(db, runId, draft, run.pending_commit_sha, owner, now().toISOString())
     return run.pending_commit_sha
   }
   const snapshot = checkedSnapshot(db, runId)
@@ -270,7 +271,7 @@ async function resumePendingCommit(
     if (snapshot.pending !== run.pending_commit_sha) throw new PublicationError('git_indeterminate')
     const result = await update(git, snapshot.pending)
     if (result === 'updated') {
-      recordPublication(db, runId, snapshot.draft, snapshot.pending, owner)
+      recordPublication(db, runId, snapshot.draft, snapshot.pending, owner, now().toISOString())
       return snapshot.pending
     }
     forgetPending(db, runId, snapshot.pending)
@@ -286,6 +287,7 @@ async function createAndPublishSnapshot(
   runId: string,
   owner: string,
   snapshot: ReturnType<typeof checkedSnapshot>,
+  now: () => Date,
 ): Promise<string> {
   let expectedPending = snapshot.pending
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -300,7 +302,7 @@ async function createAndPublishSnapshot(
     rememberPending(db, runId, commit, expectedPending)
     const result = await update(git, commit)
     if (result === 'updated') {
-      recordPublication(db, runId, snapshot.draft, commit, owner)
+      recordPublication(db, runId, snapshot.draft, commit, owner, now().toISOString())
       return commit
     }
     forgetPending(db, runId, commit)
@@ -321,8 +323,9 @@ export async function publishRun(
   db: Database.Database,
   git: GitHubGit,
   runId: string,
-  options: { writeEnabled?: boolean; recover?: boolean } = {},
+  options: { writeEnabled?: boolean; recover?: boolean; now?: () => Date } = {},
 ): Promise<string> {
+  const now = options.now ?? (() => new Date())
   const run = databaseResult(() => getRun(db, runId))
   if (run?.status === 'published') {
     return publishedCommit(db, runId)
@@ -331,9 +334,9 @@ export async function publishRun(
   const owner = randomUUID()
   claimPublishLease(db, runId, owner, options.recover)
   try {
-    const pending = await resumePendingCommit(db, git, runId, completedRun, prepared, owner)
+    const pending = await resumePendingCommit(db, git, runId, completedRun, prepared, owner, now)
     if (typeof pending === 'string') return pending
-    return await createAndPublishSnapshot(db, git, runId, owner, pending.snapshot)
+    return await createAndPublishSnapshot(db, git, runId, owner, pending.snapshot, now)
   } finally {
     // Once a candidate SHA exists, retain the lease until its Git visibility is reconciled.
     releaseUnpublishedLease(db, runId, owner)

@@ -83,6 +83,7 @@ function recordProblem(
   errorType: string,
   previouslyReady: boolean,
   warning = false,
+  now: () => string = () => new Date().toISOString(),
 ): void {
   recordRunError(db, {
     run_id: runId,
@@ -90,7 +91,7 @@ function recordProblem(
     repository_id: row.id,
     error_type: errorType,
     retry_count: 0,
-    occurred_at: new Date().toISOString(),
+    occurred_at: now(),
   })
   if (warning) counts.warnings++
   if (previouslyReady) counts.unchangedOnError++
@@ -108,23 +109,34 @@ type LoadedRepository = {
 }
 type EnrichmentTarget = { id: number; removedId: number | null; ready: boolean }
 
-function persistEnrichment(db: Database.Database, row: RepositoryRow, loaded: LoadedRepository, pluginsCount: number): EnrichmentTarget {
+function persistEnrichment(
+  db: Database.Database,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  pluginsCount: number,
+  at: string,
+): EnrichmentTarget {
   return db.transaction(() => {
-    const rebound = loaded.moved ? rebindCanonicalUrl(db, row.id, loaded.canonical.htmlUrl) : { id: row.id, removedId: null }
+    const rebound = loaded.moved ? rebindCanonicalUrl(db, row.id, loaded.canonical.htmlUrl, at) : { id: row.id, removedId: null }
     const target = loaded.moved ? getRepositoryById(db, rebound.id) : null
     if (loaded.moved && !target) throw new Error('Canonical repository disappeared during rebind')
     const ready = loaded.ready
-    updateEnriched(db, rebound.id, {
-      stargazers_count: loaded.data.stargazers_count,
-      forks_count: loaded.data.forks_count,
-      subscribers_count: loaded.data.subscribers_count,
-      description: loaded.data.description,
-      owner: loaded.owner,
-      owner_url: loaded.ownerUrl,
-      repo_name: loaded.repo,
-      repo_updated: loaded.data.pushed_at,
-      plugins_count: pluginsCount,
-    })
+    updateEnriched(
+      db,
+      rebound.id,
+      {
+        stargazers_count: loaded.data.stargazers_count,
+        forks_count: loaded.data.forks_count,
+        subscribers_count: loaded.data.subscribers_count,
+        description: loaded.data.description,
+        owner: loaded.owner,
+        owner_url: loaded.ownerUrl,
+        repo_name: loaded.repo,
+        repo_updated: loaded.data.pushed_at,
+        plugins_count: pluginsCount,
+      },
+      at,
+    )
     return { id: rebound.id, removedId: rebound.removedId, ready }
   })()
 }
@@ -137,6 +149,7 @@ async function loadRepository(
   identity: NonNullable<ReturnType<typeof parseRepositoryUrl>>,
   previouslyReady: boolean,
   counts: EnrichmentCounts,
+  now: () => string,
 ): Promise<LoadedRepository | null> {
   const result = await reader.getRepository(identity.owner, identity.repo)
   if (result.kind === 'not-found') {
@@ -146,12 +159,12 @@ async function loadRepository(
     return null
   }
   if (result.kind === 'temporary-error') {
-    recordProblem(db, runId, counts, row, temporaryCategory('repository', result), previouslyReady)
+    recordProblem(db, runId, counts, row, temporaryCategory('repository', result), previouslyReady, false, now)
     return null
   }
   const canonical = canonicalIdentity(result.data)
   if (!canonical) {
-    recordProblem(db, runId, counts, row, 'repository_identity_mismatch', previouslyReady, true)
+    recordProblem(db, runId, counts, row, 'repository_identity_mismatch', previouslyReady, true, now)
     return null
   }
   const moved = canonical.htmlUrl !== row.html_url
@@ -178,6 +191,7 @@ async function enrichOne(
   row: RepositoryRow,
   counts: EnrichmentCounts,
   removedIds: Set<number>,
+  now: () => string,
 ): Promise<void> {
   if (!row.html_url?.trim()) {
     deleteById(db, row.id)
@@ -187,10 +201,10 @@ async function enrichOne(
   const previouslyReady = wasReady(row)
   const identity = parseRepositoryUrl(row.html_url)
   if (!identity) {
-    recordProblem(db, runId, counts, row, 'invalid_repository_url', previouslyReady, true)
+    recordProblem(db, runId, counts, row, 'invalid_repository_url', previouslyReady, true, now)
     return
   }
-  const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts)
+  const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts, now)
   if (!loaded) return
   const marketplace = await reader.getMarketplace(loaded.owner, loaded.repo)
   if (marketplace.kind === 'not-found') {
@@ -203,10 +217,10 @@ async function enrichOne(
     return
   }
   if (marketplace.kind === 'temporary-error') {
-    recordProblem(db, runId, counts, row, temporaryCategory('marketplace', marketplace), loaded.ready)
+    recordProblem(db, runId, counts, row, temporaryCategory('marketplace', marketplace), loaded.ready, false, now)
     return
   }
-  const target = persistEnrichment(db, row, loaded, marketplace.data.plugins.length)
+  const target = persistEnrichment(db, row, loaded, marketplace.data.plugins.length, now())
   if (target.removedId !== null) removedIds.add(target.removedId)
   counts.conclusive++
   if (target.ready) counts.updated++
@@ -218,6 +232,7 @@ export async function enrichRepositories(
   reader: GitHubReader,
   runId: string,
   onBatchComplete?: () => void,
+  now: () => string = () => new Date().toISOString(),
 ): Promise<EnrichmentCounts> {
   const counts: EnrichmentCounts = {
     updated: 0,
@@ -237,7 +252,7 @@ export async function enrichRepositories(
     for (const row of rows) {
       lastId = row.id
       if (removedIds.has(row.id)) continue
-      await enrichOne(db, reader, runId, row, counts, removedIds)
+      await enrichOne(db, reader, runId, row, counts, removedIds, now)
     }
     onBatchComplete?.()
   }
