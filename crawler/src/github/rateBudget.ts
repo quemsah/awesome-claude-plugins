@@ -1,10 +1,10 @@
-import { throwIfShutdown, waitForShutdownAware } from '../shutdown.js'
+import { ShutdownError, throwIfShutdown } from '../shutdown.js'
 
 export type RateResource = 'code_search' | 'core'
 
 export type Clock = {
   now: () => number
-  sleep: (milliseconds: number) => Promise<void>
+  sleep: (milliseconds: number, signal?: AbortSignal) => Promise<void>
 }
 
 export type RateLog = (event: { bucket: RateResource; request?: true; remaining?: number; waitMs?: number }) => void
@@ -17,7 +17,20 @@ const rules: Record<RateResource, { limit: number; windowMs: number; spacingMs: 
 
 const systemClock: Clock = {
   now: Date.now,
-  sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  sleep: (milliseconds, signal) =>
+    new Promise((resolve, reject) => {
+      throwIfShutdown(signal)
+      const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort)
+        resolve()
+      }, milliseconds)
+      const onAbort = () => {
+        clearTimeout(timer)
+        signal?.removeEventListener('abort', onAbort)
+        reject(new ShutdownError())
+      }
+      signal?.addEventListener('abort', onAbort, { once: true })
+    }),
 }
 
 export class RateBudget {
@@ -56,7 +69,7 @@ export class RateBudget {
         }
         const waitMs = deadline - now
         this.log?.({ bucket, waitMs })
-        await waitForShutdownAware(this.clock.sleep(waitMs), signal)
+        await this.clock.sleep(waitMs, signal)
       }
     })
     this.reservations = reservation.catch(() => {})
