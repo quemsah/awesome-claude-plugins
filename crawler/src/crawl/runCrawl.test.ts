@@ -177,7 +177,9 @@ it('completes with warnings from stored search and enrichment errors, including 
       return { items: [{ repository: { html_url: url, description: null } }], total_count: 1, incomplete_results: true }
     },
     getRepository: async (owner, name) =>
-      name === 'transient' ? { kind: 'temporary-error', status: 503, reason: 'network', retryCount: 0 } : { kind: 'found', data: repo(owner, name) },
+      name === 'transient'
+        ? { kind: 'temporary-error', status: 503, reason: 'network', retryCount: 0 }
+        : { kind: 'found', data: repo(owner, name) },
   })
 
   const result = await runCrawl(db, client, 'partial', { ranges })
