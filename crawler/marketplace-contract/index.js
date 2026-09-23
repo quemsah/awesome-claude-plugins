@@ -47,6 +47,17 @@ function stringArray(value, path, { maxItems, itemMax, safePath = false } = {}) 
   return value.map((item, index) => string(item, [...path, index], { min: 1, max: itemMax, safePath }))
 }
 
+function assignParsed(target, source, key, path, parser) {
+  if (source[key] === undefined) return
+  const parsed = parser(source[key], [...path, key])
+  if (parsed !== undefined) target[key] = parsed
+}
+
+function parseSourceUrl(value, path) {
+  if (typeof value !== 'string') issue('Expected a string', path)
+  return GITHUB_REPO_PATH_PATTERN.test(value) ? value : safeUrl(value, path, 512)
+}
+
 function parsePluginSource(value, path) {
   if (typeof value === 'string') return string(value, path, { min: 1, max: 512, safePath: true })
   if (!record(value)) issue('Expected a plugin source string or object', path)
@@ -55,27 +66,13 @@ function parsePluginSource(value, path) {
     source: string(value.source, [...path, 'source'], { min: 1, max: 512, safePath: true }),
   }
 
-  const repo = optionalString(value.repo, [...path, 'repo'], { pattern: GITHUB_REPO_PATH_PATTERN })
-  if (repo !== undefined) parsed.repo = repo
-
-  if (value.url !== undefined) {
-    if (typeof value.url !== 'string') issue('Expected a string', [...path, 'url'])
-    if (GITHUB_REPO_PATH_PATTERN.test(value.url)) parsed.url = value.url
-    else parsed.url = safeUrl(value.url, [...path, 'url'], 512)
-  }
-
-  for (const key of ['branch', 'ref']) {
-    const parsedValue = optionalString(value[key], [...path, key], { min: 1, max: 512, safePath: true })
-    if (parsedValue !== undefined) parsed[key] = parsedValue
-  }
-
-  const sourcePath = optionalString(value.path, [...path, 'path'], { min: 1, max: 512, safePath: true })
-  if (sourcePath !== undefined) parsed.path = sourcePath
-
-  for (const key of ['commit', 'sha']) {
-    const parsedValue = optionalString(value[key], [...path, key], { pattern: SOURCE_SHA_PATTERN })
-    if (parsedValue !== undefined) parsed[key] = parsedValue
-  }
+  assignParsed(parsed, value, 'repo', path, (item, itemPath) => string(item, itemPath, { pattern: GITHUB_REPO_PATH_PATTERN }))
+  assignParsed(parsed, value, 'url', path, parseSourceUrl)
+  assignParsed(parsed, value, 'branch', path, (item, itemPath) => string(item, itemPath, { min: 1, max: 512, safePath: true }))
+  assignParsed(parsed, value, 'ref', path, (item, itemPath) => string(item, itemPath, { min: 1, max: 512, safePath: true }))
+  assignParsed(parsed, value, 'path', path, (item, itemPath) => string(item, itemPath, { min: 1, max: 512, safePath: true }))
+  assignParsed(parsed, value, 'commit', path, (item, itemPath) => string(item, itemPath, { pattern: SOURCE_SHA_PATTERN }))
+  assignParsed(parsed, value, 'sha', path, (item, itemPath) => string(item, itemPath, { pattern: SOURCE_SHA_PATTERN }))
 
   return parsed
 }
@@ -85,12 +82,9 @@ function parseAuthor(value, path) {
   if (!record(value)) issue('Expected an author string or object', path)
 
   const parsed = {}
-  const name = optionalString(value.name, [...path, 'name'], { max: 160 })
-  if (name !== undefined) parsed.name = name
-  const email = optionalString(value.email, [...path, 'email'], { max: 254, noControlCharacters: true })
-  if (email !== undefined) parsed.email = email
-  const url = optionalSafeUrl(value.url, [...path, 'url'], 2048)
-  if (url !== undefined) parsed.url = url
+  assignParsed(parsed, value, 'name', path, (item, itemPath) => string(item, itemPath, { max: 160 }))
+  assignParsed(parsed, value, 'email', path, (item, itemPath) => string(item, itemPath, { max: 254, noControlCharacters: true }))
+  assignParsed(parsed, value, 'url', path, (item, itemPath) => safeUrl(item, itemPath, 2048))
   return parsed
 }
 
@@ -100,57 +94,41 @@ function parsePathListOrMap(value, path) {
   issue('Expected an array or object', path)
 }
 
+const PLUGIN_METADATA_KEYS = ['name', 'description', 'version', 'id', 'source', 'category', 'homepage', 'tags', 'commands', 'agents', 'mcpServers']
+
+function parseBoolean(value, path) {
+  if (typeof value !== 'boolean') issue('Expected a boolean', path)
+  return value
+}
+
+function hasPluginMetadata(plugin) {
+  return PLUGIN_METADATA_KEYS.some((key) => {
+    const value = plugin[key]
+    return Array.isArray(value) ? value.length > 0 : Boolean(value)
+  })
+}
+
 function parsePlugin(value, path = []) {
   if (!record(value)) issue('Expected a plugin object', path)
 
   const plugin = {}
-  const name = optionalString(value.name, [...path, 'name'], { min: 1, max: 160 })
-  if (name !== undefined) plugin.name = name
-  const description = optionalString(value.description, [...path, 'description'], { max: 4000 })
-  if (description !== undefined) plugin.description = description
-  const version = optionalString(value.version, [...path, 'version'], { max: 100 })
-  if (version !== undefined) plugin.version = version
-  const id = optionalString(value.id, [...path, 'id'], { pattern: PLUGIN_ID_PATTERN })
-  if (id !== undefined) plugin.id = id
-  if (value.source !== undefined) plugin.source = parsePluginSource(value.source, [...path, 'source'])
-  const category = optionalString(value.category, [...path, 'category'], { max: 100 })
-  if (category !== undefined) plugin.category = category
-  if (value.author !== undefined) plugin.author = parseAuthor(value.author, [...path, 'author'])
-  const license = optionalString(value.license, [...path, 'license'], { max: 160 })
-  if (license !== undefined) plugin.license = license
-  if (value.keywords !== undefined) plugin.keywords = stringArray(value.keywords, [...path, 'keywords'], { maxItems: 50, itemMax: 100 })
-  if (value.strict !== undefined) {
-    if (typeof value.strict !== 'boolean') issue('Expected a boolean', [...path, 'strict'])
-    plugin.strict = value.strict
-  }
-  for (const key of ['commands', 'agents', 'mcpServers']) {
-    if (value[key] !== undefined) {
-      const parsed = parsePathListOrMap(value[key], [...path, key])
-      if (parsed !== undefined) plugin[key] = parsed
-    }
-  }
-  const homepage = optionalSafeUrl(value.homepage, [...path, 'homepage'], 2048)
-  if (homepage !== undefined) plugin.homepage = homepage
-  if (value.tags !== undefined) plugin.tags = stringArray(value.tags, [...path, 'tags'], { maxItems: 50, itemMax: 100 })
+  assignParsed(plugin, value, 'name', path, (item, itemPath) => string(item, itemPath, { min: 1, max: 160 }))
+  assignParsed(plugin, value, 'description', path, (item, itemPath) => string(item, itemPath, { max: 4000 }))
+  assignParsed(plugin, value, 'version', path, (item, itemPath) => string(item, itemPath, { max: 100 }))
+  assignParsed(plugin, value, 'id', path, (item, itemPath) => string(item, itemPath, { pattern: PLUGIN_ID_PATTERN }))
+  assignParsed(plugin, value, 'source', path, parsePluginSource)
+  assignParsed(plugin, value, 'category', path, (item, itemPath) => string(item, itemPath, { max: 100 }))
+  assignParsed(plugin, value, 'author', path, parseAuthor)
+  assignParsed(plugin, value, 'license', path, (item, itemPath) => string(item, itemPath, { max: 160 }))
+  assignParsed(plugin, value, 'keywords', path, (item, itemPath) => stringArray(item, itemPath, { maxItems: 50, itemMax: 100 }))
+  assignParsed(plugin, value, 'strict', path, parseBoolean)
+  assignParsed(plugin, value, 'commands', path, parsePathListOrMap)
+  assignParsed(plugin, value, 'agents', path, parsePathListOrMap)
+  assignParsed(plugin, value, 'mcpServers', path, parsePathListOrMap)
+  assignParsed(plugin, value, 'homepage', path, (item, itemPath) => safeUrl(item, itemPath, 2048))
+  assignParsed(plugin, value, 'tags', path, (item, itemPath) => stringArray(item, itemPath, { maxItems: 50, itemMax: 100 }))
 
-  if (
-    !(
-      plugin.name ||
-      plugin.description ||
-      plugin.version ||
-      plugin.id ||
-      plugin.source ||
-      plugin.category ||
-      plugin.homepage ||
-      plugin.tags?.length ||
-      plugin.commands?.length ||
-      plugin.agents?.length ||
-      plugin.mcpServers?.length
-    )
-  ) {
-    issue('Manifest entry does not contain plugin metadata', path)
-  }
-
+  if (!hasPluginMetadata(plugin)) issue('Manifest entry does not contain plugin metadata', path)
   return plugin
 }
 
