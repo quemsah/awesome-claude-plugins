@@ -13,7 +13,7 @@ describe('GitHub identifiers', () => {
     expect(isValidGitHubOwner(owner)).toBe(true)
   })
 
-  it.each(['.acme', 'acme_org', 'acme.org', '-acme', 'acme-', 'a'.repeat(40)])('rejects invalid owners: %s', (owner) => {
+  it.each(['.acme', 'acme_org', 'acme.org', '-acme', 'acme-', 'acme--co', 'a'.repeat(40)])('rejects invalid owners: %s', (owner) => {
     expect(isValidGitHubOwner(owner)).toBe(false)
   })
 
