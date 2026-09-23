@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import { describe, expect, it, vi } from 'vitest'
 import { type GitHubReader, GitHubTemporaryError } from '../github/client.js'
 import type { GitHubGit } from '../publish/githubGit.js'
+import { ShutdownError } from '../shutdown.js'
 import { populateFixture } from '../storage/fixtureDb.js'
 import { beginRun, getRun, getSetting, listRunErrors, setSetting } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
@@ -257,6 +258,35 @@ describe('orchestration', () => {
     db.close()
   })
 })
+
+it('does not record a notification delivery failure when shutdown cancels the failure notification', async () => {
+  const db = await dbFixture()
+  const shutdown = new AbortController()
+  const notify = notifier()
+  notify.notifyFailure.mockRejectedValueOnce(new ShutdownError())
+  const terminatingReader: GitHubReader = {
+    ...reader,
+    searchCode: async () => {
+      shutdown.abort()
+      return { items: [], total_count: 0, incomplete_results: false }
+    },
+  }
+
+  await expect(
+    executeCrawl(db, terminatingReader, 'shutdown-notify', {
+      now,
+      ranges: range,
+      dryRun: true,
+      notifier: notify,
+      signal: shutdown.signal,
+    }),
+  ).rejects.toMatchObject({ category: 'terminated' })
+
+  expect(getRun(db, 'shutdown-notify')).toMatchObject({ status: 'failed', last_error: 'terminated' })
+  expect(listRunErrors(db, 'shutdown-notify').filter((row) => row.phase === 'notify')).toHaveLength(0)
+  db.close()
+})
+
 
 it('keeps the publication lease when shutdown arrives after a candidate commit but before the Git ref update', async () => {
   const db = await dbFixture()
