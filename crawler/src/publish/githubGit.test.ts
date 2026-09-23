@@ -1,11 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  GitHubGitClient,
-  GitHubGitConflictError,
-  GitHubGitHttpError,
-  GitHubGitResponseError,
-  GitHubGitTimeoutError,
-} from './githubGit.js'
+import { GitHubGitClient, GitHubGitConflictError, GitHubGitHttpError, GitHubGitResponseError, GitHubGitTimeoutError } from './githubGit.js'
 
 const baseSha = 'a'.repeat(40)
 const baseTree = 'b'.repeat(40)
@@ -293,9 +287,7 @@ describe('GitHubGitClient', () => {
   it('encodes a slash-containing branch as one compare head ref', async () => {
     const { client, requests } = mockClient([comparison('ahead')], { branch: 'release/v1+beta' })
     expect(await client.isCommitReachable(pendingSha)).toBe(true)
-    expect(requests[0].url).toBe(
-      `https://api.github.com/repos/acme/catalog/compare/${pendingSha}...release%2Fv1%2Bbeta`,
-    )
+    expect(requests[0].url).toBe(`https://api.github.com/repos/acme/catalog/compare/${pendingSha}...release%2Fv1%2Bbeta`)
   })
 
   it('rejects an unknown compare status rather than guessing publication state', async () => {

@@ -5,13 +5,7 @@ import type Database from 'better-sqlite3'
 import { afterEach, expect, it } from 'vitest'
 import { openDatabase } from '../storage/db.js'
 import { beginRun, completeRun, failRun, getRun } from '../storage/runs.js'
-import {
-  type GitHubGit,
-  GitHubGitConflictError,
-  GitHubGitHttpError,
-  GitHubGitTimeoutError,
-  type GitSnapshotFiles,
-} from './githubGit.js'
+import { type GitHubGit, GitHubGitConflictError, GitHubGitHttpError, GitHubGitTimeoutError, type GitSnapshotFiles } from './githubGit.js'
 import { PublicationError, prepareDraft, publishRun, readDraftSnapshot } from './publishRun.js'
 
 const databases: Database.Database[] = []

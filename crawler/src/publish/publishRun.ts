@@ -238,10 +238,7 @@ async function update(git: GitHubGit, sha: string): Promise<'updated' | 'conflic
   }
 }
 
-function validatePublication(
-  run: RunRow | null,
-  options: { writeEnabled?: boolean; recover?: boolean },
-): { run: RunRow; draft: RunDraft } {
+function validatePublication(run: RunRow | null, options: { writeEnabled?: boolean; recover?: boolean }): { run: RunRow; draft: RunDraft } {
   if (options.writeEnabled !== true) throw new PublicationError('write_disabled')
   if (run?.status !== 'completed' || run.completed_at === null || run.last_error !== null) throw new PublicationError('invalid_run')
   return { run, draft: savedDraft(run) }

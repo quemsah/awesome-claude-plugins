@@ -192,12 +192,7 @@ export class GitHubGitClient implements GitHubGit {
 
   async isCommitReachable(pendingSha: string): Promise<boolean> {
     inputSha(pendingSha)
-    const response = await this.request(
-      `/${encodeURIComponent(pendingSha)}...${this.compareHead}`,
-      'GET',
-      undefined,
-      this.compareUrl,
-    )
+    const response = await this.request(`/${encodeURIComponent(pendingSha)}...${this.compareHead}`, 'GET', undefined, this.compareUrl)
     if (!record(response) || typeof response.status !== 'string') throw new GitHubGitResponseError()
     if (response.status === 'ahead' || response.status === 'identical') return true
     if (response.status === 'behind' || response.status === 'diverged') return false

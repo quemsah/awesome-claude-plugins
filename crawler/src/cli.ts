@@ -87,11 +87,7 @@ function parseCrawlOptions(args: string[]): Pick<ParsedOptions, 'force' | 'dryRu
 
 function parsePublishOptions(args: string[]): Pick<ParsedOptions, 'publishId' | 'recoverPublication'> {
   const recoverPublication = args.length === 4 && args[2] === '--recover' && args[3] === '--confirm-stopped'
-  if (
-    (args.length !== 2 && !recoverPublication) ||
-    args[0] !== '--run-id' ||
-    !/^[A-Za-z0-9_-]{1,100}$/.test(args[1] ?? '')
-  ) {
+  if ((args.length !== 2 && !recoverPublication) || args[0] !== '--run-id' || !/^[A-Za-z0-9_-]{1,100}$/.test(args[1] ?? '')) {
     throw new Error('publish requires --run-id <id> [--recover --confirm-stopped]')
   }
   return { publishId: args[1], recoverPublication }
