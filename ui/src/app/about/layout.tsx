@@ -4,11 +4,11 @@ import { BASE_URL, DEFAULT_OG_IMAGE } from '../../lib/constants.ts'
 export const metadata: Metadata = {
   title: 'About',
   description:
-    'A daily-updated directory of Claude Code plugins and tools, inspired by the awesome list movement. Automated discovery using n8n workflows scanning GitHub daily.',
+    'A daily-updated directory of Claude Code plugins and tools, inspired by the awesome list movement. Plugin data is collected from GitHub every day.',
   openGraph: {
     title: 'About | Awesome Claude Plugins',
     description:
-      'A daily-updated directory of Claude Code plugins and tools, inspired by the awesome list movement. Automated discovery using n8n workflows scanning GitHub daily.',
+      'A daily-updated directory of Claude Code plugins and tools, inspired by the awesome list movement. Plugin data is collected from GitHub every day.',
     url: `${BASE_URL}/about`,
     type: 'website',
     images: [
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'About | Awesome Claude Plugins',
     description:
-      'A daily-updated directory of Claude Code plugins and tools, inspired by the awesome list movement. Automated discovery using n8n workflows scanning GitHub daily.',
+      'A daily-updated directory of Claude Code plugins and tools, inspired by the awesome list movement. Plugin data is collected from GitHub every day.',
     images: [DEFAULT_OG_IMAGE],
   },
 }
