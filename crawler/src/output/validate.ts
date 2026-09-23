@@ -1,4 +1,4 @@
-import { isValidGitHubOwner, isValidGitHubRepositoryName } from '../github/identifiers.js'
+import { isValidGitHubPathSegment } from '../github/identifiers.js'
 
 type Issue = { path: string; message: string }
 type SnapshotOptions = { expectedSize?: number; requireLatestSize?: boolean }
@@ -98,10 +98,10 @@ function decode(value: string | Uint8Array, path: string, issues: Issue[]): unkn
 
 function validateRepoIdentity(item: Record<string, unknown>, path: string, issues: Issue[]): void {
   const { html_url: url, owner, owner_url: ownerUrl, repo_name: name } = item
-  if (typeof owner !== 'string' || !isValidGitHubOwner(owner)) {
+  if (typeof owner !== 'string' || !isValidGitHubPathSegment(owner)) {
     issues.push({ path: `${path}.owner`, message: 'must be a GitHub owner segment' })
   }
-  if (typeof name !== 'string' || !isValidGitHubRepositoryName(name)) {
+  if (typeof name !== 'string' || !isValidGitHubPathSegment(name)) {
     issues.push({ path: `${path}.repo_name`, message: 'must be a GitHub repository segment' })
   }
   if (typeof url !== 'string' || (typeof owner === 'string' && typeof name === 'string' && url !== `https://github.com/${owner}/${name}`)) {
