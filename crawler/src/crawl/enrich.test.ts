@@ -300,8 +300,8 @@ it('preserves complete rows on 429 and invalid marketplace content, records erro
   })
   const before = ids.slice(0, 2).map((id) => db.prepare('SELECT * FROM repositories WHERE id = ?').get(id))
   const client = reader(undefined, async (_owner, name) => {
-    if (name === 'repo') return { kind: 'temporary-error', status: 429, reason: 'GitHub rate limited' }
-    if (name === 'other') return { kind: 'temporary-error', status: 200, reason: 'Invalid GitHub response' }
+    if (name === 'repo') return { kind: 'temporary-error', status: 429, reason: 'GitHub rate limited', retryCount: 3 }
+    if (name === 'other') return { kind: 'temporary-error', status: 200, reason: 'Invalid GitHub response', retryCount: 0 }
     return { kind: 'found', data: { plugins: [1, 2] } }
   })
 
@@ -309,9 +309,11 @@ it('preserves complete rows on 429 and invalid marketplace content, records erro
 
   expect(counts).toMatchObject({ unchangedOnError: 2, newReady: 1, conclusive: 1 })
   expect(ids.slice(0, 2).map((id) => db.prepare('SELECT * FROM repositories WHERE id = ?').get(id))).toEqual(before)
-  expect(listRunErrors(db, 'crawl-1').map(({ repository_id, error_type }) => ({ repository_id, error_type }))).toEqual([
-    { repository_id: ids[0], error_type: 'marketplace_rate_limited' },
-    { repository_id: ids[1], error_type: 'marketplace_invalid_response' },
+  expect(
+    listRunErrors(db, 'crawl-1').map(({ repository_id, error_type, retry_count }) => ({ repository_id, error_type, retry_count })),
+  ).toEqual([
+    { repository_id: ids[0], error_type: 'marketplace_rate_limited', retry_count: 3 },
+    { repository_id: ids[1], error_type: 'marketplace_invalid_response', retry_count: 0 },
   ])
   expect(db.prepare('SELECT plugins_count FROM repositories WHERE id = ?').get(third)).toEqual({ plugins_count: 2 })
 })
@@ -324,7 +326,7 @@ it('reports zero conclusive enrichment when all repository requests succeed but 
 
   const counts = await enrichRepositories(
     db,
-    reader(undefined, async () => ({ kind: 'temporary-error', status: 429, reason: 'GitHub rate limited' })),
+    reader(undefined, async () => ({ kind: 'temporary-error', status: 429, reason: 'GitHub rate limited', retryCount: 0 })),
     'crawl-1',
   )
 
@@ -341,7 +343,7 @@ it('keeps an incomplete row unpublishable until both endpoints succeed', async (
   `).run()
   const failed = await enrichRepositories(
     db,
-    reader(async () => ({ kind: 'temporary-error', status: null, reason: 'GitHub network error' })),
+    reader(async () => ({ kind: 'temporary-error', status: null, reason: 'GitHub network error', retryCount: 0 })),
     'crawl-1',
   )
   expect(failed).toMatchObject({ newIncomplete: 1, conclusive: 0 })
@@ -421,7 +423,7 @@ it('keeps both rows unchanged when a renamed repository marketplace lookup fails
         kind: 'found' as const,
         data: owner === 'team' && name === 'repo' ? githubRepo('new-team', 'new-repo') : githubRepo(owner, name),
       }),
-      async () => ({ kind: 'temporary-error' as const, status: 429, reason: 'GitHub rate limited' }),
+      async () => ({ kind: 'temporary-error' as const, status: 429, reason: 'GitHub rate limited', retryCount: 0 }),
     ),
     'crawl-1',
   )
@@ -535,7 +537,7 @@ it('reports zero conclusive responses when every API result is transient', async
   const id = upsertDiscovery(db, 'https://github.com/team/repo', null)
   const counts = await enrichRepositories(
     db,
-    reader(async () => ({ kind: 'temporary-error', status: 503, reason: 'GitHub server error' })),
+    reader(async () => ({ kind: 'temporary-error', status: 503, reason: 'GitHub server error', retryCount: 0 })),
     'crawl-1',
   )
 
