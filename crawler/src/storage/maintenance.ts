@@ -72,8 +72,7 @@ export function runMaintenance(
   })()
 
   db.pragma('optimize')
-  const walCheckpoint =
-    (db.pragma('wal_checkpoint(PASSIVE)') as WalCheckpointRow[])[0] ?? { busy: 0, log: 0, checkpointed: 0 }
+  const walCheckpoint = (db.pragma('wal_checkpoint(PASSIVE)') as WalCheckpointRow[])[0] ?? { busy: 0, log: 0, checkpointed: 0 }
 
   return {
     cutoff,
