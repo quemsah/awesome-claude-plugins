@@ -223,3 +223,23 @@ describe('GitHubClient', () => {
     expect((await test.client.getRepository('acme', 'catalog')).kind).toBe('temporary-error')
   })
 })
+
+
+it('lets an in-flight GitHub request finish but refuses to start another after shutdown', async () => {
+  const shutdown = new AbortController()
+  const requests: string[] = []
+  const client = new GitHubClient({
+    token: 'test-secret',
+    signal: shutdown.signal,
+    clock: { now: () => 0, sleep: async () => {} },
+    fetch: (async (input: RequestInfo | URL) => {
+      requests.push(String(input))
+      shutdown.abort()
+      return Response.json(repo)
+    }) as typeof fetch,
+  })
+
+  await expect(client.getRepository('acme', 'catalog')).rejects.toMatchObject({ category: 'terminated' })
+  await expect(client.getRepository('acme', 'catalog')).rejects.toMatchObject({ category: 'terminated' })
+  expect(requests).toHaveLength(1)
+})
