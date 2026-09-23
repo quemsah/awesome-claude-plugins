@@ -65,6 +65,7 @@ export async function discover(
       if (result.incomplete_results) warn('incomplete-results')
 
       for (const { repository } of result.items) {
+        if (repository.private === true) continue
         const url = repository.html_url
         if (!parseRepositoryUrl(url)) {
           warn('invalid-url')

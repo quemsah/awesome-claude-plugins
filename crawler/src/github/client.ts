@@ -1,7 +1,7 @@
 import { type Clock, RateBudget, type RateLog, type RateResource } from './rateBudget.js'
 
 export type SearchPage = {
-  items: Array<{ repository: { html_url: string; description: string | null } }>
+  items: Array<{ repository: { html_url: string; description: string | null; private?: boolean } }>
   total_count: number
   incomplete_results: boolean
 }
@@ -15,6 +15,7 @@ export type GitHubRepo = {
   subscribers_count: number
   pushed_at: string
   owner: { login: string; html_url: string }
+  private?: boolean
 }
 
 export type Marketplace = { plugins: unknown[] }
@@ -87,7 +88,11 @@ function parseSearch(value: unknown): SearchPage {
     !Array.isArray(value.items) ||
     !value.items.every(
       (item: unknown) =>
-        record(item) && record(item.repository) && nonempty(item.repository.html_url) && description(item.repository.description),
+        record(item) &&
+        record(item.repository) &&
+        nonempty(item.repository.html_url) &&
+        description(item.repository.description) &&
+        (item.repository.private === undefined || typeof item.repository.private === 'boolean'),
     )
   ) {
     throw new Error('Invalid code search response')
@@ -105,6 +110,7 @@ function parseRepository(value: unknown): GitHubRepo {
     !count(value.forks_count) ||
     !count(value.subscribers_count) ||
     !nonempty(value.pushed_at) ||
+    typeof value.private !== 'boolean' ||
     !record(value.owner) ||
     !nonempty(value.owner.login) ||
     !nonempty(value.owner.html_url)
@@ -168,8 +174,10 @@ export class GitHubClient implements GitHubReader {
     return result.data
   }
 
-  getRepository(owner: string, repo: string): Promise<RepoResult<GitHubRepo>> {
-    return this.request('core', `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, parseRepository)
+  async getRepository(owner: string, repo: string): Promise<RepoResult<GitHubRepo>> {
+    const result = await this.request('core', `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, parseRepository)
+    if (result.kind === 'found' && result.data.private) return { kind: 'not-found' }
+    return result
   }
 
   getMarketplace(owner: string, repo: string): Promise<RepoResult<Marketplace>> {

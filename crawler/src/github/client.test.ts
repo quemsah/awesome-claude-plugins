@@ -9,6 +9,7 @@ const repo = {
   forks_count: 2,
   subscribers_count: 3,
   pushed_at: '2026-09-20T00:00:00Z',
+  private: false,
   owner: { login: 'acme', html_url: 'https://github.com/acme' },
 }
 const page = {
@@ -75,6 +76,12 @@ describe('GitHubClient', () => {
     const test = harness([Response.json(repo)])
     expect(await test.client.getRepository('acme team', 'cool/repo')).toEqual({ kind: 'found', data: repo })
     expect(test.requests[0].url).toBe('https://api.github.com/repos/acme%20team/cool%2Frepo')
+  })
+
+  it('treats a private repository as absent from the public catalog without retrying', async () => {
+    const test = harness([Response.json({ ...repo, private: true })])
+    expect(await test.client.getRepository('acme', 'catalog')).toEqual({ kind: 'not-found' })
+    expect(test.requests).toHaveLength(1)
   })
 
   it('decodes marketplace content and preserves an empty plugins array', async () => {

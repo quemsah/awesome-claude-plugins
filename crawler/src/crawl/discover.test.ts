@@ -190,6 +190,24 @@ it('counts overlapping URLs as existing and preserves enriched data while refres
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 2 })
 })
 
+it('ignores private repositories returned by authenticated code search', async () => {
+  const db = database()
+  const result = await discover(
+    db,
+    reader(async () =>
+      page([
+        { repository: { html_url: 'https://github.com/owner/private', description: 'secret', private: true } },
+        item('https://github.com/owner/public', 'public'),
+      ]),
+    ),
+    'run-1',
+    [firstRange],
+  )
+
+  expect(result).toMatchObject({ newUrls: 1, existingUrls: 0, successfulRanges: 1, warningCount: 0 })
+  expect(db.prepare('SELECT html_url FROM repositories').all()).toEqual([{ html_url: 'https://github.com/owner/public' }])
+})
+
 it('warns once per range for invalid repository URLs and never inserts them', async () => {
   const db = database()
   const badUrls = [
