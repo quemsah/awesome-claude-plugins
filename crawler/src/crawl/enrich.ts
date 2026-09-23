@@ -109,23 +109,34 @@ type LoadedRepository = {
 }
 type EnrichmentTarget = { id: number; removedId: number | null; ready: boolean }
 
-function persistEnrichment(db: Database.Database, row: RepositoryRow, loaded: LoadedRepository, pluginsCount: number, at: string): EnrichmentTarget {
+function persistEnrichment(
+  db: Database.Database,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  pluginsCount: number,
+  at: string,
+): EnrichmentTarget {
   return db.transaction(() => {
     const rebound = loaded.moved ? rebindCanonicalUrl(db, row.id, loaded.canonical.htmlUrl, at) : { id: row.id, removedId: null }
     const target = loaded.moved ? getRepositoryById(db, rebound.id) : null
     if (loaded.moved && !target) throw new Error('Canonical repository disappeared during rebind')
     const ready = loaded.ready
-    updateEnriched(db, rebound.id, {
-      stargazers_count: loaded.data.stargazers_count,
-      forks_count: loaded.data.forks_count,
-      subscribers_count: loaded.data.subscribers_count,
-      description: loaded.data.description,
-      owner: loaded.owner,
-      owner_url: loaded.ownerUrl,
-      repo_name: loaded.repo,
-      repo_updated: loaded.data.pushed_at,
-      plugins_count: pluginsCount,
-    }, at)
+    updateEnriched(
+      db,
+      rebound.id,
+      {
+        stargazers_count: loaded.data.stargazers_count,
+        forks_count: loaded.data.forks_count,
+        subscribers_count: loaded.data.subscribers_count,
+        description: loaded.data.description,
+        owner: loaded.owner,
+        owner_url: loaded.ownerUrl,
+        repo_name: loaded.repo,
+        repo_updated: loaded.data.pushed_at,
+        plugins_count: pluginsCount,
+      },
+      at,
+    )
     return { id: rebound.id, removedId: rebound.removedId, ready }
   })()
 }
