@@ -386,6 +386,31 @@ it('follows a confirmed GitHub rename or transfer and keeps the original reposit
   expect(listRunErrors(db, 'crawl-1')).toEqual([])
 })
 
+it('keeps both rows unchanged when a renamed repository marketplace lookup fails', async () => {
+  const db = database()
+  const originalId = upsertDiscovery(db, 'https://github.com/team/repo', null)
+  ready(db, originalId)
+  const duplicateId = upsertDiscovery(db, 'https://github.com/new-team/new-repo', null)
+  ready(db, duplicateId)
+  const before = [originalId, duplicateId].map((id) => db.prepare('SELECT * FROM repositories WHERE id = ?').get(id))
+
+  const counts = await enrichRepositories(
+    db,
+    reader(
+      async (owner, name) => ({
+        kind: 'found' as const,
+        data: owner === 'team' && name === 'repo' ? githubRepo('new-team', 'new-repo') : githubRepo(owner, name),
+      }),
+      async () => ({ kind: 'temporary-error' as const, status: 429, reason: 'GitHub rate limited' }),
+    ),
+    'crawl-1',
+  )
+
+  expect(counts).toMatchObject({ unchangedOnError: 2, deleted404: 0, conclusive: 0 })
+  expect([originalId, duplicateId].map((id) => db.prepare('SELECT * FROM repositories WHERE id = ?').get(id))).toEqual(before)
+  expect(listPublishable(db).map(({ id }) => id)).toEqual([originalId, duplicateId])
+})
+
 it('merges a discovered canonical duplicate during rename and does not enrich the deleted duplicate twice', async () => {
   const db = database()
   const originalId = upsertDiscovery(db, 'https://github.com/team/repo', null)

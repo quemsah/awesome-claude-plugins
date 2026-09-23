@@ -114,6 +114,16 @@ export function rebindCanonicalUrl(db: Database.Database, id: number, htmlUrl: s
   })()
 }
 
+export function deleteCanonicalRows(db: Database.Database, id: number, htmlUrl: string): void {
+  db.transaction(() => {
+    const duplicate = db.prepare('SELECT id FROM repositories WHERE html_url = ? AND id != ?').get(htmlUrl, id) as
+      | { id: number }
+      | undefined
+    deleteById(db, id)
+    if (duplicate) deleteById(db, duplicate.id)
+  })()
+}
+
 export function getRepositoryById(db: Database.Database, id: number): RepositoryRow | null {
   return (db.prepare('SELECT * FROM repositories WHERE id = ?').get(id) as RepositoryRow | undefined) ?? null
 }

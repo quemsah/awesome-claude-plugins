@@ -3,6 +3,7 @@ import type { GitHubReader, GitHubRepo, RepoResult } from '../github/client.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import {
   deleteById,
+  deleteCanonicalRows,
   getRepositoryById,
   listForEnrichment,
   type RepositoryRow,
@@ -96,36 +97,42 @@ function recordProblem(
   else counts.newIncomplete++
 }
 
-type EnrichmentTarget = { id: number; ready: boolean; owner: string; repo: string; ownerUrl: string }
+type LoadedRepository = {
+  data: GitHubRepo
+  canonical: CanonicalIdentity
+  moved: boolean
+  ready: boolean
+  owner: string
+  repo: string
+  ownerUrl: string
+}
+type EnrichmentTarget = { id: number; removedId: number | null; ready: boolean }
 
-function resolveTarget(
+function persistEnrichment(
   db: Database.Database,
   row: RepositoryRow,
-  identity: NonNullable<ReturnType<typeof parseRepositoryUrl>>,
-  canonical: CanonicalIdentity,
+  loaded: LoadedRepository,
+  pluginsCount: number,
   previouslyReady: boolean,
-  removedIds: Set<number>,
 ): EnrichmentTarget {
-  const moved = canonical.htmlUrl.toLowerCase() !== row.html_url?.toLowerCase()
-  if (!moved)
-    return {
-      id: row.id,
-      ready: previouslyReady,
-      owner: identity.owner,
-      repo: identity.repo,
-      ownerUrl: `https://github.com/${identity.owner}`,
-    }
-  const rebound = rebindCanonicalUrl(db, row.id, canonical.htmlUrl)
-  if (rebound.removedId !== null) removedIds.add(rebound.removedId)
-  const target = getRepositoryById(db, rebound.id)
-  if (!target) throw new Error('Canonical repository disappeared during rebind')
-  return {
-    id: rebound.id,
-    ready: previouslyReady || wasReady(target),
-    owner: canonical.owner,
-    repo: canonical.repo,
-    ownerUrl: canonical.ownerUrl,
-  }
+  return db.transaction(() => {
+    const rebound = loaded.moved ? rebindCanonicalUrl(db, row.id, loaded.canonical.htmlUrl) : { id: row.id, removedId: null }
+    const target = loaded.moved ? getRepositoryById(db, rebound.id) : null
+    if (loaded.moved && !target) throw new Error('Canonical repository disappeared during rebind')
+    const ready = previouslyReady || (target !== null && target !== undefined && wasReady(target))
+    updateEnriched(db, rebound.id, {
+      stargazers_count: loaded.data.stargazers_count,
+      forks_count: loaded.data.forks_count,
+      subscribers_count: loaded.data.subscribers_count,
+      description: loaded.data.description,
+      owner: loaded.owner,
+      owner_url: loaded.ownerUrl,
+      repo_name: loaded.repo,
+      repo_updated: loaded.data.pushed_at,
+      plugins_count: pluginsCount,
+    })
+    return { id: rebound.id, removedId: rebound.removedId, ready }
+  })()
 }
 
 async function loadRepository(
@@ -136,8 +143,7 @@ async function loadRepository(
   identity: NonNullable<ReturnType<typeof parseRepositoryUrl>>,
   previouslyReady: boolean,
   counts: EnrichmentCounts,
-  removedIds: Set<number>,
-): Promise<{ data: GitHubRepo; target: EnrichmentTarget } | null> {
+): Promise<LoadedRepository | null> {
   const result = await reader.getRepository(identity.owner, identity.repo)
   if (result.kind === 'not-found') {
     deleteById(db, row.id)
@@ -154,7 +160,19 @@ async function loadRepository(
     recordProblem(db, runId, counts, row, 'repository_identity_mismatch', previouslyReady, true)
     return null
   }
-  return { data: result.data, target: resolveTarget(db, row, identity, canonical, previouslyReady, removedIds) }
+  const moved = canonical.htmlUrl.toLowerCase() !== row.html_url?.toLowerCase()
+  const duplicate = moved
+    ? (db.prepare('SELECT * FROM repositories WHERE html_url = ? AND id != ?').get(canonical.htmlUrl, row.id) as RepositoryRow | undefined)
+    : undefined
+  return {
+    data: result.data,
+    canonical,
+    moved,
+    ready: previouslyReady || (duplicate !== undefined && wasReady(duplicate)),
+    owner: moved ? canonical.owner : identity.owner,
+    repo: moved ? canonical.repo : identity.repo,
+    ownerUrl: moved ? canonical.ownerUrl : `https://github.com/${identity.owner}`,
+  }
 }
 
 async function enrichOne(
@@ -176,32 +194,22 @@ async function enrichOne(
     recordProblem(db, runId, counts, row, 'invalid_repository_url', previouslyReady, true)
     return
   }
-  const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts, removedIds)
+  const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts)
   if (!loaded) return
-  const { data, target } = loaded
-  const marketplace = await reader.getMarketplace(target.owner, target.repo)
+  const marketplace = await reader.getMarketplace(loaded.owner, loaded.repo)
   if (marketplace.kind === 'not-found') {
-    deleteById(db, target.id)
+    if (loaded.moved) deleteCanonicalRows(db, row.id, loaded.canonical.htmlUrl)
+    else deleteById(db, row.id)
     counts.deleted404++
     counts.conclusive++
     return
   }
   if (marketplace.kind === 'temporary-error') {
-    const repository = getRepositoryById(db, target.id) ?? row
-    recordProblem(db, runId, counts, repository, temporaryCategory('marketplace', marketplace), target.ready)
+    recordProblem(db, runId, counts, row, temporaryCategory('marketplace', marketplace), loaded.ready)
     return
   }
-  updateEnriched(db, target.id, {
-    stargazers_count: data.stargazers_count,
-    forks_count: data.forks_count,
-    subscribers_count: data.subscribers_count,
-    description: data.description,
-    owner: target.owner,
-    owner_url: target.ownerUrl,
-    repo_name: target.repo,
-    repo_updated: data.pushed_at,
-    plugins_count: marketplace.data.plugins.length,
-  })
+  const target = persistEnrichment(db, row, loaded, marketplace.data.plugins.length, previouslyReady)
+  if (target.removedId !== null) removedIds.add(target.removedId)
   counts.conclusive++
   if (target.ready) counts.updated++
   else counts.newReady++
