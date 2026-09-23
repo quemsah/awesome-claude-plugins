@@ -1,3 +1,4 @@
+import { parseMarketplaceManifest, type MarketplaceManifest } from '@awesome-claude-plugins/marketplace-contract'
 import type { components, operations } from '@octokit/openapi-types'
 import { type Clock, RateBudget, type RateLog, type RateResource } from './rateBudget.js'
 
@@ -21,7 +22,7 @@ export type GitHubRepo = Pick<
   private?: RepositoryResponse['private']
 }
 
-export type Marketplace = { plugins: unknown[] }
+export type Marketplace = MarketplaceManifest
 
 export type RepoResult<T> =
   | { kind: 'found'; data: T }
@@ -139,8 +140,7 @@ function parseMarketplace(value: unknown): Marketplace {
   if (bytes.toString('base64') !== encoded) throw new Error('Invalid marketplace base64')
 
   const decoded = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown
-  if (!record(decoded) || !Array.isArray(decoded.plugins)) throw new Error('Invalid marketplace plugins')
-  return { plugins: decoded.plugins }
+  return parseMarketplaceManifest(decoded)
 }
 
 function retryAfter(headers: Headers, now: number): number | null {
