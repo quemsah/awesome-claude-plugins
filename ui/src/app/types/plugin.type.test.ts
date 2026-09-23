@@ -1,4 +1,4 @@
-import { marketplaceFixtures } from '@awesome-claude-plugins/marketplace-contract/fixtures'
+import { marketplaceFixtures } from '../../../../crawler/marketplace-contract/fixtures.js'
 import { describe, expect, it } from 'vitest'
 import { getMarketplaceName, MarketplacePluginsSchema } from './plugin.type.ts'
 
