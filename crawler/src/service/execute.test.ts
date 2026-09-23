@@ -287,7 +287,6 @@ it('does not record a notification delivery failure when shutdown cancels the fa
   db.close()
 })
 
-
 it('keeps the publication lease when shutdown arrives after a candidate commit but before the Git ref update', async () => {
   const db = await dbFixture()
   await executeCrawl(db, reader, 'shutdown-publish', { now, ranges: range, dryRun: true })
