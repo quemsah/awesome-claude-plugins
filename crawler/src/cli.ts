@@ -124,6 +124,13 @@ function parseOptions(command: CliCommand, args: string[]): ParsedOptions {
   return defaults
 }
 
+function parseCommand(value: string | undefined): CliCommand {
+  if (value && ['seed', 'seed-if-empty', 'inspect', 'crawl', 'publish', 'recover-crawl', 'export'].includes(value)) {
+    return value as CliCommand
+  }
+  throw new Error('Unknown command. Available: seed, seed-if-empty, inspect, crawl, publish, recover-crawl, export')
+}
+
 async function notifyBlockedSchedule(
   db: Database.Database,
   category: 'active_run' | 'publication_locked',
@@ -266,31 +273,50 @@ async function runPublishCommand(
   )
 }
 
+async function runLocalCommand(
+  db: Database.Database,
+  command: CliCommand,
+  files: ReturnType<typeof csvPaths> | undefined,
+  parsed: ParsedOptions,
+  now: () => Date,
+  output: (line: string) => void,
+): Promise<boolean> {
+  if (command === 'inspect') {
+    output(JSON.stringify(inspect(db)))
+    return true
+  }
+  if (files) {
+    output(JSON.stringify(await importCsv(db, files, command as 'seed' | 'seed-if-empty')))
+    return true
+  }
+  if (command === 'export' && parsed.exportId && parsed.exportDirectory) {
+    exportDraftSnapshot(db, parsed.exportId, parsed.exportDirectory)
+    output(JSON.stringify({ status: 'exported', runId: parsed.exportId, directory: parsed.exportDirectory }))
+    return true
+  }
+  if (command === 'recover-crawl' && parsed.recoverId) {
+    recoverStoppedCrawl(db, parsed.recoverId, now().toISOString())
+    output(JSON.stringify({ status: 'failed', runId: parsed.recoverId, reason: 'operator_recovery' }))
+    return true
+  }
+  return false
+}
+
 export async function runCli(argv: string[], dependencies: CliDependencies = {}): Promise<void> {
   const [rawCommand, ...args] = argv
   const env = dependencies.env ?? process.env
   const output = dependencies.output ?? console.log
   const now = dependencies.now ?? (() => new Date())
-  if (!rawCommand || !['seed', 'seed-if-empty', 'inspect', 'crawl', 'publish', 'recover-crawl', 'export'].includes(rawCommand)) {
-    throw new Error('Unknown command. Available: seed, seed-if-empty, inspect, crawl, publish, recover-crawl, export')
-  }
-  const command = rawCommand as CliCommand
+  const command = parseCommand(rawCommand)
   const parsed = parseOptions(command, args)
   const files = command === 'seed' || command === 'seed-if-empty' ? csvPaths(args) : undefined
   const config = command === 'crawl' || command === 'publish' ? parseConfig(command, env) : undefined
   const db = (dependencies.open ?? openDatabase)(config?.dbPath ?? env.DB_PATH ?? '')
   try {
-    if (command === 'inspect') output(JSON.stringify(inspect(db)))
-    else if (files) output(JSON.stringify(await importCsv(db, files, command as 'seed' | 'seed-if-empty')))
-    else if (command === 'export' && parsed.exportId && parsed.exportDirectory) {
-      exportDraftSnapshot(db, parsed.exportId, parsed.exportDirectory)
-      output(JSON.stringify({ status: 'exported', runId: parsed.exportId, directory: parsed.exportDirectory }))
-    } else if (command === 'recover-crawl' && parsed.recoverId) {
-      recoverStoppedCrawl(db, parsed.recoverId, now().toISOString())
-      output(JSON.stringify({ status: 'failed', runId: parsed.recoverId, reason: 'operator_recovery' }))
-    } else if (command === 'crawl' && config) {
+    const handled = await runLocalCommand(db, command, files, parsed, now, output)
+    if (!handled && command === 'crawl' && config) {
       await runScheduledCrawl(db, config, dependencies, parsed, now, output)
-    } else if (command === 'publish' && config) {
+    } else if (!handled && command === 'publish' && config) {
       await runPublishCommand(db, config, dependencies, parsed, now, output)
     }
   } finally {
