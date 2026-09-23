@@ -348,6 +348,67 @@ it('keeps a CSV-only incomplete row unpublishable until both endpoints succeed',
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 1 })
 })
 
+it('follows a confirmed GitHub rename or transfer and keeps the original repository id', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', null)
+  ready(db, id)
+  const requests: string[] = []
+  const moved = githubRepo('new-team', 'new-repo')
+
+  const counts = await enrichRepositories(
+    db,
+    reader(
+      async (owner, name) => {
+        requests.push(`repo:${owner}/${name}`)
+        return { kind: 'found', data: moved }
+      },
+      async (owner, name) => {
+        requests.push(`marketplace:${owner}/${name}`)
+        return { kind: 'found', data: { plugins: [1, 2] } }
+      },
+    ),
+    'crawl-1',
+  )
+
+  expect(counts).toMatchObject({ updated: 1, conclusive: 1, warnings: 0 })
+  expect(requests).toEqual(['repo:team/repo', 'marketplace:new-team/new-repo'])
+  expect(db.prepare('SELECT id, html_url, owner, owner_url, repo_name, plugins_count FROM repositories').all()).toEqual([
+    {
+      id,
+      html_url: 'https://github.com/new-team/new-repo',
+      owner: 'new-team',
+      owner_url: 'https://github.com/new-team',
+      repo_name: 'new-repo',
+      plugins_count: 2,
+    },
+  ])
+  expect(listRunErrors(db, 'crawl-1')).toEqual([])
+})
+
+it('merges a discovered canonical duplicate during rename and does not enrich the deleted duplicate twice', async () => {
+  const db = database()
+  const originalId = upsertDiscovery(db, 'https://github.com/team/repo', null)
+  ready(db, originalId)
+  const duplicateId = upsertDiscovery(db, 'https://github.com/new-team/new-repo', 'discovered after rename')
+  const getRepository = vi.fn(async (owner: string, name: string) => ({
+    kind: 'found' as const,
+    data: owner === 'team' && name === 'repo' ? githubRepo('new-team', 'new-repo') : githubRepo(owner, name),
+  }))
+  const getMarketplace = vi.fn(async () => ({ kind: 'found' as const, data: { plugins: [] } }))
+
+  const counts = await enrichRepositories(db, reader(getRepository, getMarketplace), 'crawl-1')
+
+  expect(counts).toMatchObject({ updated: 1, newReady: 0, conclusive: 1, warnings: 0 })
+  expect(getRepository).toHaveBeenCalledTimes(1)
+  expect(getRepository).toHaveBeenCalledWith('team', 'repo')
+  expect(getMarketplace).toHaveBeenCalledTimes(1)
+  expect(getMarketplace).toHaveBeenCalledWith('new-team', 'new-repo')
+  expect(db.prepare('SELECT id, html_url, owner, repo_name FROM repositories').all()).toEqual([
+    { id: originalId, html_url: 'https://github.com/new-team/new-repo', owner: 'new-team', repo_name: 'new-repo' },
+  ])
+  expect(db.prepare('SELECT id FROM repositories WHERE id = ?').get(duplicateId)).toBeUndefined()
+})
+
 it.each(['name', 'owner', 'html_url', 'owner_url'] as const)(
   'does not rebind the original id when GitHub changes the %s',
   async (field) => {

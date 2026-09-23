@@ -90,6 +90,34 @@ export function deleteById(db: Database.Database, id: number): boolean {
   return db.prepare('DELETE FROM repositories WHERE id = ?').run(id).changes !== 0
 }
 
+export type CanonicalRebindResult = {
+  id: number
+  removedId: number | null
+}
+
+export function rebindCanonicalUrl(db: Database.Database, id: number, htmlUrl: string): CanonicalRebindResult {
+  if (!htmlUrl.trim()) throw new Error('Canonical URL must not be blank')
+
+  return db.transaction(() => {
+    const current = db.prepare('SELECT id FROM repositories WHERE id = ?').get(id) as { id: number } | undefined
+    if (!current) throw new Error('Repository to rebind does not exist')
+
+    const duplicate = db.prepare('SELECT id FROM repositories WHERE html_url = ? AND id != ?').get(htmlUrl, id) as
+      | { id: number }
+      | undefined
+    const keepId = duplicate ? Math.min(id, duplicate.id) : id
+    const removedId = duplicate ? Math.max(id, duplicate.id) : null
+
+    if (removedId !== null) db.prepare('DELETE FROM repositories WHERE id = ?').run(removedId)
+    db.prepare('UPDATE repositories SET html_url = ?, updatedAt = ? WHERE id = ?').run(htmlUrl, new Date().toISOString(), keepId)
+    return { id: keepId, removedId }
+  })()
+}
+
+export function getRepositoryById(db: Database.Database, id: number): RepositoryRow | null {
+  return (db.prepare('SELECT * FROM repositories WHERE id = ?').get(id) as RepositoryRow | undefined) ?? null
+}
+
 export function listForEnrichment(db: Database.Database, cursor: number, limit: number): RepositoryRow[] {
   if (!Number.isSafeInteger(cursor) || cursor < 0) throw new Error('cursor must be a nonnegative integer')
   if (!Number.isSafeInteger(limit) || limit <= 0) throw new Error('limit must be a positive integer')
