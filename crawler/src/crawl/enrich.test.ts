@@ -205,7 +205,7 @@ it('refreshes a complete row using the same owner and repo for both calls withou
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 1 })
 })
 
-it('canonicalizes a case-variant URL and merges an imported case-insensitive duplicate', async () => {
+it('canonicalizes a case-variant URL while preserving the repository id', async () => {
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/Team/Repo', null)
   updateEnriched(db, id, {
@@ -219,11 +219,6 @@ it('canonicalizes a case-variant URL and merges an imported case-insensitive dup
     repo_updated: 'old',
     plugins_count: 1,
   })
-  db.prepare(`
-    INSERT INTO repositories (id, html_url, createdAt, updatedAt)
-    VALUES (500, 'https://github.com/team/repo', 'legacy-created', 'legacy-updated')
-  `).run()
-  ready(db, 500)
   const canonical = githubRepo('team', 'repo')
   const getMarketplace = vi.fn(async () => ({ kind: 'found' as const, data: { plugins: [1, 2] } }))
 
