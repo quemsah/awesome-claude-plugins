@@ -18,6 +18,7 @@
     "publish": "node dist/cli.js publish"
   },
   "dependencies": {
+    "@awesome-claude-plugins/marketplace-contract": "file:./marketplace-contract",
     "better-sqlite3": "12.11.1"
   },
   "devDependencies": {
