@@ -86,7 +86,19 @@ function parsePathListOrMap(value, path) {
   issue('Expected an array or object', path)
 }
 
-const PLUGIN_METADATA_KEYS = ['name', 'description', 'version', 'id', 'source', 'category', 'homepage', 'tags', 'commands', 'agents', 'mcpServers']
+const PLUGIN_METADATA_KEYS = [
+  'name',
+  'description',
+  'version',
+  'id',
+  'source',
+  'category',
+  'homepage',
+  'tags',
+  'commands',
+  'agents',
+  'mcpServers',
+]
 
 function parseBoolean(value, path) {
   if (typeof value !== 'boolean') issue('Expected a boolean', path)
