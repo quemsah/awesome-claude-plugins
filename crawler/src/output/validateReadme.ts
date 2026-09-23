@@ -1,4 +1,5 @@
 import type { PublishableRepository } from '../storage/repositories.js'
+import { tableCell } from './readme.js'
 import { assertValidStatsDraft, type StatsRecord } from './statsDraft.js'
 
 export function validateReadme(text: string, repositories: readonly PublishableRepository[], draft: StatsRecord): void {
@@ -34,5 +35,17 @@ export function validateReadme(text: string, repositories: readonly PublishableR
     })
   ) {
     throw new Error('README snapshot has incorrect top-100 links')
+  }
+  const rows = lines.slice(6, 6 + ranked.length)
+  if (
+    rows.some((line, index) => {
+      const repo = ranked[index]
+      return (
+        line !==
+        `| ${index + 1} | [${repo.repo_name}](${repo.html_url}) | ${tableCell(repo.description)} | ${repo.stargazers_count} | ${repo.subscribers_count ?? 0} | ${repo.plugins_count ?? 0} |`
+      )
+    })
+  ) {
+    throw new Error('README snapshot has incorrect top-100 rows')
   }
 }

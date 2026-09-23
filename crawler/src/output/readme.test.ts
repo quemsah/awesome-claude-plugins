@@ -27,7 +27,7 @@ it('escapes table-breaking description characters without altering input or inve
       '| # | Repo Name | Description | Stars | Subs | Plugins |\n' +
       '|---|-----------|-------------|-------|-------------|---------|\n' +
       '| 1 | [repo-1](https://github.com/owner/repo-1) |  | 9 | 5 | 0 |\n' +
-      '| 2 | [repo-2](https://github.com/owner/repo-2) | A &#124; slash \\&#124; *bold* [link](url) | 4 | 0 | 0 |\n',
+      '| 2 | [repo-2](https://github.com/owner/repo-2) | A &#124; slash &#92;&#124; *bold* [link](url) | 4 | 0 | 0 |\n',
   )
   expect(repositories).toEqual(original)
 })

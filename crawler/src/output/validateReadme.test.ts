@@ -11,7 +11,7 @@ const repos: PublishableRepository[] = [
     stargazers_count: 1,
     forks_count: 0,
     subscribers_count: 1,
-    description: 'Some | pipes and\nnewlines',
+    description: 'Some | pipes and \\| escapes\nnewlines',
     owner: 'owner',
     owner_url: 'https://github.com/owner',
     repo_name: 'first',
@@ -31,7 +31,7 @@ const repos: PublishableRepository[] = [
   },
 ]
 
-it('accepts the legacy unescaped descriptions while checking the top ranked links', () => {
+it('accepts escaped descriptions while checking the top ranked links', () => {
   expect(() => validateReadme(renderReadme(repos, draft), repos, draft)).not.toThrow()
 })
 
@@ -41,6 +41,7 @@ it.each([
   ['date', (text: string) => text.replace('23.09.2026', '22.09.2026')],
   ['missing row', (text: string) => text.replace(/^\| 2 \| \[first\].*\n/m, '')],
   ['rank', (text: string) => text.replace('| 1 | [second]', '| 2 | [second]')],
+  ['description escaping', (text: string) => text.replace('&#92;&#124;', '\\&#124;')],
 ])('rejects a README with an incorrect %s before Git publication', (_name, modify) => {
   expect(() => validateReadme(modify(renderReadme(repos, draft)), repos, draft)).toThrow()
 })
