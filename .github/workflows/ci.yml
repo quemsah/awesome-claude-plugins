@@ -81,3 +81,15 @@ jobs:
       - name: Run crawler unit tests
         run: npm run test
         working-directory: crawler
+
+      - name: Install UI schema dependencies
+        run: npm ci
+        working-directory: ui
+
+      - name: Typecheck crawler UI integration
+        run: npm run typecheck:integration
+        working-directory: crawler
+
+      - name: Test crawler output with UI schemas
+        run: npm run test:integration
+        working-directory: crawler
