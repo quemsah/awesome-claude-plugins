@@ -51,8 +51,8 @@ function harness(responses: Array<Response | Error>, random: () => number = () =
   }
 }
 
-function manifest(content: string, encoding = 'base64') {
-  return Response.json({ encoding, content })
+function manifest(value: unknown) {
+  return Response.json(value)
 }
 
 describe('GitHubClient', () => {
@@ -85,23 +85,29 @@ describe('GitHubClient', () => {
     expect(test.requests).toHaveLength(1)
   })
 
-  it('decodes marketplace content and preserves an empty plugins array', async () => {
-    const test = harness([manifest(Buffer.from('{"plugins":[]}').toString('base64'))])
+  it('reads raw marketplace content and preserves an empty plugins array', async () => {
+    const test = harness([manifest({ plugins: [] })])
     expect(await test.client.getMarketplace('acme', 'catalog')).toEqual({ kind: 'found', data: { plugins: [] } })
     expect(test.requests[0].url).toBe('https://api.github.com/repos/acme/catalog/contents/.claude-plugin/marketplace.json')
+    expect(test.requests[0].init?.headers).toMatchObject({ Accept: 'application/vnd.github.raw+json' })
+  })
+
+  it('parses marketplace files larger than the Contents API base64 limit', async () => {
+    const largeManifest = { plugins: [], padding: 'x'.repeat(1_100_000) }
+    const test = harness([manifest(largeManifest)])
+    expect(await test.client.getMarketplace('acme', 'catalog')).toEqual({ kind: 'found', data: { plugins: [] } })
+    expect(test.requests).toHaveLength(1)
   })
 
   it.each(marketplaceFixtures.filter((fixture) => fixture.valid))('uses the shared marketplace contract for $name', async (fixture) => {
-    const encoded = Buffer.from(JSON.stringify(fixture.input)).toString('base64')
-    const test = harness([manifest(encoded)])
+    const test = harness([manifest(fixture.input)])
     const result = await test.client.getMarketplace('acme', 'catalog')
     expect(result.kind).toBe('found')
     if (result.kind === 'found') expect(result.data.plugins).toHaveLength(fixture.pluginsCount)
   })
 
   it.each(marketplaceFixtures.filter((fixture) => !fixture.valid))('rejects invalid shared marketplace fixture: $name', async (fixture) => {
-    const encoded = Buffer.from(JSON.stringify(fixture.input)).toString('base64')
-    const test = harness(Array.from({ length: 4 }, () => manifest(encoded)))
+    const test = harness(Array.from({ length: 4 }, () => manifest(fixture.input)))
     const result = await test.client.getMarketplace('acme', 'catalog')
     expect(result.kind).toBe('temporary-error')
     expect(test.requests).toHaveLength(4)
@@ -115,10 +121,10 @@ describe('GitHubClient', () => {
   })
 
   it.each([
-    () => manifest('%%%'),
-    () => manifest(Buffer.from('not json').toString('base64')),
-    () => manifest(Buffer.from('{}').toString('base64')),
-    () => manifest(Buffer.from('{"plugins":[]}').toString('base64'), 'utf-8'),
+    () => new Response('%%%'),
+    () => new Response('not json'),
+    () => manifest({}),
+    () => new Response(new Uint8Array([0xff])),
     () => new Response('', { status: 200 }),
   ])('treats missing or malformed marketplace content as temporary rather than zero plugins', async (response) => {
     const test = harness(Array.from({ length: 4 }, response))

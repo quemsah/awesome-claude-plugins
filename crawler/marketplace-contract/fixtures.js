@@ -61,4 +61,10 @@ export const marketplaceFixtures = [
     valid: false,
     pluginsCount: 0,
   },
+  {
+    name: 'unsafe string source traversal',
+    input: { plugins: [{ name: 'unsafe', source: '../../outside' }] },
+    valid: false,
+    pluginsCount: 0,
+  },
 ]

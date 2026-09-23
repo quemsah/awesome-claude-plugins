@@ -127,20 +127,7 @@ function parseRepository(value: unknown): GitHubRepo {
 }
 
 function parseMarketplace(value: unknown): Marketplace {
-  if (!record(value)) throw new Error('Invalid marketplace content response')
-  const contentFile = value as Pick<components['schemas']['content-file'], 'encoding' | 'content'>
-  if (contentFile.encoding !== 'base64' || typeof contentFile.content !== 'string') {
-    throw new Error('Invalid marketplace content response')
-  }
-  const encoded = contentFile.content.replace(/\s/g, '')
-  if (!encoded || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
-    throw new Error('Invalid marketplace base64')
-  }
-  const bytes = Buffer.from(encoded, 'base64')
-  if (bytes.toString('base64') !== encoded) throw new Error('Invalid marketplace base64')
-
-  const decoded = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown
-  return parseMarketplaceManifest(decoded)
+  return parseMarketplaceManifest(value)
 }
 
 function retryAfter(headers: Headers, now: number): number | null {
@@ -192,11 +179,17 @@ export class GitHubClient implements GitHubReader {
       'core',
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/.claude-plugin/marketplace.json`,
       parseMarketplace,
+      'application/vnd.github.raw+json',
     )
   }
 
-  private request<T>(bucket: RateResource, path: string, parse: (value: unknown) => T): Promise<RepoResult<T>> {
-    const run = this.pending.then(() => this.perform(bucket, path, parse))
+  private request<T>(
+    bucket: RateResource,
+    path: string,
+    parse: (value: unknown) => T,
+    accept = 'application/vnd.github+json',
+  ): Promise<RepoResult<T>> {
+    const run = this.pending.then(() => this.perform(bucket, path, parse, accept))
     this.pending = run.then(
       () => {},
       () => {},
@@ -204,7 +197,12 @@ export class GitHubClient implements GitHubReader {
     return run
   }
 
-  private async perform<T>(bucket: RateResource, path: string, parse: (value: unknown) => T): Promise<RepoResult<T>> {
+  private async perform<T>(
+    bucket: RateResource,
+    path: string,
+    parse: (value: unknown) => T,
+    accept: string,
+  ): Promise<RepoResult<T>> {
     let secondaryCount = 0
     for (let attempt = 0; attempt < 4; attempt++) {
       await this.budget.acquire(bucket)
@@ -214,7 +212,7 @@ export class GitHubClient implements GitHubReader {
           signal: AbortSignal.timeout(30_000),
           headers: {
             Authorization: `Bearer ${this.token}`,
-            Accept: 'application/vnd.github+json',
+            Accept: accept,
             'X-GitHub-Api-Version': '2022-11-28',
           },
         })

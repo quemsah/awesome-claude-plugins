@@ -48,7 +48,7 @@ function stringArray(value, path, { maxItems, itemMax, safePath = false } = {}) 
 }
 
 function parsePluginSource(value, path) {
-  if (typeof value === 'string') return string(value, path, { min: 1, max: 512, noControlCharacters: true })
+  if (typeof value === 'string') return string(value, path, { min: 1, max: 512, safePath: true })
   if (!record(value)) issue('Expected a plugin source string or object', path)
 
   const parsed = {
