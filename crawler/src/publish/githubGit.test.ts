@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   GitHubGitClient,
   GitHubGitConflictError,
-  GitHubGitHistoryError,
   GitHubGitHttpError,
   GitHubGitResponseError,
   GitHubGitTimeoutError,
@@ -26,6 +25,10 @@ function commit(sha: string, tree: string, parents: string[] = []): Response {
     tree: { sha: tree, url: 'https://api.github.com/git/trees/x' },
     parents: parents.map((parent) => ({ sha: parent })),
   })
+}
+
+function comparison(status: 'ahead' | 'behind' | 'diverged' | 'identical'): Response {
+  return Response.json({ status })
 }
 
 function mockClient(responses: Array<Response | Error>, config: Partial<ConstructorParameters<typeof GitHubGitClient>[0]> = {}) {
@@ -273,52 +276,38 @@ describe('GitHubGitClient', () => {
     expect(String(failure)).not.toContain('private-publish-token')
   })
 
-  it('finds a pending commit behind later commits without moving the ref', async () => {
-    const { client, requests } = mockClient([ref(laterSha), commit(laterSha, treeSha, [pendingSha])])
+  it.each(['ahead', 'identical'] as const)('treats compare status %s as reachable with one REST request', async (status) => {
+    const { client, requests } = mockClient([comparison(status)])
     expect(await client.isCommitReachable(pendingSha)).toBe(true)
-    expect(requests.map(({ init }) => init?.method ?? 'GET')).toEqual(['GET', 'GET'])
-  })
-
-  it('recognizes a pending parent even at the ancestor traversal limit', async () => {
-    const { client } = mockClient([ref(laterSha), commit(laterSha, treeSha, [pendingSha])])
-    expect(await client.isCommitReachable(pendingSha, 1)).toBe(true)
-  })
-
-  it('searches all parents of merge commits to find the pending commit', async () => {
-    const { client, requests } = mockClient([ref(laterSha), commit(laterSha, treeSha, [rootSha, pendingSha]), commit(rootSha, baseTree)])
-    expect(await client.isCommitReachable(pendingSha)).toBe(true)
-    expect(requests.map(({ url }) => url)).toEqual([
-      'https://api.github.com/repos/acme/catalog/git/ref/heads/main',
-      `https://api.github.com/repos/acme/catalog/git/commits/${laterSha}`,
-      `https://api.github.com/repos/acme/catalog/git/commits/${rootSha}`,
+    expect(requests.map(({ url, init }) => [init?.method ?? 'GET', url])).toEqual([
+      ['GET', `https://api.github.com/repos/acme/catalog/compare/${pendingSha}...main`],
     ])
   })
 
-  it('returns false only after reaching all roots of unrelated history', async () => {
-    const { client } = mockClient([ref(laterSha), commit(laterSha, treeSha, [rootSha]), commit(rootSha, baseTree)])
+  it.each(['behind', 'diverged'] as const)('treats compare status %s as not reachable', async (status) => {
+    const { client, requests } = mockClient([comparison(status)])
     expect(await client.isCommitReachable(pendingSha)).toBe(false)
+    expect(requests).toHaveLength(1)
   })
 
-  it('fails explicitly if the ancestor limit prevents a conclusive answer', async () => {
-    const { client, requests } = mockClient([ref(laterSha), commit(laterSha, treeSha, [rootSha])])
-    await expect(client.isCommitReachable(pendingSha, 1)).rejects.toBeInstanceOf(GitHubGitHistoryError)
-    expect(requests).toHaveLength(2)
+  it('encodes a slash-containing branch as one compare head ref', async () => {
+    const { client, requests } = mockClient([comparison('ahead')], { branch: 'release/v1+beta' })
+    expect(await client.isCommitReachable(pendingSha)).toBe(true)
+    expect(requests[0].url).toBe(
+      `https://api.github.com/repos/acme/catalog/compare/${pendingSha}...release%2Fv1%2Bbeta`,
+    )
   })
 
-  it('lets an operator inspect a pending commit past the automatic 256-commit horizon', async () => {
-    const history = Array.from({ length: 258 }, (_, index) => (index + 1).toString(16).padStart(40, '0'))
-    const { client, requests } = mockClient([
-      ref(history[0]),
-      ...history.slice(0, -1).map((current, index) => commit(current, treeSha, [history[index + 1]])),
-    ])
-    expect(await client.isCommitReachable(history.at(-1) ?? '', 257)).toBe(true)
-    expect(requests).toHaveLength(258)
+  it('rejects an unknown compare status rather than guessing publication state', async () => {
+    const { client } = mockClient([Response.json({ status: 'private-publish-token mystery' })])
+    const failure = await client.isCommitReachable(pendingSha).catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(GitHubGitResponseError)
+    expect(String(failure)).not.toContain('private-publish-token')
   })
 
-  it('rejects invalid ancestor limits before making any request', async () => {
+  it('rejects an invalid pending SHA before making a compare request', async () => {
     const { client, requests } = mockClient([])
-    await expect(client.isCommitReachable(pendingSha, 0)).rejects.toThrow('maxCommits')
-    await expect(client.isCommitReachable(pendingSha, Number.POSITIVE_INFINITY)).rejects.toThrow('maxCommits')
+    await expect(client.isCommitReachable('not-a-sha')).rejects.toThrow('SHA')
     expect(requests).toHaveLength(0)
   })
 })

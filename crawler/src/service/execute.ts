@@ -229,9 +229,9 @@ function guardGit(db: Database.Database, git: GitHubGit, onBlocked: () => void):
       check()
       return git.updateBranch(sha)
     },
-    isCommitReachable: (sha, maxCommits) => {
+    isCommitReachable: (sha) => {
       check()
-      return git.isCommitReachable(sha, maxCommits)
+      return git.isCommitReachable(sha)
     },
   }
 }
@@ -265,7 +265,7 @@ export async function executePublish(
   db: Database.Database,
   git: GitHubGit,
   runId: string,
-  options: ExecuteOptions & { writeEnabled: true; recover?: boolean; historyLimit?: number },
+  options: ExecuteOptions & { writeEnabled: true; recover?: boolean },
 ): Promise<{ status: 'published'; runId: string; sha: string; report?: Partial<RunReport> }> {
   const now = options.now ?? (() => new Date())
   const log = options.log ?? ((event: LogEvent) => console.error(JSON.stringify(event)))
@@ -280,7 +280,7 @@ export async function executePublish(
         blocked = true
       }),
       runId,
-      { writeEnabled: options.writeEnabled, recover: options.recover, historyLimit: options.historyLimit },
+      { writeEnabled: options.writeEnabled, recover: options.recover },
     )
   } catch (error) {
     const failure = blocked ? new ActiveRunError() : error

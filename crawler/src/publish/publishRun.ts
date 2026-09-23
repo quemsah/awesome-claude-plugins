@@ -217,11 +217,11 @@ function forgetPending(db: Database.Database, runId: string, sha: string): void 
   }
 }
 
-async function reachable(git: GitHubGit, pending: string, historyLimit?: number): Promise<boolean> {
+async function reachable(git: GitHubGit, pending: string): Promise<boolean> {
   try {
-    return await git.isCommitReachable(pending, historyLimit)
+    return await git.isCommitReachable(pending)
   } catch {
-    // A 404 or a traversal limit does not prove the pending commit is absent.
+    // A failed comparison does not prove the pending commit is absent.
     throw new PublicationError('git_indeterminate')
   }
 }
@@ -240,16 +240,10 @@ async function update(git: GitHubGit, sha: string): Promise<'updated' | 'conflic
 
 function validatePublication(
   run: RunRow | null,
-  options: { writeEnabled?: boolean; recover?: boolean; historyLimit?: number },
+  options: { writeEnabled?: boolean; recover?: boolean },
 ): { run: RunRow; draft: RunDraft } {
   if (options.writeEnabled !== true) throw new PublicationError('write_disabled')
   if (run?.status !== 'completed' || run.completed_at === null || run.last_error !== null) throw new PublicationError('invalid_run')
-  if (
-    options.historyLimit !== undefined &&
-    (!options.recover || !Number.isSafeInteger(options.historyLimit) || options.historyLimit < 257 || options.historyLimit > 2048)
-  ) {
-    throw new PublicationError('invalid_run')
-  }
   return { run, draft: savedDraft(run) }
 }
 
@@ -269,9 +263,8 @@ async function resumePendingCommit(
   run: RunRow,
   draft: RunDraft,
   owner: string,
-  historyLimit: number | undefined,
 ): Promise<string | { snapshot: ReturnType<typeof checkedSnapshot> }> {
-  if (run.pending_commit_sha && (await reachable(git, run.pending_commit_sha, historyLimit))) {
+  if (run.pending_commit_sha && (await reachable(git, run.pending_commit_sha))) {
     recordPublication(db, runId, draft, run.pending_commit_sha, owner)
     return run.pending_commit_sha
   }
@@ -331,7 +324,7 @@ export async function publishRun(
   db: Database.Database,
   git: GitHubGit,
   runId: string,
-  options: { writeEnabled?: boolean; recover?: boolean; historyLimit?: number } = {},
+  options: { writeEnabled?: boolean; recover?: boolean } = {},
 ): Promise<string> {
   const run = databaseResult(() => getRun(db, runId))
   if (run?.status === 'published') {
@@ -341,7 +334,7 @@ export async function publishRun(
   const owner = randomUUID()
   claimPublishLease(db, runId, owner, options.recover)
   try {
-    const pending = await resumePendingCommit(db, git, runId, completedRun, prepared, owner, options.historyLimit)
+    const pending = await resumePendingCommit(db, git, runId, completedRun, prepared, owner)
     if (typeof pending === 'string') return pending
     return await createAndPublishSnapshot(db, git, runId, owner, pending.snapshot)
   } finally {

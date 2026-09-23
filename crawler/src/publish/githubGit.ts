@@ -11,7 +11,7 @@ export interface GitHubGit {
   createTree(baseTreeSha: string, files: GitSnapshotFiles): Promise<string>
   createCommit(treeSha: string, parentSha: string, message: string): Promise<string>
   updateBranch(sha: string): Promise<void>
-  isCommitReachable(pendingSha: string, maxCommits?: number): Promise<boolean>
+  isCommitReachable(pendingSha: string): Promise<boolean>
 }
 
 export class GitHubGitError extends Error {
@@ -49,13 +49,6 @@ export class GitHubGitTimeoutError extends GitHubGitError {
   constructor() {
     super('GitHub Git API request aborted or timed out')
     this.name = 'GitHubGitTimeoutError'
-  }
-}
-
-export class GitHubGitHistoryError extends GitHubGitError {
-  constructor() {
-    super('Git commit ancestry is indeterminate within the traversal limit')
-    this.name = 'GitHubGitHistoryError'
   }
 }
 
@@ -107,6 +100,8 @@ async function refConflictStatus(response: Response): Promise<409 | 422 | null> 
 
 export class GitHubGitClient implements GitHubGit {
   private readonly url: string
+  private readonly compareUrl: string
+  private readonly compareHead: string
   private readonly token: string
   private readonly transport: typeof fetch
 
@@ -141,8 +136,11 @@ export class GitHubGitClient implements GitHubGit {
     }
     this.token = options.token
     this.transport = options.fetch ?? globalThis.fetch
+    const repositoryUrl = `https://api.github.com/repos/${encodeURIComponent(options.owner)}/${encodeURIComponent(options.repo)}`
     const branch = options.branch.split('/').map(encodeURIComponent).join('/')
-    this.url = `https://api.github.com/repos/${encodeURIComponent(options.owner)}/${encodeURIComponent(options.repo)}/git`
+    this.url = `${repositoryUrl}/git`
+    this.compareUrl = `${repositoryUrl}/compare`
+    this.compareHead = encodeURIComponent(options.branch)
     this.ref = `heads/${branch}`
   }
 
@@ -192,23 +190,18 @@ export class GitHubGitClient implements GitHubGit {
     if (!record(response) || !record(response.object) || sha(response.object.sha) !== newSha) throw new GitHubGitResponseError()
   }
 
-  async isCommitReachable(pendingSha: string, maxCommits = 256): Promise<boolean> {
-    if (!Number.isSafeInteger(maxCommits) || maxCommits < 1 || maxCommits > 2048) {
-      throw new GitHubGitError('maxCommits must be an integer from 1 to 2048')
-    }
+  async isCommitReachable(pendingSha: string): Promise<boolean> {
     inputSha(pendingSha)
-    const queue = [await this.readRefSha()]
-    const visited = new Set<string>()
-    for (let index = 0; index < queue.length; index++) {
-      const currentSha = queue[index]
-      if (currentSha === pendingSha) return true
-      if (visited.has(currentSha)) continue
-      if (visited.size >= maxCommits) throw new GitHubGitHistoryError()
-      visited.add(currentSha)
-      const { parents } = await this.readCommit(currentSha)
-      queue.push(...parents)
-    }
-    return false
+    const response = await this.request(
+      `/${encodeURIComponent(pendingSha)}...${this.compareHead}`,
+      'GET',
+      undefined,
+      this.compareUrl,
+    )
+    if (!record(response) || typeof response.status !== 'string') throw new GitHubGitResponseError()
+    if (response.status === 'ahead' || response.status === 'identical') return true
+    if (response.status === 'behind' || response.status === 'diverged') return false
+    throw new GitHubGitResponseError()
   }
 
   private async readCommit(commitSha: string): Promise<{ treeSha: string; parents: string[] }> {
@@ -225,10 +218,10 @@ export class GitHubGitClient implements GitHubGit {
     }
   }
 
-  private async request(path: string, method = 'GET', body?: unknown): Promise<unknown> {
+  private async request(path: string, method = 'GET', body?: unknown, baseUrl = this.url): Promise<unknown> {
     let response: Response
     try {
-      response = await this.transport(`${this.url}${path}`, {
+      response = await this.transport(`${baseUrl}${path}`, {
         method,
         signal: AbortSignal.timeout(30_000),
         headers: {

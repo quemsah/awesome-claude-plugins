@@ -74,7 +74,6 @@ type ParsedOptions = {
   exportDirectory?: string
   recoverId?: string
   recoverPublication: boolean
-  historyLimit?: number
 }
 
 function parseCrawlOptions(args: string[]): Pick<ParsedOptions, 'force' | 'dryRun'> {
@@ -86,21 +85,16 @@ function parseCrawlOptions(args: string[]): Pick<ParsedOptions, 'force' | 'dryRu
   return { force: seen.has('--force'), dryRun: seen.has('--dry-run') }
 }
 
-function parsePublishOptions(args: string[]): Pick<ParsedOptions, 'publishId' | 'recoverPublication' | 'historyLimit'> {
-  const recoverPublication = args.length >= 4 && args[2] === '--recover' && args[3] === '--confirm-stopped'
-  const historyLimit =
-    recoverPublication && args.length === 6 && args[4] === '--history-limit' && /^\d+$/.test(args[5]) ? Number(args[5]) : undefined
+function parsePublishOptions(args: string[]): Pick<ParsedOptions, 'publishId' | 'recoverPublication'> {
+  const recoverPublication = args.length === 4 && args[2] === '--recover' && args[3] === '--confirm-stopped'
   if (
-    (!recoverPublication && args.length !== 2) ||
-    (recoverPublication && args.length !== 4 && args.length !== 6) ||
-    (args.length === 6 &&
-      (historyLimit === undefined || !Number.isSafeInteger(historyLimit) || historyLimit < 257 || historyLimit > 2048)) ||
+    (args.length !== 2 && !recoverPublication) ||
     args[0] !== '--run-id' ||
     !/^[A-Za-z0-9_-]{1,100}$/.test(args[1] ?? '')
   ) {
-    throw new Error('publish requires --run-id <id> [--recover --confirm-stopped [--history-limit 257..2048]]')
+    throw new Error('publish requires --run-id <id> [--recover --confirm-stopped]')
   }
-  return { publishId: args[1], recoverPublication, historyLimit }
+  return { publishId: args[1], recoverPublication }
 }
 
 function parseRunId(args: string[], command: 'recover-crawl' | 'export'): string {
@@ -253,7 +247,7 @@ async function runPublishCommand(
   db: Database.Database,
   config: RuntimeConfig,
   dependencies: CliDependencies,
-  options: Pick<ParsedOptions, 'publishId' | 'recoverPublication' | 'historyLimit'>,
+  options: Pick<ParsedOptions, 'publishId' | 'recoverPublication'>,
   now: () => Date,
   output: (line: string) => void,
 ): Promise<void> {
@@ -267,7 +261,6 @@ async function runPublishCommand(
         notifier,
         writeEnabled: true,
         recover: options.recoverPublication,
-        historyLimit: options.historyLimit,
       }),
     ),
   )

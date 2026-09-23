@@ -8,7 +8,6 @@ import { beginRun, completeRun, failRun, getRun } from '../storage/runs.js'
 import {
   type GitHubGit,
   GitHubGitConflictError,
-  GitHubGitHistoryError,
   GitHubGitHttpError,
   GitHubGitTimeoutError,
   type GitSnapshotFiles,
@@ -100,16 +99,13 @@ class Branch implements GitHubGit {
     if (this.failure === 'patch-after') throw new GitHubGitTimeoutError()
   }
 
-  async isCommitReachable(commit: string, _maxCommits?: number) {
+  async isCommitReachable(commit: string) {
     this.events.push(`ANCESTRY ${commit}`)
     if (this.failure === 'history-404') throw new GitHubGitHttpError(404)
-    if (this.failure === 'history-indeterminate') throw new GitHubGitHistoryError()
+    if (this.failure === 'history-indeterminate') throw new GitHubGitHttpError(503)
     let cursor: string | null = this.head
-    let visited = 0
     while (cursor) {
       if (cursor === commit) return true
-      if (visited >= (_maxCommits ?? 256)) throw new GitHubGitHistoryError()
-      visited++
       cursor = this.commits.get(cursor)?.parent ?? null
     }
     return false
@@ -347,24 +343,6 @@ it('reconciles an already visible pending commit after the catalog changes witho
     { id: draft.id, date: draft.date, size: draft.size, run_id: 'r1' },
   ])
   expect(getRun(db, 'r1')).toMatchObject({ status: 'published', commit_sha: pending, pending_commit_sha: null })
-})
-
-it('passes a bounded operator ancestry limit to Git recovery without changing the pending SHA', async () => {
-  const db = fixture()
-  const git = new Branch()
-  prepareDraft(db, 'r1', timestamp)
-  git.failure = 'patch-before'
-  await expect(publishRun(db, git, 'r1', { writeEnabled: true })).rejects.toMatchObject({ category: 'git_indeterminate' })
-  git.failure = null
-  const checked: number[] = []
-  const original = git.isCommitReachable.bind(git)
-  git.isCommitReachable = async (commit, maxCommits) => {
-    if (maxCommits !== undefined) checked.push(maxCommits)
-    return original(commit)
-  }
-  await publishRun(db, git, 'r1', { writeEnabled: true, recover: true, historyLimit: 512 })
-  expect(checked).toEqual([512])
-  expect(git.patches).toBe(1)
 })
 
 it('does not write a stale pending commit when Git has not published it and SQLite has changed', async () => {
