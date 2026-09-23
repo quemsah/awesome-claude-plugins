@@ -205,6 +205,35 @@ it('refreshes a complete row using the same owner and repo for both calls withou
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 1 })
 })
 
+
+it('reuses plugins_count when the repository push timestamp is unchanged', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old')
+  updateEnriched(db, id, {
+    stargazers_count: 1,
+    forks_count: 1,
+    subscribers_count: 1,
+    description: 'old',
+    owner: 'team',
+    owner_url: 'https://github.com/team',
+    repo_name: 'repo',
+    repo_updated: '2026-09-22T12:00:00Z',
+    plugins_count: 3,
+  })
+  const getMarketplace = vi.fn(async () => ({ kind: 'found' as const, data: { plugins: [1, 2, 3, 4] } }))
+
+  const counts = await enrichRepositories(db, reader(undefined, getMarketplace), 'crawl-1')
+
+  expect(counts).toMatchObject({ updated: 1, newReady: 0, conclusive: 1 })
+  expect(getMarketplace).not.toHaveBeenCalled()
+  expect(db.prepare('SELECT description, stargazers_count, plugins_count, repo_updated FROM repositories WHERE id = ?').get(id)).toEqual({
+    description: 'fresh',
+    stargazers_count: 10,
+    plugins_count: 3,
+    repo_updated: '2026-09-22T12:00:00Z',
+  })
+})
+
 it('canonicalizes a case-variant URL and merges an imported case-insensitive duplicate', async () => {
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/Team/Repo', null)
