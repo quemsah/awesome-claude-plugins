@@ -1,4 +1,4 @@
-/** biome-ignore-all lint/style/useNamingConvention: <n8n> */
+/** biome-ignore-all lint/style/useNamingConvention: external data */
 import type { MetadataRoute } from 'next'
 import { getBrowsePageCount, getCatalogLastModified, getIndexableCatalogRepos, getRepoCanonicalPath } from '../lib/catalog.ts'
 import { BASE_URL } from '../lib/constants.ts'

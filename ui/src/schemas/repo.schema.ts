@@ -1,4 +1,4 @@
-/** biome-ignore-all lint/style/useNamingConvention: <n8n> */
+/** biome-ignore-all lint/style/useNamingConvention: external data */
 import { z } from 'zod'
 import { getGitHubOwnerUrl, getGitHubRepoUrl, isGitHubSegment } from '../lib/repositoryIdentity.ts'
 

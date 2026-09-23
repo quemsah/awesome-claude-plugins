@@ -148,7 +148,7 @@ it('publishes only complete canonical GitHub rows with the ten public columns', 
   expect(incomplete).toBeGreaterThan(valid)
 })
 
-it('publishes canonical enriched rows with unknown plugin counts without leaking incomplete CSV-only candidates', () => {
+it('publishes canonical enriched rows with unknown plugin counts without leaking incomplete candidates', () => {
   const { listPublishable, upsertDiscovery, updateEnriched } = repositoryStorage
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/example/repo', null)
@@ -156,7 +156,7 @@ it('publishes canonical enriched rows with unknown plugin counts without leaking
   expect(upsertDiscovery(db, 'https://github.com/example/repo', 'rediscovered')).toBe(id)
   db.prepare(`
     INSERT INTO repositories (id, html_url, plugins_count, createdAt, updatedAt)
-    VALUES (9001, 'https://github.com/example/pending', NULL, 'n8n-created', 'n8n-updated')
+    VALUES (9001, 'https://github.com/example/pending', NULL, 'created', 'updated')
   `).run()
 
   expect(listPublishable(db)).toEqual([

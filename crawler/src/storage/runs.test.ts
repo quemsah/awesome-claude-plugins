@@ -166,10 +166,10 @@ it('replaces an unpublished candidate SHA after a Git ref conflict', () => {
 it('stores import metadata and published timestamps in settings', () => {
   const { getSetting, setSetting } = runStorage
   const db = database()
-  expect(getSetting(db, 'seed_hash')).toBeNull()
-  setSetting(db, 'seed_hash', 'first-hash')
-  setSetting(db, 'seed_hash', 'new-hash')
-  expect(getSetting(db, 'seed_hash')).toBe('new-hash')
+  expect(getSetting(db, 'example_key')).toBeNull()
+  setSetting(db, 'example_key', 'first')
+  setSetting(db, 'example_key', 'new')
+  expect(getSetting(db, 'example_key')).toBe('new')
 })
 
 it('persists a typed draft only on a completed run and does not replace it', () => {

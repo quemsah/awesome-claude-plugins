@@ -98,7 +98,7 @@ it('permits multiple absent URLs, but enforces distinct populated URLs and prese
   const db = database()
   try {
     const insert = db.prepare('INSERT INTO repositories (id, html_url, createdAt, updatedAt) VALUES (?, ?, ?, ?)')
-    insert.run(27, null, 'n8n creation', 'n8n update')
+    insert.run(27, null, 'original creation', 'original update')
     insert.run(99, null, 'later', 'later')
     insert.run(101, 'https://github.com/example/repo', 'later', 'later')
     expect(() => insert.run(105, 'https://github.com/example/repo', 'later', 'later')).toThrow(/UNIQUE/)

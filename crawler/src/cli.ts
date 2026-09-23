@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { join, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type Database from 'better-sqlite3'
 import { ConfigurationError, parseConfig, type RuntimeConfig } from './config.js'
@@ -14,7 +14,7 @@ import { PublicationError } from './publish/publishRun.js'
 import { ActiveRunError, executeCrawl, executePublish, type Notifier } from './service/execute.js'
 import { crawlSchedule, ScheduleError } from './service/schedule.js'
 import { openDatabase } from './storage/db.js'
-import { CsvValidationError, importCsv, inspect } from './storage/importCsv.js'
+import { inspect } from './storage/inspect.js'
 import { listPublishable } from './storage/repositories.js'
 import { getActiveRun, getPublicationLease, getSetting, PublicationLeaseError, recoverStoppedCrawl, setSetting } from './storage/runs.js'
 
@@ -28,22 +28,6 @@ export type CliDependencies = {
   notifier?: (config: RuntimeConfig) => Notifier | undefined
   output?: (line: string) => void
   ranges?: readonly SizeRange[]
-}
-
-function csvPaths(args: string[]) {
-  const paths = {
-    reposPath: join('seed', 'c2-claude-plugins.csv'),
-    statsPath: join('seed', 'c2-stats.csv'),
-  }
-  for (let i = 0; i < args.length; i += 2) {
-    const option = args[i]
-    if (!args[i + 1] || args[i + 1].startsWith('--') || !['--repos', '--stats'].includes(option)) {
-      throw new Error(`Unknown or invalid seed option: ${option ?? '(missing value)'}`)
-    }
-    if (option === '--repos') paths.reposPath = args[i + 1]
-    else paths.statsPath = args[i + 1]
-  }
-  return paths
 }
 
 function gitFor(config: RuntimeConfig, dependencies: CliDependencies): GitHubGit {
@@ -65,7 +49,7 @@ function notifierFor(config: RuntimeConfig, dependencies: CliDependencies): Noti
   )
 }
 
-type CliCommand = 'seed' | 'seed-if-empty' | 'inspect' | 'crawl' | 'publish' | 'recover-crawl' | 'export'
+type CliCommand = 'inspect' | 'crawl' | 'publish' | 'recover-crawl' | 'export'
 type ParsedOptions = {
   force: boolean
   dryRun: boolean
@@ -115,10 +99,10 @@ function parseOptions(command: CliCommand, args: string[]): ParsedOptions {
 }
 
 function parseCommand(value: string | undefined): CliCommand {
-  if (value && ['seed', 'seed-if-empty', 'inspect', 'crawl', 'publish', 'recover-crawl', 'export'].includes(value)) {
+  if (value && ['inspect', 'crawl', 'publish', 'recover-crawl', 'export'].includes(value)) {
     return value as CliCommand
   }
-  throw new Error('Unknown command. Available: seed, seed-if-empty, inspect, crawl, publish, recover-crawl, export')
+  throw new Error('Unknown command. Available: inspect, crawl, publish, recover-crawl, export')
 }
 
 async function notifyBlockedSchedule(
@@ -265,17 +249,12 @@ async function runPublishCommand(
 async function runLocalCommand(
   db: Database.Database,
   command: CliCommand,
-  files: ReturnType<typeof csvPaths> | undefined,
   parsed: ParsedOptions,
   now: () => Date,
   output: (line: string) => void,
 ): Promise<boolean> {
   if (command === 'inspect') {
     output(JSON.stringify(inspect(db)))
-    return true
-  }
-  if (files) {
-    output(JSON.stringify(await importCsv(db, files, command as 'seed' | 'seed-if-empty')))
     return true
   }
   if (command === 'export' && parsed.exportId && parsed.exportDirectory) {
@@ -298,11 +277,10 @@ export async function runCli(argv: string[], dependencies: CliDependencies = {})
   const now = dependencies.now ?? (() => new Date())
   const command = parseCommand(rawCommand)
   const parsed = parseOptions(command, args)
-  const files = command === 'seed' || command === 'seed-if-empty' ? csvPaths(args) : undefined
   const config = command === 'crawl' || command === 'publish' ? parseConfig(command, env) : undefined
   const db = (dependencies.open ?? openDatabase)(config?.dbPath ?? env.DB_PATH ?? '')
   try {
-    const handled = await runLocalCommand(db, command, files, parsed, now, output)
+    const handled = await runLocalCommand(db, command, parsed, now, output)
     if (!handled && command === 'crawl' && config) {
       await runScheduledCrawl(db, config, dependencies, parsed, now, output)
     } else if (!handled && command === 'publish' && config) {
@@ -325,24 +303,16 @@ export function formatCliError(error: unknown): string {
         ? error.category
         : error instanceof DraftExportError
           ? error.category
-          : error instanceof CsvValidationError
-            ? 'input_or_storage_error'
-            : error instanceof Error && 'code' in error && error.code === 'ENOENT'
-              ? 'missing_csv'
-              : error instanceof Error && /^(Unknown|publish requires|recover-crawl requires|export requires)/.test(error.message)
-                ? 'invalid_option'
-                : error instanceof Error &&
-                    /^(Unknown|publish requires|recover-crawl requires|export requires|Recovery requires|CSV|repos|stats|DB_PATH|Railway|Cannot verify|Partial seed|Unseeded|Inconsistent)/.test(
-                      error.message,
-                    )
-                  ? 'input_or_storage_error'
-                  : 'unexpected_error'
+          : error instanceof Error && /^(Unknown|publish requires|recover-crawl requires|export requires)/.test(error.message)
+            ? 'invalid_option'
+            : error instanceof Error && /^(Recovery requires|DB_PATH|Railway|Cannot verify|Inconsistent)/.test(error.message)
+              ? 'input_or_storage_error'
+              : 'unexpected_error'
   return JSON.stringify({
     level: 'error',
     phase: 'cli',
     category,
     ...(error instanceof PublicationError && error.validation ? { validation: error.validation } : {}),
-    ...(error instanceof CsvValidationError ? { validation: { table: error.table, row: error.row, column: error.column } } : {}),
   })
 }
 

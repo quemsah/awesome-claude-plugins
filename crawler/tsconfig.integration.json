@@ -1,9 +1,0 @@
-{
-  "extends": "./tsconfig.typecheck.json",
-  "compilerOptions": {
-    "rootDir": "..",
-    "allowImportingTsExtensions": true
-  },
-  "include": ["test/integration/**/*.ts"],
-  "exclude": []
-}

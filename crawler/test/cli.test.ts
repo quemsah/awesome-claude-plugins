@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { formatCliError, runCli } from '../src/cli.js'
@@ -7,6 +7,7 @@ import type { GitHubReader } from '../src/github/client.js'
 import type { GitHubGit } from '../src/publish/githubGit.js'
 import { PublicationError, prepareDraft } from '../src/publish/publishRun.js'
 import { openDatabase } from '../src/storage/db.js'
+import { populateFixture } from '../src/storage/fixtureDb.js'
 import {
   beginRun,
   claimPublicationLease,
@@ -19,7 +20,6 @@ import {
 } from '../src/storage/runs.js'
 
 const scratch: string[] = []
-const fixtures = join(import.meta.dirname, 'fixtures')
 
 function cli(args: string[], dbPath: string) {
   return spawnSync(process.execPath, [join(import.meta.dirname, '../dist/cli.js'), ...args], {
@@ -39,6 +39,12 @@ function databasePath() {
   const dir = mkdtempSync(join(import.meta.dirname, '.scratch-cli-'))
   scratch.push(dir)
   return join(dir, 'catalog.sqlite')
+}
+
+function populateTestDatabase(path: string) {
+  const db = openDatabase(path)
+  populateFixture(db)
+  db.close()
 }
 
 function readerFixture(): GitHubReader {
@@ -70,12 +76,9 @@ afterEach(() => {
 })
 
 describe('CLI', () => {
-  it('seeds explicit CSV paths and inspects only aggregate state', () => {
+  it('inspects only aggregate state', () => {
     const db = databasePath()
-    const args = ['--repos', join(fixtures, 'repos.csv'), '--stats', join(fixtures, 'stats.csv')]
-    const seeded = cli(['seed', ...args], db)
-    expect(seeded.status).toBe(0)
-    expect(seeded.stdout).toMatch(/imported/)
+    populateTestDatabase(db)
     const inspected = cli(['inspect'], db)
     expect(inspected.status).toBe(0)
     const result = JSON.parse(inspected.stdout)
@@ -86,29 +89,8 @@ describe('CLI', () => {
       stats: 2,
       maxRepositoryId: 14,
       integrity: 'ok',
-      state: 'imported',
     })
     expect(inspected.stdout).not.toContain('https://github.com/')
-    expect(cli(['seed', ...args], db).stdout).toMatch(/already-imported/)
-  })
-
-  it('fails if seed-if-empty has no CSVs on a fresh database', () => {
-    const result = cli(['seed-if-empty'], databasePath())
-    expect(result.status).toBe(1)
-    expect(result.stderr).toMatch(/missing_csv/i)
-  })
-
-  it('prints CSV coordinates but never the submitted value or filename', () => {
-    const path = databasePath()
-    const repos = join(path, '../with-private-name.csv')
-    writeFileSync(repos, readFileSync(join(fixtures, 'repos.csv'), 'utf8').replace('99,0,1,plain', 'secret-value,0,1,plain'))
-    const result = cli(['seed', '--repos', repos, '--stats', join(fixtures, 'stats.csv')], path)
-    expect(result.status).toBe(1)
-    expect(JSON.parse(result.stderr)).toMatchObject({
-      category: 'input_or_storage_error',
-      validation: { table: 'repos', row: 3, column: 3 },
-    })
-    expect(result.stderr).not.toMatch(/secret-value|with-private-name/)
   })
 
   it('formats snapshot issue counts and safe paths without echoing arbitrary exception text', () => {
@@ -121,27 +103,14 @@ describe('CLI', () => {
   })
 
   it('rejects unknown flags instead of silently ignoring them', () => {
-    const result = cli(['seed', '--unknown'], databasePath())
+    const result = cli(['inspect', '--unknown'], databasePath())
     expect(result.status).toBe(1)
     expect(result.stderr).toMatch(/invalid_option/i)
-  })
-
-  it('rejects an option supplied as another option value', () => {
-    const result = cli(['seed', '--repos', '--stats'], databasePath())
-    expect(result.status).toBe(1)
-    expect(result.stderr).toMatch(/invalid_option/i)
-  })
-
-  it('seed-if-empty does not require CSVs after successful seeding', () => {
-    const db = databasePath()
-    const args = ['--repos', join(fixtures, 'repos.csv'), '--stats', join(fixtures, 'stats.csv')]
-    expect(cli(['seed', ...args], db).status).toBe(0)
-    expect(cli(['seed-if-empty'], db).stdout).toMatch(/already-imported/)
   })
 
   it('exports a prepared draft without Git credentials or touching the public UI files', async () => {
     const path = databasePath()
-    expect(cli(['seed', '--repos', join(fixtures, 'repos.csv'), '--stats', join(fixtures, 'stats.csv')], path).status).toBe(0)
+    populateTestDatabase(path)
     const db = openDatabase(path)
     const now = new Date('2026-09-23T12:00:00.000Z')
     beginRun(db, 'preview', now.toISOString())
@@ -166,15 +135,6 @@ describe('CLI', () => {
     }).catch((error: unknown) => error)
     expect(JSON.parse(formatCliError(failure))).toMatchObject({ category: 'export_destination_exists' })
   })
-
-  for (const command of [['crawl'], ['crawl', '--force'], ['crawl', '--dry-run']]) {
-    it(`${command.join(' ')} refuses an unseeded database without an API call`, () => {
-      const result = cli(command, databasePath())
-      expect(result.status).toBe(1)
-      expect(result.stderr).toMatch(/configuration|unseeded/i)
-      expect(result.stdout).toBe('')
-    })
-  }
 
   it('rejects an invalid publish command before opening the DB or constructing a Git client', async () => {
     let opened = false
@@ -206,8 +166,7 @@ describe('CLI', () => {
 
   it('skips before 24 hours without constructing reader/notifier/Git; force runs a read-only draft', async () => {
     const path = databasePath()
-    const files = ['--repos', join(fixtures, 'repos.csv'), '--stats', join(fixtures, 'stats.csv')]
-    expect(cli(['seed', ...files], path).status).toBe(0)
+    populateTestDatabase(path)
     const setup = openDatabase(path)
     setSetting(setup, 'last_published_at', '2026-09-22T12:01:00.000Z')
     setup.close()
@@ -235,7 +194,7 @@ describe('CLI', () => {
 
   it('does not bypass a stale active-run lock with --force and never makes an API call', async () => {
     const path = databasePath()
-    expect(cli(['seed', '--repos', join(fixtures, 'repos.csv'), '--stats', join(fixtures, 'stats.csv')], path).status).toBe(0)
+    populateTestDatabase(path)
     const setup = openDatabase(path)
     beginRun(setup, 'old-run', '2020-01-01T00:00:00.000Z')
     setup.close()
@@ -253,7 +212,7 @@ describe('CLI', () => {
     'notifies once when a scheduled crawl sees a persisted %s lock',
     async (category) => {
       const path = databasePath()
-      expect(cli(['seed', '--repos', join(fixtures, 'repos.csv'), '--stats', join(fixtures, 'stats.csv')], path).status).toBe(0)
+      populateTestDatabase(path)
       const db = openDatabase(path)
       beginRun(db, 'blocked', '2026-09-22T00:00:00.000Z')
       if (category === 'publication_locked') {
@@ -320,7 +279,7 @@ describe('CLI', () => {
 
   it('emits safe per-bucket GitHub request and wait totals for the pilot', async () => {
     const path = databasePath()
-    expect(cli(['seed', '--repos', join(fixtures, 'repos.csv'), '--stats', join(fixtures, 'stats.csv')], path).status).toBe(0)
+    populateTestDatabase(path)
     const output = vi.fn()
     await runCli(['crawl', '--dry-run', '--force'], {
       env: { DB_PATH: path, GITHUB_READ_TOKEN: 'private-token', PUBLISH_ENABLED: 'false' },
@@ -365,7 +324,7 @@ describe('CLI', () => {
 
   it('publishes only a previously prepared unchanged draft when enabled and never re-runs GitHub', async () => {
     const path = databasePath()
-    expect(cli(['seed', '--repos', join(fixtures, 'repos.csv'), '--stats', join(fixtures, 'stats.csv')], path).status).toBe(0)
+    populateTestDatabase(path)
     const reader = readerFixture()
     const readerFactory = vi.fn(() => reader)
     await runCli(['crawl', '--dry-run', '--force'], {
@@ -432,7 +391,7 @@ describe('CLI', () => {
 
   it('with production credentials and --dry-run never constructs a Git client', async () => {
     const path = databasePath()
-    expect(cli(['seed', '--repos', join(fixtures, 'repos.csv'), '--stats', join(fixtures, 'stats.csv')], path).status).toBe(0)
+    populateTestDatabase(path)
     const git = vi.fn((): GitHubGit => {
       throw new Error('Git client must not be constructed')
     })
@@ -467,7 +426,7 @@ describe('CLI', () => {
 
   it('automatically publishes a successful due crawl only when explicitly enabled', async () => {
     const path = databasePath()
-    expect(cli(['seed', '--repos', join(fixtures, 'repos.csv'), '--stats', join(fixtures, 'stats.csv')], path).status).toBe(0)
+    populateTestDatabase(path)
     const reader = readerFixture()
     const git: GitHubGit = {
       getBranchHead: vi.fn(async () => ({ sha: 'a'.repeat(40), treeSha: 'b'.repeat(40) })),

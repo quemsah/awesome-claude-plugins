@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { prepareDraft } from '../publish/publishRun.js'
 import { openDatabase } from '../storage/db.js'
-import { importCsv } from '../storage/importCsv.js'
+import { populateFixture } from '../storage/fixtureDb.js'
 import { beginRun, completeRun } from '../storage/runs.js'
 import { exportDraftSnapshot } from './exportDraft.js'
 
@@ -15,8 +15,7 @@ async function fixture() {
   const dir = mkdtempSync(join(tmpdir(), 'crawler-export-'))
   directories.push(dir)
   const db = openDatabase(join(dir, 'catalog.sqlite'))
-  const fixtures = join(import.meta.dirname, '../../test/fixtures')
-  await importCsv(db, { reposPath: join(fixtures, 'repos.csv'), statsPath: join(fixtures, 'stats.csv') })
+  populateFixture(db)
   beginRun(db, 'prepared', now.toISOString())
   completeRun(db, 'prepared', now.toISOString(), 0)
   prepareDraft(db, 'prepared', now)

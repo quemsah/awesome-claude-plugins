@@ -333,11 +333,11 @@ it('reports zero conclusive enrichment when all repository requests succeed but 
   expect(listRunErrors(db, 'crawl-1').map(({ error_type }) => error_type)).toEqual(['marketplace_rate_limited'])
 })
 
-it('keeps a CSV-only incomplete row unpublishable until both endpoints succeed', async () => {
+it('keeps an incomplete row unpublishable until both endpoints succeed', async () => {
   const db = database()
   db.prepare(`
     INSERT INTO repositories (id, html_url, description, createdAt, updatedAt)
-    VALUES (211, 'https://github.com/team/repo', 'csv', '2020-01-01', '2020-01-02')
+    VALUES (211, 'https://github.com/team/repo', 'legacy', '2020-01-01', '2020-01-02')
   `).run()
   const failed = await enrichRepositories(
     db,

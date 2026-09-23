@@ -1,9 +1,8 @@
-import { join } from 'node:path'
 import Database from 'better-sqlite3'
 import { describe, expect, it, vi } from 'vitest'
 import { type GitHubReader, GitHubTemporaryError } from '../github/client.js'
 import type { GitHubGit } from '../publish/githubGit.js'
-import { importCsv } from '../storage/importCsv.js'
+import { populateFixture } from '../storage/fixtureDb.js'
 import { beginRun, getRun, getSetting, listRunErrors, setSetting } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
 import { executeCrawl, executePublish } from './execute.js'
@@ -35,8 +34,7 @@ const reader: GitHubReader = {
 async function dbFixture() {
   const db = new Database(':memory:')
   initializeSchema(db)
-  const fixtures = join(import.meta.dirname, '../../test/fixtures')
-  await importCsv(db, { reposPath: join(fixtures, 'repos.csv'), statsPath: join(fixtures, 'stats.csv') })
+  populateFixture(db)
   return db
 }
 

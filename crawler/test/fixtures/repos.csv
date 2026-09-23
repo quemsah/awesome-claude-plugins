@@ -1,7 +1,0 @@
-id,html_url,stargazers_count,forks_count,subscribers_count,description,owner,owner_url,repo_name,repo_updated,plugins_count,createdAt,updatedAt
-1,https://github.com/alpha/repo,0,2,3,"Quote ""here"", and
-another line",alpha,https://github.com/alpha,repo,2026-01-02T03:04:05.000Z,0,2026-01-01T00:00:00.000Z,2026-01-02T00:00:00.000Z
-3,https://github.com/123/project,99,0,1,plain,123,https://github.com/123,project,2026-02-02T03:04:05.000Z,5,2026-01-03T00:00:00.000Z,2026-01-04T00:00:00.000Z
-8,https://github.com/missing/owner,,,,no owner,,,,,,2026-01-05T00:00:00.000Z,2026-01-06T00:00:00.000Z
-10,,,,,,,,,,,2026-01-07T00:00:00.000Z,2026-01-08T00:00:00.000Z
-14,,2,0,0,orphan,,,,,0,2026-01-09T00:00:00.000Z,2026-01-10T00:00:00.000Z

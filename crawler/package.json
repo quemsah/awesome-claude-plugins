@@ -9,18 +9,14 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
-    "typecheck:integration": "tsc --noEmit -p tsconfig.integration.json",
     "lint": "biome check .",
-    "test": "npm run build && vitest run --exclude 'dist/**' --exclude 'test/integration/**'",
-    "test:integration": "vitest run test/integration/uiContract.test.ts",
-    "seed": "node dist/cli.js seed",
+    "test": "npm run build && vitest run --exclude 'dist/**'",
     "inspect": "node dist/cli.js inspect",
     "crawl": "node dist/cli.js crawl",
     "publish": "node dist/cli.js publish"
   },
   "dependencies": {
-    "better-sqlite3": "12.11.1",
-    "csv-parse": "6.1.0"
+    "better-sqlite3": "12.11.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
