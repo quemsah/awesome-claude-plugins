@@ -193,6 +193,29 @@ describe('TelegramNotifier', () => {
     expect(test.requests).toHaveLength(1)
   })
 
+  it('cancels a rate-limit retry when shutdown is requested', async () => {
+    const shutdown = new AbortController()
+    const response = Response.json({ ok: false, parameters: { retry_after: 120 } }, { status: 429 })
+    response.json = async () => {
+      shutdown.abort()
+      return { ok: false, parameters: { retry_after: 120 } }
+    }
+    const requests: string[] = []
+    const notifier = new TelegramNotifier({
+      botToken: token,
+      chatId: '-100123456789',
+      signal: shutdown.signal,
+      fetch: (async (input: RequestInfo | URL) => {
+        requests.push(String(input))
+        return response
+      }) as typeof fetch,
+    })
+
+    await expect(notifier.notifyStart(summary)).rejects.toMatchObject({ category: 'terminated' })
+    expect(requests).toHaveLength(1)
+  })
+
+
   it('stops after three rate-limited attempts rather than silently dropping the notification', async () => {
     const test = harness(Array.from({ length: 3 }, () => Response.json({ ok: false, parameters: { retry_after: 2 } }, { status: 429 })))
     await expect(test.notifier.notifyStart(summary)).rejects.toMatchObject({ category: 'rate_limited', status: 429 })
