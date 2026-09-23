@@ -92,8 +92,8 @@ describe('GitHubClient', () => {
 
   it('returns definitive 404 without a retry for both enrichment endpoints', async () => {
     const test = harness([new Response('', { status: 404 }), new Response('', { status: 404 })])
-    expect(await test.client.getRepository('acme', 'catalog')).toEqual({ kind: 'not-found' })
-    expect(await test.client.getMarketplace('acme', 'catalog')).toEqual({ kind: 'not-found' })
+    expect(await test.client.getRepository('acme', 'catalog')).toEqual({ kind: 'not-found', retryCount: 0 })
+    expect(await test.client.getMarketplace('acme', 'catalog')).toEqual({ kind: 'not-found', retryCount: 0 })
     expect(test.requests).toHaveLength(2)
   })
 
