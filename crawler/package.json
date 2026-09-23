@@ -12,7 +12,7 @@
     "typecheck:integration": "tsc --noEmit -p tsconfig.integration.json",
     "lint": "biome check .",
     "test": "npm run build && vitest run --exclude 'dist/**' --exclude 'test/integration/**'",
-    "test:integration": "vitest run test/integration/uiContract.test.ts",
+    "test:integration": "vitest run test/integration",
     "inspect": "node dist/cli.js inspect",
     "crawl": "node dist/cli.js crawl",
     "publish": "node dist/cli.js publish"
