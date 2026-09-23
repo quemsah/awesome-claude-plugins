@@ -12,6 +12,7 @@ import { DraftExportError, exportDraftSnapshot } from './output/exportDraft.js'
 import { type GitHubGit, GitHubGitClient } from './publish/githubGit.js'
 import { PublicationError } from './publish/publishRun.js'
 import { ActiveRunError, executeCrawl, executePublish, type Notifier } from './service/execute.js'
+import { ShutdownError } from './shutdown.js'
 import { openDatabase } from './storage/db.js'
 import { inspect } from './storage/inspect.js'
 import { listPublishable } from './storage/repositories.js'
@@ -130,6 +131,7 @@ async function notifyBlockedCrawl(
       problematicRanges: [],
     })
   } catch (error) {
+    if (error instanceof ShutdownError) throw error
     console.error(
       JSON.stringify({
         level: 'error',
@@ -317,6 +319,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   runCli(process.argv.slice(2), { signal: shutdown.signal })
     .catch((error: unknown) => {
       if (
+        error instanceof ShutdownError ||
         (error instanceof CrawlError && error.category === 'terminated') ||
         (error instanceof PublicationError && error.category === 'terminated')
       ) {
