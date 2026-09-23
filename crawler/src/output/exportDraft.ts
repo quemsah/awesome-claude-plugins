@@ -1,5 +1,5 @@
 import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { basename, dirname, isAbsolute, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import type Database from 'better-sqlite3'
 import { readDraftSnapshot } from '../publish/publishRun.js'
 
@@ -23,7 +23,7 @@ export function exportDraftSnapshot(db: Database.Database, runId: string, direct
   const target = resolve(parent, basename(directory))
   const ui = resolve(import.meta.dirname, '../../../ui')
   const insideUi = relative(ui, target)
-  if (insideUi === '' || (insideUi !== '..' && !insideUi.startsWith('../') && !isAbsolute(insideUi))) {
+  if (insideUi === '' || (insideUi !== '..' && !insideUi.startsWith(`..${sep}`) && !isAbsolute(insideUi))) {
     throw new DraftExportError('export_invalid_destination')
   }
   try {
