@@ -197,12 +197,7 @@ export class GitHubClient implements GitHubReader {
     return run
   }
 
-  private async perform<T>(
-    bucket: RateResource,
-    path: string,
-    parse: (value: unknown) => T,
-    accept: string,
-  ): Promise<RepoResult<T>> {
+  private async perform<T>(bucket: RateResource, path: string, parse: (value: unknown) => T, accept: string): Promise<RepoResult<T>> {
     let secondaryCount = 0
     for (let attempt = 0; attempt < 4; attempt++) {
       await this.budget.acquire(bucket)
