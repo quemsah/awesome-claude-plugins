@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 
 const SITE_URL = process.env.INDEXNOW_SITE_URL ?? 'https://awesomeclaudeplugins.com'
-const INDEXNOW_KEY = '14273a4aad028282eac8537cb6ea0e5f'
 const SITEMAP_URL = new URL('/sitemap.xml', SITE_URL)
+const INDEXNOW_KEY = '14273a4aad028282eac8537cb6ea0e5f'
 const KEY_LOCATION = new URL(`/${INDEXNOW_KEY}.txt`, SITE_URL).toString()
 const MAX_URLS_PER_REQUEST = 10_000
 
@@ -11,16 +11,28 @@ if (keyFile !== INDEXNOW_KEY) {
   throw new Error(`IndexNow key file does not contain the expected key: ${INDEXNOW_KEY}.txt`)
 }
 
-const sitemapResponse = await fetch(SITEMAP_URL)
-if (!sitemapResponse.ok) {
-  throw new Error(`Failed to fetch ${SITEMAP_URL}: ${sitemapResponse.status} ${sitemapResponse.statusText}`)
+async function fetchXml(url) {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`)
+  }
+  return response.text()
 }
 
-const sitemap = await sitemapResponse.text()
-const urls = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1])
-if (urls.length === 0) {
-  throw new Error(`No URLs found in ${SITEMAP_URL}`)
+async function sitemapUrls(url) {
+  const xml = await fetchXml(url)
+  const locations = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1])
+  if (locations.length === 0) {
+    throw new Error(`No URLs found in ${url}`)
+  }
+  if (xml.includes('<sitemapindex')) {
+    const nested = await Promise.all(locations.map((location) => sitemapUrls(new URL(location))))
+    return nested.flat()
+  }
+  return locations
 }
+
+const urls = await sitemapUrls(SITEMAP_URL)
 
 for (let offset = 0; offset < urls.length; offset += MAX_URLS_PER_REQUEST) {
   const urlList = urls.slice(offset, offset + MAX_URLS_PER_REQUEST)

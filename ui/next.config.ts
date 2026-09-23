@@ -63,6 +63,9 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [{ protocol: 'https', hostname: 'avatars.githubusercontent.com' }],
   },
+  async rewrites() {
+    return [{ source: '/sitemap-:id(\\d+).xml', destination: '/sitemap/:id' }]
+  },
   async headers() {
     return [
       {

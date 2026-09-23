@@ -26,7 +26,7 @@ type RangeState = {
   now: () => string
 }
 
-function warn(db: Database.Database, state: RangeState, category: DiscoveryWarningCategory): void {
+function warn(db: Database.Database, state: RangeState, category: DiscoveryWarningCategory, retryCount = 0): void {
   if (state.warned.has(category)) return
   state.warned.add(category)
   const [min, max] = state.range
@@ -36,7 +36,7 @@ function warn(db: Database.Database, state: RangeState, category: DiscoveryWarni
     range_start: min,
     range_end: max,
     error_type: category,
-    retry_count: 0,
+    retry_count: retryCount,
     occurred_at: state.now(),
   })
   state.summary.warnings.push({ range: state.range, category })
@@ -54,7 +54,7 @@ async function searchPage(
     return await reader.searchCode(query, page)
   } catch (error) {
     if (!(error instanceof GitHubTemporaryError) || error.status === 401 || error.status === 422) throw error
-    warn(db, state, 'temporary-error')
+    warn(db, state, 'temporary-error', error.retryCount)
     return null
   }
 }

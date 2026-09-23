@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 3
+const schemaVersion = 4
 
 export function initializeSchema(db: Database.Database): void {
   const version = db.pragma('user_version', { simple: true }) as number
@@ -90,6 +90,90 @@ export function initializeSchema(db: Database.Database): void {
         SELECT 1, run_id, 'migration_recovery' FROM runs WHERE pending_commit_sha IS NOT NULL;
       PRAGMA user_version = 3;
     `)
+    }
+    if (version < 4) {
+      const duplicateGroups = db
+        .prepare(`
+          SELECT html_url
+          FROM repositories
+          WHERE html_url IS NOT NULL
+          GROUP BY html_url COLLATE NOCASE
+          HAVING COUNT(*) > 1
+        `)
+        .all() as { html_url: string }[]
+
+      for (const { html_url: htmlUrl } of duplicateGroups) {
+        const rows = db
+          .prepare(`
+            SELECT id, html_url, stargazers_count, forks_count, subscribers_count, description, owner, owner_url,
+                   repo_name, repo_updated, plugins_count
+            FROM repositories
+            WHERE html_url = ? COLLATE NOCASE
+            ORDER BY
+              ((owner IS NOT NULL) + (repo_name IS NOT NULL) + (owner_url IS NOT NULL) +
+               (stargazers_count IS NOT NULL) + (forks_count IS NOT NULL) +
+               (subscribers_count IS NOT NULL) + (repo_updated IS NOT NULL) +
+               (plugins_count IS NOT NULL)) DESC,
+              repo_updated DESC,
+              id ASC
+          `)
+          .all(htmlUrl) as Array<{
+          id: number
+          html_url: string
+          stargazers_count: number | null
+          forks_count: number | null
+          subscribers_count: number | null
+          description: string | null
+          owner: string | null
+          owner_url: string | null
+          repo_name: string | null
+          repo_updated: string | null
+          plugins_count: number | null
+        }>
+        const preferred = rows[0]
+        if (!preferred) continue
+        const keeper = rows.reduce((oldest, row) => (row.id < oldest.id ? row : oldest))
+
+        for (const duplicate of rows) {
+          if (duplicate.id === keeper.id) continue
+          db.prepare('UPDATE run_errors SET repository_id = ? WHERE repository_id = ?').run(keeper.id, duplicate.id)
+          db.prepare('DELETE FROM repositories WHERE id = ?').run(duplicate.id)
+        }
+
+        db.prepare(`
+          UPDATE repositories SET
+            html_url = ?,
+            stargazers_count = ?,
+            forks_count = ?,
+            subscribers_count = ?,
+            description = ?,
+            owner = ?,
+            owner_url = ?,
+            repo_name = ?,
+            repo_updated = ?,
+            plugins_count = ?
+          WHERE id = ?
+        `).run(
+          preferred.html_url,
+          preferred.stargazers_count,
+          preferred.forks_count,
+          preferred.subscribers_count,
+          preferred.description,
+          preferred.owner,
+          preferred.owner_url,
+          preferred.repo_name,
+          preferred.repo_updated,
+          preferred.plugins_count,
+          keeper.id,
+        )
+      }
+
+      db.exec(`
+        CREATE UNIQUE INDEX repositories_html_url_nocase_unique
+          ON repositories(html_url COLLATE NOCASE)
+          WHERE html_url IS NOT NULL;
+        PRAGMA user_version = 4;
+      `)
     }
   })()
 }

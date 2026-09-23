@@ -127,6 +127,49 @@ describe('CLI', () => {
     expect(result.stderr).toMatch(/invalid_option/i)
   })
 
+  it('runs explicit maintenance and prunes old terminal runs', async () => {
+    const path = databasePath()
+    const db = openDatabase(path)
+    beginRun(db, 'old-maintenance', '2026-01-01T00:00:00.000Z')
+    failRun(db, 'old-maintenance', '2026-01-01T01:00:00.000Z', 'operator_recovery')
+    db.close()
+    const output = vi.fn()
+
+    await runCli(['maintenance'], {
+      env: { DB_PATH: path },
+      now: () => new Date('2026-09-24T00:00:00.000Z'),
+      output,
+    })
+
+    expect(JSON.parse(output.mock.calls[0]?.[0])).toMatchObject({ status: 'maintained', runsDeleted: 1 })
+    const verified = openDatabase(path)
+    expect(getRun(verified, 'old-maintenance')).toBeNull()
+    verified.close()
+  })
+
+  it('prunes old terminal runs before starting a crawl', async () => {
+    const path = databasePath()
+    populateTestDatabase(path)
+    const setup = openDatabase(path)
+    beginRun(setup, 'old-before-crawl', '2026-01-01T00:00:00.000Z')
+    failRun(setup, 'old-before-crawl', '2026-01-01T01:00:00.000Z', 'operator_recovery')
+    setup.close()
+
+    await runCli(['crawl', '--dry-run'], {
+      env: { DB_PATH: path, GITHUB_READ_TOKEN: 'read-token', PUBLISH_ENABLED: 'false' },
+      now: () => new Date('2026-09-24T00:00:00.000Z'),
+      runId: () => 'after-maintenance',
+      reader: () => readerFixture(),
+      ranges: [[0, 150]],
+      output: vi.fn(),
+    })
+
+    const verified = openDatabase(path)
+    expect(getRun(verified, 'old-before-crawl')).toBeNull()
+    expect(getRun(verified, 'after-maintenance')).toMatchObject({ status: 'completed' })
+    verified.close()
+  })
+
   it('exports a prepared draft without Git credentials or touching the public UI files', async () => {
     const path = databasePath()
     populateTestDatabase(path)

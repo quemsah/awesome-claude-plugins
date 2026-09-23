@@ -283,7 +283,7 @@ it('retains first-page rows and continues the next range when page two fails tem
           101,
         )
       }
-      if (query.endsWith('0..150')) throw new GitHubTemporaryError('Retries exhausted', 503)
+      if (query.endsWith('0..150')) throw new GitHubTemporaryError('Retries exhausted', 503, 3)
       return page([item('https://github.com/owner/next')])
     }),
     'run-1',
@@ -293,6 +293,7 @@ it('retains first-page rows and continues the next range when page two fails tem
   expect(visited.map(([, number]) => number)).toEqual([1, 2, 1])
   expect(result).toMatchObject({ newUrls: 101, successfulRanges: 2, warningCount: 1 })
   expect(errors(db)).toEqual([{ phase: 'search', range_start: 0, range_end: 150, error_type: 'temporary-error' }])
+  expect(listRunErrors(db, 'run-1').map(({ retry_count }) => retry_count)).toEqual([3])
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 101 })
 })
 
