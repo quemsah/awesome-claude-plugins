@@ -215,7 +215,6 @@ describe('TelegramNotifier', () => {
     expect(requests).toHaveLength(1)
   })
 
-
   it('stops after three rate-limited attempts rather than silently dropping the notification', async () => {
     const test = harness(Array.from({ length: 3 }, () => Response.json({ ok: false, parameters: { retry_after: 2 } }, { status: 429 })))
     await expect(test.notifier.notifyStart(summary)).rejects.toMatchObject({ category: 'rate_limited', status: 429 })
