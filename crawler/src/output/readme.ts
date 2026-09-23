@@ -1,6 +1,10 @@
 import type { PublishableRepository } from '../storage/repositories.js'
 import { assertValidStatsDraft, type StatsRecord } from './statsDraft.js'
 
+function tableCell(value: string | null): string {
+  return (value ?? '').replace(/\|/g, '\\|').replace(/\r\n?|\n/g, ' ')
+}
+
 export function renderReadme(repositories: readonly PublishableRepository[], draft: StatsRecord): string {
   assertValidStatsDraft(draft)
   if (draft.size !== repositories.length) throw new Error('Draft catalog size must match public repositories')
@@ -24,7 +28,7 @@ export function renderReadme(repositories: readonly PublishableRepository[], dra
     .slice(0, 100)
   ranked.forEach((repo, index) => {
     lines.push(
-      `| ${index + 1} | [${repo.repo_name}](${repo.html_url}) | ${repo.description ?? ''} | ${repo.stargazers_count} | ${repo.subscribers_count ?? 0} | ${repo.plugins_count ?? 0} |`,
+      `| ${index + 1} | [${repo.repo_name}](${repo.html_url}) | ${tableCell(repo.description)} | ${repo.stargazers_count} | ${repo.subscribers_count ?? 0} | ${repo.plugins_count ?? 0} |`,
     )
   })
   return `${lines.join('\n')}\n`

@@ -18,8 +18,8 @@ function repo(id: number, stars: number, subscribers: number | null, description
   }
 }
 
-it('renders the legacy header and table without escaping descriptions or altering input', () => {
-  const repositories = [repo(2, 4, null, 'A | *bold* [link](url)'), repo(1, 9, 5)]
+it('escapes table-breaking description characters without altering input', () => {
+  const repositories = [repo(2, 4, null, 'A | *bold*\\n[link](url)'), repo(1, 9, 5)]
   const original = structuredClone(repositories)
   expect(renderReadme(repositories, { id: 304, date: '2026-09-23T23:59:59.999Z', size: 2 })).toBe(
     '# Awesome Claude Code Plugins: Top 100 Repositories\n\n' +
@@ -27,7 +27,7 @@ it('renders the legacy header and table without escaping descriptions or alterin
       '| # | Repo Name | Description | Stars | Subs | Plugins |\n' +
       '|---|-----------|-------------|-------|-------------|---------|\n' +
       '| 1 | [repo-1](https://github.com/owner/repo-1) |  | 9 | 5 | 0 |\n' +
-      '| 2 | [repo-2](https://github.com/owner/repo-2) | A | *bold* [link](url) | 4 | 0 | 0 |\n',
+      '| 2 | [repo-2](https://github.com/owner/repo-2) | A \\| *bold* [link](url) | 4 | 0 | 0 |\n',
   )
   expect(repositories).toEqual(original)
 })
