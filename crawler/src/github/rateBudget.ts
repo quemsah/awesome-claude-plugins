@@ -1,3 +1,5 @@
+import { throwIfShutdown, waitForShutdownAware } from '../shutdown.js'
+
 export type RateResource = 'code_search' | 'core'
 
 export type Clock = {
@@ -30,10 +32,12 @@ export class RateBudget {
     private readonly pacingMs: Partial<Record<RateResource, number>> = {},
   ) {}
 
-  acquire(bucket: RateResource): Promise<void> {
+  acquire(bucket: RateResource, signal?: AbortSignal): Promise<void> {
     const reservation = this.reservations.then(async () => {
+      throwIfShutdown(signal)
       const rule = rules[bucket]
       while (true) {
+        throwIfShutdown(signal)
         const now = this.clock.now()
         const recent = this.sent[bucket]
         while (recent.length && recent[0] <= now - rule.windowMs) recent.shift()
@@ -46,12 +50,13 @@ export class RateBudget {
         if (deadline <= now) {
           recent.push(now)
           this.lastSent[bucket] = now
+          throwIfShutdown(signal)
           this.log?.({ bucket, request: true })
           return
         }
         const waitMs = deadline - now
         this.log?.({ bucket, waitMs })
-        await this.clock.sleep(waitMs)
+        await waitForShutdownAware(this.clock.sleep(waitMs), signal)
       }
     })
     this.reservations = reservation.catch(() => {})
