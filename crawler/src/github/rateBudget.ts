@@ -1,4 +1,4 @@
-import { ShutdownError, throwIfShutdown } from '../shutdown.js'
+import { sleepWithShutdown, throwIfShutdown } from '../shutdown.js'
 
 export type RateResource = 'code_search' | 'core'
 
@@ -15,22 +15,9 @@ const rules: Record<RateResource, { limit: number; windowMs: number; spacingMs: 
   core: { limit: 5_000, windowMs: 3_600_000, spacingMs: 750 },
 }
 
-const systemClock: Clock = {
+export const systemClock: Clock = {
   now: Date.now,
-  sleep: (milliseconds, signal) =>
-    new Promise((resolve, reject) => {
-      throwIfShutdown(signal)
-      const timer = setTimeout(() => {
-        signal?.removeEventListener('abort', onAbort)
-        resolve()
-      }, milliseconds)
-      const onAbort = () => {
-        clearTimeout(timer)
-        signal?.removeEventListener('abort', onAbort)
-        reject(new ShutdownError())
-      }
-      signal?.addEventListener('abort', onAbort, { once: true })
-    }),
+  sleep: sleepWithShutdown,
 }
 
 export class RateBudget {
