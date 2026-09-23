@@ -47,3 +47,52 @@ jobs:
       - name: Run browser e2e tests
         run: npm run test:e2e
         working-directory: ui
+
+  crawler:
+    name: crawler
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: crawler/package-lock.json
+
+      - name: Install crawler dependencies
+        run: npm ci
+        working-directory: crawler
+
+      - name: Run crawler typecheck
+        run: npm run typecheck
+        working-directory: crawler
+
+      - name: Run crawler linter
+        run: npm run lint
+        working-directory: crawler
+
+      - name: Run crawler unit tests
+        run: npm run test
+        working-directory: crawler
+
+      - name: Install UI schema dependencies
+        run: npm ci
+        working-directory: ui
+
+      - name: Typecheck UI schema integration
+        run: npm run typecheck:integration
+        working-directory: crawler
+
+      - name: Check UI schemas and real CSV parity
+        run: npm run test:integration
+        working-directory: crawler
+        env:
+          REQUIRE_UI_CONTRACT: '1'
+          CATALOG_REAL_CSV: '1'

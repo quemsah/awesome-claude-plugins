@@ -1,0 +1,38 @@
+import type { PublishableRepository } from '../storage/repositories.js'
+import { assertValidStatsDraft, type StatsRecord } from './statsDraft.js'
+
+export function validateReadme(text: string, repositories: readonly PublishableRepository[], draft: StatsRecord): void {
+  assertValidStatsDraft(draft)
+  const date = new Date(draft.date)
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const lines = text.split('\n')
+  if (
+    draft.size !== repositories.length ||
+    lines[0] !== '# Awesome Claude Code Plugins: Top 100 Repositories' ||
+    lines[1] !== '' ||
+    lines[2] !== `> Last updated: ${day}.${month}.${date.getUTCFullYear()} with ${draft.size} total repositories indexed.` ||
+    lines[3] !== '' ||
+    lines[4] !== '| # | Repo Name | Description | Stars | Subs | Plugins |' ||
+    lines[5] !== '|---|-----------|-------------|-------|-------------|---------|' ||
+    !text.endsWith('\n')
+  ) {
+    throw new Error('README snapshot has invalid header, date, or catalog size')
+  }
+  const ranked = [...repositories]
+    .sort(
+      (a, b) =>
+        (b.stargazers_count ?? 0) - (a.stargazers_count ?? 0) || (b.subscribers_count ?? 0) - (a.subscribers_count ?? 0) || a.id - b.id,
+    )
+    .slice(0, 100)
+  const links = [...text.matchAll(/^\| (\d+) \| \[([A-Za-z0-9._-]+)\]\((https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+)\) \| /gm)]
+  if (
+    links.length !== ranked.length ||
+    links.some((match, index) => {
+      const repo = ranked[index]
+      return match[1] !== String(index + 1) || match[2] !== repo.repo_name || match[3] !== repo.html_url
+    })
+  ) {
+    throw new Error('README snapshot has incorrect top-100 links')
+  }
+}
