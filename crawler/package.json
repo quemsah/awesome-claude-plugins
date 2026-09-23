@@ -1,0 +1,33 @@
+{
+  "name": "catalog-crawler",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "typecheck:integration": "tsc --noEmit -p tsconfig.integration.json",
+    "lint": "biome check .",
+    "test": "npm run build && vitest run --exclude 'dist/**' --exclude 'test/integration/**'",
+    "test:integration": "vitest run test/integration/uiContract.test.ts",
+    "inspect": "node dist/cli.js inspect",
+    "crawl": "node dist/cli.js crawl",
+    "publish": "node dist/cli.js publish"
+  },
+  "dependencies": {
+    "better-sqlite3": "12.11.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.13.6",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true
+  }
+}

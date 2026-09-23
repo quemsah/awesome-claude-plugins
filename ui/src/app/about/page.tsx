@@ -55,8 +55,8 @@ export default function AboutPage() {
             </CardHeader>
             <CardContent className="text-muted-foreground">
               <p>
-                This isn't just a static list. I've set up <strong>n8n workflows</strong> that scan GitHub every day for new Claude Code
-                repositories. If it's out there to use with Claude, it should hopefully show up here automatically.
+                This isn't just a static list. Plugin data is collected from GitHub when the crawler runs, helping new Claude Code
+                repositories appear in the directory.
               </p>
             </CardContent>
           </Card>

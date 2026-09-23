@@ -1,0 +1,3 @@
+# Normalize line endings so biome's formatter (line-ending: LF) sees LF in the
+# working tree on Windows checkouts that have core.autocrlf=true.
+* text=auto eol=lf
