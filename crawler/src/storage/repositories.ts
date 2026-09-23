@@ -43,10 +43,9 @@ export type PublishableRepository = Pick<
   | 'plugins_count'
 >
 
-export function upsertDiscovery(db: Database.Database, htmlUrl: string, description: string | null): number {
+export function upsertDiscovery(db: Database.Database, htmlUrl: string, description: string | null, at = new Date().toISOString()): number {
   if (!htmlUrl.trim()) throw new Error('Discovery URL must not be blank')
 
-  const now = new Date().toISOString()
   const existing = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE ORDER BY id LIMIT 1').get(htmlUrl) as
     | { id: number }
     | undefined
@@ -54,17 +53,17 @@ export function upsertDiscovery(db: Database.Database, htmlUrl: string, descript
     db.prepare(`
       UPDATE repositories SET description = ?, updatedAt = ?
       WHERE id = ? AND (owner IS NULL OR repo_name IS NULL OR owner_url IS NULL)
-    `).run(description, now, existing.id)
+    `).run(description, at, existing.id)
     return existing.id
   }
 
   const result = db
     .prepare('INSERT INTO repositories (html_url, description, createdAt, updatedAt) VALUES (?, ?, ?, ?)')
-    .run(htmlUrl, description, now, now)
+    .run(htmlUrl, description, at, at)
   return Number(result.lastInsertRowid)
 }
 
-export function updateEnriched(db: Database.Database, id: number, fields: EnrichmentFields): boolean {
+export function updateEnriched(db: Database.Database, id: number, fields: EnrichmentFields, at = new Date().toISOString()): boolean {
   for (const field of ['stargazers_count', 'forks_count', 'subscribers_count', 'plugins_count'] as const) {
     const count = fields[field]
     if (count !== null && (!Number.isSafeInteger(count) || count < 0)) {
@@ -87,7 +86,7 @@ export function updateEnriched(db: Database.Database, id: number, fields: Enrich
       updatedAt = @updatedAt
     WHERE id = @id
   `)
-    .run({ ...fields, id, updatedAt: new Date().toISOString() })
+    .run({ ...fields, id, updatedAt: at })
   return result.changes !== 0
 }
 
@@ -100,7 +99,7 @@ export type CanonicalRebindResult = {
   removedId: number | null
 }
 
-export function rebindCanonicalUrl(db: Database.Database, id: number, htmlUrl: string): CanonicalRebindResult {
+export function rebindCanonicalUrl(db: Database.Database, id: number, htmlUrl: string, at = new Date().toISOString()): CanonicalRebindResult {
   if (!htmlUrl.trim()) throw new Error('Canonical URL must not be blank')
 
   return db.transaction(() => {
@@ -114,7 +113,7 @@ export function rebindCanonicalUrl(db: Database.Database, id: number, htmlUrl: s
     const removedId = duplicate ? Math.max(id, duplicate.id) : null
 
     if (removedId !== null) db.prepare('DELETE FROM repositories WHERE id = ?').run(removedId)
-    db.prepare('UPDATE repositories SET html_url = ?, updatedAt = ? WHERE id = ?').run(htmlUrl, new Date().toISOString(), keepId)
+    db.prepare('UPDATE repositories SET html_url = ?, updatedAt = ? WHERE id = ?').run(htmlUrl, at, keepId)
     return { id: keepId, removedId }
   })()
 }
