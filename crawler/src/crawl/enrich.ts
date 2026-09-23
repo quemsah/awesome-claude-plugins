@@ -108,12 +108,7 @@ type LoadedRepository = {
 }
 type EnrichmentTarget = { id: number; removedId: number | null; ready: boolean }
 
-function persistEnrichment(
-  db: Database.Database,
-  row: RepositoryRow,
-  loaded: LoadedRepository,
-  pluginsCount: number,
-): EnrichmentTarget {
+function persistEnrichment(db: Database.Database, row: RepositoryRow, loaded: LoadedRepository, pluginsCount: number): EnrichmentTarget {
   return db.transaction(() => {
     const rebound = loaded.moved ? rebindCanonicalUrl(db, row.id, loaded.canonical.htmlUrl) : { id: row.id, removedId: null }
     const target = loaded.moved ? getRepositoryById(db, rebound.id) : null
