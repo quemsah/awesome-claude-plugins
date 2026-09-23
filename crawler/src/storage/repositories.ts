@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3'
-import { isValidGitHubOwner, isValidGitHubRepositoryName } from '../github/identifiers.js'
+import { isValidGitHubPathSegment } from '../github/identifiers.js'
 
 export interface RepositoryRow {
   id: number
@@ -148,7 +148,7 @@ export function listForEnrichment(db: Database.Database, cursor: number, limit: 
 function canonicalIdentity(row: PublishableRepository): boolean {
   const { html_url, owner, owner_url, repo_name } = row
   if (!owner || !repo_name || !owner_url || !html_url) return false
-  if (!isValidGitHubOwner(owner) || !isValidGitHubRepositoryName(repo_name)) return false
+  if (!isValidGitHubPathSegment(owner) || !isValidGitHubPathSegment(repo_name)) return false
   return owner_url === `https://github.com/${owner}` && html_url === `${owner_url}/${repo_name}`
 }
 
