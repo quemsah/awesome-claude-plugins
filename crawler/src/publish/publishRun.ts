@@ -326,7 +326,7 @@ export async function publishRun(
   try {
     const pending = await resumePendingCommit(db, git, runId, completedRun, prepared, owner, options.historyLimit)
     if (typeof pending === 'string') return pending
-    return createAndPublishSnapshot(db, git, runId, owner, pending.snapshot)
+    return await createAndPublishSnapshot(db, git, runId, owner, pending.snapshot)
   } finally {
     // Once a candidate SHA exists, retain the lease until its Git visibility is reconciled.
     releaseUnpublishedLease(db, runId, owner)

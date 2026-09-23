@@ -53,15 +53,15 @@ function reader(
   }
 }
 
-function ready(db: Database.Database, id: number): void {
+function ready(db: Database.Database, id: number, owner = 'team', repo = 'repo'): void {
   updateEnriched(db, id, {
     stargazers_count: 1,
     forks_count: 1,
     subscribers_count: 1,
     description: 'original',
-    owner: 'team',
-    owner_url: 'https://github.com/team',
-    repo_name: 'repo',
+    owner,
+    owner_url: `https://github.com/${owner}`,
+    repo_name: repo,
     repo_updated: '2024-01-01T00:00:00Z',
     plugins_count: 3,
   })
@@ -391,7 +391,7 @@ it('keeps both rows unchanged when a renamed repository marketplace lookup fails
   const originalId = upsertDiscovery(db, 'https://github.com/team/repo', null)
   ready(db, originalId)
   const duplicateId = upsertDiscovery(db, 'https://github.com/new-team/new-repo', null)
-  ready(db, duplicateId)
+  ready(db, duplicateId, 'new-team', 'new-repo')
   const before = [originalId, duplicateId].map((id) => db.prepare('SELECT * FROM repositories WHERE id = ?').get(id))
 
   const counts = await enrichRepositories(

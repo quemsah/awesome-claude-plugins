@@ -81,13 +81,11 @@ function recordPageWarnings(
   db: Database.Database,
   result: Awaited<ReturnType<GitHubReader['searchCode']>>,
   page: number,
-  found: number,
   state: RangeState,
 ): void {
   if (result.total_count >= 1000) warn(db, state, 'saturated')
   if (result.incomplete_results) warn(db, state, 'incomplete-results')
   if (page === 10 && result.items.length === 100) warn(db, state, 'page-limit')
-  if (result.items.length < 100 && found < result.total_count) warn(db, state, 'short-page')
 }
 
 async function searchRange(
@@ -106,9 +104,10 @@ async function searchRange(
     const result = await searchPage(reader, query, page, db, state)
     if (!result) break
     if (page === 1) summary.successfulRanges++
-    recordPageWarnings(db, result, page, found, state)
+    recordPageWarnings(db, result, page, state)
     processItems(db, lookup, result, state)
     found += result.items.length
+    if (result.items.length < 100 && found < result.total_count) warn(db, state, 'short-page')
     if (result.items.length < 100 || found >= result.total_count) break
   }
 }
