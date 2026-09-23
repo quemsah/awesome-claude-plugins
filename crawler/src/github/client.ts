@@ -25,7 +25,7 @@ export type Marketplace = { plugins: unknown[] }
 
 export type RepoResult<T> =
   | { kind: 'found'; data: T }
-  | { kind: 'not-found' }
+  | { kind: 'not-found'; retryCount?: number }
   | { kind: 'temporary-error'; status: number | null; reason: string; retryCount: number }
 
 type ResponseAction<T> = { kind: 'retry'; secondaryCount: number } | { kind: 'result'; result: RepoResult<T> }
@@ -178,7 +178,7 @@ export class GitHubClient implements GitHubReader {
       throw new GitHubTemporaryError(
         result.kind === 'not-found' ? 'Code search not found' : result.reason,
         result.kind === 'not-found' ? 404 : result.status,
-        result.kind === 'not-found' ? 0 : result.retryCount,
+        result.kind === 'not-found' ? (result.retryCount ?? 0) : result.retryCount,
       )
     return result.data
   }
@@ -244,7 +244,7 @@ export class GitHubClient implements GitHubReader {
     if (delay !== null) this.budget.defer(bucket, delay)
     const { status } = response
     if (status === 401 || status === 422) throw new GitHubFatalError(`GitHub request rejected (${status})`, status)
-    if (status === 404) return { kind: 'result', result: { kind: 'not-found' } }
+    if (status === 404) return { kind: 'result', result: { kind: 'not-found', retryCount: attempt } }
     if (status === 403 || status === 429) return this.handleRateLimit(bucket, response, attempt, delay, secondaryCount)
     if (status >= 500 && status <= 599) return this.handleServerError(bucket, status, attempt, delay, secondaryCount)
     if (!response.ok) return { kind: 'result', result: { kind: 'temporary-error', status, reason: 'GitHub HTTP error', retryCount: attempt } }
