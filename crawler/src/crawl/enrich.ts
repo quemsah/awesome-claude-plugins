@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import type { GitHubReader, GitHubRepo, RepoResult } from '../github/client.js'
 import { isValidGitHubPathSegment, parseGitHubOwnerUrl } from '../github/identifiers.js'
+import type { GitHubGraphQLRepo } from '../github/client.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import {
   deleteById,
@@ -111,6 +112,9 @@ type LoadedRepository = {
   owner: string
   repo: string
   ownerUrl: string
+  githubNodeId: string | null
+  marketplaceOid: string | null
+  repositoryEtag: string | null
 }
 type EnrichmentTarget = { id: number; removedId: number | null; ready: boolean }
 
@@ -120,6 +124,8 @@ function persistEnrichment(
   row: RepositoryRow,
   loaded: LoadedRepository,
   pluginsCount: number,
+  marketplaceOid: string | null,
+  marketplaceEtag: string | null,
   at: string,
 ): EnrichmentTarget {
   return runWhileActive(db, runId, () => {
@@ -140,6 +146,10 @@ function persistEnrichment(
         repo_name: loaded.repo,
         repo_updated: loaded.data.pushed_at,
         plugins_count: pluginsCount,
+        github_node_id: loaded.githubNodeId,
+        marketplace_oid: marketplaceOid,
+        repository_etag: loaded.repositoryEtag,
+        marketplace_etag: marketplaceEtag,
       },
       at,
     )
@@ -157,7 +167,9 @@ async function loadRepository(
   counts: EnrichmentCounts,
   now: () => string,
 ): Promise<LoadedRepository | null> {
-  const result = await reader.getRepository(identity.owner, identity.repo)
+  const result = row.repository_etag
+    ? await reader.getRepository(identity.owner, identity.repo, row.repository_etag)
+    : await reader.getRepository(identity.owner, identity.repo)
   if (result.kind === 'not-found') {
     runWhileActive(db, runId, () => {
       deleteById(db, row.id)
@@ -168,6 +180,10 @@ async function loadRepository(
   }
   if (result.kind === 'temporary-error') {
     recordProblem(db, runId, counts, row, temporaryCategory('repository', result), previouslyReady, false, now, result.retryCount)
+    return null
+  }
+  if (result.kind === 'not-modified') {
+    recordProblem(db, runId, counts, row, 'repository_not_modified_without_data', previouslyReady)
     return null
   }
   const canonical = canonicalIdentity(result.data)
@@ -189,6 +205,9 @@ async function loadRepository(
     owner: moved ? canonical.owner : identity.owner,
     repo: moved ? canonical.repo : identity.repo,
     ownerUrl: moved ? canonical.ownerUrl : `https://github.com/${identity.owner}`,
+    githubNodeId: result.data.node_id ?? row.github_node_id,
+    marketplaceOid: row.marketplace_oid,
+    repositoryEtag: result.etag ?? row.repository_etag,
   }
 }
 
@@ -219,7 +238,9 @@ async function enrichOne(
   const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts, now)
   if (!loaded) return
   onProgress?.()
-  const marketplace = await reader.getMarketplace(loaded.owner, loaded.repo)
+  const marketplace = row.marketplace_etag
+    ? await reader.getMarketplace(loaded.owner, loaded.repo, row.marketplace_etag)
+    : await reader.getMarketplace(loaded.owner, loaded.repo)
   if (marketplace.kind === 'not-found') {
     runWhileActive(db, runId, () => {
       if (loaded.moved) {
@@ -235,11 +256,167 @@ async function enrichOne(
     recordProblem(db, runId, counts, row, temporaryCategory('marketplace', marketplace), loaded.ready, false, now, marketplace.retryCount)
     return
   }
-  const target = persistEnrichment(db, runId, row, loaded, marketplace.data.plugins.length, now())
+  const pluginsCount = marketplace.kind === 'not-modified' ? row.plugins_count : marketplace.data.plugins.length
+  if (pluginsCount === null) {
+    recordProblem(db, runId, counts, row, 'marketplace_not_modified_without_data', loaded.ready, false, now)
+    return
+  }
+  const marketplaceOid = marketplace.kind === 'found' ? (marketplace.data.oid ?? row.marketplace_oid) : row.marketplace_oid
+  const target = persistEnrichment(db, runId, row, loaded, pluginsCount, marketplaceOid, marketplace.etag ?? row.marketplace_etag, now())
   if (target.removedId !== null) removedIds.add(target.removedId)
   counts.conclusive++
   if (target.ready) counts.updated++
   else counts.newReady++
+}
+
+function loadGraphQLRepository(db: Database.Database, row: RepositoryRow, data: GitHubGraphQLRepo): LoadedRepository | null {
+  const canonical = canonicalIdentity(data)
+  if (!canonical) return null
+  const moved = canonical.htmlUrl !== row.html_url
+  const duplicate = moved
+    ? (db
+        .prepare('SELECT * FROM repositories WHERE html_url = ? COLLATE NOCASE AND id != ? ORDER BY id LIMIT 1')
+        .get(canonical.htmlUrl, row.id) as RepositoryRow | undefined)
+    : undefined
+  return {
+    data,
+    canonical,
+    moved,
+    ready: wasReady(row) || (duplicate !== undefined && wasReady(duplicate)),
+    owner: canonical.owner,
+    repo: canonical.repo,
+    ownerUrl: canonical.ownerUrl,
+    githubNodeId: data.node_id,
+    marketplaceOid: data.marketplace_oid,
+    repositoryEtag: row.repository_etag,
+  }
+}
+
+async function enrichGraphQLOne(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  row: RepositoryRow,
+  data: GitHubGraphQLRepo | null,
+  counts: EnrichmentCounts,
+  removedIds: Set<number>,
+  now: () => string,
+): Promise<void> {
+  if (removedIds.has(row.id)) return
+  if (data === null || data.private) {
+    runWhileActive(db, runId, () => deleteById(db, row.id))
+    counts.deleted404++
+    counts.conclusive++
+    return
+  }
+  const loaded = loadGraphQLRepository(db, row, data)
+  if (!loaded) {
+    recordProblem(db, runId, counts, row, 'repository_identity_mismatch', wasReady(row), true, now)
+    return
+  }
+  if (!loaded.marketplaceOid) {
+    if (loaded.moved) {
+      const removedId = runWhileActive(db, runId, () => deleteCanonicalRows(db, row.id, loaded.canonical.htmlUrl))
+      if (removedId !== null) removedIds.add(removedId)
+    } else runWhileActive(db, runId, () => deleteById(db, row.id))
+    counts.deleted404++
+    counts.conclusive++
+    return
+  }
+
+  let pluginsCount = row.plugins_count
+  let marketplaceOid = loaded.marketplaceOid
+  let marketplaceEtag = row.marketplace_etag
+  if (row.marketplace_oid !== loaded.marketplaceOid || pluginsCount === null) {
+    const changedOid = row.marketplace_oid !== loaded.marketplaceOid
+    const marketplace =
+      row.marketplace_etag && !changedOid
+        ? await reader.getMarketplace(loaded.owner, loaded.repo, row.marketplace_etag)
+        : await reader.getMarketplace(loaded.owner, loaded.repo)
+    if (marketplace.kind === 'not-found') {
+      if (loaded.moved) {
+        const removedId = runWhileActive(db, runId, () => deleteCanonicalRows(db, row.id, loaded.canonical.htmlUrl))
+        if (removedId !== null) removedIds.add(removedId)
+      } else runWhileActive(db, runId, () => deleteById(db, row.id))
+      counts.deleted404++
+      counts.conclusive++
+      return
+    }
+    if (marketplace.kind === 'temporary-error') {
+      recordProblem(db, runId, counts, row, temporaryCategory('marketplace', marketplace), loaded.ready, false, now, marketplace.retryCount)
+      return
+    }
+    if (marketplace.kind === 'not-modified') {
+      if (changedOid) {
+        recordProblem(db, runId, counts, row, 'marketplace_not_modified_after_oid_change', loaded.ready, true, now)
+        return
+      }
+      if (pluginsCount === null) {
+        recordProblem(db, runId, counts, row, 'marketplace_not_modified_without_data', loaded.ready, false, now)
+        return
+      }
+    } else {
+      pluginsCount = marketplace.data.plugins.length
+      marketplaceOid = marketplace.data.oid ?? loaded.marketplaceOid
+    }
+    marketplaceEtag = marketplace.etag ?? marketplaceEtag
+  }
+
+  if (pluginsCount === null) {
+    recordProblem(db, runId, counts, row, 'marketplace_count_missing', loaded.ready, false, now)
+    return
+  }
+  const target = persistEnrichment(db, runId, row, loaded, pluginsCount, marketplaceOid, marketplaceEtag, now())
+  if (target.removedId !== null) removedIds.add(target.removedId)
+  counts.conclusive++
+  if (target.ready) counts.updated++
+  else counts.newReady++
+}
+
+async function enrichGraphQLBatch(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  rows: RepositoryRow[],
+  counts: EnrichmentCounts,
+  removedIds: Set<number>,
+  state: { size: number; stableBatches: number },
+  now: () => string,
+  onProgress?: () => void,
+): Promise<void> {
+  const getBatch = reader.getRepositoriesByNodeId
+  if (!getBatch) {
+    for (const row of rows) await enrichOne(db, reader, runId, row, counts, removedIds, now, onProgress)
+    return
+  }
+  const ids = rows.map((row) => row.github_node_id as string)
+  onProgress?.()
+  const startedAt = Date.now()
+  const result = await getBatch.call(reader, ids)
+  const latency = Date.now() - startedAt
+  if (result.kind === 'temporary-error') {
+    state.stableBatches = 0
+    const smallerSize = rows.length > 25 ? 25 : 10
+    if (rows.length > 10) {
+      state.size = smallerSize
+      for (let offset = 0; offset < rows.length; offset += smallerSize) {
+        await enrichGraphQLBatch(db, reader, runId, rows.slice(offset, offset + smallerSize), counts, removedIds, state, now, onProgress)
+      }
+    } else {
+      for (const row of rows) recordProblem(db, runId, counts, row, 'graphql_temporary_error', wasReady(row), true, now)
+    }
+    return
+  }
+  if (latency >= 8_000 || result.rateLimit.cost > 50) {
+    state.stableBatches = 0
+    state.size = rows.length > 25 ? 25 : 10
+  } else {
+    state.stableBatches++
+    if (state.stableBatches >= 5) state.size = 50
+  }
+  for (const [index, row] of rows.entries()) {
+    await enrichGraphQLOne(db, reader, runId, row, result.data[index] ?? null, counts, removedIds, now)
+  }
 }
 
 export async function enrichRepositories(
@@ -261,13 +438,22 @@ export async function enrichRepositories(
   }
   let lastId = 0
   const removedIds = new Set<number>()
+  const batchState = { size: 25, stableBatches: 0 }
   while (true) {
     const rows = listForEnrichment(db, lastId, 50)
     if (rows.length === 0) break
     for (const row of rows) {
       lastId = row.id
-      if (removedIds.has(row.id)) continue
-      await enrichOne(db, reader, runId, row, counts, removedIds, now, onProgress)
+    }
+    const graphQLRows = rows.filter((row) => row.github_node_id && parseRepositoryUrl(row.html_url ?? ''))
+    const legacyRows = rows.filter((row) => !row.github_node_id || !parseRepositoryUrl(row.html_url ?? ''))
+    for (const row of legacyRows) {
+      if (!removedIds.has(row.id)) await enrichOne(db, reader, runId, row, counts, removedIds, now, onProgress)
+    }
+    for (let offset = 0; offset < graphQLRows.length; ) {
+      const batch = graphQLRows.slice(offset, offset + batchState.size)
+      offset += batch.length
+      await enrichGraphQLBatch(db, reader, runId, batch, counts, removedIds, batchState, now, onProgress)
     }
     onProgress?.()
   }

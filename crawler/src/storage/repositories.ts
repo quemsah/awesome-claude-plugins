@@ -13,6 +13,10 @@ export interface RepositoryRow {
   repo_name: string | null
   repo_updated: string | null
   plugins_count: number | null
+  github_node_id: string | null
+  marketplace_oid: string | null
+  repository_etag: string | null
+  marketplace_etag: string | null
   createdAt: string
   updatedAt: string
 }
@@ -28,7 +32,8 @@ export type EnrichmentFields = Pick<
   | 'repo_name'
   | 'repo_updated'
   | 'plugins_count'
->
+> &
+  Partial<Pick<RepositoryRow, 'github_node_id' | 'marketplace_oid' | 'repository_etag' | 'marketplace_etag'>>
 
 export type PublishableRepository = Pick<
   RepositoryRow,
@@ -44,13 +49,27 @@ export type PublishableRepository = Pick<
   | 'plugins_count'
 >
 
-export function upsertDiscovery(db: Database.Database, htmlUrl: string, description: string | null, at = new Date().toISOString()): number {
+export function upsertDiscovery(
+  db: Database.Database,
+  htmlUrl: string,
+  description: string | null,
+  at = new Date().toISOString(),
+  githubNodeId?: string,
+): number {
   if (!htmlUrl.trim()) throw new Error('Discovery URL must not be blank')
 
   const existing = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE ORDER BY id LIMIT 1').get(htmlUrl) as
     | { id: number }
     | undefined
   if (existing) {
+    if (githubNodeId) {
+      db.prepare('UPDATE repositories SET github_node_id = ?, updatedAt = ? WHERE id = ? AND github_node_id IS NOT ?').run(
+        githubNodeId,
+        at,
+        existing.id,
+        githubNodeId,
+      )
+    }
     db.prepare(`
       UPDATE repositories SET description = ?, updatedAt = ?
       WHERE id = ? AND (owner IS NULL OR repo_name IS NULL OR owner_url IS NULL)
@@ -59,8 +78,8 @@ export function upsertDiscovery(db: Database.Database, htmlUrl: string, descript
   }
 
   const result = db
-    .prepare('INSERT INTO repositories (html_url, description, createdAt, updatedAt) VALUES (?, ?, ?, ?)')
-    .run(htmlUrl, description, at, at)
+    .prepare('INSERT INTO repositories (html_url, description, github_node_id, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)')
+    .run(htmlUrl, description, githubNodeId ?? null, at, at)
   return Number(result.lastInsertRowid)
 }
 
@@ -84,10 +103,22 @@ export function updateEnriched(db: Database.Database, id: number, fields: Enrich
       repo_name = @repo_name,
       repo_updated = @repo_updated,
       plugins_count = @plugins_count,
+      github_node_id = COALESCE(@github_node_id, github_node_id),
+      marketplace_oid = COALESCE(@marketplace_oid, marketplace_oid),
+      repository_etag = COALESCE(@repository_etag, repository_etag),
+      marketplace_etag = COALESCE(@marketplace_etag, marketplace_etag),
       updatedAt = @updatedAt
     WHERE id = @id
   `)
-    .run({ ...fields, id, updatedAt: at })
+    .run({
+      ...fields,
+      github_node_id: fields.github_node_id ?? null,
+      marketplace_oid: fields.marketplace_oid ?? null,
+      repository_etag: fields.repository_etag ?? null,
+      marketplace_etag: fields.marketplace_etag ?? null,
+      id,
+      updatedAt: at,
+    })
   return result.changes !== 0
 }
 

@@ -104,6 +104,22 @@ describe('RateBudget', () => {
     expect(clock.time).toBeGreaterThan(90_000)
   })
 
+  it('holds GraphQL batches before they can consume the 10 percent primary quota reserve', async () => {
+    const clock = virtualClock()
+    const budget = new RateBudget(clock)
+    await budget.acquire('graphql')
+    budget.observeGraphQL({
+      cost: 100,
+      remaining: 550,
+      resetAt: new Date(120_000).toISOString(),
+      limit: 5_000,
+      used: 4_450,
+    })
+
+    await budget.acquire('graphql')
+    expect(clock.time).toBeGreaterThanOrEqual(121_000)
+  })
+
   it('serializes simultaneous reservations rather than sending a burst', async () => {
     const clock = virtualClock()
     const budget = new RateBudget(clock)

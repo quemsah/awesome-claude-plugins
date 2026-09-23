@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 4
+const schemaVersion = 5
 
 export function initializeSchema(db: Database.Database): void {
   const version = db.pragma('user_version', { simple: true }) as number
@@ -89,7 +89,7 @@ export function initializeSchema(db: Database.Database): void {
       INSERT INTO publication_lease (slot, run_id, owner)
         SELECT 1, run_id, 'migration_recovery' FROM runs WHERE pending_commit_sha IS NOT NULL;
       PRAGMA user_version = 3;
-    `)
+`)
     }
     if (version < 4) {
       const duplicateGroups = db
@@ -175,5 +175,13 @@ export function initializeSchema(db: Database.Database): void {
         PRAGMA user_version = 4;
       `)
     }
+    if (version < 5)
+      db.exec(`
+      ALTER TABLE repositories ADD COLUMN github_node_id TEXT;
+      ALTER TABLE repositories ADD COLUMN marketplace_oid TEXT;
+      ALTER TABLE repositories ADD COLUMN repository_etag TEXT;
+      ALTER TABLE repositories ADD COLUMN marketplace_etag TEXT;
+      PRAGMA user_version = 5;
+    `)
   })()
 }

@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 import { GitHubFatalError, type GitHubReader, GitHubTemporaryError } from '../github/client.js'
-import { SIZE_RANGES, type SizeRange } from '../github/sizeRanges.js'
+import type { SizeRange } from '../github/sizeRanges.js'
 import { ShutdownError, throwIfShutdown } from '../shutdown.js'
 import {
   beginRun,
@@ -96,7 +96,7 @@ async function crawlAndComplete(
     if (!heartbeatRun(db, runId, now())) throw new CrawlError('run_not_active')
   }
   throwIfShutdown(options.signal)
-  const discovery = await discover(db, reader, runId, options.ranges ?? SIZE_RANGES, heartbeat, now)
+  const discovery = await discover(db, reader, runId, options.ranges ?? [[0, 400_000]], heartbeat, now)
   heartbeat()
   const enrichment = await enrichRepositories(db, reader, runId, heartbeat, now)
   heartbeat()

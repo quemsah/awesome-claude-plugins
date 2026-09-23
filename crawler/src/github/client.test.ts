@@ -79,6 +79,96 @@ describe('GitHubClient', () => {
     expect(test.requests[0].url).toBe('https://api.github.com/repos/acme%20team/cool%2Frepo')
   })
 
+  it('sends If-None-Match and reports cached REST responses without parsing a 304 body', async () => {
+    const test = harness([
+      Response.json(repo, { headers: { etag: '"repo-v1"' } }),
+      new Response(null, { status: 304, headers: { etag: '"repo-v1"' } }),
+    ])
+
+    expect(await test.client.getRepository('acme', 'catalog', '"repo-v0"')).toEqual({
+      kind: 'found',
+      data: repo,
+      etag: '"repo-v1"',
+    })
+    expect(await test.client.getRepository('acme', 'catalog', '"repo-v1"')).toEqual({ kind: 'not-modified', etag: '"repo-v1"' })
+    expect(new Headers(test.requests[0].init?.headers).get('if-none-match')).toBe('"repo-v0"')
+  })
+
+  it('loads repository metadata and marketplace blob OIDs by GraphQL node ID', async () => {
+    const nodeId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
+    const resetAt = '2026-09-23T22:00:00Z'
+    const test = harness([
+      Response.json(
+        {
+          data: {
+            nodes: [
+              {
+                id: nodeId,
+                url: repo.html_url,
+                name: repo.name,
+                description: repo.description,
+                stargazerCount: repo.stargazers_count,
+                forkCount: repo.forks_count,
+                pushedAt: repo.pushed_at,
+                isPrivate: false,
+                owner: { login: repo.owner.login, url: repo.owner.html_url },
+                watchers: { totalCount: repo.subscribers_count },
+                object: { oid: 'a'.repeat(40) },
+              },
+            ],
+            rateLimit: { cost: 2, remaining: 4_500, resetAt, limit: 5_000, used: 500 },
+          },
+        },
+        {
+          headers: {
+            'x-ratelimit-limit': '5000',
+            'x-ratelimit-remaining': '4500',
+            'x-ratelimit-used': '500',
+            'x-ratelimit-reset': '1790200800',
+          },
+        },
+      ),
+    ])
+
+    const result = await test.client.getRepositoriesByNodeId([nodeId])
+
+    expect(result).toEqual({
+      kind: 'found',
+      data: [
+        {
+          node_id: nodeId,
+          html_url: repo.html_url,
+          name: repo.name,
+          description: repo.description,
+          stargazers_count: repo.stargazers_count,
+          forks_count: repo.forks_count,
+          subscribers_count: repo.subscribers_count,
+          pushed_at: repo.pushed_at,
+          owner: repo.owner,
+          marketplace_oid: 'a'.repeat(40),
+          private: false,
+        },
+      ],
+      rateLimit: { cost: 2, remaining: 4_500, resetAt, limit: 5_000, used: 500 },
+    })
+    expect(test.logs).toContainEqual(expect.objectContaining({ bucket: 'graphql', latencyMs: 0, cost: 2 }))
+    expect(test.requests[0].url).toBe('https://api.github.com/graphql')
+    expect(test.requests[0].init?.method).toBe('POST')
+    expect(JSON.parse(String(test.requests[0].init?.body))).toMatchObject({ variables: { ids: [nodeId] } })
+  })
+
+  it('backs off exponentially for GraphQL secondary limits and does not retry permission failures', async () => {
+    const secondary = harness(
+      Array.from({ length: 4 }, () => Response.json({ message: 'You have exceeded a secondary rate limit' }, { status: 403 })),
+    )
+    expect(await secondary.client.getRepositoriesByNodeId(['MDEwOlJlcG9zaXRvcnkx'])).toMatchObject({ kind: 'temporary-error' })
+    expect(secondary.requests.map(({ time }) => time)).toEqual([0, 60_000, 180_000, 420_000])
+
+    const forbidden = harness([Response.json({ message: 'Resource not accessible by integration' }, { status: 403 })])
+    await expect(forbidden.client.getRepositoriesByNodeId(['MDEwOlJlcG9zaXRvcnkx'])).rejects.toBeInstanceOf(GitHubFatalError)
+    expect(forbidden.requests).toHaveLength(1)
+  })
+
   it('treats a private repository as absent from the public catalog without retrying', async () => {
     const test = harness([Response.json({ ...repo, private: true })])
     expect(await test.client.getRepository('acme', 'catalog')).toEqual({ kind: 'not-found' })

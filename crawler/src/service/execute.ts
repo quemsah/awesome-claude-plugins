@@ -59,6 +59,18 @@ function nonnegative(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 }
 
+function validGraphQLRate(value: unknown): boolean {
+  if (!record(value)) return false
+  if (!['requests', 'waitMs', 'totalCost'].every((field) => nonnegative(value[field]))) return false
+  for (const field of ['lastRemaining', 'lastCost', 'lastLimit', 'lastUsed']) {
+    if (value[field] !== null && !nonnegative(value[field])) return false
+  }
+  if (value.totalLatencyMs !== undefined && !nonnegative(value.totalLatencyMs)) return false
+  if (value.latencySamples !== undefined && !nonnegative(value.latencySamples)) return false
+  if (value.lastLatencyMs !== undefined && value.lastLatencyMs !== null && !nonnegative(value.lastLatencyMs)) return false
+  return value.resetAt === null || (typeof value.resetAt === 'string' && !Number.isNaN(Date.parse(value.resetAt)))
+}
+
 function isDiscovery(value: unknown): value is RunReport['discovery'] {
   return (
     record(value) &&
@@ -117,7 +129,8 @@ function storedReport(db: Database.Database, runId: string): Partial<RunReport> 
           (entry.lastRemaining === null ||
             (typeof entry.lastRemaining === 'number' && Number.isSafeInteger(entry.lastRemaining) && entry.lastRemaining >= 0))
         )
-      }))
+      }) ||
+      (Object.hasOwn(rate, 'graphql') && !validGraphQLRate(rate.graphql)))
   ) {
     throw new Error('Invalid stored GitHub rate report')
   }

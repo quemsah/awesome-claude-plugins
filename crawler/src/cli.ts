@@ -186,14 +186,42 @@ function rateTracker(): { buckets: GitHubRateBuckets; log: RateLog; observed: ()
   const buckets: GitHubRateBuckets = {
     code_search: { requests: 0, waitMs: 0, lastRemaining: null },
     core: { requests: 0, waitMs: 0, lastRemaining: null },
+    graphql: {
+      requests: 0,
+      waitMs: 0,
+      lastRemaining: null,
+      totalCost: 0,
+      lastCost: null,
+      lastLimit: null,
+      lastUsed: null,
+      resetAt: null,
+      totalLatencyMs: 0,
+      latencySamples: 0,
+      lastLatencyMs: null,
+    },
   }
   let hasObserved = false
   const rateLog: RateLog = (event) => {
     hasObserved = true
-    const bucket = buckets[event.bucket]
+    const bucket = event.bucket === 'graphql' ? buckets.graphql : buckets[event.bucket]
+    if (!bucket) return
     if (event.request) bucket.requests++
     if (event.waitMs !== undefined) bucket.waitMs += event.waitMs
     if (event.remaining !== undefined) bucket.lastRemaining = event.remaining
+    if (event.bucket === 'graphql' && buckets.graphql) {
+      if (event.cost !== undefined) {
+        buckets.graphql.totalCost += event.cost
+        buckets.graphql.lastCost = event.cost
+      }
+      if (event.limit !== undefined) buckets.graphql.lastLimit = event.limit
+      if (event.used !== undefined) buckets.graphql.lastUsed = event.used
+      if (event.resetAt !== undefined) buckets.graphql.resetAt = event.resetAt
+      if (event.latencyMs !== undefined) {
+        buckets.graphql.totalLatencyMs = (buckets.graphql.totalLatencyMs ?? 0) + event.latencyMs
+        buckets.graphql.latencySamples = (buckets.graphql.latencySamples ?? 0) + 1
+        buckets.graphql.lastLatencyMs = event.latencyMs
+      }
+    }
   }
   return { buckets, log: rateLog, observed: () => hasObserved }
 }

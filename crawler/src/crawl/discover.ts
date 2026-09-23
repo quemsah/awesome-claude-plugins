@@ -1,9 +1,11 @@
 import type Database from 'better-sqlite3'
 import { type GitHubReader, GitHubTemporaryError } from '../github/client.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
-import { SIZE_RANGES, type SizeRange } from '../github/sizeRanges.js'
+import type { SizeRange } from '../github/sizeRanges.js'
 import { upsertDiscovery } from '../storage/repositories.js'
 import { recordRunError, runWhileActive } from '../storage/runs.js'
+
+export type { SizeRange } from '../github/sizeRanges.js'
 
 export type DiscoveryWarningCategory = 'saturated' | 'page-limit' | 'incomplete-results' | 'temporary-error' | 'invalid-url' | 'short-page'
 
@@ -76,7 +78,7 @@ function processItems(
     }
     const existing = Boolean(lookup.get(url))
     runWhileActive(db, state.runId, () => {
-      upsertDiscovery(db, url, repository.description, state.now())
+      upsertDiscovery(db, url, repository.description, state.now(), repository.node_id)
     })
     if (existing) state.summary.existingUrls++
     else state.summary.newUrls++
@@ -112,6 +114,14 @@ async function searchRange(
     onProgress?.()
     const result = await searchPage(reader, query, page, db, state)
     if (!result) break
+    if (page === 1 && result.total_count >= 1000 && min < max) {
+      if (result.incomplete_results) warn(db, state, 'incomplete-results')
+      onProgress?.()
+      const middle = Math.floor((min + max) / 2)
+      await searchRange(db, reader, runId, lookup, [min, middle], summary, now, onProgress)
+      await searchRange(db, reader, runId, lookup, [middle + 1, max], summary, now, onProgress)
+      return
+    }
     if (page === 1) summary.successfulRanges++
     recordPageWarnings(db, result, page, state)
     processItems(db, lookup, result, state)
@@ -119,13 +129,14 @@ async function searchRange(
     if (result.items.length < 100 && found < result.total_count) warn(db, state, 'short-page')
     if (result.items.length < 100 || found >= result.total_count) break
   }
+  onProgress?.()
 }
 
 export async function discover(
   db: Database.Database,
   reader: GitHubReader,
   runId: string,
-  ranges: readonly SizeRange[] = SIZE_RANGES,
+  ranges: readonly SizeRange[] = [[0, 400_000]],
   onProgress?: () => void,
   now: () => string = () => new Date().toISOString(),
 ): Promise<DiscoverySummary> {

@@ -1,6 +1,13 @@
 import Database from 'better-sqlite3'
 import { afterEach, expect, it, vi } from 'vitest'
-import { GitHubFatalError, type GitHubReader, type GitHubRepo, type Marketplace, type RepoResult } from '../github/client.js'
+import {
+  GitHubFatalError,
+  type GitHubGraphQLRepo,
+  type GitHubReader,
+  type GitHubRepo,
+  type Marketplace,
+  type RepoResult,
+} from '../github/client.js'
 import { listPublishable, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
 import { beginRun, listRunErrors } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
@@ -120,6 +127,130 @@ it('visits exactly 50 rows without repeating the last row of the batch', async (
 
   expect((await enrichRepositories(db, reader(getRepository), 'crawl-1')).newReady).toBe(50)
   expect(getRepository).toHaveBeenCalledTimes(50)
+})
+
+it('uses batched GraphQL metadata and skips marketplace REST when the stored OID is unchanged', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), 'MDEwOlJlcG9zaXRvcnkx')
+  ready(db, id)
+  const oid = 'a'.repeat(40)
+  db.prepare('UPDATE repositories SET marketplace_oid = ? WHERE id = ?').run(oid, id)
+  const repository: GitHubGraphQLRepo = { ...githubRepo('team', 'repo'), node_id: 'MDEwOlJlcG9zaXRvcnkx', marketplace_oid: oid }
+  const getRepositoriesByNodeId = vi.fn(async () => ({
+    kind: 'found' as const,
+    data: [repository],
+    rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+  }))
+  const getRepository = vi.fn(async () => ({ kind: 'temporary-error' as const, status: 500, reason: 'must use GraphQL', retryCount: 0 }))
+  const getMarketplace = vi.fn(async () => ({ kind: 'temporary-error' as const, status: 500, reason: 'OID unchanged', retryCount: 0 }))
+  const client = { ...reader(getRepository, getMarketplace), getRepositoriesByNodeId }
+
+  const counts = await enrichRepositories(db, client, 'crawl-1')
+
+  expect(counts).toMatchObject({ updated: 1, conclusive: 1, warnings: 0 })
+  expect(getRepositoriesByNodeId).toHaveBeenCalledWith(['MDEwOlJlcG9zaXRvcnkx'])
+  expect(getRepository).not.toHaveBeenCalled()
+  expect(getMarketplace).not.toHaveBeenCalled()
+})
+
+it('reads changed marketplace content and persists its returned OID and ETag', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), 'MDEwOlJlcG9zaXRvcnkx')
+  ready(db, id)
+  db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_etag = ? WHERE id = ?').run('a'.repeat(40), '"old"', id)
+  const repository: GitHubGraphQLRepo = {
+    ...githubRepo('team', 'repo'),
+    node_id: 'MDEwOlJlcG9zaXRvcnkx',
+    marketplace_oid: 'b'.repeat(40),
+  }
+  const getMarketplace = vi.fn(async () => ({
+    kind: 'found' as const,
+    data: { plugins: [1, 2], oid: 'b'.repeat(40) },
+    etag: '"new"',
+  }))
+  const client = {
+    ...reader(undefined, getMarketplace),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [repository],
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+  }
+
+  await enrichRepositories(db, client, 'crawl-1')
+
+  expect(getMarketplace).toHaveBeenCalledWith('team', 'repo')
+  expect(db.prepare('SELECT plugins_count, marketplace_oid, marketplace_etag FROM repositories WHERE id = ?').get(id)).toEqual({
+    plugins_count: 2,
+    marketplace_oid: 'b'.repeat(40),
+    marketplace_etag: '"new"',
+  })
+})
+
+it('keeps the old plugin count and OID when changed content unexpectedly returns 304', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), 'MDEwOlJlcG9zaXRvcnkx')
+  ready(db, id)
+  db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_etag = ? WHERE id = ?').run('a'.repeat(40), '"old"', id)
+  const before = db.prepare('SELECT * FROM repositories WHERE id = ?').get(id)
+  const getMarketplace = vi.fn(async () => ({ kind: 'not-modified' as const, etag: '"old"' }))
+  const client = {
+    ...reader(undefined, getMarketplace),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [{ ...githubRepo('team', 'repo'), node_id: 'MDEwOlJlcG9zaXRvcnkx', marketplace_oid: 'b'.repeat(40) }],
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+  }
+
+  const counts = await enrichRepositories(db, client, 'crawl-1')
+
+  expect(getMarketplace).toHaveBeenCalledWith('team', 'repo')
+  expect(db.prepare('SELECT * FROM repositories WHERE id = ?').get(id)).toEqual(before)
+  expect(counts).toMatchObject({ updated: 0, unchangedOnError: 1, warnings: 1, conclusive: 0 })
+  expect(listRunErrors(db, 'crawl-1').map(({ error_type }) => error_type)).toEqual(['marketplace_not_modified_after_oid_change'])
+})
+
+it('backfills a legacy row node ID through REST for GraphQL on the next crawl', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old')
+  const legacyRepository = { ...githubRepo('team', 'repo'), node_id: 'MDEwOlJlcG9zaXRvcnkx' }
+  const client = reader(
+    async () => ({ kind: 'found', data: legacyRepository, etag: '"repo"' }),
+    async () => ({ kind: 'found', data: { plugins: [1], oid: 'a'.repeat(40) }, etag: '"manifest"' }),
+  )
+
+  await enrichRepositories(db, client, 'crawl-1')
+
+  expect(
+    db.prepare('SELECT github_node_id, marketplace_oid, repository_etag, marketplace_etag FROM repositories WHERE id = ?').get(id),
+  ).toEqual({
+    github_node_id: 'MDEwOlJlcG9zaXRvcnkx',
+    marketplace_oid: 'a'.repeat(40),
+    repository_etag: '"repo"',
+    marketplace_etag: '"manifest"',
+  })
+})
+
+it('keeps ready rows unchanged and warns instead of REST fanout when a GraphQL batch fails', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), 'MDEwOlJlcG9zaXRvcnkx')
+  ready(db, id)
+  const before = db.prepare('SELECT * FROM repositories WHERE id = ?').get(id)
+  const getRepository = vi.fn()
+  const getMarketplace = vi.fn()
+  const client = {
+    ...reader(getRepository, getMarketplace),
+    getRepositoriesByNodeId: async () => ({ kind: 'temporary-error' as const, status: 503, reason: 'temporary' }),
+  }
+
+  const counts = await enrichRepositories(db, client, 'crawl-1')
+
+  expect(counts).toMatchObject({ unchangedOnError: 1, warnings: 1, conclusive: 0 })
+  expect(getRepository).not.toHaveBeenCalled()
+  expect(getMarketplace).not.toHaveBeenCalled()
+  expect(db.prepare('SELECT * FROM repositories WHERE id = ?').get(id)).toEqual(before)
+  expect(listRunErrors(db, 'crawl-1').map(({ error_type }) => error_type)).toEqual(['graphql_temporary_error'])
 })
 
 it.each(['repository', 'marketplace'] as const)('deletes a formerly publishable row on a confirmed %s 404', async (endpoint) => {

@@ -8,7 +8,10 @@ type SearchCodeRepository = SearchCodeResponse['items'][number]['repository']
 
 export type SearchPage = Pick<SearchCodeResponse, 'total_count' | 'incomplete_results'> & {
   items: Array<{
-    repository: Pick<SearchCodeRepository, 'html_url' | 'description'> & { private?: SearchCodeRepository['private'] }
+    repository: Pick<SearchCodeRepository, 'html_url' | 'description'> & {
+      node_id?: SearchCodeRepository['node_id']
+      private?: SearchCodeRepository['private']
+    }
   }>
 }
 
@@ -18,24 +21,33 @@ export type GitHubRepo = Pick<
   RepositoryResponse,
   'html_url' | 'name' | 'description' | 'stargazers_count' | 'forks_count' | 'subscribers_count' | 'pushed_at'
 > & {
+  node_id?: string
   owner: Pick<RepositoryResponse['owner'], 'login' | 'html_url'>
   pushed_at: Extract<RepositoryResponse['pushed_at'], string>
   private?: RepositoryResponse['private']
 }
 
-export type Marketplace = { plugins: unknown[] }
+export type Marketplace = { plugins: unknown[]; oid?: string }
+
+export type GitHubGraphQLRepo = GitHubRepo & { node_id: string; marketplace_oid: string | null }
+export type GraphQLRateLimit = { cost: number; remaining: number; resetAt: string; limit: number; used: number }
+export type GraphQLBatchResult =
+  | { kind: 'found'; data: Array<GitHubGraphQLRepo | null>; rateLimit: GraphQLRateLimit }
+  | { kind: 'temporary-error'; status: number | null; reason: string }
 
 export type RepoResult<T> =
-  | { kind: 'found'; data: T }
+  | { kind: 'found'; data: T; etag?: string }
   | { kind: 'not-found'; retryCount?: number }
+  | { kind: 'not-modified'; etag?: string }
   | { kind: 'temporary-error'; status: number | null; reason: string; retryCount: number }
 
 type ResponseAction<T> = { kind: 'retry'; secondaryCount: number } | { kind: 'result'; result: RepoResult<T> }
 
 export interface GitHubReader {
   searchCode(query: string, page: number): Promise<SearchPage>
-  getRepository(owner: string, repo: string): Promise<RepoResult<GitHubRepo>>
-  getMarketplace(owner: string, repo: string): Promise<RepoResult<Marketplace>>
+  getRepository(owner: string, repo: string, etag?: string): Promise<RepoResult<GitHubRepo>>
+  getMarketplace(owner: string, repo: string, etag?: string): Promise<RepoResult<Marketplace>>
+  getRepositoriesByNodeId?(ids: readonly string[]): Promise<GraphQLBatchResult>
 }
 
 export class GitHubFatalError extends Error {
@@ -96,6 +108,7 @@ function parseSearch(value: unknown): SearchPage {
         record(item.repository) &&
         nonempty(item.repository.html_url) &&
         description(item.repository.description) &&
+        (item.repository.node_id === undefined || nonempty(item.repository.node_id)) &&
         (item.repository.private === undefined || typeof item.repository.private === 'boolean'),
     )
   ) {
@@ -114,6 +127,7 @@ function parseRepository(value: unknown): GitHubRepo {
     !count(value.forks_count) ||
     !count(value.subscribers_count) ||
     !nonempty(value.pushed_at) ||
+    (value.node_id !== undefined && !nonempty(value.node_id)) ||
     typeof value.private !== 'boolean' ||
     !record(value.owner) ||
     !nonempty(value.owner.login) ||
@@ -122,6 +136,57 @@ function parseRepository(value: unknown): GitHubRepo {
     throw new Error('Invalid repository response')
   }
   return value as GitHubRepo
+}
+
+function parseGraphQLRepo(value: unknown): GitHubGraphQLRepo | null {
+  if (value === null) return null
+  if (
+    !record(value) ||
+    !nonempty(value.id) ||
+    !nonempty(value.url) ||
+    !nonempty(value.name) ||
+    !description(value.description) ||
+    !count(value.stargazerCount) ||
+    !count(value.forkCount) ||
+    !nonempty(value.pushedAt) ||
+    typeof value.isPrivate !== 'boolean' ||
+    !record(value.owner) ||
+    !nonempty(value.owner.login) ||
+    !nonempty(value.owner.url) ||
+    !record(value.watchers) ||
+    !count(value.watchers.totalCount) ||
+    (value.object !== null && (!record(value.object) || !nonempty(value.object.oid)))
+  ) {
+    throw new Error('Invalid GraphQL repository response')
+  }
+  return {
+    node_id: value.id,
+    html_url: value.url,
+    name: value.name,
+    description: value.description,
+    stargazers_count: value.stargazerCount,
+    forks_count: value.forkCount,
+    subscribers_count: value.watchers.totalCount,
+    pushed_at: value.pushedAt,
+    private: value.isPrivate,
+    owner: { login: value.owner.login, html_url: value.owner.url },
+    marketplace_oid: value.object === null ? null : (value.object as { oid: string }).oid,
+  }
+}
+
+function parseGraphQLRateLimit(value: unknown): GraphQLRateLimit {
+  if (
+    !record(value) ||
+    !count(value.cost) ||
+    !count(value.remaining) ||
+    !count(value.limit) ||
+    !count(value.used) ||
+    !nonempty(value.resetAt) ||
+    Number.isNaN(Date.parse(value.resetAt))
+  ) {
+    throw new Error('Invalid GraphQL rate limit response')
+  }
+  return value as GraphQLRateLimit
 }
 
 function parseMarketplace(value: unknown): Marketplace {
@@ -162,25 +227,32 @@ export class GitHubClient implements GitHubReader {
     const result = await this.request('code_search', `/search/code?${params}`, parseSearch)
     if (result.kind !== 'found')
       throw new GitHubTemporaryError(
-        result.kind === 'not-found' ? 'Code search not found' : result.reason,
-        result.kind === 'not-found' ? 404 : result.status,
-        result.kind === 'not-found' ? (result.retryCount ?? 0) : result.retryCount,
+        result.kind === 'not-found' ? 'Code search not found' : result.kind === 'temporary-error' ? result.reason : 'Unexpected code search 304',
+        result.kind === 'not-found' ? 404 : result.kind === 'temporary-error' ? result.status : 304,
+        result.kind === 'not-found' ? (result.retryCount ?? 0) : result.kind === 'temporary-error' ? result.retryCount : 0,
       )
     return result.data
   }
 
-  async getRepository(owner: string, repo: string): Promise<RepoResult<GitHubRepo>> {
-    const result = await this.request('core', `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, parseRepository)
+  async getRepository(owner: string, repo: string, etag?: string): Promise<RepoResult<GitHubRepo>> {
+    const result = await this.request(
+      'core',
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
+      parseRepository,
+      'application/vnd.github+json',
+      etag,
+    )
     if (result.kind === 'found' && result.data.private) return { kind: 'not-found' }
     return result
   }
 
-  getMarketplace(owner: string, repo: string): Promise<RepoResult<Marketplace>> {
+  getMarketplace(owner: string, repo: string, etag?: string): Promise<RepoResult<Marketplace>> {
     return this.request(
       'core',
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/.claude-plugin/marketplace.json`,
       parseMarketplace,
       'application/vnd.github.raw+json',
+      etag,
     )
   }
 
@@ -189,10 +261,11 @@ export class GitHubClient implements GitHubReader {
     path: string,
     parse: (value: unknown) => T,
     accept = 'application/vnd.github+json',
+    etag?: string,
   ): Promise<RepoResult<T>> {
     const run = this.pending.then(() => {
       throwIfShutdown(this.signal)
-      return this.perform(bucket, path, parse, accept)
+      return this.perform(bucket, path, parse, accept, etag)
     })
     this.pending = run.then(
       () => {},
@@ -201,7 +274,118 @@ export class GitHubClient implements GitHubReader {
     return run
   }
 
-  private async perform<T>(bucket: RateResource, path: string, parse: (value: unknown) => T, accept: string): Promise<RepoResult<T>> {
+  getRepositoriesByNodeId(ids: readonly string[]): Promise<GraphQLBatchResult> {
+    const run = this.pending.then(() => {
+      throwIfShutdown(this.signal)
+      return this.performGraphQL(ids)
+    })
+    this.pending = run.then(
+      () => {},
+      () => {},
+    )
+    return run
+  }
+
+  private async performGraphQL(ids: readonly string[]): Promise<GraphQLBatchResult> {
+    if (ids.length < 1 || ids.length > 50 || ids.some((id) => !nonempty(id))) {
+      throw new GitHubFatalError('GraphQL batch must contain 1..50 node IDs', null)
+    }
+    let secondaryCount = 0
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await this.budget.acquire('graphql', this.signal)
+      throwIfShutdown(this.signal)
+      let response: Response
+      const requestStartedAt = this.clock.now()
+      try {
+        response = await this.transport('https://api.github.com/graphql', {
+          method: 'POST',
+          signal: AbortSignal.timeout(10_000),
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+            Accept: 'application/vnd.github+json',
+            'Content-Type': 'application/json',
+            'X-GitHub-Api-Version': '2022-11-28',
+          },
+          body: JSON.stringify({
+            query: `query($ids: [ID!]!) {
+              nodes(ids: $ids) {
+                ... on Repository {
+                  id url name description stargazerCount forkCount pushedAt isPrivate
+                  owner { login url }
+                  watchers(first: 1) { totalCount }
+                  object(expression: "HEAD:.claude-plugin/marketplace.json") { ... on Blob { oid } }
+                }
+              }
+              rateLimit { cost remaining resetAt limit used }
+            }`,
+            variables: { ids },
+          }),
+        })
+      } catch {
+        throwIfShutdown(this.signal)
+        if (attempt === 3) return { kind: 'temporary-error', status: null, reason: 'GitHub network error' }
+        await this.clock.sleep(this.transientDelay(attempt), this.signal)
+        continue
+      }
+      this.budget.observe('graphql', response.headers)
+      const delay = retryAfter(response.headers, this.clock.now())
+      if (delay !== null) this.budget.defer('graphql', delay)
+      if (response.status === 401 || response.status === 422)
+        throw new GitHubFatalError(`GitHub GraphQL request rejected (${response.status})`, response.status)
+      if (response.status === 403 || response.status === 429) {
+        const remaining = response.headers.get('x-ratelimit-remaining')
+        if (remaining === '0') {
+          if (attempt === 3) return { kind: 'temporary-error', status: response.status, reason: 'GitHub GraphQL rate limited' }
+          continue
+        }
+        if (response.status === 403 && delay === null) {
+          const body = await response.text().catch(() => '')
+          if (!/secondary rate limit|abuse detection/i.test(body)) throw new GitHubFatalError('GitHub GraphQL access forbidden (403)', 403)
+        }
+        secondaryCount++
+        const pause = delay ?? 60_000 * 2 ** (secondaryCount - 1) + Math.floor(this.random() * 1_000)
+        this.budget.defer('graphql', pause)
+        if (attempt === 3) return { kind: 'temporary-error', status: response.status, reason: 'GitHub GraphQL secondary rate limit' }
+        continue
+      }
+      if (response.status >= 500 && response.status <= 599) {
+        if (attempt === 3) return { kind: 'temporary-error', status: response.status, reason: 'GitHub GraphQL server error' }
+        this.budget.defer('graphql', Math.max(delay ?? 0, this.transientDelay(attempt)))
+        continue
+      }
+      if (!response.ok) return { kind: 'temporary-error', status: response.status, reason: 'GitHub GraphQL HTTP error' }
+      try {
+        const payload: unknown = await response.json()
+        if (record(payload) && Array.isArray(payload.errors) && payload.errors.length > 0) {
+          const message = payload.errors
+            .map((error: unknown) => (record(error) && typeof error.message === 'string' ? error.message : ''))
+            .join(' ')
+          if (/secondary rate limit|abuse detection/i.test(message)) {
+            secondaryCount++
+            this.budget.defer('graphql', delay ?? 60_000 * 2 ** (secondaryCount - 1) + Math.floor(this.random() * 1_000))
+            if (attempt < 3) continue
+            return { kind: 'temporary-error', status: response.status, reason: 'GitHub GraphQL secondary rate limit' }
+          }
+          if (/rate limit exceeded|primary rate limit/i.test(message)) {
+            if (attempt < 3) continue
+            return { kind: 'temporary-error', status: response.status, reason: 'GitHub GraphQL rate limited' }
+          }
+          throw new Error('GraphQL returned errors')
+        }
+        if (!record(payload) || !record(payload.data) || !Array.isArray(payload.data.nodes) || payload.data.nodes.length !== ids.length) {
+          throw new Error('Invalid GraphQL response')
+        }
+        const rateLimit = parseGraphQLRateLimit(payload.data.rateLimit)
+        this.budget.observeGraphQL({ ...rateLimit, latencyMs: Math.max(0, this.clock.now() - requestStartedAt) }, response.headers)
+        return { kind: 'found', data: payload.data.nodes.map(parseGraphQLRepo), rateLimit }
+      } catch {
+        return { kind: 'temporary-error', status: response.status, reason: 'Invalid GraphQL response' }
+      }
+    }
+    return { kind: 'temporary-error', status: null, reason: 'GitHub GraphQL retry limit exceeded' }
+  }
+
+  private async perform<T>(bucket: RateResource, path: string, parse: (value: unknown) => T, accept: string, etag?: string): Promise<RepoResult<T>> {
     let secondaryCount = 0
     for (let attempt = 0; attempt < 4; attempt++) {
       await this.budget.acquire(bucket, this.signal)
@@ -214,6 +398,8 @@ export class GitHubClient implements GitHubReader {
             Authorization: `Bearer ${this.token}`,
             Accept: accept,
             'X-GitHub-Api-Version': '2022-11-28',
+            ...(etag ? { 'If-None-Match': etag } : {}),
+            ...(etag ? { 'If-None-Match': etag } : {}),
           },
         })
       } catch {
@@ -242,6 +428,7 @@ export class GitHubClient implements GitHubReader {
     if (delay !== null) this.budget.defer(bucket, delay)
     const { status } = response
     if (status === 401 || status === 422) throw new GitHubFatalError(`GitHub request rejected (${status})`, status)
+    if (status === 304) return { kind: 'result', result: { kind: 'not-modified', etag: response.headers.get('etag') ?? undefined } }
     if (status === 404) return { kind: 'result', result: { kind: 'not-found', retryCount: attempt } }
     if (status === 403 || status === 429) return this.handleRateLimit(bucket, response, attempt, delay, secondaryCount)
     if (status >= 500 && status <= 599) return this.handleServerError(bucket, status, attempt, delay, secondaryCount)
@@ -293,7 +480,14 @@ export class GitHubClient implements GitHubReader {
     secondaryCount: number,
   ): Promise<ResponseAction<T>> {
     try {
-      return { kind: 'result', result: { kind: 'found', data: parse((await response.json()) as unknown) } }
+      return {
+        kind: 'result',
+        result: {
+          kind: 'found',
+          data: parse((await response.json()) as unknown),
+          ...(response.headers.get('etag') ? { etag: response.headers.get('etag') as string } : {}),
+        },
+      }
     } catch {
       if (attempt === 3) {
         return {

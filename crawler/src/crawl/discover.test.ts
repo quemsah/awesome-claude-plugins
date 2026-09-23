@@ -114,29 +114,56 @@ it('stops at total_count even if the last page is full', async () => {
   expect(result).toMatchObject({ newUrls: 100, warningCount: 0 })
 })
 
-it.each([1000, 1001, 20_000])('caps a search claiming %i results at ten pages and records saturated coverage', async (total) => {
+it('splits a saturated size range until each child is below the search cap', async () => {
   const db = database()
-  const visited: number[] = []
+  const queries: string[] = []
   const result = await discover(
     db,
-    reader(async (_query, number) => {
-      visited.push(number)
-      return page(
-        Array.from({ length: 100 }, (_, i) => item(`https://github.com/owner/repo-${(number - 1) * 100 + i}`)),
-        total,
-      )
+    reader(async (query) => {
+      queries.push(query)
+      if (query.endsWith('0..3')) return page([], 1_000)
+      if (query.endsWith('0..1')) return page([item('https://github.com/owner/small')])
+      if (query.endsWith('2..3')) return page([item('https://github.com/owner/large')])
+      throw new Error(`Unexpected range: ${query}`)
     }),
     'run-1',
-    [firstRange],
+    [[0, 3]],
   )
 
-  expect(visited).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-  expect(result).toMatchObject({ newUrls: 1000, existingUrls: 0, successfulRanges: 1, warningCount: 2 })
-  expect(errors(db)).toEqual([
-    { phase: 'search', range_start: 0, range_end: 150, error_type: 'saturated' },
-    { phase: 'search', range_start: 0, range_end: 150, error_type: 'page-limit' },
+  expect(queries).toEqual([
+    'filename:marketplace.json path:.claude-plugin size:0..3',
+    'filename:marketplace.json path:.claude-plugin size:0..1',
+    'filename:marketplace.json path:.claude-plugin size:2..3',
   ])
+  expect(result).toMatchObject({ newUrls: 2, successfulRanges: 2, warningCount: 0 })
 })
+
+it.each([1000, 1001, 20_000])(
+  'caps an unsplittable search claiming %i results at ten pages and records saturated coverage',
+  async (total) => {
+    const db = database()
+    const visited: number[] = []
+    const result = await discover(
+      db,
+      reader(async (_query, number) => {
+        visited.push(number)
+        return page(
+          Array.from({ length: 100 }, (_, i) => item(`https://github.com/owner/repo-${(number - 1) * 100 + i}`)),
+          total,
+        )
+      }),
+      'run-1',
+      [[0, 0]],
+    )
+
+    expect(visited).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    expect(result).toMatchObject({ newUrls: 1000, existingUrls: 0, successfulRanges: 1, warningCount: 2 })
+    expect(errors(db)).toEqual([
+      { phase: 'search', range_start: 0, range_end: 0, error_type: 'saturated' },
+      { phase: 'search', range_start: 0, range_end: 0, error_type: 'page-limit' },
+    ])
+  },
+)
 
 it('records incomplete_results with range bounds even when the first page is empty', async () => {
   const db = database()
@@ -203,6 +230,20 @@ it('counts case-variant GitHub URLs as existing instead of new', async () => {
 
   expect(result).toMatchObject({ newUrls: 0, existingUrls: 1, successfulRanges: 1, warningCount: 0 })
   expect(db.prepare('SELECT id, html_url FROM repositories').all()).toEqual([{ id, html_url: 'https://github.com/team/repo' }])
+})
+
+it('persists the repository node ID returned by Code Search', async () => {
+  const db = database()
+  await discover(
+    db,
+    reader(async () =>
+      page([{ repository: { html_url: 'https://github.com/team/repo', description: 'repo', node_id: 'MDEwOlJlcG9zaXRvcnkx' } }]),
+    ),
+    'run-1',
+    [firstRange],
+  )
+
+  expect(db.prepare('SELECT github_node_id FROM repositories').get()).toEqual({ github_node_id: 'MDEwOlJlcG9zaXRvcnkx' })
 })
 
 it('ignores private repositories returned by authenticated code search', async () => {

@@ -110,6 +110,14 @@ function summaryText(summary: TelegramSummary): string {
     for (const bucket of ['code_search', 'core'] as const) {
       details.push(`${bucket} requests: ${summary.rateBuckets[bucket].requests}; wait ms: ${summary.rateBuckets[bucket].waitMs}`)
     }
+    const graphql = summary.rateBuckets.graphql
+    if (graphql) {
+      details.push(`graphql requests: ${graphql.requests}; cost: ${graphql.totalCost}; remaining: ${graphql.lastRemaining ?? 'unknown'}`)
+      if (graphql.totalLatencyMs !== undefined && graphql.latencySamples !== undefined && graphql.lastLatencyMs !== undefined) {
+        const average = graphql.latencySamples ? Math.round(graphql.totalLatencyMs / graphql.latencySamples) : 0
+        details.push(`graphql latency ms: avg ${average}; last ${graphql.lastLatencyMs ?? 'unknown'}`)
+      }
+    }
   }
   if (summary.durationMs !== undefined) {
     const seconds = Math.floor(summary.durationMs / 1000)
