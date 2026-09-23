@@ -202,6 +202,7 @@ export class TelegramNotifier {
     let payload: unknown
     try {
       payload = await response.json()
+      throwIfShutdown(this.#signal)
     } catch (error) {
       if (this.#signal?.aborted) throw new ShutdownError()
       if (isAbort(error)) throw new TelegramNotificationError('timeout', response.status)
@@ -237,6 +238,7 @@ export class TelegramNotifier {
     let payload: unknown
     try {
       payload = await response.json()
+      throwIfShutdown(this.#signal)
     } catch (error) {
       if (this.#signal?.aborted) throw new ShutdownError()
       if (isAbort(error)) throw new TelegramNotificationError('timeout', status)
