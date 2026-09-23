@@ -16,12 +16,7 @@ function database() {
   return db
 }
 
-function insertRun(
-  db: Database.Database,
-  runId: string,
-  status: 'completed' | 'failed' | 'published',
-  completedAt: string,
-): void {
+function insertRun(db: Database.Database, runId: string, status: 'completed' | 'failed' | 'published', completedAt: string): void {
   db.prepare(`
     INSERT INTO runs (run_id, status, started_at, heartbeat_at, completed_at, published_at, commit_sha)
     VALUES (?, ?, ?, ?, ?, ?, ?)
