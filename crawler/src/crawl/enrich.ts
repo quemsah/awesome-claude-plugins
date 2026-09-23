@@ -162,7 +162,9 @@ async function loadRepository(
   }
   const moved = canonical.htmlUrl !== row.html_url
   const duplicate = moved
-    ? (db.prepare('SELECT * FROM repositories WHERE html_url = ? COLLATE NOCASE AND id != ? ORDER BY id LIMIT 1').get(canonical.htmlUrl, row.id) as RepositoryRow | undefined)
+    ? (db
+        .prepare('SELECT * FROM repositories WHERE html_url = ? COLLATE NOCASE AND id != ? ORDER BY id LIMIT 1')
+        .get(canonical.htmlUrl, row.id) as RepositoryRow | undefined)
     : undefined
   return {
     data: result.data,

@@ -58,12 +58,9 @@ export function upsertDiscovery(db: Database.Database, htmlUrl: string, descript
     return existing.id
   }
 
-  const result = db.prepare('INSERT INTO repositories (html_url, description, createdAt, updatedAt) VALUES (?, ?, ?, ?)').run(
-    htmlUrl,
-    description,
-    now,
-    now,
-  )
+  const result = db
+    .prepare('INSERT INTO repositories (html_url, description, createdAt, updatedAt) VALUES (?, ?, ?, ?)')
+    .run(htmlUrl, description, now, now)
   return Number(result.lastInsertRowid)
 }
 
@@ -110,9 +107,9 @@ export function rebindCanonicalUrl(db: Database.Database, id: number, htmlUrl: s
     const current = db.prepare('SELECT id FROM repositories WHERE id = ?').get(id) as { id: number } | undefined
     if (!current) throw new Error('Repository to rebind does not exist')
 
-    const duplicate = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE AND id != ? ORDER BY id LIMIT 1').get(htmlUrl, id) as
-      | { id: number }
-      | undefined
+    const duplicate = db
+      .prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE AND id != ? ORDER BY id LIMIT 1')
+      .get(htmlUrl, id) as { id: number } | undefined
     const keepId = duplicate ? Math.min(id, duplicate.id) : id
     const removedId = duplicate ? Math.max(id, duplicate.id) : null
 
@@ -124,9 +121,9 @@ export function rebindCanonicalUrl(db: Database.Database, id: number, htmlUrl: s
 
 export function deleteCanonicalRows(db: Database.Database, id: number, htmlUrl: string): void {
   db.transaction(() => {
-    const duplicate = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE AND id != ? ORDER BY id LIMIT 1').get(htmlUrl, id) as
-      | { id: number }
-      | undefined
+    const duplicate = db
+      .prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE AND id != ? ORDER BY id LIMIT 1')
+      .get(htmlUrl, id) as { id: number } | undefined
     deleteById(db, id)
     if (duplicate) deleteById(db, duplicate.id)
   })()
