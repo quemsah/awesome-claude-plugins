@@ -280,7 +280,7 @@ export async function executePublish(
         blocked = true
       }),
       runId,
-      { writeEnabled: options.writeEnabled, recover: options.recover },
+      { writeEnabled: options.writeEnabled, recover: options.recover, now },
     )
   } catch (error) {
     const failure = blocked ? new ActiveRunError() : error
