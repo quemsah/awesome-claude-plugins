@@ -204,6 +204,26 @@ describe('GitHubClient', () => {
     await expect(test.client.searchCode('q', 1)).rejects.toBeInstanceOf(GitHubTemporaryError)
   })
 
+  it('preserves retries when code search ends in 404 after a retryable failure', async () => {
+    const test = harness([new Response('', { status: 503 }), new Response('', { status: 404 })])
+
+    await expect(test.client.searchCode('q', 1)).rejects.toMatchObject({
+      status: 404,
+      retryCount: 1,
+    })
+    expect(test.requests).toHaveLength(2)
+  })
+
+  it('reports zero retries when code search returns 404 on the first attempt', async () => {
+    const test = harness([new Response('', { status: 404 })])
+
+    await expect(test.client.searchCode('q', 1)).rejects.toMatchObject({
+      status: 404,
+      retryCount: 0,
+    })
+    expect(test.requests).toHaveLength(1)
+  })
+
   it('returns temporary-error after bounded network and 5xx retries, without exposing exception text', async () => {
     const test = harness([
       new Error('test-secret'),
