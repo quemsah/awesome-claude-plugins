@@ -142,7 +142,7 @@ it('fails rather than completing when every search range fails, even if enrichme
 it('fails when search succeeds but every marketplace result is transient', async () => {
   const db = database()
   const client = reader({
-    getMarketplace: async () => ({ kind: 'temporary-error', status: 429, reason: 'rate limited' }),
+    getMarketplace: async () => ({ kind: 'temporary-error', status: 429, reason: 'rate limited', retryCount: 0 }),
   })
 
   await expect(runCrawl(db, client, 'no-conclusive', { ranges: [firstRange] })).rejects.toMatchObject({
@@ -177,7 +177,9 @@ it('completes with warnings from stored search and enrichment errors, including 
       return { items: [{ repository: { html_url: url, description: null } }], total_count: 1, incomplete_results: true }
     },
     getRepository: async (owner, name) =>
-      name === 'transient' ? { kind: 'temporary-error', status: 503, reason: 'network' } : { kind: 'found', data: repo(owner, name) },
+      name === 'transient'
+        ? { kind: 'temporary-error', status: 503, reason: 'network', retryCount: 0 }
+        : { kind: 'found', data: repo(owner, name) },
   })
 
   const result = await runCrawl(db, client, 'partial', { ranges })
@@ -420,7 +422,6 @@ it('refuses overlapping runs and allows retry with another id after the first fa
   expect((await runCrawl(db, reader(), 'retry', { ranges: [firstRange] })).status).toBe('completed')
   expect(getRun(db, 'retry')?.status).toBe('completed')
 })
-
 it('marks a shutdown crawl as terminated after the in-flight request and releases the active-run lock', async () => {
   const db = database()
   const shutdown = new AbortController()
@@ -446,3 +447,4 @@ it('marks a shutdown crawl as terminated after the in-flight request and release
   })
   expect(listRunErrors(db, 'shutdown')).toContainEqual(expect.objectContaining({ phase: 'crawl', error_type: 'terminated' }))
 })
+
