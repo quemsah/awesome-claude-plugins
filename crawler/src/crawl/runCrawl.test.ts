@@ -447,4 +447,3 @@ it('marks a shutdown crawl as terminated after the in-flight request and release
   })
   expect(listRunErrors(db, 'shutdown')).toContainEqual(expect.objectContaining({ phase: 'crawl', error_type: 'terminated' }))
 })
-
