@@ -2,7 +2,7 @@ import type { PublishableRepository } from '../storage/repositories.js'
 import { assertValidStatsDraft, type StatsRecord } from './statsDraft.js'
 
 function tableCell(value: string | null): string {
-  return (value ?? '').replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r\n?|\n/g, ' ')
+  return (value ?? '').replace(/\|/g, '&#124;').replace(/\r\n?|\n/g, ' ')
 }
 
 export function renderReadme(repositories: readonly PublishableRepository[], draft: StatsRecord): string {

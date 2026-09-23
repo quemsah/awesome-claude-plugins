@@ -13,7 +13,7 @@ import {
   GitHubGitTimeoutError,
   type GitSnapshotFiles,
 } from './githubGit.js'
-import { PublicationError, prepareDraft, publishRun } from './publishRun.js'
+import { PublicationError, prepareDraft, publishRun, readDraftSnapshot } from './publishRun.js'
 
 const databases: Database.Database[] = []
 const directories: string[] = []
@@ -163,11 +163,16 @@ it('fails preparation on an invalid catalog or conflicting historical date and k
   expect(getRun(db, 'r1')?.draft_id).toBeNull()
 })
 
-it('rejects a forged ranked README row before preparing any publishable draft', () => {
+it('flattens a forged ranked README row into safe description text before preparing the draft', () => {
   const db = fixture()
   db.prepare('UPDATE repositories SET description = ? WHERE id = 18').run('safe\n| 1 | [spoof](https://github.com/example/spoof) | ')
-  expect(() => prepareDraft(db, 'r1', timestamp)).toThrow(expect.objectContaining({ category: 'snapshot_invalid' }))
-  expect(getRun(db, 'r1')?.draft_hash).toBeNull()
+
+  prepareDraft(db, 'r1', timestamp)
+
+  const readme = readDraftSnapshot(db, 'r1').readme
+  expect(readme).not.toMatch(/^\| 1 \| \[spoof\]/m)
+  expect(readme).toContain('safe &#124; 1 &#124; [spoof](https://github.com/example/spoof) &#124;')
+  expect(getRun(db, 'r1')?.draft_hash).toMatch(/^[0-9a-f]{64}$/)
 })
 
 it('cannot partially persist a draft if SQLite rejects the run update', () => {
