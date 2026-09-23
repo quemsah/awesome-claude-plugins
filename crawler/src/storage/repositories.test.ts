@@ -33,7 +33,7 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true })
 })
 
-it('discovers the exact URL only once without resetting previously enriched data', () => {
+it('discovers case-insensitive GitHub URLs only once without resetting previously enriched data', () => {
   const { upsertDiscovery, updateEnriched } = repositoryStorage
   const db = database()
   db.prepare("INSERT INTO repositories (id, createdAt, updatedAt) VALUES (70, 'old', 'old')").run()
@@ -49,7 +49,8 @@ it('discovers the exact URL only once without resetting previously enriched data
     stargazers_count: 5,
   })
   const other = upsertDiscovery(db, 'https://github.com/Example/repo', 'different URL')
-  expect(other).not.toBe(id)
+  expect(other).toBe(id)
+  expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 2 })
 })
 
 it('refreshes the description of an unenriched discovered row without changing its id', () => {

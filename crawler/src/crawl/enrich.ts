@@ -160,9 +160,9 @@ async function loadRepository(
     recordProblem(db, runId, counts, row, 'repository_identity_mismatch', previouslyReady, true)
     return null
   }
-  const moved = canonical.htmlUrl.toLowerCase() !== row.html_url?.toLowerCase()
+  const moved = canonical.htmlUrl !== row.html_url
   const duplicate = moved
-    ? (db.prepare('SELECT * FROM repositories WHERE html_url = ? AND id != ?').get(canonical.htmlUrl, row.id) as RepositoryRow | undefined)
+    ? (db.prepare('SELECT * FROM repositories WHERE html_url = ? COLLATE NOCASE AND id != ? ORDER BY id LIMIT 1').get(canonical.htmlUrl, row.id) as RepositoryRow | undefined)
     : undefined
   return {
     data: result.data,

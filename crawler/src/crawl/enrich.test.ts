@@ -205,10 +205,9 @@ it('refreshes a complete row using the same owner and repo for both calls withou
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 1 })
 })
 
-it('refreshes a case-variant URL without changing its id, URL, or publishable identity', async () => {
+it('canonicalizes a case-variant URL and merges an imported case-insensitive duplicate', async () => {
   const db = database()
-  const url = 'https://github.com/Team/Repo'
-  const id = upsertDiscovery(db, url, null)
+  const id = upsertDiscovery(db, 'https://github.com/Team/Repo', null)
   updateEnriched(db, id, {
     stargazers_count: 1,
     forks_count: 1,
@@ -220,8 +219,11 @@ it('refreshes a case-variant URL without changing its id, URL, or publishable id
     repo_updated: 'old',
     plugins_count: 1,
   })
-  const twinId = upsertDiscovery(db, 'https://github.com/team/repo', null)
-  ready(db, twinId)
+  db.prepare(`
+    INSERT INTO repositories (id, html_url, createdAt, updatedAt)
+    VALUES (500, 'https://github.com/team/repo', 'legacy-created', 'legacy-updated')
+  `).run()
+  ready(db, 500)
   const canonical = githubRepo('team', 'repo')
   const getMarketplace = vi.fn(async () => ({ kind: 'found' as const, data: { plugins: [1, 2] } }))
 
@@ -231,24 +233,21 @@ it('refreshes a case-variant URL without changing its id, URL, or publishable id
       reader(async () => ({ kind: 'found', data: canonical }), getMarketplace),
       'crawl-1',
     ),
-  ).toMatchObject({
-    updated: 2,
-    conclusive: 2,
-    warnings: 0,
-  })
-  expect(getMarketplace).toHaveBeenCalledWith('Team', 'Repo')
+  ).toMatchObject({ updated: 1, conclusive: 1, warnings: 0 })
+  expect(getMarketplace).toHaveBeenCalledOnce()
   expect(getMarketplace).toHaveBeenCalledWith('team', 'repo')
-  expect(db.prepare('SELECT id, html_url, owner, owner_url, repo_name, plugins_count FROM repositories WHERE id = ?').get(id)).toEqual({
-    id,
-    html_url: url,
-    owner: 'Team',
-    owner_url: 'https://github.com/Team',
-    repo_name: 'Repo',
-    plugins_count: 2,
-  })
-  expect(listPublishable(db).map((row) => row.id)).toEqual([id, twinId])
+  expect(db.prepare('SELECT id, html_url, owner, owner_url, repo_name, plugins_count FROM repositories').all()).toEqual([
+    {
+      id,
+      html_url: 'https://github.com/team/repo',
+      owner: 'team',
+      owner_url: 'https://github.com/team',
+      repo_name: 'repo',
+      plugins_count: 2,
+    },
+  ])
+  expect(listPublishable(db).map((row) => row.id)).toEqual([id])
 })
-
 it.each(['repository', 'marketplace'] as const)('deletes a case-variant URL on confirmed %s 404', async (endpoint) => {
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/Team/Repo', null)

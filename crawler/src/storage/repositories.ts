@@ -47,16 +47,24 @@ export function upsertDiscovery(db: Database.Database, htmlUrl: string, descript
   if (!htmlUrl.trim()) throw new Error('Discovery URL must not be blank')
 
   const now = new Date().toISOString()
-  db.prepare(`
-    INSERT INTO repositories (html_url, description, createdAt, updatedAt)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(html_url) DO UPDATE SET
-      description = excluded.description,
-      updatedAt = excluded.updatedAt
-    WHERE repositories.owner IS NULL OR repositories.repo_name IS NULL OR repositories.owner_url IS NULL
-  `).run(htmlUrl, description, now, now)
-  const row = db.prepare('SELECT id FROM repositories WHERE html_url = ?').get(htmlUrl) as { id: number }
-  return row.id
+  const existing = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE ORDER BY id LIMIT 1').get(htmlUrl) as
+    | { id: number }
+    | undefined
+  if (existing) {
+    db.prepare(`
+      UPDATE repositories SET description = ?, updatedAt = ?
+      WHERE id = ? AND (owner IS NULL OR repo_name IS NULL OR owner_url IS NULL)
+    `).run(description, now, existing.id)
+    return existing.id
+  }
+
+  const result = db.prepare('INSERT INTO repositories (html_url, description, createdAt, updatedAt) VALUES (?, ?, ?, ?)').run(
+    htmlUrl,
+    description,
+    now,
+    now,
+  )
+  return Number(result.lastInsertRowid)
 }
 
 export function updateEnriched(db: Database.Database, id: number, fields: EnrichmentFields): boolean {
@@ -102,7 +110,7 @@ export function rebindCanonicalUrl(db: Database.Database, id: number, htmlUrl: s
     const current = db.prepare('SELECT id FROM repositories WHERE id = ?').get(id) as { id: number } | undefined
     if (!current) throw new Error('Repository to rebind does not exist')
 
-    const duplicate = db.prepare('SELECT id FROM repositories WHERE html_url = ? AND id != ?').get(htmlUrl, id) as
+    const duplicate = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE AND id != ? ORDER BY id LIMIT 1').get(htmlUrl, id) as
       | { id: number }
       | undefined
     const keepId = duplicate ? Math.min(id, duplicate.id) : id
@@ -116,7 +124,7 @@ export function rebindCanonicalUrl(db: Database.Database, id: number, htmlUrl: s
 
 export function deleteCanonicalRows(db: Database.Database, id: number, htmlUrl: string): void {
   db.transaction(() => {
-    const duplicate = db.prepare('SELECT id FROM repositories WHERE html_url = ? AND id != ?').get(htmlUrl, id) as
+    const duplicate = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE AND id != ? ORDER BY id LIMIT 1').get(htmlUrl, id) as
       | { id: number }
       | undefined
     deleteById(db, id)
