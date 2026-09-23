@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   isValidGitHubOwner,
+  isValidGitHubPathSegment,
   isValidGitHubRepositoryName,
   parseGitHubOwnerUrl,
   parseGitHubRepository,
@@ -14,6 +15,14 @@ describe('GitHub identifiers', () => {
 
   it.each(['.acme', 'acme_org', 'acme.org', '-acme', 'acme-', 'a'.repeat(40)])('rejects invalid owners: %s', (owner) => {
     expect(isValidGitHubOwner(owner)).toBe(false)
+  })
+
+  it.each(['-legacy', 'legacy-', 'legacy_owner', 'legacy.owner'])('accepts legacy crawler path segments: %s', (segment) => {
+    expect(isValidGitHubPathSegment(segment)).toBe(true)
+  })
+
+  it.each(['.', '..', 'owner/repo', 'bad repo'])('rejects unsafe crawler path segments: %s', (segment) => {
+    expect(isValidGitHubPathSegment(segment)).toBe(false)
   })
 
   it.each(['repo', '.github_tools.v2', 'repo-name', 'repo_name'])('accepts valid repository names: %s', (name) => {
@@ -32,11 +41,11 @@ describe('GitHub identifiers', () => {
 
   it('parses canonical GitHub URLs without accepting alternate URL shapes', () => {
     expect(parseGitHubOwnerUrl('https://github.com/acme-co')).toBe('acme-co')
-    expect(parseGitHubOwnerUrl('https://github.com/acme_org')).toBeUndefined()
+    expect(parseGitHubOwnerUrl('https://github.com/acme_org')).toBe('acme_org')
     expect(parseGitHubOwnerUrl('https://github.com/acme-co/')).toBeUndefined()
 
     expect(parseGitHubRepositoryUrl('https://github.com/acme-co/repo')).toEqual({ owner: 'acme-co', repo: 'repo' })
-    expect(parseGitHubRepositoryUrl('https://github.com/acme_org/repo')).toBeUndefined()
+    expect(parseGitHubRepositoryUrl('https://github.com/acme_org/repo')).toEqual({ owner: 'acme_org', repo: 'repo' })
     expect(parseGitHubRepositoryUrl('https://github.com/acme-co/repo/extra')).toBeUndefined()
     expect(parseGitHubRepositoryUrl('http://github.com/acme-co/repo')).toBeUndefined()
   })
