@@ -18,6 +18,101 @@ export type DiscoverySummary = {
   warnings: DiscoveryWarning[]
 }
 
+type RangeState = {
+  runId: string
+  range: SizeRange
+  warned: Set<DiscoveryWarningCategory>
+  summary: DiscoverySummary
+}
+
+function warn(db: Database.Database, state: RangeState, category: DiscoveryWarningCategory): void {
+  if (state.warned.has(category)) return
+  state.warned.add(category)
+  const [min, max] = state.range
+  recordRunError(db, {
+    run_id: state.runId,
+    phase: 'search',
+    range_start: min,
+    range_end: max,
+    error_type: category,
+    retry_count: 0,
+    occurred_at: new Date().toISOString(),
+  })
+  state.summary.warnings.push({ range: state.range, category })
+  state.summary.warningCount++
+}
+
+async function searchPage(
+  reader: GitHubReader,
+  query: string,
+  page: number,
+  db: Database.Database,
+  state: RangeState,
+): Promise<Awaited<ReturnType<GitHubReader['searchCode']>> | null> {
+  try {
+    return await reader.searchCode(query, page)
+  } catch (error) {
+    if (!(error instanceof GitHubTemporaryError) || error.status === 401 || error.status === 422) throw error
+    warn(db, state, 'temporary-error')
+    return null
+  }
+}
+
+function processItems(
+  db: Database.Database,
+  lookup: Database.Statement,
+  result: Awaited<ReturnType<GitHubReader['searchCode']>>,
+  state: RangeState,
+): void {
+  for (const { repository } of result.items) {
+    if (repository.private === true) continue
+    const url = repository.html_url
+    if (!parseRepositoryUrl(url)) {
+      warn(db, state, 'invalid-url')
+      continue
+    }
+    if (lookup.get(url)) state.summary.existingUrls++
+    else state.summary.newUrls++
+    upsertDiscovery(db, url, repository.description)
+  }
+}
+
+function recordPageWarnings(
+  db: Database.Database,
+  result: Awaited<ReturnType<GitHubReader['searchCode']>>,
+  page: number,
+  found: number,
+  state: RangeState,
+): void {
+  if (result.total_count >= 1000) warn(db, state, 'saturated')
+  if (result.incomplete_results) warn(db, state, 'incomplete-results')
+  if (page === 10 && result.items.length === 100) warn(db, state, 'page-limit')
+  if (result.items.length < 100 && found < result.total_count) warn(db, state, 'short-page')
+}
+
+async function searchRange(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  lookup: Database.Statement,
+  range: SizeRange,
+  summary: DiscoverySummary,
+): Promise<void> {
+  const [min, max] = range
+  const query = `filename:marketplace.json path:.claude-plugin size:${min}..${max}`
+  const state: RangeState = { runId, range, warned: new Set(), summary }
+  let found = 0
+  for (let page = 1; page <= 10; page++) {
+    const result = await searchPage(reader, query, page, db, state)
+    if (!result) break
+    if (page === 1) summary.successfulRanges++
+    recordPageWarnings(db, result, page, found, state)
+    processItems(db, lookup, result, state)
+    found += result.items.length
+    if (result.items.length < 100 || found >= result.total_count) break
+  }
+}
+
 export async function discover(
   db: Database.Database,
   reader: GitHubReader,
@@ -29,61 +124,7 @@ export async function discover(
   const lookup = db.prepare('SELECT id FROM repositories WHERE html_url = ?')
 
   for (const range of ranges) {
-    const [min, max] = range
-    const query = `filename:marketplace.json path:.claude-plugin size:${min}..${max}`
-    const warned = new Set<DiscoveryWarningCategory>()
-    const warn = (category: DiscoveryWarningCategory) => {
-      if (warned.has(category)) return
-      warned.add(category)
-      recordRunError(db, {
-        run_id: runId,
-        phase: 'search',
-        range_start: min,
-        range_end: max,
-        error_type: category,
-        retry_count: 0,
-        occurred_at: new Date().toISOString(),
-      })
-      summary.warnings.push({ range, category })
-      summary.warningCount++
-    }
-
-    let found = 0
-    for (let pageNumber = 1; pageNumber <= 10; pageNumber++) {
-      let result: Awaited<ReturnType<GitHubReader['searchCode']>>
-      try {
-        result = await reader.searchCode(query, pageNumber)
-      } catch (error) {
-        if (!(error instanceof GitHubTemporaryError)) throw error
-        if (error.status === 401 || error.status === 422) throw error
-        warn('temporary-error')
-        break
-      }
-
-      if (pageNumber === 1) summary.successfulRanges++
-      if (result.total_count >= 1000) warn('saturated')
-      if (result.incomplete_results) warn('incomplete-results')
-
-      for (const { repository } of result.items) {
-        if (repository.private === true) continue
-        const url = repository.html_url
-        if (!parseRepositoryUrl(url)) {
-          warn('invalid-url')
-          continue
-        }
-        if (lookup.get(url)) summary.existingUrls++
-        else summary.newUrls++
-        upsertDiscovery(db, url, repository.description)
-      }
-
-      found += result.items.length
-      if (pageNumber === 10 && result.items.length === 100) warn('page-limit')
-      if (result.items.length < 100) {
-        if (found < result.total_count) warn('short-page')
-        break
-      }
-      if (found >= result.total_count) break
-    }
+    await searchRange(db, reader, runId, lookup, range, summary)
     onRangeComplete?.()
   }
 

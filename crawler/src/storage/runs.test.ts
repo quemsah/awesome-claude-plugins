@@ -88,6 +88,8 @@ it('persists structured errors without storing tokens or HTTP response bodies', 
   ])
   expect(failRun(db, 'run-1', '2025-01-01T00:03:00Z', 'quota-exhausted')).toBe(true)
   expect(getRun(db, 'run-1')).toMatchObject({ status: 'failed', last_error: 'quota-exhausted' })
+  expect(failRun(db, 'run-1', 'later', 'other-error')).toBe(false)
+  expect(getRun(db, 'run-1')).toMatchObject({ status: 'failed', completed_at: '2025-01-01T00:03:00Z', last_error: 'quota-exhausted' })
   expect(() => failRun(db, 'run-1', 'later', 'Authorization: Bearer ghp-secret')).toThrow(/last_error/)
   expect(getRun(db, 'run-1')?.last_error).toBe('quota-exhausted')
   expect(listRunErrors(db, 'run-1')).toHaveLength(2)

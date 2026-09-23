@@ -64,14 +64,7 @@ function failureCategory(error: unknown): CrawlFailureCategory {
   return 'crawl_error'
 }
 
-export async function runCrawl(
-  db: Database.Database,
-  reader: GitHubReader,
-  runId: string,
-  options: RunCrawlOptions = {},
-): Promise<CrawlSummary> {
-  const now = () => (options.now ?? (() => new Date()))().toISOString()
-  // The caller's stale-run threshold must allow for a single rate-limited request (or a full 50-row batch).
+function beginCrawl(db: Database.Database, runId: string, now: () => string): void {
   try {
     beginRun(db, runId, now())
   } catch (error) {
@@ -81,55 +74,70 @@ export async function runCrawl(
     }
     throw new CrawlError('database_error', { cause: error })
   }
+}
+
+async function crawlAndComplete(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  options: RunCrawlOptions,
+  now: () => string,
+): Promise<CrawlSummary> {
+  const heartbeat = () => {
+    if (!heartbeatRun(db, runId, now())) throw new CrawlError('run_not_active')
+  }
+  const discovery = await discover(db, reader, runId, options.ranges ?? SIZE_RANGES, heartbeat)
+  heartbeat()
+  const enrichment = await enrichRepositories(db, reader, runId, heartbeat)
+  heartbeat()
+  if (discovery.successfulRanges === 0) throw new CrawlError('no_successful_ranges')
+  if (enrichment.conclusive === 0) throw new CrawlError('no_conclusive_enrichment')
+
+  const errors = listRunErrors(db, runId)
+  const errorCategories: Record<string, number> = {}
+  for (const error of errors) {
+    errorCategories[error.error_type] = (Object.hasOwn(errorCategories, error.error_type) ? errorCategories[error.error_type] : 0) + 1
+  }
+  if (!completeRun(db, runId, now(), errors.length)) throw new CrawlError('run_not_active')
+  return { runId, status: 'completed', discovery, enrichment, warningCount: errors.length, errorCategories }
+}
+
+function failCrawl(db: Database.Database, runId: string, error: unknown, category: CrawlFailureCategory, now: () => string): CrawlError {
+  const failure = error instanceof CrawlError ? error : new CrawlError(category, { cause: error })
+  if (category === 'run_not_active') return failure
+  let persistenceError: unknown
   try {
-    const heartbeat = () => {
-      if (!heartbeatRun(db, runId, now())) throw new CrawlError('run_not_active')
-    }
-    const discovery = await discover(db, reader, runId, options.ranges ?? SIZE_RANGES, heartbeat)
-    heartbeat()
-    const enrichment = await enrichRepositories(db, reader, runId, heartbeat)
-    heartbeat()
+    recordRunError(db, {
+      run_id: runId,
+      phase: 'crawl',
+      error_type: category,
+      retry_count: 0,
+      occurred_at: now(),
+    })
+  } catch (error) {
+    persistenceError = error
+  }
+  try {
+    if (!failRun(db, runId, now(), category)) throw new CrawlError('run_not_active')
+  } catch (error) {
+    persistenceError ??= error
+  }
+  return persistenceError ? new CrawlError('database_error', { cause: persistenceError }) : failure
+}
 
-    if (discovery.successfulRanges === 0) throw new CrawlError('no_successful_ranges')
-    if (enrichment.conclusive === 0) throw new CrawlError('no_conclusive_enrichment')
-
-    const errors = listRunErrors(db, runId)
-    const errorCategories: Record<string, number> = {}
-    for (const error of errors) {
-      errorCategories[error.error_type] = (Object.hasOwn(errorCategories, error.error_type) ? errorCategories[error.error_type] : 0) + 1
-    }
-    if (!completeRun(db, runId, now(), errors.length)) throw new CrawlError('run_not_active')
-
-    return {
-      runId,
-      status: 'completed',
-      discovery,
-      enrichment,
-      warningCount: errors.length,
-      errorCategories,
-    }
+export async function runCrawl(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  options: RunCrawlOptions = {},
+): Promise<CrawlSummary> {
+  const now = () => (options.now ?? (() => new Date()))().toISOString()
+  // The caller's stale-run threshold must allow for a single rate-limited request (or a full 50-row batch).
+  beginCrawl(db, runId, now)
+  try {
+    return await crawlAndComplete(db, reader, runId, options, now)
   } catch (error) {
     const category = failureCategory(error)
-    const failure = error instanceof CrawlError ? error : new CrawlError(category, { cause: error })
-    if (category === 'run_not_active') throw failure
-    let persistenceError: unknown
-    try {
-      recordRunError(db, {
-        run_id: runId,
-        phase: 'crawl',
-        error_type: category,
-        retry_count: 0,
-        occurred_at: now(),
-      })
-    } catch (recordError) {
-      persistenceError = recordError
-    }
-    try {
-      if (!failRun(db, runId, now(), category)) throw new CrawlError('run_not_active')
-    } catch (markError) {
-      persistenceError ??= markError
-    }
-    if (persistenceError) throw new CrawlError('database_error', { cause: persistenceError })
-    throw failure
+    throw failCrawl(db, runId, error, category, now)
   }
 }

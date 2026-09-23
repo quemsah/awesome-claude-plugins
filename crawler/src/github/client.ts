@@ -25,6 +25,8 @@ export type RepoResult<T> =
   | { kind: 'not-found' }
   | { kind: 'temporary-error'; status: number | null; reason: string }
 
+type ResponseAction<T> = { kind: 'retry'; secondaryCount: number } | { kind: 'result'; result: RepoResult<T> }
+
 export interface GitHubReader {
   searchCode(query: string, page: number): Promise<SearchPage>
   getRepository(owner: string, repo: string): Promise<RepoResult<GitHubRepo>>
@@ -216,46 +218,81 @@ export class GitHubClient implements GitHubReader {
         this.budget.defer(bucket, this.transientDelay(attempt))
         continue
       }
-
-      this.budget.observe(bucket, response.headers)
-      const delay = retryAfter(response.headers, this.clock.now())
-      if (delay !== null) this.budget.defer(bucket, delay)
-      const status = response.status
-      if (status === 401 || status === 422) throw new GitHubFatalError(`GitHub request rejected (${status})`, status)
-      if (status === 404) return { kind: 'not-found' }
-
-      const remaining = response.headers.get('x-ratelimit-remaining')
-      if (status === 403 || status === 429) {
-        let secondary = status === 429 || (status === 403 && remaining !== '0' && delay !== null)
-        if (status === 403 && remaining !== '0' && delay === null) {
-          const body = await response.text().catch(() => '')
-          if (/secondary rate limit|abuse detection/i.test(body)) secondary = true
-          else throw new GitHubFatalError('GitHub access forbidden (403)', status)
-        }
-        if (secondary) secondaryCount++
-        this.budget.defer(
-          bucket,
-          Math.max(delay ?? 0, secondary ? 60_000 * 2 ** (secondaryCount - 1) + Math.floor(this.random() * 1_000) : 0),
-        )
-        if (attempt === 3) return { kind: 'temporary-error', status, reason: 'GitHub rate limited' }
-        continue
-      }
-
-      if (status >= 500 && status <= 599) {
-        if (attempt === 3) return { kind: 'temporary-error', status, reason: 'GitHub server error' }
-        this.budget.defer(bucket, Math.max(delay ?? 0, this.transientDelay(attempt)))
-        continue
-      }
-      if (!response.ok) return { kind: 'temporary-error', status, reason: 'GitHub HTTP error' }
-
-      try {
-        return { kind: 'found', data: parse((await response.json()) as unknown) }
-      } catch {
-        if (attempt === 3) return { kind: 'temporary-error', status, reason: 'Invalid GitHub response' }
-        this.budget.defer(bucket, this.transientDelay(attempt))
-      }
+      const action = await this.handleResponse(bucket, response, parse, attempt, secondaryCount)
+      if (action.kind === 'result') return action.result
+      secondaryCount = action.secondaryCount
     }
     return { kind: 'temporary-error', status: null, reason: 'GitHub retry limit exceeded' }
+  }
+
+  private async handleResponse<T>(
+    bucket: RateResource,
+    response: Response,
+    parse: (value: unknown) => T,
+    attempt: number,
+    secondaryCount: number,
+  ): Promise<ResponseAction<T>> {
+    this.budget.observe(bucket, response.headers)
+    const delay = retryAfter(response.headers, this.clock.now())
+    if (delay !== null) this.budget.defer(bucket, delay)
+    const { status } = response
+    if (status === 401 || status === 422) throw new GitHubFatalError(`GitHub request rejected (${status})`, status)
+    if (status === 404) return { kind: 'result', result: { kind: 'not-found' } }
+    if (status === 403 || status === 429) return this.handleRateLimit(bucket, response, attempt, delay, secondaryCount)
+    if (status >= 500 && status <= 599) return this.handleServerError(bucket, status, attempt, delay, secondaryCount)
+    if (!response.ok) return { kind: 'result', result: { kind: 'temporary-error', status, reason: 'GitHub HTTP error' } }
+    return this.parseResponse(bucket, response, parse, attempt, secondaryCount)
+  }
+
+  private async handleRateLimit<T>(
+    bucket: RateResource,
+    response: Response,
+    attempt: number,
+    delay: number | null,
+    secondaryCount: number,
+  ): Promise<ResponseAction<T>> {
+    const { status } = response
+    const remaining = response.headers.get('x-ratelimit-remaining')
+    let secondary = status === 429 || (remaining !== '0' && delay !== null)
+    if (status === 403 && remaining !== '0' && delay === null) {
+      const body = await response.text().catch(() => '')
+      if (/secondary rate limit|abuse detection/i.test(body)) secondary = true
+      else throw new GitHubFatalError('GitHub access forbidden (403)', status)
+    }
+    if (secondary) secondaryCount++
+    this.budget.defer(bucket, Math.max(delay ?? 0, secondary ? 60_000 * 2 ** (secondaryCount - 1) + Math.floor(this.random() * 1_000) : 0))
+    if (attempt === 3) return { kind: 'result', result: { kind: 'temporary-error', status, reason: 'GitHub rate limited' } }
+    return { kind: 'retry', secondaryCount }
+  }
+
+  private async handleServerError<T>(
+    bucket: RateResource,
+    status: number,
+    attempt: number,
+    delay: number | null,
+    secondaryCount: number,
+  ): Promise<ResponseAction<T>> {
+    if (attempt === 3) return { kind: 'result', result: { kind: 'temporary-error', status, reason: 'GitHub server error' } }
+    this.budget.defer(bucket, Math.max(delay ?? 0, this.transientDelay(attempt)))
+    return { kind: 'retry', secondaryCount }
+  }
+
+  private async parseResponse<T>(
+    bucket: RateResource,
+    response: Response,
+    parse: (value: unknown) => T,
+    attempt: number,
+    secondaryCount: number,
+  ): Promise<ResponseAction<T>> {
+    try {
+      return { kind: 'result', result: { kind: 'found', data: parse((await response.json()) as unknown) } }
+    } catch {
+      if (attempt === 3) {
+        return { kind: 'result', result: { kind: 'temporary-error', status: response.status, reason: 'Invalid GitHub response' } }
+      }
+      this.budget.defer(bucket, this.transientDelay(attempt))
+      return { kind: 'retry', secondaryCount }
+    }
   }
 
   private transientDelay(attempt: number): number {

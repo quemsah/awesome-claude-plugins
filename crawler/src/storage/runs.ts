@@ -122,7 +122,7 @@ export function failRun(db: Database.Database, runId: string, at: string, lastEr
   assertCategory(lastError, 'last_error')
   return (
     db
-      .prepare("UPDATE runs SET status = 'failed', completed_at = ?, last_error = ? WHERE run_id = ? AND status != 'published'")
+      .prepare("UPDATE runs SET status = 'failed', completed_at = ?, last_error = ? WHERE run_id = ? AND status = 'running'")
       .run(at, lastError, runId).changes !== 0
   )
 }

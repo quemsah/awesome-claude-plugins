@@ -134,15 +134,33 @@ function category(error: unknown): string {
   return 'execution_error'
 }
 
+function errorCategories(
+  errors: ReturnType<typeof listRunErrors>,
+  counts: CrawlSummary | undefined,
+  saved: Partial<RunReport> | null,
+): Record<string, number> {
+  const categories = counts?.errorCategories ?? saved?.errorCategories ?? {}
+  if (counts || saved?.errorCategories) return categories
+  for (const error of errors) categories[error.error_type] = (categories[error.error_type] ?? 0) + 1
+  return categories
+}
+
+function problematicRanges(errors: ReturnType<typeof listRunErrors>): string[] {
+  return [
+    ...new Set(
+      errors
+        .filter((error) => error.phase === 'search' && error.range_start !== null && error.range_end !== null)
+        .map((error) => `size:${error.range_start}..${error.range_end}`),
+    ),
+  ]
+}
+
 function summary(db: Database.Database, runId: string, counts?: CrawlSummary, buckets?: GitHubRateBuckets): TelegramSummary {
   const errors = listRunErrors(db, runId)
   const run = getRun(db, runId)
   const saved = storedReport(db, runId)
   const report = counts?.enrichment ?? saved?.enrichment
-  const errorCategories: Record<string, number> = counts?.errorCategories ?? saved?.errorCategories ?? {}
-  if (!counts && !saved?.errorCategories) {
-    for (const error of errors) errorCategories[error.error_type] = (errorCategories[error.error_type] ?? 0) + 1
-  }
+  const categories = errorCategories(errors, counts, saved)
   return {
     runId,
     catalogSize: run?.draft_size ?? listPublishable(db).length,
@@ -150,16 +168,10 @@ function summary(db: Database.Database, runId: string, counts?: CrawlSummary, bu
     deletedCount: (report?.deleted404 ?? 0) + (report?.deletedBlankUrl ?? 0),
     skippedCount: (report?.unchangedOnError ?? 0) + (report?.newIncomplete ?? 0),
     ...(report ? { enrichment: report } : {}),
-    ...(counts || saved || Object.keys(errorCategories).length ? { errorCategories } : {}),
+    ...(counts || saved || Object.keys(categories).length ? { errorCategories: categories } : {}),
     ...((buckets ?? saved?.rateBuckets) ? { rateBuckets: buckets ?? saved?.rateBuckets } : {}),
     ...(saved?.durationMs === undefined ? {} : { durationMs: saved.durationMs }),
-    problematicRanges: [
-      ...new Set(
-        errors
-          .filter((error) => error.phase === 'search' && error.range_start !== null && error.range_end !== null)
-          .map((error) => `size:${error.range_start}..${error.range_end}`),
-      ),
-    ],
+    problematicRanges: problematicRanges(errors),
   }
 }
 
@@ -224,6 +236,31 @@ function guardGit(db: Database.Database, git: GitHubGit, onBlocked: () => void):
   }
 }
 
+function recordPublishFailure(db: Database.Database, runId: string, reason: string, now: () => Date, log: (event: LogEvent) => void): void {
+  if (!getRun(db, runId)) return
+  try {
+    recordRunError(db, { run_id: runId, phase: 'publish', error_type: reason, retry_count: 0, occurred_at: now().toISOString() })
+  } catch {
+    log({ level: 'error', phase: 'publish', category: 'record_error_failed', runId })
+  }
+}
+
+async function notifyPublishSuccess(
+  db: Database.Database,
+  runId: string,
+  sha: string,
+  notifier: Notifier | undefined,
+  now: () => Date,
+  log: (event: LogEvent) => void,
+): Promise<void> {
+  if (!notifier) return
+  try {
+    await notifier.notifySuccess({ ...summary(db, runId), confirmedGitSha: sha })
+  } catch (error) {
+    logDelivery(db, runId, now, log, error)
+  }
+}
+
 export async function executePublish(
   db: Database.Database,
   git: GitHubGit,
@@ -248,24 +285,87 @@ export async function executePublish(
   } catch (error) {
     const failure = blocked ? new ActiveRunError() : error
     const reason = category(failure)
-    if (getRun(db, runId)) {
-      try {
-        recordRunError(db, { run_id: runId, phase: 'publish', error_type: reason, retry_count: 0, occurred_at: now().toISOString() })
-      } catch {
-        log({ level: 'error', phase: 'publish', category: 'record_error_failed', runId })
-      }
-    }
+    recordPublishFailure(db, runId, reason, now, log)
     await notifyFailure(db, runId, reason, options.notifier, now, log)
     throw failure
   }
-  if (options.notifier) {
+  await notifyPublishSuccess(db, runId, sha, options.notifier, now, log)
+  return { status: 'published', runId, sha, ...(report ? { report } : {}) }
+}
+
+async function notifyCrawlStart(db: Database.Database, runId: string, notifier: Notifier | undefined): Promise<unknown> {
+  if (!notifier) return undefined
+  try {
+    await notifier.notifyStart(summary(db, runId))
+    return undefined
+  } catch (error) {
+    return error
+  }
+}
+
+async function crawlAndPrepare(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  options: CrawlOptions,
+  now: () => Date,
+  onCrawlComplete: (counts: CrawlSummary) => void,
+): Promise<{ counts: CrawlSummary; size: number; report: RunReport }> {
+  const crawlStartedAt = performance.now()
+  const counts = await runCrawl(db, reader, runId, { ranges: options.ranges, now })
+  onCrawlComplete(counts)
+  const size = prepareDraft(db, runId, now()).size
+  const report: RunReport = {
+    discovery: counts.discovery,
+    enrichment: counts.enrichment,
+    warningCount: counts.warningCount,
+    errorCategories: counts.errorCategories,
+    ...(options.rateBuckets ? { rateBuckets: options.rateBuckets() } : {}),
+    durationMs: Math.round(performance.now() - crawlStartedAt),
+  }
+  setSetting(db, `run_report_${runId}`, JSON.stringify(report))
+  return { counts, size, report }
+}
+
+async function handleCrawlFailure(
+  db: Database.Database,
+  runId: string,
+  error: unknown,
+  counts: CrawlSummary | undefined,
+  options: CrawlOptions,
+  now: () => Date,
+  log: (event: LogEvent) => void,
+): Promise<void> {
+  if (counts && getRun(db, runId)) {
     try {
-      await options.notifier.notifySuccess({ ...summary(db, runId), confirmedGitSha: sha })
-    } catch (error) {
-      logDelivery(db, runId, now, log, error)
+      recordRunError(db, {
+        run_id: runId,
+        phase: 'publish',
+        error_type: category(error),
+        retry_count: 0,
+        occurred_at: now().toISOString(),
+      })
+    } catch {
+      log({ level: 'error', phase: 'publish', category: 'record_error_failed', runId })
     }
   }
-  return { status: 'published', runId, sha, ...(report ? { report } : {}) }
+  await notifyFailure(db, runId, category(error), options.notifier, now, log, counts, options.rateBuckets?.())
+}
+
+async function notifyDryRun(
+  db: Database.Database,
+  runId: string,
+  counts: CrawlSummary,
+  options: CrawlOptions,
+  now: () => Date,
+  log: (event: LogEvent) => void,
+): Promise<void> {
+  if (!options.notifier) return
+  try {
+    await options.notifier.notifyDryRun(summary(db, runId, counts, options.rateBuckets?.()))
+  } catch (error) {
+    logDelivery(db, runId, now, log, error)
+  }
 }
 
 export async function executeCrawl(
@@ -279,68 +379,32 @@ export async function executeCrawl(
 > {
   const now = options.now ?? (() => new Date())
   const log = options.log ?? ((event: LogEvent) => console.error(JSON.stringify(event)))
-  let startError: unknown
-  if (options.notifier) {
-    try {
-      await options.notifier.notifyStart(summary(db, runId))
-    } catch (error) {
-      startError = error
-    }
-  }
+  const startError = await notifyCrawlStart(db, runId, options.notifier)
   let counts: CrawlSummary | undefined
-  let size: number
-  let report: RunReport
   let startRecorded = false
-  const crawlStartedAt = performance.now()
+  let prepared: { counts: CrawlSummary; size: number; report: RunReport }
   try {
-    counts = await runCrawl(db, reader, runId, { ranges: options.ranges, now })
-    if (startError) {
-      logDelivery(db, runId, now, log, startError)
-      startRecorded = true
-    }
-    size = prepareDraft(db, runId, now()).size
-    const durationMs = Math.round(performance.now() - crawlStartedAt)
-    report = {
-      discovery: counts.discovery,
-      enrichment: counts.enrichment,
-      warningCount: counts.warningCount,
-      errorCategories: counts.errorCategories,
-      ...(options.rateBuckets ? { rateBuckets: options.rateBuckets() } : {}),
-      durationMs,
-    }
-    setSetting(db, `run_report_${runId}`, JSON.stringify(report))
+    prepared = await crawlAndPrepare(db, reader, runId, options, now, (completedCounts) => {
+      counts = completedCounts
+      if (startError) {
+        logDelivery(db, runId, now, log, startError)
+        startRecorded = true
+      }
+    })
+    counts = prepared.counts
   } catch (error) {
     if (startError && !startRecorded) logDelivery(db, runId, now, log, startError)
-    if (counts && getRun(db, runId)) {
-      try {
-        recordRunError(db, {
-          run_id: runId,
-          phase: 'publish',
-          error_type: category(error),
-          retry_count: 0,
-          occurred_at: now().toISOString(),
-        })
-      } catch {
-        log({ level: 'error', phase: 'publish', category: 'record_error_failed', runId })
-      }
-    }
-    await notifyFailure(db, runId, category(error), options.notifier, now, log, counts, options.rateBuckets?.())
+    await handleCrawlFailure(db, runId, error, counts, options, now, log)
     throw error
   }
   if (options.dryRun) {
-    if (options.notifier) {
-      try {
-        await options.notifier.notifyDryRun(summary(db, runId, counts, options.rateBuckets?.()))
-      } catch (error) {
-        logDelivery(db, runId, now, log, error)
-      }
-    }
-    return { status: 'draft', runId, size, report }
+    await notifyDryRun(db, runId, prepared.counts, options, now, log)
+    return { status: 'draft', runId, size: prepared.size, report: prepared.report }
   }
   if (!options.git) {
-    await notifyFailure(db, runId, 'write_disabled', options.notifier, now, log, counts)
+    await notifyFailure(db, runId, 'write_disabled', options.notifier, now, log, prepared.counts)
     throw new PublicationError('write_disabled')
   }
   const published = await executePublish(db, options.git, runId, { now, notifier: options.notifier, log, writeEnabled: true })
-  return { status: 'published', runId, sha: published.sha, report }
+  return { status: 'published', runId, sha: published.sha, report: prepared.report }
 }

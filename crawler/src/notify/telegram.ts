@@ -175,59 +175,72 @@ export class TelegramNotifier {
     return this.send(`Publication succeeded\n${summaryText(summary)}\nconfirmed Git SHA: ${summary.confirmedGitSha}`)
   }
 
+  private async request(text: string, attempt: number): Promise<Response | null> {
+    try {
+      return await this.#transport(`https://api.telegram.org/bot${this.#botToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: this.#chatId, text }),
+        signal: AbortSignal.timeout(deadlineMs),
+      })
+    } catch (error) {
+      if (isAbort(error)) throw new TelegramNotificationError('timeout')
+      if (attempt === maxAttempts - 1) throw new TelegramNotificationError('network_error')
+      await this.#clock.sleep(1000 * 2 ** attempt)
+      return null
+    }
+  }
+
+  private async retryRateLimit(response: Response, attempt: number): Promise<void> {
+    let payload: unknown
+    try {
+      payload = await response.json()
+    } catch (error) {
+      if (isAbort(error)) throw new TelegramNotificationError('timeout', response.status)
+      // Retry-After may still be present on a non-JSON rate-limit response.
+    }
+    const status = response.status
+    if (attempt === maxAttempts - 1) throw new TelegramNotificationError('rate_limited', status)
+    const delay = Math.max(retryAfterJson(payload) ?? 0, retryAfterHeader(response.headers, this.#clock.now()) ?? 0, 1000)
+    if (delay > maxRetryDelayMs) throw new TelegramNotificationError('rate_limited', status)
+    await this.#clock.sleep(delay)
+  }
+
+  private async sendAttempt(text: string, attempt: number): Promise<boolean> {
+    const response = await this.request(text, attempt)
+    if (!response) return false
+    const { status } = response
+    if (status === 401 || status === 403) throw new TelegramNotificationError('authorization', status)
+    if (status === 429) {
+      await this.retryRateLimit(response, attempt)
+      return false
+    }
+    if (status >= 500) {
+      if (attempt === maxAttempts - 1) throw new TelegramNotificationError('server_error', status)
+      await this.#clock.sleep(1000 * 2 ** attempt)
+      return false
+    }
+    if (!response.ok || status !== 200) throw new TelegramNotificationError('http_error', status)
+    await this.checkResponse(response, status)
+    return true
+  }
+
+  private async checkResponse(response: Response, status: number): Promise<void> {
+    let payload: unknown
+    try {
+      payload = await response.json()
+    } catch (error) {
+      if (isAbort(error)) throw new TelegramNotificationError('timeout', status)
+      throw new TelegramNotificationError('invalid_response', status)
+    }
+    if (!record(payload) || typeof payload.ok !== 'boolean') throw new TelegramNotificationError('invalid_response', status)
+    if (!payload.ok) throw new TelegramNotificationError('rejected', status)
+  }
+
   private async send(text: string): Promise<void> {
     if (text.length > 4096) throw new TelegramNotificationError('configuration')
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      let response: Response
-      try {
-        response = await this.#transport(`https://api.telegram.org/bot${this.#botToken}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: this.#chatId, text }),
-          signal: AbortSignal.timeout(deadlineMs),
-        })
-      } catch (error) {
-        if (isAbort(error)) {
-          throw new TelegramNotificationError('timeout')
-        }
-        if (attempt === maxAttempts - 1) throw new TelegramNotificationError('network_error')
-        await this.#clock.sleep(1000 * 2 ** attempt)
-        continue
-      }
-
-      const status = response.status
-      if (status === 401 || status === 403) throw new TelegramNotificationError('authorization', status)
-      if (status === 429) {
-        let payload: unknown
-        try {
-          payload = await response.json()
-        } catch (error) {
-          if (isAbort(error)) throw new TelegramNotificationError('timeout', status)
-          // Retry-After may still be present on a non-JSON rate-limit response.
-        }
-        if (attempt === maxAttempts - 1) throw new TelegramNotificationError('rate_limited', status)
-        const delay = Math.max(retryAfterJson(payload) ?? 0, retryAfterHeader(response.headers, this.#clock.now()) ?? 0, 1000)
-        if (delay > maxRetryDelayMs) throw new TelegramNotificationError('rate_limited', status)
-        await this.#clock.sleep(delay)
-        continue
-      }
-      if (status >= 500) {
-        if (attempt === maxAttempts - 1) throw new TelegramNotificationError('server_error', status)
-        await this.#clock.sleep(1000 * 2 ** attempt)
-        continue
-      }
-      if (!response.ok || status !== 200) throw new TelegramNotificationError('http_error', status)
-
-      let payload: unknown
-      try {
-        payload = await response.json()
-      } catch (error) {
-        if (isAbort(error)) throw new TelegramNotificationError('timeout', status)
-        throw new TelegramNotificationError('invalid_response', status)
-      }
-      if (!record(payload) || typeof payload.ok !== 'boolean') throw new TelegramNotificationError('invalid_response', status)
-      if (!payload.ok) throw new TelegramNotificationError('rejected', status)
-      return
+      if (await this.sendAttempt(text, attempt)) return
     }
   }
 }

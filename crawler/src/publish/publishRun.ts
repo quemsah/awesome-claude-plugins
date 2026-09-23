@@ -228,6 +228,88 @@ async function update(git: GitHubGit, sha: string): Promise<'updated' | 'conflic
   }
 }
 
+function validatePublication(
+  run: RunRow | null,
+  options: { writeEnabled?: boolean; recover?: boolean; historyLimit?: number },
+): { run: RunRow; draft: RunDraft } {
+  if (options.writeEnabled !== true) throw new PublicationError('write_disabled')
+  if (run?.status !== 'completed' || run.completed_at === null || run.last_error !== null) throw new PublicationError('invalid_run')
+  if (
+    options.historyLimit !== undefined &&
+    (!options.recover || !Number.isSafeInteger(options.historyLimit) || options.historyLimit < 257 || options.historyLimit > 2048)
+  ) {
+    throw new PublicationError('invalid_run')
+  }
+  return { run, draft: savedDraft(run) }
+}
+
+function claimPublishLease(db: Database.Database, runId: string, owner: string, recover: boolean | undefined): void {
+  try {
+    claimPublicationLease(db, runId, owner, recover)
+  } catch (error) {
+    if (error instanceof PublicationLeaseError) throw new PublicationError(error.category)
+    throw new PublicationError('database_error')
+  }
+}
+
+async function resumePendingCommit(
+  db: Database.Database,
+  git: GitHubGit,
+  runId: string,
+  run: RunRow,
+  draft: RunDraft,
+  owner: string,
+  historyLimit: number | undefined,
+): Promise<string | { snapshot: ReturnType<typeof checkedSnapshot> }> {
+  if (run.pending_commit_sha && (await reachable(git, run.pending_commit_sha, historyLimit))) {
+    recordPublication(db, runId, draft, run.pending_commit_sha, owner)
+    return run.pending_commit_sha
+  }
+  const snapshot = checkedSnapshot(db, runId)
+  if (snapshot.pending) {
+    if (snapshot.pending !== run.pending_commit_sha) throw new PublicationError('git_indeterminate')
+    if ((await update(git, snapshot.pending)) === 'updated') {
+      recordPublication(db, runId, snapshot.draft, snapshot.pending, owner)
+      return snapshot.pending
+    }
+  }
+  return { snapshot }
+}
+
+async function createAndPublishSnapshot(
+  db: Database.Database,
+  git: GitHubGit,
+  runId: string,
+  owner: string,
+  snapshot: ReturnType<typeof checkedSnapshot>,
+): Promise<string> {
+  let expectedPending = snapshot.pending
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let commit: string
+    try {
+      const head = await git.getBranchHead()
+      const tree = await git.createTree(head.treeSha, snapshot.files)
+      commit = await git.createCommit(tree, head.sha, `Update catalog snapshot for run ${runId}`)
+    } catch {
+      throw new PublicationError('git_error')
+    }
+    rememberPending(db, runId, commit, expectedPending)
+    expectedPending = commit
+    if ((await update(git, commit)) === 'updated') {
+      recordPublication(db, runId, snapshot.draft, commit, owner)
+      return commit
+    }
+  }
+  throw new PublicationError('git_conflict')
+}
+
+function releaseUnpublishedLease(db: Database.Database, runId: string, owner: string): void {
+  const current = databaseResult(() => getRun(db, runId))
+  if (current?.status === 'completed' && current.pending_commit_sha === null) {
+    databaseResult(() => releasePublicationLease(db, runId, owner))
+  }
+}
+
 export async function publishRun(
   db: Database.Database,
   git: GitHubGit,
@@ -238,59 +320,15 @@ export async function publishRun(
   if (run?.status === 'published') {
     return publishedCommit(db, runId)
   }
-  if (options.writeEnabled !== true) throw new PublicationError('write_disabled')
-  if (run?.status !== 'completed' || run.completed_at === null || run.last_error !== null) throw new PublicationError('invalid_run')
-  if (
-    options.historyLimit !== undefined &&
-    (!options.recover || !Number.isSafeInteger(options.historyLimit) || options.historyLimit < 257 || options.historyLimit > 2048)
-  ) {
-    throw new PublicationError('invalid_run')
-  }
-  const prepared = savedDraft(run)
+  const { run: completedRun, draft: prepared } = validatePublication(run, options)
   const owner = randomUUID()
+  claimPublishLease(db, runId, owner, options.recover)
   try {
-    claimPublicationLease(db, runId, owner, options.recover)
-  } catch (error) {
-    if (error instanceof PublicationLeaseError) throw new PublicationError(error.category)
-    throw new PublicationError('database_error')
-  }
-  try {
-    if (run.pending_commit_sha && (await reachable(git, run.pending_commit_sha, options.historyLimit))) {
-      recordPublication(db, runId, prepared, run.pending_commit_sha, owner)
-      return run.pending_commit_sha
-    }
-    const { draft, files, pending: previousPending } = checkedSnapshot(db, runId)
-    if (previousPending) {
-      if (previousPending !== run.pending_commit_sha) throw new PublicationError('git_indeterminate')
-      if ((await update(git, previousPending)) === 'updated') {
-        recordPublication(db, runId, draft, previousPending, owner)
-        return previousPending
-      }
-    }
-
-    let expectedPending = previousPending
-    for (let attempt = 0; attempt < 3; attempt++) {
-      let commit: string
-      try {
-        const head = await git.getBranchHead()
-        const tree = await git.createTree(head.treeSha, files)
-        commit = await git.createCommit(tree, head.sha, `Update catalog snapshot for run ${runId}`)
-      } catch {
-        throw new PublicationError('git_error')
-      }
-      rememberPending(db, runId, commit, expectedPending)
-      expectedPending = commit
-      if ((await update(git, commit)) === 'updated') {
-        recordPublication(db, runId, draft, commit, owner)
-        return commit
-      }
-    }
-    throw new PublicationError('git_conflict')
+    const pending = await resumePendingCommit(db, git, runId, completedRun, prepared, owner, options.historyLimit)
+    if (typeof pending === 'string') return pending
+    return createAndPublishSnapshot(db, git, runId, owner, pending.snapshot)
   } finally {
     // Once a candidate SHA exists, retain the lease until its Git visibility is reconciled.
-    const current = databaseResult(() => getRun(db, runId))
-    if (current?.status === 'completed' && current.pending_commit_sha === null) {
-      databaseResult(() => releasePublicationLease(db, runId, owner))
-    }
+    releaseUnpublishedLease(db, runId, owner)
   }
 }

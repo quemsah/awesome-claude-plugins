@@ -34,7 +34,7 @@ it.skipIf(!enabled)('parses imported fixture snapshots with the actual UI repo a
 })
 
 it.skipIf(!enabled || process.env.CATALOG_REAL_CSV !== '1')(
-  'preserves the imported historical public catalog and 264 stats without any network or Git writes',
+  'preserves the imported historical catalog fingerprints without any network or Git writes',
   async () => {
     const { ReposArraySchema } = await import('../../../ui/src/schemas/repo.schema.ts')
     const { StatsArraySchema } = await import('../../../ui/src/schemas/stats.schema.ts')
@@ -49,11 +49,18 @@ it.skipIf(!enabled || process.env.CATALOG_REAL_CSV !== '1')(
       validateSnapshot(reposJson, statsJson, { expectedSize: 40958 })
       const repos = ReposArraySchema.parse(JSON.parse(reposJson))
       const stats = StatsArraySchema.parse(JSON.parse(statsJson))
-      expect(repos).toHaveLength(40958)
-      expect(stats).toHaveLength(264)
-      const current = JSON.parse(readFileSync(join(root, 'ui/src/data/repos.json'), 'utf8')) as typeof repos
-      const currentStats = JSON.parse(readFileSync(join(root, 'ui/src/data/stats.json'), 'utf8')) as typeof stats
-      expect(fingerprint(repos.map(({ id }) => id))).toBe(fingerprint(current.map(({ id }) => id)))
+      const expected = JSON.parse(readFileSync(join(root, 'n8n/crawler-fingerprints.json'), 'utf8')) as {
+        repositoryCount: number
+        statsCount: number
+        repositoryIds: string
+        repositoryUrls: string
+        repositoryFields: Record<string, string>
+        stats: string
+      }
+      expect(repos).toHaveLength(expected.repositoryCount)
+      expect(stats).toHaveLength(expected.statsCount)
+      expect(fingerprint(repos.map(({ id }) => id))).toBe(expected.repositoryIds)
+      expect(fingerprint(repos.map(({ html_url }) => html_url))).toBe(expected.repositoryUrls)
       for (const key of [
         'stargazers_count',
         'forks_count',
@@ -64,10 +71,20 @@ it.skipIf(!enabled || process.env.CATALOG_REAL_CSV !== '1')(
         'repo_name',
         'plugins_count',
       ] as const) {
-        expect(fingerprint(repos.map((repo) => repo[key]))).toBe(fingerprint(current.map((repo) => repo[key])))
+        expect(fingerprint(repos.map((repo) => repo[key]))).toBe(expected.repositoryFields[key])
       }
-      expect(fingerprint(repos.map(({ html_url }) => html_url))).toBe(fingerprint(current.map(({ html_url }) => html_url)))
-      expect(fingerprint(stats)).toBe(fingerprint(currentStats.map(({ id, date, size }) => ({ id, date, size }))))
+      expect(fingerprint(stats)).toBe(expected.stats)
+      if (process.env.CATALOG_UI_PARITY === '1') {
+        const current = JSON.parse(readFileSync(join(root, 'ui/src/data/repos.json'), 'utf8')) as typeof repos
+        const currentStats = JSON.parse(readFileSync(join(root, 'ui/src/data/stats.json'), 'utf8')) as typeof stats
+        expect(fingerprint(repos.map(({ id }) => id))).toBe(fingerprint(current.map(({ id }) => id)))
+        for (const key of Object.keys(expected.repositoryFields)) {
+          const field = key as keyof (typeof repos)[number]
+          expect(fingerprint(repos.map((repo) => repo[field]))).toBe(fingerprint(current.map((repo) => repo[field])))
+        }
+        expect(fingerprint(repos.map(({ html_url }) => html_url))).toBe(fingerprint(current.map(({ html_url }) => html_url)))
+        expect(fingerprint(stats)).toBe(fingerprint(currentStats.map(({ id, date, size }) => ({ id, date, size }))))
+      }
       expect(repos.filter(({ plugins_count }) => plugins_count === null)).toHaveLength(303)
       expect(
         repos.some(
