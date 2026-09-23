@@ -99,7 +99,12 @@ export type CanonicalRebindResult = {
   removedId: number | null
 }
 
-export function rebindCanonicalUrl(db: Database.Database, id: number, htmlUrl: string, at = new Date().toISOString()): CanonicalRebindResult {
+export function rebindCanonicalUrl(
+  db: Database.Database,
+  id: number,
+  htmlUrl: string,
+  at = new Date().toISOString(),
+): CanonicalRebindResult {
   if (!htmlUrl.trim()) throw new Error('Canonical URL must not be blank')
 
   return db.transaction(() => {
