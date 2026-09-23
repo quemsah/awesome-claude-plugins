@@ -29,6 +29,7 @@ function githubRepo(owner: string, name: string): GitHubRepo {
     forks_count: 2,
     subscribers_count: 0,
     pushed_at: '2026-09-22T12:00:00Z',
+    private: false,
     owner: { login: owner, html_url: `https://github.com/${owner}` },
   }
 }

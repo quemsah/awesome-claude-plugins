@@ -153,7 +153,7 @@ export async function enrichRepositories(
         if (rebound.removedId !== null) removedIds.add(rebound.removedId)
         const target = getRepositoryById(db, targetId)
         if (!target) throw new Error('Canonical repository disappeared during rebind')
-        targetReady = wasReady(target)
+        targetReady = previouslyReady || wasReady(target)
         targetOwner = canonical.owner
         targetRepo = canonical.repo
         targetOwnerUrl = canonical.ownerUrl
