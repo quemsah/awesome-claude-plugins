@@ -192,6 +192,16 @@ async function enrichOne(
   }
   const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts)
   if (!loaded) return
+
+  if (!loaded.moved && row.repo_updated === loaded.data.pushed_at && row.plugins_count !== null) {
+    const target = persistEnrichment(db, row, loaded, row.plugins_count)
+    if (target.removedId !== null) removedIds.add(target.removedId)
+    counts.conclusive++
+    if (target.ready) counts.updated++
+    else counts.newReady++
+    return
+  }
+
   const marketplace = await reader.getMarketplace(loaded.owner, loaded.repo)
   if (marketplace.kind === 'not-found') {
     if (loaded.moved) {
