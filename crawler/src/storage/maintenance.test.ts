@@ -104,7 +104,6 @@ it('prunes old run diagnostics while preserving stats, recent runs and publicati
   expect(db.pragma('foreign_key_check')).toEqual([])
 })
 
-
 it('keeps alert settings for a different run whose id only shares the deleted suffix', () => {
   const db = database()
   const old = '2026-01-01T00:00:00.000Z'

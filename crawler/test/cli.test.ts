@@ -127,7 +127,6 @@ describe('CLI', () => {
     expect(result.stderr).toMatch(/invalid_option/i)
   })
 
-
   it('runs explicit maintenance and prunes old terminal runs', async () => {
     const path = databasePath()
     const db = openDatabase(path)
