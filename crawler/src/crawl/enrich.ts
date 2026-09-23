@@ -86,13 +86,14 @@ function recordProblem(
   previouslyReady: boolean,
   warning = false,
   now: () => string = () => new Date().toISOString(),
+  retryCount = 0,
 ): void {
   recordRunError(db, {
     run_id: runId,
     phase: 'enrich',
     repository_id: row.id,
     error_type: errorType,
-    retry_count: 0,
+    retry_count: retryCount,
     occurred_at: now(),
   })
   if (warning) counts.warnings++
@@ -161,7 +162,7 @@ async function loadRepository(
     return null
   }
   if (result.kind === 'temporary-error') {
-    recordProblem(db, runId, counts, row, temporaryCategory('repository', result), previouslyReady, false, now)
+    recordProblem(db, runId, counts, row, temporaryCategory('repository', result), previouslyReady, false, now, result.retryCount)
     return null
   }
   const canonical = canonicalIdentity(result.data)
@@ -219,7 +220,7 @@ async function enrichOne(
     return
   }
   if (marketplace.kind === 'temporary-error') {
-    recordProblem(db, runId, counts, row, temporaryCategory('marketplace', marketplace), loaded.ready, false, now)
+    recordProblem(db, runId, counts, row, temporaryCategory('marketplace', marketplace), loaded.ready, false, now, marketplace.retryCount)
     return
   }
   const target = persistEnrichment(db, row, loaded, marketplace.data.plugins.length, now())
