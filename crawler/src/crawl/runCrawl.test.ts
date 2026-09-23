@@ -421,7 +421,6 @@ it('refuses overlapping runs and allows retry with another id after the first fa
   expect(getRun(db, 'retry')?.status).toBe('completed')
 })
 
-
 it('marks a shutdown crawl as terminated after the in-flight request and releases the active-run lock', async () => {
   const db = database()
   const shutdown = new AbortController()
