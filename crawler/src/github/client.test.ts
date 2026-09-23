@@ -246,7 +246,6 @@ it('cancels a production rate-limit wait when shutdown is requested', async () =
   expect(requests).toBe(1)
 })
 
-
 it('lets an in-flight GitHub request finish but refuses to start another after shutdown', async () => {
   const shutdown = new AbortController()
   const requests: string[] = []
