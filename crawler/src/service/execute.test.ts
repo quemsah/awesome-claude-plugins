@@ -342,8 +342,6 @@ it('preserves shutdown as terminated when Git branch-head retrieval aborts', asy
   expect(git.createTree).not.toHaveBeenCalled()
   expect(git.createCommit).not.toHaveBeenCalled()
   expect(git.updateBranch).not.toHaveBeenCalled()
-  expect(listRunErrors(db, 'shutdown-head')).toContainEqual(
-    expect.objectContaining({ phase: 'publish', error_type: 'terminated' }),
-  )
+  expect(listRunErrors(db, 'shutdown-head')).toContainEqual(expect.objectContaining({ phase: 'publish', error_type: 'terminated' }))
   db.close()
 })
