@@ -113,13 +113,12 @@ function persistEnrichment(
   row: RepositoryRow,
   loaded: LoadedRepository,
   pluginsCount: number,
-  previouslyReady: boolean,
 ): EnrichmentTarget {
   return db.transaction(() => {
     const rebound = loaded.moved ? rebindCanonicalUrl(db, row.id, loaded.canonical.htmlUrl) : { id: row.id, removedId: null }
     const target = loaded.moved ? getRepositoryById(db, rebound.id) : null
     if (loaded.moved && !target) throw new Error('Canonical repository disappeared during rebind')
-    const ready = previouslyReady || (target !== null && target !== undefined && wasReady(target))
+    const ready = loaded.ready
     updateEnriched(db, rebound.id, {
       stargazers_count: loaded.data.stargazers_count,
       forks_count: loaded.data.forks_count,
@@ -212,7 +211,7 @@ async function enrichOne(
     recordProblem(db, runId, counts, row, temporaryCategory('marketplace', marketplace), loaded.ready)
     return
   }
-  const target = persistEnrichment(db, row, loaded, marketplace.data.plugins.length, previouslyReady)
+  const target = persistEnrichment(db, row, loaded, marketplace.data.plugins.length)
   if (target.removedId !== null) removedIds.add(target.removedId)
   counts.conclusive++
   if (target.ready) counts.updated++

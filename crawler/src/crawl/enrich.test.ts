@@ -248,6 +248,27 @@ it('canonicalizes a case-variant URL and merges an imported case-insensitive dup
   ])
   expect(listPublishable(db).map((row) => row.id)).toEqual([id])
 })
+it('counts a canonical merge as updated when the removed duplicate was already ready', async () => {
+  const db = database()
+  const originalId = upsertDiscovery(db, 'https://github.com/old-team/repo', null)
+  db.prepare(`
+    INSERT INTO repositories (id, html_url, createdAt, updatedAt)
+    VALUES (500, 'https://github.com/new-team/repo', 'legacy-created', 'legacy-updated')
+  `).run()
+  ready(db, 500, 'new-team', 'repo')
+
+  const counts = await enrichRepositories(
+    db,
+    reader(async () => ({ kind: 'found', data: githubRepo('new-team', 'repo') })),
+    'crawl-1',
+  )
+
+  expect(counts).toMatchObject({ updated: 1, newReady: 0, conclusive: 1 })
+  expect(db.prepare('SELECT id, html_url FROM repositories ORDER BY id').all()).toEqual([
+    { id: originalId, html_url: 'https://github.com/new-team/repo' },
+  ])
+})
+
 it.each(['repository', 'marketplace'] as const)('deletes a case-variant URL on confirmed %s 404', async (endpoint) => {
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/Team/Repo', null)
