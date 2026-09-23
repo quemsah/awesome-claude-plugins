@@ -92,8 +92,8 @@ describe('GitHubClient', () => {
 
   it('returns definitive 404 without a retry for both enrichment endpoints', async () => {
     const test = harness([new Response('', { status: 404 }), new Response('', { status: 404 })])
-    expect(await test.client.getRepository('acme', 'catalog')).toEqual({ kind: 'not-found' })
-    expect(await test.client.getMarketplace('acme', 'catalog')).toEqual({ kind: 'not-found' })
+    expect(await test.client.getRepository('acme', 'catalog')).toEqual({ kind: 'not-found', retryCount: 0 })
+    expect(await test.client.getMarketplace('acme', 'catalog')).toEqual({ kind: 'not-found', retryCount: 0 })
     expect(test.requests).toHaveLength(2)
   })
 
@@ -106,7 +106,7 @@ describe('GitHubClient', () => {
   ])('treats missing or malformed marketplace content as temporary rather than zero plugins', async (response) => {
     const test = harness(Array.from({ length: 4 }, response))
     const result = await test.client.getMarketplace('acme', 'catalog')
-    expect(result.kind).toBe('temporary-error')
+    expect(result).toMatchObject({ kind: 'temporary-error', retryCount: 3 })
     expect(test.requests).toHaveLength(4)
   })
 
@@ -204,6 +204,26 @@ describe('GitHubClient', () => {
     await expect(test.client.searchCode('q', 1)).rejects.toBeInstanceOf(GitHubTemporaryError)
   })
 
+  it('preserves retries when code search ends in 404 after a retryable failure', async () => {
+    const test = harness([new Response('', { status: 503 }), new Response('', { status: 404 })])
+
+    await expect(test.client.searchCode('q', 1)).rejects.toMatchObject({
+      status: 404,
+      retryCount: 1,
+    })
+    expect(test.requests).toHaveLength(2)
+  })
+
+  it('reports zero retries when code search returns 404 on the first attempt', async () => {
+    const test = harness([new Response('', { status: 404 })])
+
+    await expect(test.client.searchCode('q', 1)).rejects.toMatchObject({
+      status: 404,
+      retryCount: 0,
+    })
+    expect(test.requests).toHaveLength(1)
+  })
+
   it('returns temporary-error after bounded network and 5xx retries, without exposing exception text', async () => {
     const test = harness([
       new Error('test-secret'),
@@ -212,7 +232,7 @@ describe('GitHubClient', () => {
       new Response('', { status: 500 }),
     ])
     const result = await test.client.getRepository('acme', 'catalog')
-    expect(result.kind).toBe('temporary-error')
+    expect(result).toMatchObject({ kind: 'temporary-error', retryCount: 3 })
     expect(JSON.stringify(result)).not.toContain('test-secret')
     expect(test.requests).toHaveLength(4)
     expect(test.requests[1].time).toBeGreaterThan(test.requests[0].time)
@@ -223,7 +243,6 @@ describe('GitHubClient', () => {
     expect((await test.client.getRepository('acme', 'catalog')).kind).toBe('temporary-error')
   })
 })
-
 it('cancels a production rate-limit wait when shutdown is requested', async () => {
   const shutdown = new AbortController()
   let requests = 0
@@ -263,4 +282,29 @@ it('lets an in-flight GitHub request finish but refuses to start another after s
   await expect(client.getRepository('acme', 'catalog')).rejects.toMatchObject({ category: 'terminated' })
   await expect(client.getRepository('acme', 'catalog')).rejects.toMatchObject({ category: 'terminated' })
   expect(requests).toHaveLength(1)
+})
+
+
+it('treats shutdown during the final transport failure as termination', async () => {
+  const shutdown = new AbortController()
+  let time = 0
+  let requests = 0
+  const client = new GitHubClient({
+    token: 'test-secret',
+    signal: shutdown.signal,
+    clock: {
+      now: () => time,
+      sleep: async (milliseconds) => {
+        time += milliseconds
+      },
+    },
+    fetch: (async () => {
+      requests++
+      if (requests === 4) shutdown.abort()
+      throw new Error('offline')
+    }) as typeof fetch,
+  })
+
+  await expect(client.getRepository('acme', 'catalog')).rejects.toMatchObject({ category: 'terminated' })
+  expect(requests).toBe(4)
 })
