@@ -200,8 +200,10 @@ export class GitHubClient implements GitHubReader {
   }
 
   private request<T>(bucket: RateResource, path: string, parse: (value: unknown) => T): Promise<RepoResult<T>> {
-    throwIfShutdown(this.signal)
-    const run = this.pending.then(() => this.perform(bucket, path, parse))
+    const run = this.pending.then(() => {
+      throwIfShutdown(this.signal)
+      return this.perform(bucket, path, parse)
+    })
     this.pending = run.then(
       () => {},
       () => {},
