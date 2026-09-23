@@ -206,7 +206,7 @@ async function runCrawlCommand(
   output: (line: string) => void,
 ): Promise<void> {
   await ensureCrawlAvailable(db, config, dependencies)
-  output(JSON.stringify({ status: 'maintained', ...runMaintenance(db, now()) }))
+  runMaintenance(db, now())
   await runCrawl(db, config, dependencies, options, now, output, rateTracker())
 }
 
