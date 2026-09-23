@@ -434,6 +434,28 @@ it('merges a discovered canonical duplicate during rename and does not enrich th
   expect(db.prepare('SELECT id FROM repositories WHERE id = ?').get(duplicateId)).toBeUndefined()
 })
 
+it('skips a canonical duplicate deleted after a renamed repository marketplace 404', async () => {
+  const db = database()
+  const originalId = upsertDiscovery(db, 'https://github.com/team/repo', null)
+  ready(db, originalId)
+  const duplicateId = upsertDiscovery(db, 'https://github.com/new-team/new-repo', null)
+  ready(db, duplicateId, 'new-team', 'new-repo')
+  const getRepository = vi.fn(async (owner: string, name: string) => ({
+    kind: 'found' as const,
+    data: owner === 'team' && name === 'repo' ? githubRepo('new-team', 'new-repo') : githubRepo(owner, name),
+  }))
+  const getMarketplace = vi.fn(async () => ({ kind: 'not-found' as const }))
+
+  const counts = await enrichRepositories(db, reader(getRepository, getMarketplace), 'crawl-1')
+
+  expect(counts).toMatchObject({ deleted404: 1, conclusive: 1, updated: 0, newReady: 0 })
+  expect(getRepository).toHaveBeenCalledTimes(1)
+  expect(getRepository).toHaveBeenCalledWith('team', 'repo')
+  expect(getMarketplace).toHaveBeenCalledTimes(1)
+  expect(getMarketplace).toHaveBeenCalledWith('new-team', 'new-repo')
+  expect(db.prepare('SELECT id FROM repositories WHERE id IN (?, ?)').all(originalId, duplicateId)).toEqual([])
+})
+
 it.each(['name', 'owner', 'html_url', 'owner_url'] as const)(
   'does not rebind the original id when GitHub changes the %s',
   async (field) => {
