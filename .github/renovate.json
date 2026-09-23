@@ -11,7 +11,9 @@
     {
       "customType": "regex",
       "description": "Bump the Biome config schema URL together with the Biome version.",
-      "fileMatch": ["^ui/biome\\.json$"],
+      "managerFilePatterns": [
+        "/^ui/biome\\.json$/"
+      ],
       "matchStrings": ["\"\\$schema\": \"https://biomejs\\.dev/schemas/(?<currentValue>[0-9.]+)/schema\\.json\""],
       "depNameTemplate": "@biomejs/biome",
       "datasourceTemplate": "npm"
@@ -28,8 +30,7 @@
     },
     {
       "description": "Group lower-risk type and tooling updates.",
-      "matchPackageNames": ["@biomejs/biome", "@playwright/test", "@tailwindcss/postcss", "husky", "tailwindcss", "typescript"],
-      "matchPackagePatterns": ["^@types/"],
+      "matchPackageNames": ["@biomejs/biome", "@playwright/test", "@tailwindcss/postcss", "husky", "tailwindcss", "typescript", "/^@types//"],
       "matchUpdateTypes": ["minor", "patch"],
       "schedule": ["after 2pm and before 3pm on Wednesday"],
       "groupName": "tooling and type dependency updates",
@@ -61,10 +62,14 @@
     {
       "description": "Keep non-framework major updates separate from routine groups.",
       "matchUpdateTypes": ["major"],
-      "excludePackageNames": ["next", "react", "react-dom"],
       "schedule": ["after 9am and before 10am on Tuesday"],
       "groupName": "major dependency updates",
-      "minimumReleaseAge": "7 days"
+      "minimumReleaseAge": "7 days",
+      "matchPackageNames": [
+        "!next",
+        "!react",
+        "!react-dom"
+      ]
     }
   ]
 }
