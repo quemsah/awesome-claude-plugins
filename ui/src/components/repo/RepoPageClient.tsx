@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import type { Plugin } from '../../app/types/plugin.type.ts'
-import { MarketplacePluginsSchema } from '../../app/types/plugin.type.ts'
+import { getMarketplaceName, MarketplacePluginsSchema } from '../../app/types/plugin.type.ts'
 import { BackToRepositoriesLink } from '../../components/repo/BackToRepositoriesLink.tsx'
 import { PluginCard } from '../../components/repo/PluginCard.tsx'
 import { RepoInfoCard } from '../../components/repo/RepoInfoCard.tsx'
@@ -37,6 +37,7 @@ type RepoPageClientProps = {
 
 export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, rawBaseUrl }: RepoPageClientProps) {
   const [plugins, setPlugins] = useState<Plugin[]>([])
+  const [marketplaceName, setMarketplaceName] = useState<string | undefined>(undefined)
   const [pluginsError, setPluginsError] = useState<string | null>(null)
   const [pluginsStatus, setPluginsStatus] = useState<'missing' | 'error' | null>(null)
   const [pluginsLoading, setPluginsLoading] = useState(true)
@@ -55,6 +56,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
     async function loadPlugins() {
       setPluginsLoading(true)
       setPlugins([])
+      setMarketplaceName(undefined)
       setPluginsError(null)
       setPluginsStatus(null)
 
@@ -80,10 +82,12 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
         }
 
         try {
-          const parsedMarketplace = MarketplacePluginsSchema.safeParse(await response.json())
+          const payload: unknown = await response.json()
+          const parsedMarketplace = MarketplacePluginsSchema.safeParse(payload)
           if (parsedMarketplace.success) {
             if (!cancelled) {
               setPlugins(parsedMarketplace.data)
+              setMarketplaceName(getMarketplaceName(payload))
               setPluginsLoading(false)
             }
           } else {
@@ -171,7 +175,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
               <div className="space-y-4">
                 {plugins.map((plugin, index) => (
                   <article key={`${plugin.id || ''}-${plugin.name || ''}-${index}`}>
-                    <PluginCard plugin={plugin} repo={displayedRepo} repoPath={repoPath} />
+                    <PluginCard marketplaceName={marketplaceName} plugin={plugin} repo={displayedRepo} repoPath={repoPath} />
                   </article>
                 ))}
               </div>

@@ -5,13 +5,13 @@ import { CopiedIcon } from '../common/CopiedIcon.tsx'
 import { CopyIcon } from '../common/CopyIcon.tsx'
 
 interface InstallCommandProps {
+  marketplaceName?: string
   pluginName?: string
   pluginId?: string
-  repoPath: string
 }
 
-export function InstallCommand({ pluginName, pluginId, repoPath }: InstallCommandProps) {
-  const { copyError, handleCopyClick, installCommand, isCopied, isVerified } = useInstallCommand(pluginName, pluginId, repoPath)
+export function InstallCommand({ marketplaceName, pluginName, pluginId }: InstallCommandProps) {
+  const { copyError, handleCopyClick, installCommand, isCopied, isVerified } = useInstallCommand(pluginName, pluginId, marketplaceName)
 
   const isDisabled = !(installCommand && isVerified)
 

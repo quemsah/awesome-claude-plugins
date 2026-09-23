@@ -6,7 +6,7 @@ export type InstallCommandType = 'marketplace-add' | 'plugin-install'
 export type PluginInstallCommandInput = {
   pluginName?: string
   pluginId?: string
-  repoPath?: string
+  marketplaceName?: string
 }
 
 const PLUGIN_COMMAND_TOKEN_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i
@@ -26,15 +26,18 @@ export function normalizePluginName(pluginName?: string): string {
 /**
  * Determines whether a plugin install command is verified.
  *
- * A command is considered verified when it contains at least one reliable identifier
- * from the manifest: a `pluginId` or a `repoPath`. These map directly to recognized
- * package references in Claude Code.
- *
- * A command composed only of a `pluginName` (with no `pluginId` or `repoPath`) is
- * unverified because the name alone may not resolve to an installed package.
+ * A non-empty plugin identifier takes precedence. When it is absent, a validated
+ * marketplace name can verify the generated install target.
  */
-export function isPluginInstallCommandVerified(pluginId?: string, _repoPath?: string): boolean {
-  return Boolean(typeof pluginId === 'string' && pluginId.trim() && PLUGIN_COMMAND_TOKEN_PATTERN.test(pluginId))
+export function isPluginInstallCommandVerified(pluginId?: string, marketplaceName?: string): boolean {
+  const normalizedPluginId = typeof pluginId === 'string' ? pluginId.trim() : ''
+  const normalizedMarketplaceName = typeof marketplaceName === 'string' ? marketplaceName.trim() : ''
+
+  return Boolean(
+    normalizedPluginId
+      ? PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedPluginId)
+      : normalizedMarketplaceName && PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedMarketplaceName)
+  )
 }
 
 /**
@@ -42,27 +45,21 @@ export function isPluginInstallCommandVerified(pluginId?: string, _repoPath?: st
  *
  * Priority:
  * 1. `pluginName` + `pluginId` → `/plugin install {name}@{id}`
- * 2. `pluginName` + `repoPath` → `/plugin install {name}@{repoPathWithHyphens}`
- * 3. `pluginId` only         → `/plugin install {id}`
- * 4. `pluginName` only       → `/plugin install {name}` (unverified)
+ * 2. `pluginName` + `marketplaceName` → `/plugin install {name}@{marketplaceName}`
+ * 3. `pluginId` only → `/plugin install {id}`
+ * 4. `pluginName` only → `/plugin install {name}` (unverified)
  *
- * Returns `null` when no identifier is provided.
+ * Returns `null` when no identifier is provided or a supplied identifier is unsafe.
  */
-export function getPluginInstallCommand({ pluginName, pluginId, repoPath }: PluginInstallCommandInput): string | null {
-  let normalizedName = normalizePluginName(pluginName)
-  if (!(normalizedName || pluginId) && repoPath) {
-    const lastPart = repoPath.split('/').filter(Boolean).pop()
-    if (lastPart) {
-      normalizedName = normalizePluginName(lastPart)
-    }
-  }
-  const normalizedRepoPath = typeof repoPath === 'string' && repoPath.trim() ? repoPath.trim().replaceAll('/', '-') : undefined
+export function getPluginInstallCommand({ pluginName, pluginId, marketplaceName }: PluginInstallCommandInput): string | null {
+  const normalizedName = normalizePluginName(pluginName)
   const normalizedPluginId = typeof pluginId === 'string' ? pluginId.trim() : undefined
+  const normalizedMarketplaceName = typeof marketplaceName === 'string' ? marketplaceName.trim() : undefined
 
   if (normalizedPluginId && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedPluginId)) {
     return null
   }
-  if (normalizedRepoPath && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedRepoPath)) {
+  if (normalizedMarketplaceName && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedMarketplaceName)) {
     return null
   }
 
@@ -70,8 +67,8 @@ export function getPluginInstallCommand({ pluginName, pluginId, repoPath }: Plug
     return `/plugin install ${normalizedName}@${normalizedPluginId}`
   }
 
-  if (normalizedName && normalizedRepoPath) {
-    return `/plugin install ${normalizedName}@${normalizedRepoPath}`
+  if (normalizedName && normalizedMarketplaceName) {
+    return `/plugin install ${normalizedName}@${normalizedMarketplaceName}`
   }
 
   if (normalizedPluginId) {
