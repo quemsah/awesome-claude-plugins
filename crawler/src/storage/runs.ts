@@ -127,6 +127,10 @@ export function failRun(db: Database.Database, runId: string, at: string, lastEr
   )
 }
 
+export function terminateRun(db: Database.Database, runId: string, at: string): boolean {
+  return failRun(db, runId, at, 'terminated')
+}
+
 export function recoverStoppedCrawl(db: Database.Database, runId: string, at: string): void {
   db.transaction(() => {
     if (getPublicationLease(db)) throw new PublicationLeaseError('publication_locked')
