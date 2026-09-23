@@ -1,3 +1,4 @@
+import { parseGitHubRepositoryUrl } from '../github/identifiers.js'
 import type { PublishableRepository } from '../storage/repositories.js'
 import { tableCell } from './readme.js'
 import { assertValidStatsDraft, type StatsRecord } from './statsDraft.js'
@@ -26,12 +27,19 @@ export function validateReadme(text: string, repositories: readonly PublishableR
         (b.stargazers_count ?? 0) - (a.stargazers_count ?? 0) || (b.subscribers_count ?? 0) - (a.subscribers_count ?? 0) || a.id - b.id,
     )
     .slice(0, 100)
-  const links = [...text.matchAll(/^\| (\d+) \| \[([A-Za-z0-9._-]+)\]\((https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+)\) \| /gm)]
+  const links = [...text.matchAll(/^\| (\d+) \| \[([^\]]+)\]\(([^)]+)\) \| /gm)]
   if (
     links.length !== ranked.length ||
     links.some((match, index) => {
       const repo = ranked[index]
-      return match[1] !== String(index + 1) || match[2] !== repo.repo_name || match[3] !== repo.html_url
+      const url = match[3]
+      return (
+        url === undefined ||
+        parseGitHubRepositoryUrl(url) === undefined ||
+        match[1] !== String(index + 1) ||
+        match[2] !== repo.repo_name ||
+        url !== repo.html_url
+      )
     })
   ) {
     throw new Error('README snapshot has incorrect top-100 links')
