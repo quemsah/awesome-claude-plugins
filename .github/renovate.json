@@ -23,7 +23,7 @@
     {
       "description": "Keep framework updates isolated for focused review.",
       "matchPackageNames": ["next", "react", "react-dom", "@next/bundle-analyzer"],
-      "matchUpdateTypes": ["major", "minor", "patch"],
+      "matchUpdateTypes": ["minor", "patch"],
       "schedule": ["after 10am and before 11am on Monday"],
       "groupName": "framework dependency updates",
       "minimumReleaseAge": "7 days"
@@ -60,16 +60,10 @@
       "minimumReleaseAge": "3 days"
     },
     {
-      "description": "Keep non-framework major updates separate from routine groups.",
+      "description": "Keep every major dependency update in its own pull request.",
       "matchUpdateTypes": ["major"],
       "schedule": ["after 9am and before 10am on Tuesday"],
-      "groupName": "major dependency updates",
-      "minimumReleaseAge": "7 days",
-      "matchPackageNames": [
-        "!next",
-        "!react",
-        "!react-dom"
-      ]
+      "minimumReleaseAge": "7 days"
     }
   ]
 }
