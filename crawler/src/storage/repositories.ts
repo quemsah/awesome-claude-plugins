@@ -119,13 +119,14 @@ export function rebindCanonicalUrl(db: Database.Database, id: number, htmlUrl: s
   })()
 }
 
-export function deleteCanonicalRows(db: Database.Database, id: number, htmlUrl: string): void {
-  db.transaction(() => {
+export function deleteCanonicalRows(db: Database.Database, id: number, htmlUrl: string): number | null {
+  return db.transaction(() => {
     const duplicate = db
       .prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE AND id != ? ORDER BY id LIMIT 1')
       .get(htmlUrl, id) as { id: number } | undefined
     deleteById(db, id)
     if (duplicate) deleteById(db, duplicate.id)
+    return duplicate?.id ?? null
   })()
 }
 

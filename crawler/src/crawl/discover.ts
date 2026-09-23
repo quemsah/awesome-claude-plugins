@@ -120,7 +120,7 @@ export async function discover(
   onRangeComplete?: () => void,
 ): Promise<DiscoverySummary> {
   const summary: DiscoverySummary = { newUrls: 0, existingUrls: 0, successfulRanges: 0, warningCount: 0, warnings: [] }
-  const lookup = db.prepare('SELECT id FROM repositories WHERE html_url = ?')
+  const lookup = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE LIMIT 1')
 
   for (const range of ranges) {
     await searchRange(db, reader, runId, lookup, range, summary)

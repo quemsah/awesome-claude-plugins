@@ -117,11 +117,13 @@ function failCrawl(db: Database.Database, runId: string, error: unknown, categor
   } catch (error) {
     persistenceError = error
   }
+  let failed = false
   try {
-    if (!failRun(db, runId, now(), category)) throw new CrawlError('run_not_active')
+    failed = failRun(db, runId, now(), category)
   } catch (error) {
     persistenceError ??= error
   }
+  if (!failed && persistenceError === undefined) return new CrawlError('run_not_active')
   return persistenceError ? new CrawlError('database_error', { cause: persistenceError }) : failure
 }
 

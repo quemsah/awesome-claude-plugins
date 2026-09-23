@@ -200,8 +200,10 @@ async function enrichOne(
   if (!loaded) return
   const marketplace = await reader.getMarketplace(loaded.owner, loaded.repo)
   if (marketplace.kind === 'not-found') {
-    if (loaded.moved) deleteCanonicalRows(db, row.id, loaded.canonical.htmlUrl)
-    else deleteById(db, row.id)
+    if (loaded.moved) {
+      const removedId = deleteCanonicalRows(db, row.id, loaded.canonical.htmlUrl)
+      if (removedId !== null) removedIds.add(removedId)
+    } else deleteById(db, row.id)
     counts.deleted404++
     counts.conclusive++
     return

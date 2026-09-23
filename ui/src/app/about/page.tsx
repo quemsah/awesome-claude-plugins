@@ -55,8 +55,8 @@ export default function AboutPage() {
             </CardHeader>
             <CardContent className="text-muted-foreground">
               <p>
-                This isn't just a static list. Plugin data is collected from GitHub every day, helping new Claude Code repositories appear
-                in the directory.
+                This isn't just a static list. Plugin data is collected from GitHub when the crawler runs, helping new Claude Code
+                repositories appear in the directory.
               </p>
             </CardContent>
           </Card>
