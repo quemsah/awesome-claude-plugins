@@ -143,11 +143,7 @@ async function notifyBlockedCrawl(
   }
 }
 
-async function ensureCrawlAvailable(
-  db: Database.Database,
-  config: RuntimeConfig,
-  dependencies: CliDependencies,
-): Promise<void> {
+async function ensureCrawlAvailable(db: Database.Database, config: RuntimeConfig, dependencies: CliDependencies): Promise<void> {
   const blocked = getActiveRun(db) ? 'active_run' : getPublicationLease(db) ? 'publication_locked' : null
   if (blocked) {
     await notifyBlockedCrawl(db, blocked, config, dependencies)

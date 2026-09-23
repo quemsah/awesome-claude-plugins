@@ -224,43 +224,40 @@ describe('CLI', () => {
     expect(reader).not.toHaveBeenCalled()
   })
 
-  it.each(['active_run', 'publication_locked'] as const)(
-    'notifies once when a crawl sees a persisted %s lock',
-    async (category) => {
-      const path = databasePath()
-      populateTestDatabase(path)
-      const db = openDatabase(path)
-      beginRun(db, 'blocked', '2026-09-22T00:00:00.000Z')
-      if (category === 'publication_locked') {
-        completeRun(db, 'blocked', '2026-09-22T01:00:00.000Z', 0)
-        prepareDraft(db, 'blocked', new Date('2026-09-22T01:00:00.000Z'))
-        claimPublicationLease(db, 'blocked', 'publisher')
-      }
-      db.close()
-      const notifyFailure = vi.fn(async () => {})
-      const notifier = {
-        notifyStart: vi.fn(),
-        notifyDryRun: vi.fn(),
-        notifySuccess: vi.fn(),
-        notifyFailure,
-      }
-      const dependencies = {
-        env: { DB_PATH: path, GITHUB_READ_TOKEN: 'read-token', PUBLISH_ENABLED: 'false' },
-        notifier: () => notifier,
-        reader: vi.fn(),
-      }
+  it.each(['active_run', 'publication_locked'] as const)('notifies once when a crawl sees a persisted %s lock', async (category) => {
+    const path = databasePath()
+    populateTestDatabase(path)
+    const db = openDatabase(path)
+    beginRun(db, 'blocked', '2026-09-22T00:00:00.000Z')
+    if (category === 'publication_locked') {
+      completeRun(db, 'blocked', '2026-09-22T01:00:00.000Z', 0)
+      prepareDraft(db, 'blocked', new Date('2026-09-22T01:00:00.000Z'))
+      claimPublicationLease(db, 'blocked', 'publisher')
+    }
+    db.close()
+    const notifyFailure = vi.fn(async () => {})
+    const notifier = {
+      notifyStart: vi.fn(),
+      notifyDryRun: vi.fn(),
+      notifySuccess: vi.fn(),
+      notifyFailure,
+    }
+    const dependencies = {
+      env: { DB_PATH: path, GITHUB_READ_TOKEN: 'read-token', PUBLISH_ENABLED: 'false' },
+      notifier: () => notifier,
+      reader: vi.fn(),
+    }
 
-      await expect(runCli(['crawl'], dependencies)).rejects.toMatchObject({ category })
-      await expect(runCli(['crawl'], dependencies)).rejects.toMatchObject({ category })
+    await expect(runCli(['crawl'], dependencies)).rejects.toMatchObject({ category })
+    await expect(runCli(['crawl'], dependencies)).rejects.toMatchObject({ category })
 
-      expect(notifyFailure).toHaveBeenCalledOnce()
-      expect(notifyFailure).toHaveBeenCalledWith(expect.objectContaining({ runId: 'blocked', reason: category }))
-      expect(dependencies.reader).not.toHaveBeenCalled()
-      const inspected = openDatabase(path)
-      expect(getSetting(inspected, `schedule_alert_${category}_blocked`)).toBe('sent')
-      inspected.close()
-    },
-  )
+    expect(notifyFailure).toHaveBeenCalledOnce()
+    expect(notifyFailure).toHaveBeenCalledWith(expect.objectContaining({ runId: 'blocked', reason: category }))
+    expect(dependencies.reader).not.toHaveBeenCalled()
+    const inspected = openDatabase(path)
+    expect(getSetting(inspected, `schedule_alert_${category}_blocked`)).toBe('sent')
+    inspected.close()
+  })
 
   it('requires confirmation to recover a stopped crawl and frees the schedule without touching a publication lease', async () => {
     const path = databasePath()
