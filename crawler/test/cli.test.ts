@@ -8,6 +8,7 @@ import type { GitHubGit } from '../src/publish/githubGit.js'
 import { PublicationError, prepareDraft } from '../src/publish/publishRun.js'
 import { openDatabase } from '../src/storage/db.js'
 import { populateFixture } from '../src/storage/fixtureDb.js'
+import { inspect } from '../src/storage/inspect.js'
 import {
   beginRun,
   claimPublicationLease,
@@ -89,8 +90,24 @@ describe('CLI', () => {
       stats: 2,
       maxRepositoryId: 14,
       integrity: 'ok',
+      foreignKeyViolations: [],
     })
     expect(inspected.stdout).not.toContain('https://github.com/')
+  })
+
+  it('counts blank URLs as missing and reports foreign key violations', () => {
+    const db = openDatabase(databasePath())
+    populateFixture(db)
+    db.prepare("INSERT INTO repositories (html_url, createdAt, updatedAt) VALUES ('', 'now', 'now'), (char(9) || ' ' || char(10), 'now', 'now')").run()
+    db.pragma('foreign_keys = OFF')
+    db.prepare("INSERT INTO stats (date, size, createdAt, updatedAt, run_id) VALUES ('orphan', 0, 'now', 'now', 'missing-run')").run()
+
+    expect(inspect(db)).toMatchObject({
+      nonemptyUrls: 3,
+      missingUrls: 4,
+      foreignKeyViolations: [{ table: 'stats', parent: 'runs', fkid: 0 }],
+    })
+    db.close()
   })
 
   it('formats snapshot issue counts and safe paths without echoing arbitrary exception text', () => {
