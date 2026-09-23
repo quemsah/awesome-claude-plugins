@@ -224,6 +224,29 @@ describe('GitHubClient', () => {
   })
 })
 
+it('cancels a production rate-limit wait when shutdown is requested', async () => {
+  const shutdown = new AbortController()
+  let requests = 0
+  const client = new GitHubClient({
+    token: 'test-secret',
+    signal: shutdown.signal,
+    log: (event) => {
+      if (event.waitMs !== undefined) queueMicrotask(() => shutdown.abort())
+    },
+    fetch: (async () => {
+      requests++
+      return new Response('', {
+        status: 429,
+        headers: { 'Retry-After': '120' },
+      })
+    }) as typeof fetch,
+  })
+
+  await expect(client.getRepository('acme', 'catalog')).rejects.toMatchObject({ category: 'terminated' })
+  expect(requests).toBe(1)
+})
+
+
 it('lets an in-flight GitHub request finish but refuses to start another after shutdown', async () => {
   const shutdown = new AbortController()
   const requests: string[] = []
