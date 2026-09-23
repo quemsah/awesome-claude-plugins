@@ -1,5 +1,5 @@
-import { marketplaceFixtures } from '../../../../crawler/marketplace-contract/fixtures.js'
 import { describe, expect, it } from 'vitest'
+import { marketplaceFixtures } from '../../../../crawler/marketplace-contract/fixtures.js'
 import { getMarketplaceName, MarketplacePluginsSchema } from './plugin.type.ts'
 
 describe('MarketplacePluginsSchema', () => {
