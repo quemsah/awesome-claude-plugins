@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 import type { GitHubReader, GitHubRepo, RepoResult } from '../github/client.js'
-import { isValidGitHubOwner, isValidGitHubRepositoryName, parseGitHubOwnerUrl } from '../github/identifiers.js'
+import { isValidGitHubPathSegment, parseGitHubOwnerUrl } from '../github/identifiers.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import {
   deleteById,
@@ -51,11 +51,11 @@ function canonicalIdentity(data: GitHubRepo): CanonicalIdentity | null {
   const ownerFromUrl = parseGitHubOwnerUrl(data.owner.html_url)
   if (
     identity === null ||
-    !isValidGitHubOwner(data.owner.login) ||
+    !isValidGitHubPathSegment(data.owner.login) ||
     data.owner.login.toLowerCase() !== identity.owner.toLowerCase() ||
     ownerFromUrl === undefined ||
     ownerFromUrl.toLowerCase() !== identity.owner.toLowerCase() ||
-    !isValidGitHubRepositoryName(data.name) ||
+    !isValidGitHubPathSegment(data.name) ||
     data.name.toLowerCase() !== identity.repo.toLowerCase()
   ) {
     return null
