@@ -86,9 +86,9 @@ async function crawlAndComplete(
   const heartbeat = () => {
     if (!heartbeatRun(db, runId, now())) throw new CrawlError('run_not_active')
   }
-  const discovery = await discover(db, reader, runId, options.ranges ?? SIZE_RANGES, heartbeat)
+  const discovery = await discover(db, reader, runId, options.ranges ?? SIZE_RANGES, heartbeat, now)
   heartbeat()
-  const enrichment = await enrichRepositories(db, reader, runId, heartbeat)
+  const enrichment = await enrichRepositories(db, reader, runId, heartbeat, now)
   heartbeat()
   if (discovery.successfulRanges === 0) throw new CrawlError('no_successful_ranges')
   if (enrichment.conclusive === 0) throw new CrawlError('no_conclusive_enrichment')
