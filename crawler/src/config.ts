@@ -1,3 +1,5 @@
+import { isValidGitBranch, parseGitHubRepository } from './github/identifiers.js'
+
 export type RuntimeConfig = {
   dbPath: string
   publishEnabled: boolean
@@ -24,40 +26,11 @@ function telegramCredentials(env: NodeJS.ProcessEnv, publishEnabled: boolean) {
   return { botToken, chatId }
 }
 
-function validBranch(branch: string): boolean {
-  if (branch === '@' || branch.includes('@{')) return false
-  return !branch
-    .split('/')
-    .some(
-      (part) =>
-        !part ||
-        part.startsWith('.') ||
-        part.endsWith('.') ||
-        part.endsWith('.lock') ||
-        part.includes('..') ||
-        /[\\~^:?*[\]\s]/u.test(part),
-    )
-}
-
-function repositoryParts(value: string | undefined): [string, string] | undefined {
-  const parts = value?.split('/')
-  if (
-    parts?.length !== 2 ||
-    !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(parts[0]) ||
-    !/^[A-Za-z0-9._-]{1,100}$/.test(parts[1]) ||
-    parts[1] === '.' ||
-    parts[1] === '..'
-  ) {
-    return undefined
-  }
-  return [parts[0], parts[1]]
-}
-
 function publicationConfig(env: NodeJS.ProcessEnv, readToken?: string) {
   const publishToken = env.GITHUB_PUBLISH_TOKEN?.trim()
-  const parts = repositoryParts(env.GITHUB_REPOSITORY)
+  const parts = parseGitHubRepository(env.GITHUB_REPOSITORY)
   const branch = env.GITHUB_BRANCH
-  if (!publishToken || (readToken && publishToken === readToken) || !parts || !branch || !validBranch(branch)) {
+  if (!publishToken || (readToken && publishToken === readToken) || !parts || !branch || !isValidGitBranch(branch)) {
     throw new ConfigurationError()
   }
   return { publishToken, owner: parts[0], repo: parts[1], branch }
