@@ -190,6 +190,21 @@ it('counts overlapping URLs as existing and preserves enriched data while refres
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 2 })
 })
 
+it('counts case-variant GitHub URLs as existing instead of new', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old')
+
+  const result = await discover(
+    db,
+    reader(async () => page([item('https://github.com/Team/Repo', 'rediscovered')])),
+    'run-1',
+    [firstRange],
+  )
+
+  expect(result).toMatchObject({ newUrls: 0, existingUrls: 1, successfulRanges: 1, warningCount: 0 })
+  expect(db.prepare('SELECT id, html_url FROM repositories').all()).toEqual([{ id, html_url: 'https://github.com/team/repo' }])
+})
+
 it('ignores private repositories returned by authenticated code search', async () => {
   const db = database()
   const result = await discover(
