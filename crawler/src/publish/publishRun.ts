@@ -5,6 +5,7 @@ import { renderReadme } from '../output/readme.js'
 import { assertValidStatsDraft, createStatsDraft, type StatsRecord } from '../output/statsDraft.js'
 import { SnapshotValidationError, validateSnapshot } from '../output/validate.js'
 import { validateReadme } from '../output/validateReadme.js'
+import { ShutdownError } from '../shutdown.js'
 import { listPublishable } from '../storage/repositories.js'
 import {
   claimPublicationLease,
@@ -34,6 +35,7 @@ export type PublicationCategory =
   | 'database_error'
   | 'active_run'
   | 'publication_locked'
+  | 'terminated'
 
 export class PublicationError extends Error {
   constructor(
@@ -220,7 +222,9 @@ function forgetPending(db: Database.Database, runId: string, sha: string): void 
 async function reachable(git: GitHubGit, pending: string): Promise<boolean> {
   try {
     return await git.isCommitReachable(pending)
-  } catch {
+  } catch (error) {
+    if (error instanceof PublicationError) throw error
+    if (error instanceof ShutdownError) throw new PublicationError('terminated')
     // A failed comparison does not prove the pending commit is absent.
     throw new PublicationError('git_indeterminate')
   }
@@ -231,6 +235,8 @@ async function update(git: GitHubGit, sha: string): Promise<'updated' | 'conflic
     await git.updateBranch(sha)
     return 'updated'
   } catch (error) {
+    if (error instanceof PublicationError) throw error
+    if (error instanceof ShutdownError) throw new PublicationError('terminated')
     if (error instanceof GitHubGitConflictError) return 'conflict'
     if (error instanceof GitHubGitHttpError && error.status !== null && error.status >= 400 && error.status < 500) return 'rejected'
     // A timeout, malformed success response, network failure, or server error can be ambiguous.
@@ -296,7 +302,9 @@ async function createAndPublishSnapshot(
       const head = await git.getBranchHead()
       const tree = await git.createTree(head.treeSha, snapshot.files)
       commit = await git.createCommit(tree, head.sha, `Update catalog snapshot for run ${runId}`)
-    } catch {
+    } catch (error) {
+      if (error instanceof PublicationError) throw error
+      if (error instanceof ShutdownError) throw new PublicationError('terminated')
       throw new PublicationError('git_error')
     }
     rememberPending(db, runId, commit, expectedPending)

@@ -1,6 +1,7 @@
 import { parseMarketplaceManifest } from '@awesome-claude-plugins/marketplace-contract'
 import type { components, operations } from '@octokit/openapi-types'
-import { type Clock, RateBudget, type RateLog, type RateResource } from './rateBudget.js'
+import { throwIfShutdown } from '../shutdown.js'
+import { type Clock, RateBudget, type RateLog, type RateResource, systemClock } from './rateBudget.js'
 
 type SearchCodeResponse = operations['search/code']['responses'][200]['content']['application/json']
 type SearchCodeRepository = SearchCodeResponse['items'][number]['repository']
@@ -64,11 +65,7 @@ type Options = {
   clock?: Clock
   random?: () => number
   log?: RateLog
-}
-
-const defaultClock: Clock = {
-  now: Date.now,
-  sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  signal?: AbortSignal
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -146,14 +143,16 @@ export class GitHubClient implements GitHubReader {
   private readonly transport: typeof fetch
   private readonly random: () => number
   private readonly token: string
+  private readonly signal?: AbortSignal
   private pending: Promise<void> = Promise.resolve()
 
   constructor(options: Options) {
     if (!options.token.trim()) throw new GitHubFatalError('GitHub token is required', null)
     this.token = options.token
-    this.clock = options.clock ?? defaultClock
+    this.clock = options.clock ?? systemClock
     this.transport = options.fetch ?? globalThis.fetch
     this.random = options.random ?? Math.random
+    this.signal = options.signal
     this.budget = new RateBudget(this.clock, options.log)
   }
 
@@ -191,7 +190,10 @@ export class GitHubClient implements GitHubReader {
     parse: (value: unknown) => T,
     accept = 'application/vnd.github+json',
   ): Promise<RepoResult<T>> {
-    const run = this.pending.then(() => this.perform(bucket, path, parse, accept))
+    const run = this.pending.then(() => {
+      throwIfShutdown(this.signal)
+      return this.perform(bucket, path, parse, accept)
+    })
     this.pending = run.then(
       () => {},
       () => {},
@@ -202,7 +204,8 @@ export class GitHubClient implements GitHubReader {
   private async perform<T>(bucket: RateResource, path: string, parse: (value: unknown) => T, accept: string): Promise<RepoResult<T>> {
     let secondaryCount = 0
     for (let attempt = 0; attempt < 4; attempt++) {
-      await this.budget.acquire(bucket)
+      await this.budget.acquire(bucket, this.signal)
+      throwIfShutdown(this.signal)
       let response: Response
       try {
         response = await this.transport(`https://api.github.com${path}`, {
@@ -214,11 +217,13 @@ export class GitHubClient implements GitHubReader {
           },
         })
       } catch {
+        throwIfShutdown(this.signal)
         if (attempt === 3) return { kind: 'temporary-error', status: null, reason: 'GitHub network error', retryCount: attempt }
         this.budget.defer(bucket, this.transientDelay(attempt))
         continue
       }
       const action = await this.handleResponse(bucket, response, parse, attempt, secondaryCount)
+      throwIfShutdown(this.signal)
       if (action.kind === 'result') return action.result
       secondaryCount = action.secondaryCount
     }

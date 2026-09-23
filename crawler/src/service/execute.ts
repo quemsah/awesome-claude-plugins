@@ -8,6 +8,7 @@ import type { TelegramSummary } from '../notify/telegram.js'
 import { TelegramNotificationError, type TelegramNotifier } from '../notify/telegram.js'
 import type { GitHubGit } from '../publish/githubGit.js'
 import { PublicationError, prepareDraft, publishRun } from '../publish/publishRun.js'
+import { ShutdownError } from '../shutdown.js'
 import { listPublishable } from '../storage/repositories.js'
 import { getActiveRun, getRun, getSetting, listRunErrors, recordRunError, setSetting } from '../storage/runs.js'
 
@@ -24,6 +25,7 @@ export type Notifier = Pick<TelegramNotifier, 'notifyStart' | 'notifyFailure' | 
 export type LogEvent = { level: 'error' | 'info'; phase: string; category: string; runId?: string }
 export type ExecuteOptions = {
   now?: () => Date
+  signal?: AbortSignal
   notifier?: Notifier
   log?: (event: LogEvent) => void
 }
@@ -176,6 +178,7 @@ function summary(db: Database.Database, runId: string, counts?: CrawlSummary, bu
 }
 
 function logDelivery(db: Database.Database, runId: string, now: () => Date, log: (event: LogEvent) => void, error: unknown): void {
+  if (error instanceof ShutdownError) return
   const failure = error instanceof TelegramNotificationError ? error.category : 'delivery_failed'
   log({ level: 'error', phase: 'notify', category: failure, runId })
   if (!getRun(db, runId)) return
@@ -205,8 +208,9 @@ async function notifyFailure(
   }
 }
 
-function guardGit(db: Database.Database, git: GitHubGit, onBlocked: () => void): GitHubGit {
+function guardGit(db: Database.Database, git: GitHubGit, onBlocked: () => void, signal?: AbortSignal): GitHubGit {
   const check = () => {
+    if (signal?.aborted) throw new PublicationError('terminated')
     if (getActiveRun(db)) {
       onBlocked()
       throw new ActiveRunError()
@@ -276,9 +280,14 @@ export async function executePublish(
     if (getActiveRun(db)) throw new ActiveRunError()
     sha = await publishRun(
       db,
-      guardGit(db, git, () => {
-        blocked = true
-      }),
+      guardGit(
+        db,
+        git,
+        () => {
+          blocked = true
+        },
+        options.signal,
+      ),
       runId,
       { writeEnabled: options.writeEnabled, recover: options.recover, now },
     )
@@ -312,7 +321,7 @@ async function crawlAndPrepare(
   onCrawlComplete: (counts: CrawlSummary) => void,
 ): Promise<{ counts: CrawlSummary; size: number; report: RunReport }> {
   const crawlStartedAt = performance.now()
-  const counts = await runCrawl(db, reader, runId, { ranges: options.ranges, now })
+  const counts = await runCrawl(db, reader, runId, { ranges: options.ranges, now, signal: options.signal })
   onCrawlComplete(counts)
   const size = prepareDraft(db, runId, now()).size
   const report: RunReport = {
@@ -397,6 +406,7 @@ export async function executeCrawl(
     await handleCrawlFailure(db, runId, error, counts, options, now, log)
     throw error
   }
+  if (options.signal?.aborted) throw new PublicationError('terminated')
   if (options.dryRun) {
     await notifyDryRun(db, runId, prepared.counts, options, now, log)
     return { status: 'draft', runId, size: prepared.size, report: prepared.report }
@@ -405,6 +415,12 @@ export async function executeCrawl(
     await notifyFailure(db, runId, 'write_disabled', options.notifier, now, log, prepared.counts)
     throw new PublicationError('write_disabled')
   }
-  const published = await executePublish(db, options.git, runId, { now, notifier: options.notifier, log, writeEnabled: true })
+  const published = await executePublish(db, options.git, runId, {
+    now,
+    notifier: options.notifier,
+    log,
+    signal: options.signal,
+    writeEnabled: true,
+  })
   return { status: 'published', runId, sha: published.sha, report: prepared.report }
 }

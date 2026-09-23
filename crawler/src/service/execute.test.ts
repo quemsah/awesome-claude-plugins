@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import { describe, expect, it, vi } from 'vitest'
 import { type GitHubReader, GitHubTemporaryError } from '../github/client.js'
 import type { GitHubGit } from '../publish/githubGit.js'
+import { ShutdownError } from '../shutdown.js'
 import { populateFixture } from '../storage/fixtureDb.js'
 import { beginRun, getRun, getSetting, listRunErrors, setSetting } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
@@ -256,4 +257,91 @@ describe('orchestration', () => {
     expect(getRun(db, 'late-run')).toBeNull()
     db.close()
   })
+})
+
+it('does not record a notification delivery failure when shutdown cancels the failure notification', async () => {
+  const db = await dbFixture()
+  const shutdown = new AbortController()
+  const notify = notifier()
+  notify.notifyFailure.mockRejectedValueOnce(new ShutdownError())
+  const terminatingReader: GitHubReader = {
+    ...reader,
+    searchCode: async () => {
+      shutdown.abort()
+      return { items: [], total_count: 0, incomplete_results: false }
+    },
+  }
+
+  await expect(
+    executeCrawl(db, terminatingReader, 'shutdown-notify', {
+      now,
+      ranges: range,
+      dryRun: true,
+      notifier: notify,
+      signal: shutdown.signal,
+    }),
+  ).rejects.toMatchObject({ category: 'terminated' })
+
+  expect(getRun(db, 'shutdown-notify')).toMatchObject({ status: 'failed', last_error: 'terminated' })
+  expect(listRunErrors(db, 'shutdown-notify').filter((row) => row.phase === 'notify')).toHaveLength(0)
+  db.close()
+})
+
+it('keeps the publication lease when shutdown arrives after a candidate commit but before the Git ref update', async () => {
+  const db = await dbFixture()
+  await executeCrawl(db, reader, 'shutdown-publish', { now, ranges: range, dryRun: true })
+  const shutdown = new AbortController()
+  const pending = 'd'.repeat(40)
+  const git: GitHubGit = {
+    getBranchHead: vi.fn(async () => ({ sha: 'a'.repeat(40), treeSha: 'b'.repeat(40) })),
+    createTree: vi.fn(async () => 'c'.repeat(40)),
+    createCommit: vi.fn(async () => {
+      shutdown.abort()
+      return pending
+    }),
+    updateBranch: vi.fn(async () => {}),
+    isCommitReachable: vi.fn(async () => false),
+  }
+
+  await expect(
+    executePublish(db, git, 'shutdown-publish', {
+      now,
+      signal: shutdown.signal,
+      writeEnabled: true,
+      log: vi.fn(),
+    }),
+  ).rejects.toMatchObject({ category: 'terminated' })
+
+  expect(git.updateBranch).not.toHaveBeenCalled()
+  expect(getRun(db, 'shutdown-publish')).toMatchObject({
+    status: 'completed',
+    pending_commit_sha: pending,
+  })
+  expect(db.prepare('SELECT run_id FROM publication_lease').get()).toEqual({ run_id: 'shutdown-publish' })
+  expect(db.prepare("SELECT COUNT(*) AS n FROM stats WHERE run_id = 'shutdown-publish'").get()).toEqual({ n: 0 })
+  db.close()
+})
+
+it('preserves shutdown as terminated when Git branch-head retrieval aborts', async () => {
+  const db = await dbFixture()
+  await executeCrawl(db, reader, 'shutdown-head', { now, ranges: range, dryRun: true })
+  const git: GitHubGit = {
+    getBranchHead: vi.fn(async () => {
+      throw new ShutdownError()
+    }),
+    createTree: vi.fn(async () => 'c'.repeat(40)),
+    createCommit: vi.fn(async () => 'd'.repeat(40)),
+    updateBranch: vi.fn(async () => {}),
+    isCommitReachable: vi.fn(async () => false),
+  }
+
+  await expect(executePublish(db, git, 'shutdown-head', { now, writeEnabled: true, log: vi.fn() })).rejects.toMatchObject({
+    category: 'terminated',
+  })
+
+  expect(git.createTree).not.toHaveBeenCalled()
+  expect(git.createCommit).not.toHaveBeenCalled()
+  expect(git.updateBranch).not.toHaveBeenCalled()
+  expect(listRunErrors(db, 'shutdown-head')).toContainEqual(expect.objectContaining({ phase: 'publish', error_type: 'terminated' }))
+  db.close()
 })

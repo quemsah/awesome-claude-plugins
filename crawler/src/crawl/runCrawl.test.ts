@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { GitHubFatalError, type GitHubReader, type GitHubRepo, GitHubTemporaryError } from '../github/client.js'
 import type { SizeRange } from '../github/sizeRanges.js'
 import { upsertDiscovery } from '../storage/repositories.js'
@@ -421,4 +421,29 @@ it('refuses overlapping runs and allows retry with another id after the first fa
   await rejection
   expect((await runCrawl(db, reader(), 'retry', { ranges: [firstRange] })).status).toBe('completed')
   expect(getRun(db, 'retry')?.status).toBe('completed')
+})
+it('marks a shutdown crawl as terminated after the in-flight request and releases the active-run lock', async () => {
+  const db = database()
+  const shutdown = new AbortController()
+  const searchCode = vi.fn(async () => {
+    shutdown.abort()
+    return { items: [], total_count: 0, incomplete_results: false }
+  })
+
+  await expect(
+    runCrawl(db, reader({ searchCode }), 'shutdown', {
+      ranges,
+      signal: shutdown.signal,
+      now: () => new Date('2026-09-23T02:00:00.000Z'),
+    }),
+  ).rejects.toMatchObject({ category: 'terminated' })
+
+  expect(searchCode).toHaveBeenCalledOnce()
+  expect(getActiveRun(db)).toBeNull()
+  expect(getRun(db, 'shutdown')).toMatchObject({
+    status: 'failed',
+    last_error: 'terminated',
+    completed_at: '2026-09-23T02:00:00.000Z',
+  })
+  expect(listRunErrors(db, 'shutdown')).toContainEqual(expect.objectContaining({ phase: 'crawl', error_type: 'terminated' }))
 })

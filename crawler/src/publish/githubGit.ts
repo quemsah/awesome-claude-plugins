@@ -1,5 +1,6 @@
 import type { components } from '@octokit/openapi-types'
 import { isValidGitBranch, isValidGitHubOwner, isValidGitHubRepositoryName, isValidGitSha } from '../github/identifiers.js'
+import { throwIfShutdown } from '../shutdown.js'
 
 export type GitBranchHead = { sha: string; treeSha: string }
 
@@ -61,6 +62,7 @@ export type GitHubGitOptions = {
   repo: string
   branch: string
   fetch?: typeof fetch
+  signal?: AbortSignal
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -105,6 +107,7 @@ export class GitHubGitClient implements GitHubGit {
   private readonly compareHead: string
   private readonly token: string
   private readonly transport: typeof fetch
+  private readonly signal?: AbortSignal
 
   constructor(options: GitHubGitOptions) {
     for (const field of ['token', 'owner', 'repo', 'branch'] as const) {
@@ -123,6 +126,7 @@ export class GitHubGitClient implements GitHubGit {
     }
     this.token = options.token
     this.transport = options.fetch ?? globalThis.fetch
+    this.signal = options.signal
     const repositoryUrl = `https://api.github.com/repos/${encodeURIComponent(options.owner)}/${encodeURIComponent(options.repo)}`
     const branch = options.branch.split('/').map(encodeURIComponent).join('/')
     this.url = `${repositoryUrl}/git`
@@ -206,6 +210,7 @@ export class GitHubGitClient implements GitHubGit {
   }
 
   private async request(path: string, method = 'GET', body?: unknown, baseUrl = this.url): Promise<unknown> {
+    throwIfShutdown(this.signal)
     let response: Response
     try {
       response = await this.transport(`${baseUrl}${path}`, {

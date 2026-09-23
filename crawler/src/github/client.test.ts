@@ -266,3 +266,67 @@ describe('GitHubClient', () => {
     expect((await test.client.getRepository('acme', 'catalog')).kind).toBe('temporary-error')
   })
 })
+it('cancels a production rate-limit wait when shutdown is requested', async () => {
+  const shutdown = new AbortController()
+  let requests = 0
+  const client = new GitHubClient({
+    token: 'test-secret',
+    signal: shutdown.signal,
+    log: (event) => {
+      if (event.waitMs !== undefined) queueMicrotask(() => shutdown.abort())
+    },
+    fetch: (async () => {
+      requests++
+      return new Response('', {
+        status: 429,
+        headers: { 'Retry-After': '120' },
+      })
+    }) as typeof fetch,
+  })
+
+  await expect(client.getRepository('acme', 'catalog')).rejects.toMatchObject({ category: 'terminated' })
+  expect(requests).toBe(1)
+})
+
+it('lets an in-flight GitHub request finish but refuses to start another after shutdown', async () => {
+  const shutdown = new AbortController()
+  const requests: string[] = []
+  const client = new GitHubClient({
+    token: 'test-secret',
+    signal: shutdown.signal,
+    clock: { now: () => 0, sleep: async () => {} },
+    fetch: (async (input: RequestInfo | URL) => {
+      requests.push(String(input))
+      shutdown.abort()
+      return Response.json(repo)
+    }) as typeof fetch,
+  })
+
+  await expect(client.getRepository('acme', 'catalog')).rejects.toMatchObject({ category: 'terminated' })
+  await expect(client.getRepository('acme', 'catalog')).rejects.toMatchObject({ category: 'terminated' })
+  expect(requests).toHaveLength(1)
+})
+
+it('treats shutdown during the final transport failure as termination', async () => {
+  const shutdown = new AbortController()
+  let time = 0
+  let requests = 0
+  const client = new GitHubClient({
+    token: 'test-secret',
+    signal: shutdown.signal,
+    clock: {
+      now: () => time,
+      sleep: async (milliseconds) => {
+        time += milliseconds
+      },
+    },
+    fetch: (async () => {
+      requests++
+      if (requests === 4) shutdown.abort()
+      throw new Error('offline')
+    }) as typeof fetch,
+  })
+
+  await expect(client.getRepository('acme', 'catalog')).rejects.toMatchObject({ category: 'terminated' })
+  expect(requests).toBe(4)
+})

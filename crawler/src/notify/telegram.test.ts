@@ -193,6 +193,28 @@ describe('TelegramNotifier', () => {
     expect(test.requests).toHaveLength(1)
   })
 
+  it('cancels a rate-limit retry when shutdown is requested', async () => {
+    const shutdown = new AbortController()
+    const response = Response.json({ ok: false, parameters: { retry_after: 120 } }, { status: 429 })
+    response.json = async () => {
+      shutdown.abort()
+      return { ok: false, parameters: { retry_after: 120 } }
+    }
+    const requests: string[] = []
+    const notifier = new TelegramNotifier({
+      botToken: token,
+      chatId: '-100123456789',
+      signal: shutdown.signal,
+      fetch: (async (input: RequestInfo | URL) => {
+        requests.push(String(input))
+        return response
+      }) as typeof fetch,
+    })
+
+    await expect(notifier.notifyStart(summary)).rejects.toMatchObject({ category: 'terminated' })
+    expect(requests).toHaveLength(1)
+  })
+
   it('stops after three rate-limited attempts rather than silently dropping the notification', async () => {
     const test = harness(Array.from({ length: 3 }, () => Response.json({ ok: false, parameters: { retry_after: 2 } }, { status: 429 })))
     await expect(test.notifier.notifyStart(summary)).rejects.toMatchObject({ category: 'rate_limited', status: 429 })
@@ -269,4 +291,47 @@ describe('TelegramNotifier', () => {
     expect(test.requests).toHaveLength(4)
     expect(test.requests.map((request) => request.url).join(' ')).not.toContain(token)
   })
+})
+
+it('treats shutdown during a successful Telegram JSON parse as termination', async () => {
+  const shutdown = new AbortController()
+  const response = Response.json({ ok: true })
+  response.json = async () => {
+    shutdown.abort()
+    return { ok: true }
+  }
+  const notifier = new TelegramNotifier({
+    botToken: token,
+    chatId: '-100123456789',
+    signal: shutdown.signal,
+    fetch: (async () => response) as typeof fetch,
+  })
+
+  await expect(notifier.notifyStart(summary)).rejects.toMatchObject({ category: 'terminated' })
+})
+
+it('treats shutdown during the final Telegram 429 JSON parse as termination', async () => {
+  const shutdown = new AbortController()
+  const responses = [
+    Response.json({ ok: false, parameters: { retry_after: 1 } }, { status: 429 }),
+    Response.json({ ok: false, parameters: { retry_after: 1 } }, { status: 429 }),
+    Response.json({ ok: false, parameters: { retry_after: 1 } }, { status: 429 }),
+  ]
+  responses[2].json = async () => {
+    shutdown.abort()
+    return { ok: false, parameters: { retry_after: 1 } }
+  }
+  const notifier = new TelegramNotifier({
+    botToken: token,
+    chatId: '-100123456789',
+    signal: shutdown.signal,
+    clock: { now: () => 0, sleep: async () => {} },
+    fetch: (async () => {
+      const response = responses.shift()
+      if (!response) throw new Error('Unexpected request')
+      return response
+    }) as typeof fetch,
+  })
+
+  await expect(notifier.notifyStart(summary)).rejects.toMatchObject({ category: 'terminated' })
 })

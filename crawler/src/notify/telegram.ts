@@ -1,5 +1,6 @@
 import type { EnrichmentCounts } from '../crawl/enrich.js'
 import type { GitHubRateBuckets } from '../github/rateBudget.js'
+import { ShutdownError, sleepWithShutdown, throwIfShutdown } from '../shutdown.js'
 
 export type TelegramSummary = {
   runId: string
@@ -37,7 +38,7 @@ export class TelegramNotificationError extends Error {
 
 export type TelegramClock = {
   now: () => number
-  sleep: (milliseconds: number) => Promise<void>
+  sleep: (milliseconds: number, signal?: AbortSignal) => Promise<void>
 }
 
 export type TelegramOptions = {
@@ -45,11 +46,12 @@ export type TelegramOptions = {
   chatId: string
   fetch?: typeof fetch
   clock?: TelegramClock
+  signal?: AbortSignal
 }
 
 const defaultClock: TelegramClock = {
   now: Date.now,
-  sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  sleep: sleepWithShutdown,
 }
 
 const maxAttempts = 3
@@ -144,6 +146,7 @@ export class TelegramNotifier {
   readonly #chatId: string
   readonly #transport: typeof fetch
   readonly #clock: TelegramClock
+  readonly #signal?: AbortSignal
 
   constructor(options: TelegramOptions) {
     if (typeof options?.botToken !== 'string' || !options.botToken.trim() || typeof options.chatId !== 'string' || !options.chatId.trim()) {
@@ -153,6 +156,7 @@ export class TelegramNotifier {
     this.#chatId = options.chatId
     this.#transport = options.fetch ?? globalThis.fetch
     this.#clock = options.clock ?? defaultClock
+    this.#signal = options.signal
   }
 
   notifyStart(summary: TelegramSummary): Promise<void> {
@@ -176,17 +180,20 @@ export class TelegramNotifier {
   }
 
   private async request(text: string, attempt: number): Promise<Response | null> {
+    throwIfShutdown(this.#signal)
     try {
+      const timeout = AbortSignal.timeout(deadlineMs)
       return await this.#transport(`https://api.telegram.org/bot${this.#botToken}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: this.#chatId, text }),
-        signal: AbortSignal.timeout(deadlineMs),
+        signal: this.#signal ? AbortSignal.any([timeout, this.#signal]) : timeout,
       })
     } catch (error) {
+      if (this.#signal?.aborted) throw new ShutdownError()
       if (isAbort(error)) throw new TelegramNotificationError('timeout')
       if (attempt === maxAttempts - 1) throw new TelegramNotificationError('network_error')
-      await this.#clock.sleep(1000 * 2 ** attempt)
+      await this.#clock.sleep(1000 * 2 ** attempt, this.#signal)
       return null
     }
   }
@@ -195,7 +202,9 @@ export class TelegramNotifier {
     let payload: unknown
     try {
       payload = await response.json()
+      throwIfShutdown(this.#signal)
     } catch (error) {
+      if (this.#signal?.aborted) throw new ShutdownError()
       if (isAbort(error)) throw new TelegramNotificationError('timeout', response.status)
       // Retry-After may still be present on a non-JSON rate-limit response.
     }
@@ -203,7 +212,7 @@ export class TelegramNotifier {
     if (attempt === maxAttempts - 1) throw new TelegramNotificationError('rate_limited', status)
     const delay = Math.max(retryAfterJson(payload) ?? 0, retryAfterHeader(response.headers, this.#clock.now()) ?? 0, 1000)
     if (delay > maxRetryDelayMs) throw new TelegramNotificationError('rate_limited', status)
-    await this.#clock.sleep(delay)
+    await this.#clock.sleep(delay, this.#signal)
   }
 
   private async sendAttempt(text: string, attempt: number): Promise<boolean> {
@@ -217,7 +226,7 @@ export class TelegramNotifier {
     }
     if (status >= 500) {
       if (attempt === maxAttempts - 1) throw new TelegramNotificationError('server_error', status)
-      await this.#clock.sleep(1000 * 2 ** attempt)
+      await this.#clock.sleep(1000 * 2 ** attempt, this.#signal)
       return false
     }
     if (!response.ok || status !== 200) throw new TelegramNotificationError('http_error', status)
@@ -229,7 +238,9 @@ export class TelegramNotifier {
     let payload: unknown
     try {
       payload = await response.json()
+      throwIfShutdown(this.#signal)
     } catch (error) {
+      if (this.#signal?.aborted) throw new ShutdownError()
       if (isAbort(error)) throw new TelegramNotificationError('timeout', status)
       throw new TelegramNotificationError('invalid_response', status)
     }
