@@ -205,7 +205,6 @@ it('refreshes a complete row using the same owner and repo for both calls withou
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 1 })
 })
 
-
 it('reuses plugins_count when the repository push timestamp is unchanged', async () => {
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old')
