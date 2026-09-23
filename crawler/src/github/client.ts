@@ -1,4 +1,5 @@
 import type { components, operations } from '@octokit/openapi-types'
+import { throwIfShutdown } from '../shutdown.js'
 import { type Clock, RateBudget, type RateLog, type RateResource } from './rateBudget.js'
 
 type SearchCodeResponse = operations['search/code']['responses'][200]['content']['application/json']
@@ -62,6 +63,7 @@ type Options = {
   clock?: Clock
   random?: () => number
   log?: RateLog
+  signal?: AbortSignal
 }
 
 const defaultClock: Clock = {
@@ -158,6 +160,7 @@ export class GitHubClient implements GitHubReader {
   private readonly transport: typeof fetch
   private readonly random: () => number
   private readonly token: string
+  private readonly signal?: AbortSignal
   private pending: Promise<void> = Promise.resolve()
 
   constructor(options: Options) {
@@ -166,6 +169,7 @@ export class GitHubClient implements GitHubReader {
     this.clock = options.clock ?? defaultClock
     this.transport = options.fetch ?? globalThis.fetch
     this.random = options.random ?? Math.random
+    this.signal = options.signal
     this.budget = new RateBudget(this.clock, options.log)
   }
 
@@ -196,6 +200,7 @@ export class GitHubClient implements GitHubReader {
   }
 
   private request<T>(bucket: RateResource, path: string, parse: (value: unknown) => T): Promise<RepoResult<T>> {
+    throwIfShutdown(this.signal)
     const run = this.pending.then(() => this.perform(bucket, path, parse))
     this.pending = run.then(
       () => {},
@@ -207,7 +212,8 @@ export class GitHubClient implements GitHubReader {
   private async perform<T>(bucket: RateResource, path: string, parse: (value: unknown) => T): Promise<RepoResult<T>> {
     let secondaryCount = 0
     for (let attempt = 0; attempt < 4; attempt++) {
-      await this.budget.acquire(bucket)
+      await this.budget.acquire(bucket, this.signal)
+      throwIfShutdown(this.signal)
       let response: Response
       try {
         response = await this.transport(`https://api.github.com${path}`, {
@@ -224,6 +230,7 @@ export class GitHubClient implements GitHubReader {
         continue
       }
       const action = await this.handleResponse(bucket, response, parse, attempt, secondaryCount)
+      throwIfShutdown(this.signal)
       if (action.kind === 'result') return action.result
       secondaryCount = action.secondaryCount
     }
