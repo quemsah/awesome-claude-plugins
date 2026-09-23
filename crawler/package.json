@@ -19,6 +19,7 @@
     "maintenance": "node dist/cli.js maintenance"
   },
   "dependencies": {
+    "@awesome-claude-plugins/marketplace-contract": "file:./marketplace-contract",
     "better-sqlite3": "12.11.1"
   },
   "devDependencies": {

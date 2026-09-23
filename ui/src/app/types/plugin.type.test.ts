@@ -1,7 +1,17 @@
+import { marketplaceFixtures } from '@awesome-claude-plugins/marketplace-contract/fixtures'
 import { describe, expect, it } from 'vitest'
 import { getMarketplaceName, MarketplacePluginsSchema } from './plugin.type.ts'
 
 describe('MarketplacePluginsSchema', () => {
+  it.each(marketplaceFixtures)('matches the shared contract for $name', (fixture) => {
+    const result = MarketplacePluginsSchema.safeParse(fixture.input)
+    expect(result.success).toBe(fixture.valid)
+    if (result.success) {
+      expect(result.data).toHaveLength(fixture.pluginsCount)
+      expect(getMarketplaceName(fixture.input)).toBe(fixture.marketplaceName)
+    }
+  })
+
   it('extracts marketplace names only from marketplace wrappers', () => {
     expect(getMarketplaceName({ name: 'ykdojo', plugins: [{ name: 'dx', source: './' }] })).toBe('ykdojo')
     expect(getMarketplaceName({ marketplace: { name: 'nested-market', plugins: [{ name: 'nested-plugin' }] } })).toBe('nested-market')
