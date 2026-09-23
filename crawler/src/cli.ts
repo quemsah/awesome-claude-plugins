@@ -210,7 +210,11 @@ async function runCrawlCommand(
   try {
     await runCrawl(db, config, dependencies, options, now, output, rateTracker())
   } finally {
-    optimizeDatabase(db)
+    try {
+      optimizeDatabase(db)
+    } catch {
+      console.error(JSON.stringify({ level: 'error', phase: 'maintenance', category: 'optimize_failed' }))
+    }
   }
 }
 
@@ -250,7 +254,11 @@ async function runLocalCommand(
   }
   if (command === 'maintenance') {
     const result = runMaintenance(db, now())
-    optimizeDatabase(db)
+    try {
+      optimizeDatabase(db)
+    } catch {
+      console.error(JSON.stringify({ level: 'error', phase: 'maintenance', category: 'optimize_failed' }))
+    }
     output(JSON.stringify({ status: 'maintained', ...result }))
     return true
   }
