@@ -104,6 +104,31 @@ it('prunes old run diagnostics while preserving stats, recent runs and publicati
   expect(db.pragma('foreign_key_check')).toEqual([])
 })
 
+
+it('keeps alert settings for a different run whose id only shares the deleted suffix', () => {
+  const db = database()
+  const old = '2026-01-01T00:00:00.000Z'
+  const recent = '2026-09-01T00:00:00.000Z'
+
+  insertRun(db, 'old', 'failed', old)
+  insertRun(db, 'recent_old', 'failed', recent)
+
+  const setting = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)')
+  setting.run('run_report_old', '{}')
+  setting.run('schedule_alert_active_run_old', 'sent')
+  setting.run('schedule_alert_publication_locked_old', 'sent')
+  setting.run('schedule_alert_active_run_recent_old', 'sent')
+  setting.run('schedule_alert_publication_locked_recent_old', 'sent')
+
+  const result = runMaintenance(db, new Date('2026-09-24T00:00:00.000Z'))
+
+  expect(result).toMatchObject({ runsDeleted: 1, settingsDeleted: 3 })
+  expect(db.prepare("SELECT key FROM settings WHERE key LIKE 'schedule_alert_%' ORDER BY key").all()).toEqual([
+    { key: 'schedule_alert_active_run_recent_old' },
+    { key: 'schedule_alert_publication_locked_recent_old' },
+  ])
+})
+
 it('rejects invalid maintenance inputs without deleting data', () => {
   const db = database()
   insertRun(db, 'old', 'failed', '2026-01-01T00:00:00.000Z')

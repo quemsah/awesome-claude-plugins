@@ -14,7 +14,7 @@ import { PublicationError } from './publish/publishRun.js'
 import { ActiveRunError, executeCrawl, executePublish, type Notifier } from './service/execute.js'
 import { openDatabase } from './storage/db.js'
 import { inspect } from './storage/inspect.js'
-import { runMaintenance } from './storage/maintenance.js'
+import { optimizeDatabase, runMaintenance } from './storage/maintenance.js'
 import { listPublishable } from './storage/repositories.js'
 import { getActiveRun, getPublicationLease, getSetting, PublicationLeaseError, recoverStoppedCrawl, setSetting } from './storage/runs.js'
 
@@ -207,7 +207,11 @@ async function runCrawlCommand(
 ): Promise<void> {
   await ensureCrawlAvailable(db, config, dependencies)
   runMaintenance(db, now())
-  await runCrawl(db, config, dependencies, options, now, output, rateTracker())
+  try {
+    await runCrawl(db, config, dependencies, options, now, output, rateTracker())
+  } finally {
+    optimizeDatabase(db)
+  }
 }
 
 async function runPublishCommand(
@@ -245,7 +249,9 @@ async function runLocalCommand(
     return true
   }
   if (command === 'maintenance') {
-    output(JSON.stringify({ status: 'maintained', ...runMaintenance(db, now()) }))
+    const result = runMaintenance(db, now())
+    optimizeDatabase(db)
+    output(JSON.stringify({ status: 'maintained', ...result }))
     return true
   }
   if (command === 'export' && parsed.exportId && parsed.exportDirectory) {
