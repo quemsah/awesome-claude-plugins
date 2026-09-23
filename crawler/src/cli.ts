@@ -164,40 +164,49 @@ async function notifyBlockedSchedule(
   }
 }
 
-async function runScheduledCrawl(
+async function dueStatus(
   db: Database.Database,
   config: RuntimeConfig,
   dependencies: CliDependencies,
-  options: Pick<ParsedOptions, 'force' | 'dryRun'>,
+  force: boolean,
   now: () => Date,
-  output: (line: string) => void,
-): Promise<void> {
-  let status: 'due' | 'not-due'
+): Promise<'due' | 'not-due'> {
   try {
-    status = crawlSchedule(db, now(), config.intervalHours, options.force)
+    return crawlSchedule(db, now(), config.intervalHours, force)
   } catch (error) {
     if (error instanceof ScheduleError && (error.category === 'active_run' || error.category === 'publication_locked')) {
       await notifyBlockedSchedule(db, error.category, config, dependencies)
     }
     throw error
   }
-  if (status === 'not-due') {
-    output(JSON.stringify({ status }))
-    return
-  }
+}
+
+function rateTracker(): { buckets: GitHubRateBuckets; log: RateLog; observed: () => boolean } {
   const buckets: GitHubRateBuckets = {
     code_search: { requests: 0, waitMs: 0, lastRemaining: null },
     core: { requests: 0, waitMs: 0, lastRemaining: null },
   }
-  let observed = false
+  let hasObserved = false
   const rateLog: RateLog = (event) => {
-    observed = true
+    hasObserved = true
     const bucket = buckets[event.bucket]
     if (event.request) bucket.requests++
     if (event.waitMs !== undefined) bucket.waitMs += event.waitMs
     if (event.remaining !== undefined) bucket.lastRemaining = event.remaining
   }
-  const reader = dependencies.reader?.(config, rateLog) ?? new GitHubClient({ token: config.readToken ?? '', log: rateLog })
+  return { buckets, log: rateLog, observed: () => hasObserved }
+}
+
+async function runDueCrawl(
+  db: Database.Database,
+  config: RuntimeConfig,
+  dependencies: CliDependencies,
+  options: Pick<ParsedOptions, 'dryRun'>,
+  now: () => Date,
+  output: (line: string) => void,
+  rates: ReturnType<typeof rateTracker>,
+): Promise<void> {
+  const reader = dependencies.reader?.(config, rates.log) ?? new GitHubClient({ token: config.readToken ?? '', log: rates.log })
   const git = !options.dryRun && config.publishEnabled ? gitFor(config, dependencies) : undefined
   const notifier = notifierFor(config, dependencies)
   if (!notifier) output(JSON.stringify({ status: 'notifier-disabled' }))
@@ -209,12 +218,28 @@ async function runScheduledCrawl(
       dryRun: options.dryRun || !config.publishEnabled,
       git,
       notifier,
-      rateBuckets: () => buckets,
+      rateBuckets: () => rates.buckets,
     })
     output(JSON.stringify(result))
   } finally {
-    if (observed) output(JSON.stringify({ phase: 'github_rate', runId, buckets }))
+    if (rates.observed()) output(JSON.stringify({ phase: 'github_rate', runId, buckets: rates.buckets }))
   }
+}
+
+async function runScheduledCrawl(
+  db: Database.Database,
+  config: RuntimeConfig,
+  dependencies: CliDependencies,
+  options: Pick<ParsedOptions, 'force' | 'dryRun'>,
+  now: () => Date,
+  output: (line: string) => void,
+): Promise<void> {
+  const status = await dueStatus(db, config, dependencies, options.force, now)
+  if (status === 'not-due') {
+    output(JSON.stringify({ status }))
+    return
+  }
+  await runDueCrawl(db, config, dependencies, options, now, output, rateTracker())
 }
 
 async function runPublishCommand(
