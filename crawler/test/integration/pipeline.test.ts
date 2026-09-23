@@ -113,9 +113,9 @@ it('runs discovery, enrichment, snapshot generation and Git publication through 
 
   expect(result).toMatchObject({ status: 'published', runId: 'pipeline-e2e', sha: commitSha })
   expect(getRun(db, 'pipeline-e2e')).toMatchObject({ status: 'published', commit_sha: commitSha })
-  expect(
-    db.prepare('SELECT html_url, stargazers_count, plugins_count FROM repositories').all(),
-  ).toEqual([{ html_url: 'https://github.com/acme/catalog', stargazers_count: 12, plugins_count: 2 }])
+  expect(db.prepare('SELECT html_url, stargazers_count, plugins_count FROM repositories').all()).toEqual([
+    { html_url: 'https://github.com/acme/catalog', stargazers_count: 12, plugins_count: 2 },
+  ])
 
   expect(treeBodies).toHaveLength(1)
   const tree = treeBodies[0] as { tree: Array<{ path: string; content: string }> }
