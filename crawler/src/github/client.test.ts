@@ -106,7 +106,7 @@ describe('GitHubClient', () => {
   ])('treats missing or malformed marketplace content as temporary rather than zero plugins', async (response) => {
     const test = harness(Array.from({ length: 4 }, response))
     const result = await test.client.getMarketplace('acme', 'catalog')
-    expect(result.kind).toBe('temporary-error')
+    expect(result).toMatchObject({ kind: 'temporary-error', retryCount: 3 })
     expect(test.requests).toHaveLength(4)
   })
 
@@ -212,7 +212,7 @@ describe('GitHubClient', () => {
       new Response('', { status: 500 }),
     ])
     const result = await test.client.getRepository('acme', 'catalog')
-    expect(result.kind).toBe('temporary-error')
+    expect(result).toMatchObject({ kind: 'temporary-error', retryCount: 3 })
     expect(JSON.stringify(result)).not.toContain('test-secret')
     expect(test.requests).toHaveLength(4)
     expect(test.requests[1].time).toBeGreaterThan(test.requests[0].time)
