@@ -91,27 +91,21 @@ describe('GitHubClient', () => {
     expect(test.requests[0].url).toBe('https://api.github.com/repos/acme/catalog/contents/.claude-plugin/marketplace.json')
   })
 
-  it.each(marketplaceFixtures.filter((fixture) => fixture.valid))(
-    'uses the shared marketplace contract for $name',
-    async (fixture) => {
-      const encoded = Buffer.from(JSON.stringify(fixture.input)).toString('base64')
-      const test = harness([manifest(encoded)])
-      const result = await test.client.getMarketplace('acme', 'catalog')
-      expect(result.kind).toBe('found')
-      if (result.kind === 'found') expect(result.data.plugins).toHaveLength(fixture.pluginsCount)
-    },
-  )
+  it.each(marketplaceFixtures.filter((fixture) => fixture.valid))('uses the shared marketplace contract for $name', async (fixture) => {
+    const encoded = Buffer.from(JSON.stringify(fixture.input)).toString('base64')
+    const test = harness([manifest(encoded)])
+    const result = await test.client.getMarketplace('acme', 'catalog')
+    expect(result.kind).toBe('found')
+    if (result.kind === 'found') expect(result.data.plugins).toHaveLength(fixture.pluginsCount)
+  })
 
-  it.each(marketplaceFixtures.filter((fixture) => !fixture.valid))(
-    'rejects invalid shared marketplace fixture: $name',
-    async (fixture) => {
-      const encoded = Buffer.from(JSON.stringify(fixture.input)).toString('base64')
-      const test = harness(Array.from({ length: 4 }, () => manifest(encoded)))
-      const result = await test.client.getMarketplace('acme', 'catalog')
-      expect(result.kind).toBe('temporary-error')
-      expect(test.requests).toHaveLength(4)
-    },
-  )
+  it.each(marketplaceFixtures.filter((fixture) => !fixture.valid))('rejects invalid shared marketplace fixture: $name', async (fixture) => {
+    const encoded = Buffer.from(JSON.stringify(fixture.input)).toString('base64')
+    const test = harness(Array.from({ length: 4 }, () => manifest(encoded)))
+    const result = await test.client.getMarketplace('acme', 'catalog')
+    expect(result.kind).toBe('temporary-error')
+    expect(test.requests).toHaveLength(4)
+  })
 
   it('returns definitive 404 without a retry for both enrichment endpoints', async () => {
     const test = harness([new Response('', { status: 404 }), new Response('', { status: 404 })])
