@@ -1,4 +1,4 @@
-import { parseMarketplaceManifest, type MarketplaceManifest } from '@awesome-claude-plugins/marketplace-contract'
+import { parseMarketplaceManifest } from '@awesome-claude-plugins/marketplace-contract'
 import type { components, operations } from '@octokit/openapi-types'
 import { type Clock, RateBudget, type RateLog, type RateResource } from './rateBudget.js'
 
@@ -22,7 +22,7 @@ export type GitHubRepo = Pick<
   private?: RepositoryResponse['private']
 }
 
-export type Marketplace = MarketplaceManifest
+export type Marketplace = { plugins: unknown[] }
 
 export type RepoResult<T> =
   | { kind: 'found'; data: T }
