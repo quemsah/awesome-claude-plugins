@@ -29,7 +29,7 @@ it('initializes all tables and remains idempotent on reopen', () => {
     { name: 'settings' },
     { name: 'stats' },
   ])
-  expect(db.pragma('user_version', { simple: true })).toBe(3)
+  expect(db.pragma('user_version', { simple: true })).toBe(4)
   db.prepare("INSERT INTO repositories (id, html_url, createdAt, updatedAt) VALUES (400, NULL, '2024-01-01', '2024-01-02')").run()
   db.close()
 
@@ -63,7 +63,7 @@ it('migrates populated v1 runs, imported IDs and historical stats atomically and
     `)
     initializeSchema(db)
     initializeSchema(db)
-    expect(db.pragma('user_version', { simple: true })).toBe(3)
+    expect(db.pragma('user_version', { simple: true })).toBe(4)
     expect(db.prepare('SELECT id, createdAt FROM repositories').all()).toEqual([{ id: 53000, createdAt: 'before' }])
     expect(db.prepare('SELECT id, date, size FROM stats').all()).toEqual([{ id: 264, date: '2024-01-01', size: 42 }])
     expect(db.prepare('SELECT run_id, warning_count, draft_date, draft_id, draft_size, draft_hash FROM runs').all()).toEqual([
@@ -82,10 +82,10 @@ it('upgrades a populated v2 database without changing drafts or pending commit S
   ).run('a'.repeat(64), 'b'.repeat(40))
   db.close()
   const old = new Database(path)
-  old.exec('DROP TABLE publication_lease; PRAGMA user_version = 2;')
+  old.exec('DROP INDEX repositories_html_url_nocase_unique; DROP TABLE publication_lease; PRAGMA user_version = 2;')
   old.close()
   const migrated = openDatabase(path)
-  expect(migrated.pragma('user_version', { simple: true })).toBe(3)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(4)
   expect(migrated.prepare("SELECT draft_hash, pending_commit_sha FROM runs WHERE run_id = 'pending'").get()).toEqual({
     draft_hash: 'a'.repeat(64),
     pending_commit_sha: 'b'.repeat(40),
@@ -94,7 +94,7 @@ it('upgrades a populated v2 database without changing drafts or pending commit S
   migrated.close()
 })
 
-it('permits multiple absent URLs, but enforces distinct populated URLs and preserves imported IDs', () => {
+it('permits multiple absent URLs, but enforces case-insensitive distinct populated URLs and preserves imported IDs', () => {
   const db = database()
   try {
     const insert = db.prepare('INSERT INTO repositories (id, html_url, createdAt, updatedAt) VALUES (?, ?, ?, ?)')
@@ -102,6 +102,7 @@ it('permits multiple absent URLs, but enforces distinct populated URLs and prese
     insert.run(99, null, 'later', 'later')
     insert.run(101, 'https://github.com/example/repo', 'later', 'later')
     expect(() => insert.run(105, 'https://github.com/example/repo', 'later', 'later')).toThrow(/UNIQUE/)
+    expect(() => insert.run(106, 'https://github.com/EXAMPLE/REPO', 'later', 'later')).toThrow(/UNIQUE/)
     db.prepare("INSERT INTO repositories (html_url, createdAt, updatedAt) VALUES ('https://github.com/example/new', 'now', 'now')").run()
     expect(db.prepare('SELECT id, html_url FROM repositories ORDER BY id').all()).toEqual([
       { id: 27, html_url: null },
@@ -112,6 +113,73 @@ it('permits multiple absent URLs, but enforces distinct populated URLs and prese
   } finally {
     db.close()
   }
+})
+
+
+it('deduplicates case-variant repository URLs without mixing identity or reviving a stale description', () => {
+  const db = database()
+  const path = db.name
+  db.exec(`
+    DROP INDEX repositories_html_url_nocase_unique;
+    PRAGMA user_version = 3;
+  `)
+  db.prepare(`
+    INSERT INTO repositories (
+      id, html_url, stargazers_count, forks_count, subscribers_count, description,
+      owner, owner_url, repo_name, repo_updated, plugins_count, createdAt, updatedAt
+    ) VALUES (
+      700, 'https://github.com/Team/Repo', 5, 1, 1, 'stale description',
+      'Team', 'https://github.com/Team', 'Repo', '2026-09-22T00:00:00Z', 1, 'old', 'old'
+    )
+  `).run()
+  db.prepare(`
+    INSERT INTO repositories (
+      id, html_url, stargazers_count, forks_count, subscribers_count, description,
+      owner, owner_url, repo_name, repo_updated, plugins_count, createdAt, updatedAt
+    ) VALUES (
+      701, 'https://github.com/team/repo', 10, 2, 1, NULL,
+      'team', 'https://github.com/team', 'repo', '2026-09-23T00:00:00Z', 3, 'new', 'new'
+    )
+  `).run()
+  db.prepare(
+    "INSERT INTO runs (run_id, status, started_at, heartbeat_at, completed_at) VALUES ('migration-run', 'completed', 'start', 'beat', 'done')",
+  ).run()
+  db.prepare(`
+    INSERT INTO run_errors (run_id, phase, repository_id, error_type, retry_count, occurred_at)
+    VALUES ('migration-run', 'enrich', 701, 'temporary_error', 1, 'now')
+  `).run()
+  db.close()
+
+  const migrated = openDatabase(path)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(4)
+  expect(
+    migrated
+      .prepare(
+        'SELECT id, html_url, stargazers_count, description, owner, owner_url, repo_name, repo_updated, plugins_count FROM repositories',
+      )
+      .all(),
+  ).toEqual([
+    {
+      id: 700,
+      html_url: 'https://github.com/team/repo',
+      stargazers_count: 10,
+      description: null,
+      owner: 'team',
+      owner_url: 'https://github.com/team',
+      repo_name: 'repo',
+      repo_updated: '2026-09-23T00:00:00Z',
+      plugins_count: 3,
+    },
+  ])
+  expect(migrated.prepare("SELECT repository_id FROM run_errors WHERE run_id = 'migration-run'").get()).toEqual({
+    repository_id: 700,
+  })
+  expect(() =>
+    migrated
+      .prepare("INSERT INTO repositories (html_url, createdAt, updatedAt) VALUES ('https://github.com/TEAM/REPO', 'later', 'later')")
+      .run(),
+  ).toThrow(/UNIQUE/)
+  migrated.close()
 })
 
 it('preserves stats dates and IDs, and prevents duplicate dates or negative sizes', () => {
