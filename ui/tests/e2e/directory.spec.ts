@@ -189,6 +189,48 @@ test('reaching the end of the grid reports loading more rather than searching', 
   await expect(loadStatus).toHaveText('Loaded 24 more repositories.')
 })
 
+test('a failed page load keeps the results visible and reports the error', async ({ page }) => {
+  await page.goto('/')
+
+  const firstResult = page.getByRole('link', { name: detailsLinkName }).first()
+  await expect(firstResult).toBeVisible()
+  await page.route('**/api/catalog*', (route) => route.fulfill({ status: 500 }))
+
+  await page.getByRole('button', { name: 'Load more' }).click()
+
+  await expect(page.getByText('Failed to load repositories. Please try again later')).toBeVisible()
+  await expect(firstResult).toBeVisible()
+})
+
+test('a failed search can be retried without losing the previous results', async ({ page }) => {
+  let catalogRequests = 0
+  await page.route('**/api/catalog*', async (route) => {
+    catalogRequests += 1
+    if (catalogRequests === 1) {
+      await route.fulfill({ status: 500 })
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ hasMore: false, pluginsCount: 0, repos: [], total: 0 }),
+    })
+  })
+  await page.goto('/')
+
+  const firstResult = page.getByRole('link', { name: detailsLinkName }).first()
+  await expect(firstResult).toBeVisible()
+  await page.getByRole('searchbox', { name: 'Search repositories' }).fill('superpowers')
+
+  await expect(page.getByText('Failed to load repositories. Please try again later')).toBeVisible()
+  await expect(firstResult).toBeVisible()
+  await page.getByRole('button', { name: 'Retry' }).click()
+
+  await expect(page.getByText('No repositories match your search')).toBeVisible()
+  await expect(firstResult).toHaveCount(0)
+  expect(catalogRequests).toBe(2)
+})
+
 test('a search started from an empty result set reports searching instead of no matches', async ({ page }) => {
   const release = await holdCatalogRequests(page)
   await page.goto('/?q=definitely-no-matching-repository-name')
