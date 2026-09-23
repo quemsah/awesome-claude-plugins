@@ -284,7 +284,6 @@ it('lets an in-flight GitHub request finish but refuses to start another after s
   expect(requests).toHaveLength(1)
 })
 
-
 it('treats shutdown during the final transport failure as termination', async () => {
   const shutdown = new AbortController()
   let time = 0
