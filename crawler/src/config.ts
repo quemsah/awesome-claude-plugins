@@ -1,6 +1,5 @@
 export type RuntimeConfig = {
   dbPath: string
-  intervalHours: number
   publishEnabled: boolean
   readToken?: string
   publishToken?: string
@@ -16,14 +15,6 @@ export class ConfigurationError extends Error {
     super('Invalid or missing crawler configuration')
     this.name = 'ConfigurationError'
   }
-}
-
-function intervalHours(env: NodeJS.ProcessEnv): number {
-  const value = env.CRAWL_INTERVAL_HOURS ?? '24'
-  if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) > Number.MAX_SAFE_INTEGER / 3_600_000) {
-    throw new ConfigurationError()
-  }
-  return Number(value)
 }
 
 function telegramCredentials(env: NodeJS.ProcessEnv, publishEnabled: boolean) {
@@ -84,7 +75,6 @@ export function parseConfig(command: 'crawl' | 'publish', env: NodeJS.ProcessEnv
   const publisher = publishEnabled ? publicationConfig(env, readToken) : {}
   return {
     dbPath: env.DB_PATH,
-    intervalHours: intervalHours(env),
     publishEnabled,
     readToken,
     ...publisher,

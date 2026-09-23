@@ -183,7 +183,7 @@ describe('CLI', () => {
     expect(opened).toBe(false)
   })
 
-  it('skips before 24 hours without constructing reader/notifier/Git; force runs a read-only draft', async () => {
+  it('runs despite a recent publication and supports a read-only draft', async () => {
     const path = databasePath()
     populateTestDatabase(path)
     const setup = openDatabase(path)
@@ -195,23 +195,20 @@ describe('CLI', () => {
     const dependencies = {
       env: { DB_PATH: path, GITHUB_READ_TOKEN: 'fake-read-token', PUBLISH_ENABLED: 'false' },
       now: () => new Date('2026-09-23T12:00:00.000Z'),
-      runId: () => 'forced',
+      runId: () => 'cron-run',
       reader: createReader,
       ranges: [[0, 150]] as const,
       output,
     }
-    await runCli(['crawl'], dependencies)
-    expect(output).toHaveBeenCalledWith('{"status":"not-due"}')
-    expect(createReader).not.toHaveBeenCalled()
-    await runCli(['crawl', '--force', '--dry-run'], dependencies)
+    await runCli(['crawl', '--dry-run'], dependencies)
     expect(createReader).toHaveBeenCalledOnce()
     expect(reader.getRepository).toHaveBeenCalled()
     const check = openDatabase(path)
-    expect(getRun(check, 'forced')).toMatchObject({ status: 'completed', draft_size: 1 })
+    expect(getRun(check, 'cron-run')).toMatchObject({ status: 'completed', draft_size: 1 })
     check.close()
   })
 
-  it('does not bypass a stale active-run lock with --force and never makes an API call', async () => {
+  it('does not start while an active-run lock exists and never makes an API call', async () => {
     const path = databasePath()
     populateTestDatabase(path)
     const setup = openDatabase(path)
@@ -219,7 +216,7 @@ describe('CLI', () => {
     setup.close()
     const reader = vi.fn()
     await expect(
-      runCli(['crawl', '--force'], {
+      runCli(['crawl'], {
         env: { DB_PATH: path, GITHUB_READ_TOKEN: 'fake-read-token' },
         reader,
       }),
@@ -228,7 +225,7 @@ describe('CLI', () => {
   })
 
   it.each(['active_run', 'publication_locked'] as const)(
-    'notifies once when a scheduled crawl sees a persisted %s lock',
+    'notifies once when a crawl sees a persisted %s lock',
     async (category) => {
       const path = databasePath()
       populateTestDatabase(path)
@@ -300,7 +297,7 @@ describe('CLI', () => {
     const path = databasePath()
     populateTestDatabase(path)
     const output = vi.fn()
-    await runCli(['crawl', '--dry-run', '--force'], {
+    await runCli(['crawl', '--dry-run'], {
       env: { DB_PATH: path, GITHUB_READ_TOKEN: 'private-token', PUBLISH_ENABLED: 'false' },
       runId: () => 'pilot',
       now: () => new Date('2026-09-23T12:00:00.000Z'),
@@ -332,7 +329,7 @@ describe('CLI', () => {
   it('rejects a missing Railway mount before creating a database or making an API call', async () => {
     const reader = vi.fn()
     await expect(
-      runCli(['crawl', '--force'], {
+      runCli(['crawl'], {
         env: { DB_PATH: '/data/catalog.sqlite', RAILWAY_PROJECT_ID: 'test', GITHUB_READ_TOKEN: 'fake-read-token' },
         reader,
         open: (path) => openDatabase(path, { railway: true, mountInfo: '34 2 0:1 / / rw - tmpfs tmpfs rw' }),
@@ -346,7 +343,7 @@ describe('CLI', () => {
     populateTestDatabase(path)
     const reader = readerFixture()
     const readerFactory = vi.fn(() => reader)
-    await runCli(['crawl', '--dry-run', '--force'], {
+    await runCli(['crawl', '--dry-run'], {
       env: { DB_PATH: path, GITHUB_READ_TOKEN: 'read-token' },
       reader: readerFactory,
       ranges: [[0, 150]],
@@ -420,7 +417,7 @@ describe('CLI', () => {
       notifyFailure: vi.fn(async () => {}),
       notifySuccess: vi.fn(async () => {}),
     }
-    await runCli(['crawl', '--dry-run', '--force'], {
+    await runCli(['crawl', '--dry-run'], {
       env: {
         DB_PATH: path,
         GITHUB_READ_TOKEN: 'read-token',
