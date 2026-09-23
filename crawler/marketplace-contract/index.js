@@ -173,24 +173,45 @@ export function getMarketplaceName(value) {
   return marketplaceName(value.marketplace.name)
 }
 
+function wrappedMarketplacePlugins(value) {
+  const candidates = [
+    { container: value, key: 'plugins', path: ['plugins'] },
+    { container: record(value.marketplace) ? value.marketplace : undefined, key: 'plugins', path: ['marketplace', 'plugins'] },
+    { container: value, key: 'repositories', path: ['repositories'] },
+  ]
+
+  for (const { container, key, path } of candidates) {
+    if (record(container) && Array.isArray(container[key])) return parsePluginList(container[key], path)
+  }
+  return undefined
+}
+
+function hasMarketplaceWrapper(value) {
+  return ['plugins', 'repositories', 'marketplace'].some((key) => key in value)
+}
+
+function singleOrEmptyMarketplacePlugins(value) {
+  try {
+    return [parsePlugin(value)]
+  } catch (error) {
+    if (error instanceof MarketplaceValidationError && isEmptyMarketplace(value)) return []
+    throw error
+  }
+}
+
+function marketplacePlugins(value) {
+  if (Array.isArray(value)) return parsePluginList(value, [])
+  if (!record(value)) issue('Unsupported marketplace manifest shape')
+
+  const wrapped = wrappedMarketplacePlugins(value)
+  if (wrapped !== undefined) return wrapped
+  if (!hasMarketplaceWrapper(value)) return singleOrEmptyMarketplacePlugins(value)
+  if (isEmptyMarketplace(value)) return []
+  issue('Unsupported marketplace manifest shape')
+}
+
 export function parseMarketplaceManifest(value) {
-  let plugins
-
-  if (Array.isArray(value)) plugins = parsePluginList(value, [])
-  else if (record(value) && Array.isArray(value.plugins)) plugins = parsePluginList(value.plugins, ['plugins'])
-  else if (record(value) && record(value.marketplace) && Array.isArray(value.marketplace.plugins)) {
-    plugins = parsePluginList(value.marketplace.plugins, ['marketplace', 'plugins'])
-  } else if (record(value) && Array.isArray(value.repositories)) plugins = parsePluginList(value.repositories, ['repositories'])
-  else if (record(value) && !('plugins' in value || 'repositories' in value || 'marketplace' in value)) {
-    try {
-      plugins = [parsePlugin(value)]
-    } catch (error) {
-      if (!(error instanceof MarketplaceValidationError) || !isEmptyMarketplace(value)) throw error
-      plugins = []
-    }
-  } else if (isEmptyMarketplace(value)) plugins = []
-  else issue('Unsupported marketplace manifest shape')
-
+  const plugins = marketplacePlugins(value)
   const name = getMarketplaceName(value)
   return name === undefined ? { plugins } : { name, plugins }
 }
