@@ -12,7 +12,6 @@ import { DraftExportError, exportDraftSnapshot } from './output/exportDraft.js'
 import { type GitHubGit, GitHubGitClient } from './publish/githubGit.js'
 import { PublicationError } from './publish/publishRun.js'
 import { ActiveRunError, executeCrawl, executePublish, type Notifier } from './service/execute.js'
-import { crawlSchedule, ScheduleError } from './service/schedule.js'
 import { openDatabase } from './storage/db.js'
 import { inspect } from './storage/inspect.js'
 import { listPublishable } from './storage/repositories.js'
@@ -51,7 +50,6 @@ function notifierFor(config: RuntimeConfig, dependencies: CliDependencies): Noti
 
 type CliCommand = 'inspect' | 'crawl' | 'publish' | 'recover-crawl' | 'export'
 type ParsedOptions = {
-  force: boolean
   dryRun: boolean
   publishId?: string
   exportId?: string
@@ -60,13 +58,13 @@ type ParsedOptions = {
   recoverPublication: boolean
 }
 
-function parseCrawlOptions(args: string[]): Pick<ParsedOptions, 'force' | 'dryRun'> {
+function parseCrawlOptions(args: string[]): Pick<ParsedOptions, 'dryRun'> {
   const seen = new Set<string>()
   for (const option of args) {
-    if (!['--force', '--dry-run'].includes(option) || seen.has(option)) throw new Error('Unknown or repeated crawl option')
+    if (option !== '--dry-run' || seen.has(option)) throw new Error('Unknown or repeated crawl option')
     seen.add(option)
   }
-  return { force: seen.has('--force'), dryRun: seen.has('--dry-run') }
+  return { dryRun: seen.has('--dry-run') }
 }
 
 function parsePublishOptions(args: string[]): Pick<ParsedOptions, 'publishId' | 'recoverPublication'> {
@@ -86,7 +84,7 @@ function parseRunId(args: string[], command: 'recover-crawl' | 'export'): string
 }
 
 function parseOptions(command: CliCommand, args: string[]): ParsedOptions {
-  const defaults: ParsedOptions = { force: false, dryRun: false, recoverPublication: false }
+  const defaults: ParsedOptions = { dryRun: false, recoverPublication: false }
   if (command === 'crawl') return { ...defaults, ...parseCrawlOptions(args) }
   if (command === 'publish') return { ...defaults, ...parsePublishOptions(args) }
   if (command === 'recover-crawl') return { ...defaults, recoverId: parseRunId(args, command) }
@@ -105,7 +103,7 @@ function parseCommand(value: string | undefined): CliCommand {
   throw new Error('Unknown command. Available: inspect, crawl, publish, recover-crawl, export')
 }
 
-async function notifyBlockedSchedule(
+async function notifyBlockedCrawl(
   db: Database.Database,
   category: 'active_run' | 'publication_locked',
   config: RuntimeConfig,
@@ -145,20 +143,11 @@ async function notifyBlockedSchedule(
   }
 }
 
-async function dueStatus(
-  db: Database.Database,
-  config: RuntimeConfig,
-  dependencies: CliDependencies,
-  force: boolean,
-  now: () => Date,
-): Promise<'due' | 'not-due'> {
-  try {
-    return crawlSchedule(db, now(), config.intervalHours, force)
-  } catch (error) {
-    if (error instanceof ScheduleError && (error.category === 'active_run' || error.category === 'publication_locked')) {
-      await notifyBlockedSchedule(db, error.category, config, dependencies)
-    }
-    throw error
+async function ensureCrawlAvailable(db: Database.Database, config: RuntimeConfig, dependencies: CliDependencies): Promise<void> {
+  const blocked = getActiveRun(db) ? 'active_run' : getPublicationLease(db) ? 'publication_locked' : null
+  if (blocked) {
+    await notifyBlockedCrawl(db, blocked, config, dependencies)
+    throw new PublicationLeaseError(blocked)
   }
 }
 
@@ -178,7 +167,7 @@ function rateTracker(): { buckets: GitHubRateBuckets; log: RateLog; observed: ()
   return { buckets, log: rateLog, observed: () => hasObserved }
 }
 
-async function runDueCrawl(
+async function runCrawl(
   db: Database.Database,
   config: RuntimeConfig,
   dependencies: CliDependencies,
@@ -207,20 +196,16 @@ async function runDueCrawl(
   }
 }
 
-async function runScheduledCrawl(
+async function runCrawlCommand(
   db: Database.Database,
   config: RuntimeConfig,
   dependencies: CliDependencies,
-  options: Pick<ParsedOptions, 'force' | 'dryRun'>,
+  options: Pick<ParsedOptions, 'dryRun'>,
   now: () => Date,
   output: (line: string) => void,
 ): Promise<void> {
-  const status = await dueStatus(db, config, dependencies, options.force, now)
-  if (status === 'not-due') {
-    output(JSON.stringify({ status }))
-    return
-  }
-  await runDueCrawl(db, config, dependencies, options, now, output, rateTracker())
+  await ensureCrawlAvailable(db, config, dependencies)
+  await runCrawl(db, config, dependencies, options, now, output, rateTracker())
 }
 
 async function runPublishCommand(
@@ -282,7 +267,7 @@ export async function runCli(argv: string[], dependencies: CliDependencies = {})
   try {
     const handled = await runLocalCommand(db, command, parsed, now, output)
     if (!handled && command === 'crawl' && config) {
-      await runScheduledCrawl(db, config, dependencies, parsed, now, output)
+      await runCrawlCommand(db, config, dependencies, parsed, now, output)
     } else if (!handled && command === 'publish' && config) {
       await runPublishCommand(db, config, dependencies, parsed, now, output)
     }
@@ -295,8 +280,7 @@ export function formatCliError(error: unknown): string {
   const category =
     error instanceof ConfigurationError
       ? 'configuration'
-      : error instanceof ScheduleError ||
-          error instanceof CrawlError ||
+      : error instanceof CrawlError ||
           error instanceof PublicationError ||
           error instanceof ActiveRunError ||
           error instanceof PublicationLeaseError
