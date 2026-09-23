@@ -1,3 +1,4 @@
+import { parseMarketplaceManifest } from '@awesome-claude-plugins/marketplace-contract'
 import type { components, operations } from '@octokit/openapi-types'
 import { throwIfShutdown } from '../shutdown.js'
 import { type Clock, RateBudget, type RateLog, type RateResource, systemClock } from './rateBudget.js'
@@ -124,21 +125,7 @@ function parseRepository(value: unknown): GitHubRepo {
 }
 
 function parseMarketplace(value: unknown): Marketplace {
-  if (!record(value)) throw new Error('Invalid marketplace content response')
-  const contentFile = value as Pick<components['schemas']['content-file'], 'encoding' | 'content'>
-  if (contentFile.encoding !== 'base64' || typeof contentFile.content !== 'string') {
-    throw new Error('Invalid marketplace content response')
-  }
-  const encoded = contentFile.content.replace(/\s/g, '')
-  if (!encoded || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
-    throw new Error('Invalid marketplace base64')
-  }
-  const bytes = Buffer.from(encoded, 'base64')
-  if (bytes.toString('base64') !== encoded) throw new Error('Invalid marketplace base64')
-
-  const decoded = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown
-  if (!record(decoded) || !Array.isArray(decoded.plugins)) throw new Error('Invalid marketplace plugins')
-  return { plugins: decoded.plugins }
+  return parseMarketplaceManifest(value)
 }
 
 function retryAfter(headers: Headers, now: number): number | null {
@@ -193,13 +180,19 @@ export class GitHubClient implements GitHubReader {
       'core',
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/.claude-plugin/marketplace.json`,
       parseMarketplace,
+      'application/vnd.github.raw+json',
     )
   }
 
-  private request<T>(bucket: RateResource, path: string, parse: (value: unknown) => T): Promise<RepoResult<T>> {
+  private request<T>(
+    bucket: RateResource,
+    path: string,
+    parse: (value: unknown) => T,
+    accept = 'application/vnd.github+json',
+  ): Promise<RepoResult<T>> {
     const run = this.pending.then(() => {
       throwIfShutdown(this.signal)
-      return this.perform(bucket, path, parse)
+      return this.perform(bucket, path, parse, accept)
     })
     this.pending = run.then(
       () => {},
@@ -208,7 +201,7 @@ export class GitHubClient implements GitHubReader {
     return run
   }
 
-  private async perform<T>(bucket: RateResource, path: string, parse: (value: unknown) => T): Promise<RepoResult<T>> {
+  private async perform<T>(bucket: RateResource, path: string, parse: (value: unknown) => T, accept: string): Promise<RepoResult<T>> {
     let secondaryCount = 0
     for (let attempt = 0; attempt < 4; attempt++) {
       await this.budget.acquire(bucket, this.signal)
@@ -219,7 +212,7 @@ export class GitHubClient implements GitHubReader {
           signal: AbortSignal.timeout(30_000),
           headers: {
             Authorization: `Bearer ${this.token}`,
-            Accept: 'application/vnd.github+json',
+            Accept: accept,
             'X-GitHub-Api-Version': '2022-11-28',
           },
         })

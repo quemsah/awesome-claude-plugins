@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3'
 import type { GitHubReader, GitHubRepo, RepoResult } from '../github/client.js'
+import { isValidGitHubPathSegment, parseGitHubOwnerUrl } from '../github/identifiers.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import {
   deleteById,
@@ -47,13 +48,14 @@ type CanonicalIdentity = {
 
 function canonicalIdentity(data: GitHubRepo): CanonicalIdentity | null {
   const identity = parseRepositoryUrl(data.html_url)
+  const ownerFromUrl = parseGitHubOwnerUrl(data.owner.html_url)
   if (
     identity === null ||
-    !/^[A-Za-z0-9._-]+$/.test(data.owner.login) ||
+    !isValidGitHubPathSegment(data.owner.login) ||
     data.owner.login.toLowerCase() !== identity.owner.toLowerCase() ||
-    !/^https:\/\/github\.com\/[A-Za-z0-9._-]+$/.test(data.owner.html_url) ||
-    data.owner.html_url.toLowerCase() !== `https://github.com/${identity.owner}`.toLowerCase() ||
-    !/^[A-Za-z0-9._-]+$/.test(data.name) ||
+    ownerFromUrl === undefined ||
+    ownerFromUrl.toLowerCase() !== identity.owner.toLowerCase() ||
+    !isValidGitHubPathSegment(data.name) ||
     data.name.toLowerCase() !== identity.repo.toLowerCase()
   ) {
     return null

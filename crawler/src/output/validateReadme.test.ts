@@ -35,6 +35,20 @@ it('accepts escaped descriptions while checking the top ranked links', () => {
   expect(() => validateReadme(renderReadme(repos, draft), repos, draft)).not.toThrow()
 })
 
+it('rejects README links with invalid GitHub identity segments', () => {
+  const invalidRepos: PublishableRepository[] = [
+    {
+      ...repos[0],
+      html_url: 'https://github.com/../first',
+      owner: '..',
+      owner_url: 'https://github.com/..',
+    },
+  ]
+  const invalidDraft = { ...draft, size: 1 }
+
+  expect(() => validateReadme(renderReadme(invalidRepos, invalidDraft), invalidRepos, invalidDraft)).toThrow(/top-100 links/)
+})
+
 it.each([
   ['heading', (text: string) => text.replace('Top 100 Repositories', 'Top 10 Repositories')],
   ['size', (text: string) => text.replace('with 2 total', 'with 1 total')],

@@ -1,5 +1,5 @@
 import type { components } from '@octokit/openapi-types'
-import { isValidGitBranch, isValidGitHubOwner, isValidGitHubRepository, isValidGitSha } from '../github/identifiers.js'
+import { isValidGitBranch, isValidGitHubOwner, isValidGitHubRepositoryName, isValidGitSha } from '../github/identifiers.js'
 import { throwIfShutdown } from '../shutdown.js'
 
 export type GitBranchHead = { sha: string; treeSha: string }
@@ -118,7 +118,7 @@ export class GitHubGitClient implements GitHubGit {
     if (!isValidGitHubOwner(options.owner)) {
       throw new GitHubGitError('Invalid GitHub Git owner')
     }
-    if (!isValidGitHubRepository(options.repo)) {
+    if (!isValidGitHubRepositoryName(options.repo)) {
       throw new GitHubGitError('Invalid GitHub Git repo')
     }
     if (!isValidGitBranch(options.branch)) {
