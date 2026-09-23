@@ -203,6 +203,7 @@ export class TelegramNotifier {
     try {
       payload = await response.json()
     } catch (error) {
+      if (this.#signal?.aborted) throw new ShutdownError()
       if (isAbort(error)) throw new TelegramNotificationError('timeout', response.status)
       // Retry-After may still be present on a non-JSON rate-limit response.
     }
@@ -237,6 +238,7 @@ export class TelegramNotifier {
     try {
       payload = await response.json()
     } catch (error) {
+      if (this.#signal?.aborted) throw new ShutdownError()
       if (isAbort(error)) throw new TelegramNotificationError('timeout', status)
       throw new TelegramNotificationError('invalid_response', status)
     }
