@@ -91,6 +91,20 @@ function isAbort(error: unknown): boolean {
   return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')
 }
 
+async function refConflictStatus(response: Response): Promise<409 | 422 | null> {
+  if (response.status === 409) return 409
+  if (response.status !== 422) return null
+  try {
+    const payload = (await response.json()) as unknown
+    if (record(payload) && typeof payload.message === 'string' && payload.message.trim().toLowerCase() === 'update is not a fast forward') {
+      return 422
+    }
+  } catch {
+    // A malformed validation response is still a confirmed HTTP rejection, not an ambiguous PATCH.
+  }
+  return null
+}
+
 export class GitHubGitClient implements GitHubGit {
   private readonly url: string
   private readonly token: string
@@ -230,9 +244,8 @@ export class GitHubGitClient implements GitHubGit {
       throw new GitHubGitError('GitHub Git API network request failed')
     }
     if (!response.ok) {
-      if (method === 'PATCH' && (response.status === 409 || response.status === 422)) {
-        throw new GitHubGitConflictError(response.status)
-      }
+      const conflictStatus = method === 'PATCH' ? await refConflictStatus(response) : null
+      if (conflictStatus !== null) throw new GitHubGitConflictError(conflictStatus)
       throw new GitHubGitHttpError(response.status)
     }
     try {

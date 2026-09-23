@@ -176,11 +176,27 @@ describe('GitHubGitClient', () => {
     expect(requests).toHaveLength(1)
   })
 
-  it.each([409, 422])('exposes PATCH %i as a ref conflict and never forces the ref', async (status) => {
-    const { client, requests } = mockClient([Response.json({ message: 'private-publish-token conflict' }, { status })])
+  it('exposes PATCH 409 as a ref conflict and never forces the ref', async () => {
+    const { client, requests } = mockClient([Response.json({ message: 'Conflict' }, { status: 409 })])
     await expect(client.updateBranch(pendingSha)).rejects.toBeInstanceOf(GitHubGitConflictError)
     expect(payload(requests[0])).toEqual({ sha: pendingSha, force: false })
     expect(requests).toHaveLength(1)
+  })
+
+  it('recognizes GitHub non-fast-forward PATCH 422 as a retryable ref conflict', async () => {
+    const { client, requests } = mockClient([Response.json({ message: 'Update is not a fast forward' }, { status: 422 })])
+    await expect(client.updateBranch(pendingSha)).rejects.toBeInstanceOf(GitHubGitConflictError)
+    expect(payload(requests[0])).toEqual({ sha: pendingSha, force: false })
+    expect(requests).toHaveLength(1)
+  })
+
+  it('keeps other PATCH 422 responses as confirmed HTTP rejections without leaking the body', async () => {
+    const { client } = mockClient([Response.json({ message: 'private-publish-token validation failed' }, { status: 422 })])
+    const failure = await client.updateBranch(pendingSha).catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(GitHubGitHttpError)
+    expect(failure).not.toBeInstanceOf(GitHubGitConflictError)
+    expect(failure).toMatchObject({ status: 422 })
+    expect(String(failure)).not.toContain('private-publish-token')
   })
 
   it('does not confuse a failed tree creation with a ref conflict', async () => {

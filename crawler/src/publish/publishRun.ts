@@ -8,6 +8,7 @@ import { validateReadme } from '../output/validateReadme.js'
 import { listPublishable } from '../storage/repositories.js'
 import {
   claimPublicationLease,
+  clearPendingCommit,
   getRun,
   markPublished,
   PublicationLeaseError,
@@ -17,7 +18,7 @@ import {
   saveRunDraft,
   setPendingCommit,
 } from '../storage/runs.js'
-import { type GitHubGit, GitHubGitConflictError, type GitSnapshotFiles } from './githubGit.js'
+import { type GitHubGit, GitHubGitConflictError, GitHubGitHttpError, type GitSnapshotFiles } from './githubGit.js'
 
 export type PublicationCategory =
   | 'invalid_run'
@@ -208,6 +209,14 @@ function rememberPending(db: Database.Database, runId: string, sha: string, prev
   }
 }
 
+function forgetPending(db: Database.Database, runId: string, sha: string): void {
+  try {
+    if (!clearPendingCommit(db, runId, sha)) throw new Error('Pending commit changed before Git rejection was recorded')
+  } catch {
+    throw new PublicationError('database_error')
+  }
+}
+
 async function reachable(git: GitHubGit, pending: string, historyLimit?: number): Promise<boolean> {
   try {
     return await git.isCommitReachable(pending, historyLimit)
@@ -217,13 +226,14 @@ async function reachable(git: GitHubGit, pending: string, historyLimit?: number)
   }
 }
 
-async function update(git: GitHubGit, sha: string): Promise<'updated' | 'conflict'> {
+async function update(git: GitHubGit, sha: string): Promise<'updated' | 'conflict' | 'rejected'> {
   try {
     await git.updateBranch(sha)
     return 'updated'
   } catch (error) {
     if (error instanceof GitHubGitConflictError) return 'conflict'
-    // PATCH can have succeeded even if its acknowledgement was lost.
+    if (error instanceof GitHubGitHttpError && error.status !== null && error.status >= 400 && error.status < 500) return 'rejected'
+    // A timeout, malformed success response, network failure, or server error can be ambiguous.
     throw new PublicationError('git_indeterminate')
   }
 }
@@ -268,10 +278,14 @@ async function resumePendingCommit(
   const snapshot = checkedSnapshot(db, runId)
   if (snapshot.pending) {
     if (snapshot.pending !== run.pending_commit_sha) throw new PublicationError('git_indeterminate')
-    if ((await update(git, snapshot.pending)) === 'updated') {
+    const result = await update(git, snapshot.pending)
+    if (result === 'updated') {
       recordPublication(db, runId, snapshot.draft, snapshot.pending, owner)
       return snapshot.pending
     }
+    forgetPending(db, runId, snapshot.pending)
+    if (result === 'rejected') throw new PublicationError('git_error')
+    return { snapshot: { ...snapshot, pending: null } }
   }
   return { snapshot }
 }
@@ -294,11 +308,14 @@ async function createAndPublishSnapshot(
       throw new PublicationError('git_error')
     }
     rememberPending(db, runId, commit, expectedPending)
-    expectedPending = commit
-    if ((await update(git, commit)) === 'updated') {
+    const result = await update(git, commit)
+    if (result === 'updated') {
       recordPublication(db, runId, snapshot.draft, commit, owner)
       return commit
     }
+    forgetPending(db, runId, commit)
+    expectedPending = null
+    if (result === 'rejected') throw new PublicationError('git_error')
   }
   throw new PublicationError('git_conflict')
 }

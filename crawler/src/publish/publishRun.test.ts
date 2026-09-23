@@ -59,6 +59,7 @@ class Branch implements GitHubGit {
     | 'commit-after'
     | 'patch-before'
     | 'patch-after'
+    | 'patch-rejected'
     | 'history-404'
     | 'history-indeterminate'
     | null = null
@@ -92,6 +93,7 @@ class Branch implements GitHubGit {
   async updateBranch(commit: string) {
     this.events.push(`PATCH ${commit} force:false`)
     if (this.failure === 'patch-before') throw new GitHubGitTimeoutError()
+    if (this.failure === 'patch-rejected') throw new GitHubGitHttpError(422)
     if (this.conflictCount-- > 0 || this.commits.get(commit)?.parent !== this.head) throw new GitHubGitConflictError(422)
     this.head = commit
     this.patches++
@@ -465,14 +467,27 @@ it('keeps a pending SHA and refuses to write when ancestry is 404 or indetermina
   }
 })
 
-it('never clears pending after repeated conflicts and reports bounded exhaustion', async () => {
+it('clears rejected candidates and releases the lease after repeated ref conflicts', async () => {
   const db = fixture()
   const git = new Branch()
   prepareDraft(db, 'r1', timestamp)
   git.conflictCount = 100
   await expect(publishRun(db, git, 'r1', { writeEnabled: true })).rejects.toMatchObject({ category: 'git_conflict' })
-  expect(git.events.filter((event) => event.startsWith('PATCH')).length).toBeLessThanOrEqual(4)
-  expect(getRun(db, 'r1')?.pending_commit_sha).toMatch(/^[a-f0-9]{40}$/)
+  expect(git.events.filter((event) => event.startsWith('PATCH'))).toHaveLength(3)
+  expect(getRun(db, 'r1')?.pending_commit_sha).toBeNull()
+  expect(publicationLease(db)).toBeUndefined()
+  expect(db.prepare('SELECT COUNT(*) AS count FROM stats').get()).toEqual({ count: 1 })
+})
+
+it('clears pending and releases the lease after a confirmed PATCH validation rejection', async () => {
+  const db = fixture()
+  const git = new Branch()
+  prepareDraft(db, 'r1', timestamp)
+  git.failure = 'patch-rejected'
+  await expect(publishRun(db, git, 'r1', { writeEnabled: true })).rejects.toMatchObject({ category: 'git_error' })
+  expect(getRun(db, 'r1')?.pending_commit_sha).toBeNull()
+  expect(publicationLease(db)).toBeUndefined()
+  expect(git.patches).toBe(0)
   expect(db.prepare('SELECT COUNT(*) AS count FROM stats').get()).toEqual({ count: 1 })
 })
 

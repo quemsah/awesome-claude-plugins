@@ -176,6 +176,15 @@ export function setPendingCommit(db: Database.Database, runId: string, sha: stri
   )
 }
 
+export function clearPendingCommit(db: Database.Database, runId: string, sha: string): boolean {
+  assertSha(sha)
+  return (
+    db
+      .prepare("UPDATE runs SET pending_commit_sha = NULL WHERE run_id = ? AND status = 'completed' AND pending_commit_sha = ?")
+      .run(runId, sha).changes === 1
+  )
+}
+
 export function saveRunDraft(db: Database.Database, runId: string, draft: RunDraft): boolean {
   assertValidStatsDraft(draft)
   if (!/^[a-f0-9]{64}$/.test(draft.hash)) throw new Error('Draft hash must be a SHA-256 digest')
