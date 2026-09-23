@@ -1,6 +1,6 @@
 import type { components, operations } from '@octokit/openapi-types'
 import { throwIfShutdown } from '../shutdown.js'
-import { type Clock, RateBudget, type RateLog, type RateResource } from './rateBudget.js'
+import { type Clock, RateBudget, type RateLog, type RateResource, systemClock } from './rateBudget.js'
 
 type SearchCodeResponse = operations['search/code']['responses'][200]['content']['application/json']
 type SearchCodeRepository = SearchCodeResponse['items'][number]['repository']
@@ -64,11 +64,6 @@ type Options = {
   random?: () => number
   log?: RateLog
   signal?: AbortSignal
-}
-
-const defaultClock: Clock = {
-  now: Date.now,
-  sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -166,7 +161,7 @@ export class GitHubClient implements GitHubReader {
   constructor(options: Options) {
     if (!options.token.trim()) throw new GitHubFatalError('GitHub token is required', null)
     this.token = options.token
-    this.clock = options.clock ?? defaultClock
+    this.clock = options.clock ?? systemClock
     this.transport = options.fetch ?? globalThis.fetch
     this.random = options.random ?? Math.random
     this.signal = options.signal
