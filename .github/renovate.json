@@ -12,7 +12,7 @@
       "customType": "regex",
       "description": "Bump the Biome config schema URL together with the Biome version.",
       "managerFilePatterns": [
-        "/^ui/biome\\.json$/"
+        "/^(ui|crawler)/biome\\.json$/"
       ],
       "matchStrings": ["\"\\$schema\": \"https://biomejs\\.dev/schemas/(?<currentValue>[0-9.]+)/schema\\.json\""],
       "depNameTemplate": "@biomejs/biome",
