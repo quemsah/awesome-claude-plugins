@@ -257,3 +257,39 @@ describe('orchestration', () => {
     db.close()
   })
 })
+
+
+it('keeps the publication lease when shutdown arrives after a candidate commit but before the Git ref update', async () => {
+  const db = await dbFixture()
+  await executeCrawl(db, reader, 'shutdown-publish', { now, ranges: range, dryRun: true })
+  const shutdown = new AbortController()
+  const pending = 'd'.repeat(40)
+  const git: GitHubGit = {
+    getBranchHead: vi.fn(async () => ({ sha: 'a'.repeat(40), treeSha: 'b'.repeat(40) })),
+    createTree: vi.fn(async () => 'c'.repeat(40)),
+    createCommit: vi.fn(async () => {
+      shutdown.abort()
+      return pending
+    }),
+    updateBranch: vi.fn(async () => {}),
+    isCommitReachable: vi.fn(async () => false),
+  }
+
+  await expect(
+    executePublish(db, git, 'shutdown-publish', {
+      now,
+      signal: shutdown.signal,
+      writeEnabled: true,
+      log: vi.fn(),
+    }),
+  ).rejects.toMatchObject({ category: 'terminated' })
+
+  expect(git.updateBranch).not.toHaveBeenCalled()
+  expect(getRun(db, 'shutdown-publish')).toMatchObject({
+    status: 'completed',
+    pending_commit_sha: pending,
+  })
+  expect(db.prepare('SELECT run_id FROM publication_lease').get()).toEqual({ run_id: 'shutdown-publish' })
+  expect(db.prepare("SELECT COUNT(*) AS n FROM stats WHERE run_id = 'shutdown-publish'").get()).toEqual({ n: 0 })
+  db.close()
+})
