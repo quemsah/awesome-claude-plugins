@@ -49,26 +49,28 @@ export function runMaintenance(
   const deleteSettings = db.prepare('DELETE FROM settings WHERE key IN (?, ?, ?)')
   const deleteRun = db.prepare('DELETE FROM runs WHERE run_id = ?')
 
-  const counts = db.transaction(() => {
-    const candidates = selectCandidates.all(cutoff) as RunIdRow[]
-    let runsDeleted = 0
-    let errorsDeleted = 0
-    let settingsDeleted = 0
-    let statsDetached = 0
+  const counts = db
+    .transaction(() => {
+      const candidates = selectCandidates.all(cutoff) as RunIdRow[]
+      let runsDeleted = 0
+      let errorsDeleted = 0
+      let settingsDeleted = 0
+      let statsDetached = 0
 
-    for (const { run_id: runId } of candidates) {
-      statsDetached += detachStats.run(runId).changes
-      errorsDeleted += deleteErrors.run(runId).changes
-      settingsDeleted += deleteSettings.run(
-        `run_report_${runId}`,
-        `schedule_alert_active_run_${runId}`,
-        `schedule_alert_publication_locked_${runId}`,
-      ).changes
-      runsDeleted += deleteRun.run(runId).changes
-    }
+      for (const { run_id: runId } of candidates) {
+        statsDetached += detachStats.run(runId).changes
+        errorsDeleted += deleteErrors.run(runId).changes
+        settingsDeleted += deleteSettings.run(
+          `run_report_${runId}`,
+          `schedule_alert_active_run_${runId}`,
+          `schedule_alert_publication_locked_${runId}`,
+        ).changes
+        runsDeleted += deleteRun.run(runId).changes
+      }
 
-    return { runsDeleted, errorsDeleted, settingsDeleted, statsDetached }
-  }).immediate()
+      return { runsDeleted, errorsDeleted, settingsDeleted, statsDetached }
+    })
+    .immediate()
 
   const walCheckpoint = (db.pragma('wal_checkpoint(PASSIVE)') as WalCheckpointRow[])[0] ?? { busy: 0, log: 0, checkpointed: 0 }
 
