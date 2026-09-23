@@ -10,7 +10,7 @@ const totalBrowsePages = getBrowsePageCount()
 const sortedIndexableRepos = [...getIndexableCatalogRepos()].sort(
   (left, right) =>
     (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0) ||
-    Number(Boolean(right.description?.trim())) - Number(Boolean(left.description?.trim())),
+    Number(Boolean(right.description?.trim())) - Number(Boolean(left.description?.trim()))
 )
 
 const prefixEntries: MetadataRoute.Sitemap = [

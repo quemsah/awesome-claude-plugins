@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { BASE_URL } from '../lib/constants.ts'
 import { buildSitemapEntries, getSitemapShardCount, SITEMAP_SHARD_SIZE } from '../lib/sitemap.ts'
-import { GET as getSitemapIndex } from './sitemap.xml/route.ts'
 import { GET as getSitemapShard } from './sitemap/[id]/route.ts'
+import { GET as getSitemapIndex } from './sitemap.xml/route.ts'
 
 function locations(xml: string): string[] {
   return [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1])
