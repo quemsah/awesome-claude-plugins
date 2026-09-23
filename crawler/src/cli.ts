@@ -22,21 +22,23 @@ export type CliDependencies = {
   now?: () => Date
   runId?: () => string
   open?: (path: string) => Database.Database
-  reader?: (config: RuntimeConfig, log: RateLog) => GitHubReader
-  git?: (config: RuntimeConfig) => GitHubGit
+  reader?: (config: RuntimeConfig, log: RateLog, signal?: AbortSignal) => GitHubReader
+  git?: (config: RuntimeConfig, signal?: AbortSignal) => GitHubGit
   notifier?: (config: RuntimeConfig) => Notifier | undefined
   output?: (line: string) => void
   ranges?: readonly SizeRange[]
+  signal?: AbortSignal
 }
 
 function gitFor(config: RuntimeConfig, dependencies: CliDependencies): GitHubGit {
   return (
-    dependencies.git?.(config) ??
+    dependencies.git?.(config, dependencies.signal) ??
     new GitHubGitClient({
       token: config.publishToken ?? '',
       owner: config.owner ?? '',
       repo: config.repo ?? '',
       branch: config.branch ?? '',
+      signal: dependencies.signal,
     })
   )
 }
@@ -176,7 +178,9 @@ async function runCrawl(
   output: (line: string) => void,
   rates: ReturnType<typeof rateTracker>,
 ): Promise<void> {
-  const reader = dependencies.reader?.(config, rates.log) ?? new GitHubClient({ token: config.readToken ?? '', log: rates.log })
+  const reader =
+    dependencies.reader?.(config, rates.log, dependencies.signal) ??
+    new GitHubClient({ token: config.readToken ?? '', log: rates.log, signal: dependencies.signal })
   const git = !options.dryRun && config.publishEnabled ? gitFor(config, dependencies) : undefined
   const notifier = notifierFor(config, dependencies)
   if (!notifier) output(JSON.stringify({ status: 'notifier-disabled' }))
@@ -189,6 +193,7 @@ async function runCrawl(
       git,
       notifier,
       rateBuckets: () => rates.buckets,
+      signal: dependencies.signal,
     })
     output(JSON.stringify(result))
   } finally {
@@ -226,6 +231,7 @@ async function runPublishCommand(
         notifier,
         writeEnabled: true,
         recover: options.recoverPublication,
+        signal: dependencies.signal,
       }),
     ),
   )
@@ -301,8 +307,25 @@ export function formatCliError(error: unknown): string {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  runCli(process.argv.slice(2)).catch((error: unknown) => {
-    console.error(formatCliError(error))
-    process.exitCode = 1
-  })
+  const shutdown = new AbortController()
+  const requestShutdown = () => shutdown.abort()
+  process.once('SIGTERM', requestShutdown)
+  process.once('SIGINT', requestShutdown)
+
+  runCli(process.argv.slice(2), { signal: shutdown.signal })
+    .catch((error: unknown) => {
+      if (
+        (error instanceof CrawlError && error.category === 'terminated') ||
+        (error instanceof PublicationError && error.category === 'terminated')
+      ) {
+        console.log(JSON.stringify({ status: 'terminated' }))
+        return
+      }
+      console.error(formatCliError(error))
+      process.exitCode = 1
+    })
+    .finally(() => {
+      process.removeListener('SIGTERM', requestShutdown)
+      process.removeListener('SIGINT', requestShutdown)
+    })
 }
