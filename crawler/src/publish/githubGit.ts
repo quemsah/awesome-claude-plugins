@@ -1,3 +1,5 @@
+import type { components } from '@octokit/openapi-types'
+
 export type GitBranchHead = { sha: string; treeSha: string }
 
 export type GitSnapshotFiles = {
@@ -149,7 +151,8 @@ export class GitHubGitClient implements GitHubGit {
   private async readRefSha(): Promise<string> {
     const response = await this.request(`/ref/${this.ref}`)
     if (!record(response) || !record(response.object) || response.object.type !== 'commit') throw new GitHubGitResponseError()
-    return sha(response.object.sha)
+    const ref = response as Pick<components['schemas']['git-ref'], 'object'>
+    return sha(ref.object.sha)
   }
 
   async getBranchHead(): Promise<GitBranchHead> {
@@ -172,7 +175,7 @@ export class GitHubGitClient implements GitHubGit {
       ],
     })
     if (!record(response)) throw new GitHubGitResponseError()
-    return sha(response.sha)
+    return sha((response as Pick<components['schemas']['git-tree'], 'sha'>).sha)
   }
 
   async createCommit(treeSha: string, parentSha: string, message: string): Promise<string> {
@@ -181,21 +184,24 @@ export class GitHubGitClient implements GitHubGit {
     if (!nonempty(message) || !message.trim()) throw new GitHubGitError('Commit message is required')
     const response = await this.request('/commits', 'POST', { tree: treeSha, parents: [parentSha], message })
     if (!record(response)) throw new GitHubGitResponseError()
-    return sha(response.sha)
+    return sha((response as Pick<components['schemas']['git-commit'], 'sha'>).sha)
   }
 
   async updateBranch(newSha: string): Promise<void> {
     inputSha(newSha)
     const response = await this.request(`/refs/${this.ref}`, 'PATCH', { sha: newSha, force: false })
-    if (!record(response) || !record(response.object) || sha(response.object.sha) !== newSha) throw new GitHubGitResponseError()
+    if (!record(response) || !record(response.object)) throw new GitHubGitResponseError()
+    const ref = response as Pick<components['schemas']['git-ref'], 'object'>
+    if (sha(ref.object.sha) !== newSha) throw new GitHubGitResponseError()
   }
 
   async isCommitReachable(pendingSha: string): Promise<boolean> {
     inputSha(pendingSha)
     const response = await this.request(`/${encodeURIComponent(pendingSha)}...${this.compareHead}`, 'GET', undefined, this.compareUrl)
     if (!record(response) || typeof response.status !== 'string') throw new GitHubGitResponseError()
-    if (response.status === 'ahead' || response.status === 'identical') return true
-    if (response.status === 'behind' || response.status === 'diverged') return false
+    const comparison = response as Pick<components['schemas']['commit-comparison'], 'status'>
+    if (comparison.status === 'ahead' || comparison.status === 'identical') return true
+    if (comparison.status === 'behind' || comparison.status === 'diverged') return false
     throw new GitHubGitResponseError()
   }
 
@@ -204,9 +210,10 @@ export class GitHubGitClient implements GitHubGit {
     if (!record(response) || response.sha !== commitSha || !record(response.tree) || !Array.isArray(response.parents)) {
       throw new GitHubGitResponseError()
     }
+    const commit = response as Pick<components['schemas']['git-commit'], 'sha' | 'tree' | 'parents'>
     return {
-      treeSha: sha(response.tree.sha),
-      parents: response.parents.map((parent: unknown) => {
+      treeSha: sha(commit.tree.sha),
+      parents: commit.parents.map((parent: unknown) => {
         if (!record(parent)) throw new GitHubGitResponseError()
         return sha(parent.sha)
       }),

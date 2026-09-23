@@ -1,21 +1,24 @@
+import type { components, operations } from '@octokit/openapi-types'
 import { type Clock, RateBudget, type RateLog, type RateResource } from './rateBudget.js'
 
-export type SearchPage = {
-  items: Array<{ repository: { html_url: string; description: string | null; private?: boolean } }>
-  total_count: number
-  incomplete_results: boolean
+type SearchCodeResponse = operations['search/code']['responses'][200]['content']['application/json']
+type SearchCodeRepository = SearchCodeResponse['items'][number]['repository']
+
+export type SearchPage = Pick<SearchCodeResponse, 'total_count' | 'incomplete_results'> & {
+  items: Array<{
+    repository: Pick<SearchCodeRepository, 'html_url' | 'description'> & { private?: SearchCodeRepository['private'] }
+  }>
 }
 
-export type GitHubRepo = {
-  html_url: string
-  name: string
-  description: string | null
-  stargazers_count: number
-  forks_count: number
-  subscribers_count: number
-  pushed_at: string
-  owner: { login: string; html_url: string }
-  private?: boolean
+type RepositoryResponse = components['schemas']['full-repository']
+
+export type GitHubRepo = Pick<
+  RepositoryResponse,
+  'html_url' | 'name' | 'description' | 'stargazers_count' | 'forks_count' | 'subscribers_count' | 'pushed_at'
+> & {
+  owner: Pick<RepositoryResponse['owner'], 'login' | 'html_url'>
+  pushed_at: Extract<RepositoryResponse['pushed_at'], string>
+  private?: RepositoryResponse['private']
 }
 
 export type Marketplace = { plugins: unknown[] }
@@ -123,10 +126,12 @@ function parseRepository(value: unknown): GitHubRepo {
 }
 
 function parseMarketplace(value: unknown): Marketplace {
-  if (!record(value) || value.encoding !== 'base64' || typeof value.content !== 'string') {
+  if (!record(value)) throw new Error('Invalid marketplace content response')
+  const contentFile = value as Pick<components['schemas']['content-file'], 'encoding' | 'content'>
+  if (contentFile.encoding !== 'base64' || typeof contentFile.content !== 'string') {
     throw new Error('Invalid marketplace content response')
   }
-  const encoded = value.content.replace(/\s/g, '')
+  const encoded = contentFile.content.replace(/\s/g, '')
   if (!encoded || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
     throw new Error('Invalid marketplace base64')
   }

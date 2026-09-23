@@ -22,6 +22,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
+    "@octokit/openapi-types": "^29.0.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.13.6",
     "typescript": "^6.0.3",
