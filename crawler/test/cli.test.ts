@@ -98,7 +98,9 @@ describe('CLI', () => {
   it('counts blank URLs as missing and reports foreign key violations', () => {
     const db = openDatabase(databasePath())
     populateFixture(db)
-    db.prepare("INSERT INTO repositories (html_url, createdAt, updatedAt) VALUES ('', 'now', 'now'), (char(9) || ' ' || char(10), 'now', 'now')").run()
+    db.prepare(
+      "INSERT INTO repositories (html_url, createdAt, updatedAt) VALUES ('', 'now', 'now'), (char(9) || ' ' || char(10), 'now', 'now')",
+    ).run()
     db.pragma('foreign_keys = OFF')
     db.prepare("INSERT INTO stats (date, size, createdAt, updatedAt, run_id) VALUES ('orphan', 0, 'now', 'now', 'missing-run')").run()
 
