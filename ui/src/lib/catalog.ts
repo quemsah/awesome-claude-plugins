@@ -2,7 +2,7 @@
 
 import reposData from '../data/repos.json' with { type: 'json' }
 import statsData from '../data/stats.json' with { type: 'json' }
-import { type Repo, ReposArraySchema } from '../schemas/repo.schema.ts'
+import type { Repo } from '../schemas/repo.schema.ts'
 import { getLatestValidStatsDate } from './catalogDates.ts'
 import { CATALOG_PAGE_SIZE } from './catalogPagination.ts'
 import { type CatalogQuality, getCatalogQuality } from './catalogQuality.ts'
@@ -13,13 +13,7 @@ import type { SortOption } from './sortOptions.ts'
 
 export type CatalogRepo = Repo
 
-const catalogResult = ReposArraySchema.safeParse(reposData)
-
-if (!catalogResult.success) {
-  throw new Error(`Invalid catalog data: ${catalogResult.error.issues.map((issue) => issue.message).join(', ')}`)
-}
-
-const catalogRepos: readonly CatalogRepo[] = catalogResult.data.filter(
+const catalogRepos: readonly CatalogRepo[] = (reposData as readonly Repo[]).filter(
   (repo): repo is CatalogRepo => repo.owner != null && repo.repo_name != null
 )
 const canonicalCatalogRepos = getUniqueCatalogRepos(catalogRepos)
