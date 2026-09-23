@@ -46,7 +46,9 @@ function gitFor(config: RuntimeConfig, dependencies: CliDependencies): GitHubGit
 function notifierFor(config: RuntimeConfig, dependencies: CliDependencies): Notifier | undefined {
   return (
     dependencies.notifier?.(config) ??
-    (config.botToken && config.chatId ? new TelegramNotifier({ botToken: config.botToken, chatId: config.chatId }) : undefined)
+    (config.botToken && config.chatId
+      ? new TelegramNotifier({ botToken: config.botToken, chatId: config.chatId, signal: dependencies.signal })
+      : undefined)
   )
 }
 
