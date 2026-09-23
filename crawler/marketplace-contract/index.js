@@ -21,10 +21,6 @@ function string(value, path, { min = 0, max, pattern, safePath = false, noContro
   return value
 }
 
-function optionalString(value, path, options) {
-  return value === undefined ? undefined : string(value, path, options)
-}
-
 function safeUrl(value, path, max) {
   const candidate = string(value, path, { max })
   try {
@@ -35,10 +31,6 @@ function safeUrl(value, path, max) {
     issue('Must be a safe HTTP(S) URL', path)
   }
   return candidate
-}
-
-function optionalSafeUrl(value, path, max) {
-  return value === undefined ? undefined : safeUrl(value, path, max)
 }
 
 function stringArray(value, path, { maxItems, itemMax, safePath = false } = {}) {
