@@ -224,7 +224,6 @@ describe('GitHubClient', () => {
   })
 })
 
-
 it('lets an in-flight GitHub request finish but refuses to start another after shutdown', async () => {
   const shutdown = new AbortController()
   const requests: string[] = []
