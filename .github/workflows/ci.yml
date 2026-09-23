@@ -48,6 +48,17 @@ jobs:
         run: npm run test:e2e
         working-directory: ui
 
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failure-${{ github.run_id }}
+          path: |
+            ui/playwright-report/
+            ui/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
   crawler:
     name: crawler
     runs-on: ubuntu-latest
