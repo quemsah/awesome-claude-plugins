@@ -247,7 +247,8 @@ export class GitHubClient implements GitHubReader {
     if (status === 404) return { kind: 'result', result: { kind: 'not-found', retryCount: attempt } }
     if (status === 403 || status === 429) return this.handleRateLimit(bucket, response, attempt, delay, secondaryCount)
     if (status >= 500 && status <= 599) return this.handleServerError(bucket, status, attempt, delay, secondaryCount)
-    if (!response.ok) return { kind: 'result', result: { kind: 'temporary-error', status, reason: 'GitHub HTTP error', retryCount: attempt } }
+    if (!response.ok)
+      return { kind: 'result', result: { kind: 'temporary-error', status, reason: 'GitHub HTTP error', retryCount: attempt } }
     return this.parseResponse(bucket, response, parse, attempt, secondaryCount)
   }
 
@@ -268,7 +269,8 @@ export class GitHubClient implements GitHubReader {
     }
     if (secondary) secondaryCount++
     this.budget.defer(bucket, Math.max(delay ?? 0, secondary ? 60_000 * 2 ** (secondaryCount - 1) + Math.floor(this.random() * 1_000) : 0))
-    if (attempt === 3) return { kind: 'result', result: { kind: 'temporary-error', status, reason: 'GitHub rate limited', retryCount: attempt } }
+    if (attempt === 3)
+      return { kind: 'result', result: { kind: 'temporary-error', status, reason: 'GitHub rate limited', retryCount: attempt } }
     return { kind: 'retry', secondaryCount }
   }
 
@@ -279,7 +281,8 @@ export class GitHubClient implements GitHubReader {
     delay: number | null,
     secondaryCount: number,
   ): Promise<ResponseAction<T>> {
-    if (attempt === 3) return { kind: 'result', result: { kind: 'temporary-error', status, reason: 'GitHub server error', retryCount: attempt } }
+    if (attempt === 3)
+      return { kind: 'result', result: { kind: 'temporary-error', status, reason: 'GitHub server error', retryCount: attempt } }
     this.budget.defer(bucket, Math.max(delay ?? 0, this.transientDelay(attempt)))
     return { kind: 'retry', secondaryCount }
   }
