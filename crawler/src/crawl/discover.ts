@@ -23,6 +23,7 @@ type RangeState = {
   range: SizeRange
   warned: Set<DiscoveryWarningCategory>
   summary: DiscoverySummary
+  now: () => string
 }
 
 function warn(db: Database.Database, state: RangeState, category: DiscoveryWarningCategory): void {
@@ -36,7 +37,7 @@ function warn(db: Database.Database, state: RangeState, category: DiscoveryWarni
     range_end: max,
     error_type: category,
     retry_count: 0,
-    occurred_at: new Date().toISOString(),
+    occurred_at: state.now(),
   })
   state.summary.warnings.push({ range: state.range, category })
   state.summary.warningCount++
@@ -73,7 +74,7 @@ function processItems(
     }
     if (lookup.get(url)) state.summary.existingUrls++
     else state.summary.newUrls++
-    upsertDiscovery(db, url, repository.description)
+    upsertDiscovery(db, url, repository.description, state.now())
   }
 }
 
@@ -95,10 +96,11 @@ async function searchRange(
   lookup: Database.Statement,
   range: SizeRange,
   summary: DiscoverySummary,
+  now: () => string,
 ): Promise<void> {
   const [min, max] = range
   const query = `filename:marketplace.json path:.claude-plugin size:${min}..${max}`
-  const state: RangeState = { runId, range, warned: new Set(), summary }
+  const state: RangeState = { runId, range, warned: new Set(), summary, now }
   let found = 0
   for (let page = 1; page <= 10; page++) {
     const result = await searchPage(reader, query, page, db, state)
@@ -118,12 +120,13 @@ export async function discover(
   runId: string,
   ranges: readonly SizeRange[] = SIZE_RANGES,
   onRangeComplete?: () => void,
+  now: () => string = () => new Date().toISOString(),
 ): Promise<DiscoverySummary> {
   const summary: DiscoverySummary = { newUrls: 0, existingUrls: 0, successfulRanges: 0, warningCount: 0, warnings: [] }
   const lookup = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE LIMIT 1')
 
   for (const range of ranges) {
-    await searchRange(db, reader, runId, lookup, range, summary)
+    await searchRange(db, reader, runId, lookup, range, summary, now)
     onRangeComplete?.()
   }
 
