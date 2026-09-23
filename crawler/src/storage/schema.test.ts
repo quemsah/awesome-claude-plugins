@@ -115,7 +115,6 @@ it('permits multiple absent URLs, but enforces case-insensitive distinct populat
   }
 })
 
-
 it('deduplicates case-variant repository URLs without mixing identity or reviving a stale description', () => {
   const db = database()
   const path = db.name
