@@ -343,6 +343,41 @@ it('keeps an interrupted run active until explicitly recovered and never complet
   expect(getRun(db, 'after-crash')?.status).toBe('completed')
 })
 
+it('reports run_not_active when operator recovery wins a concurrent failure', async () => {
+  const db = database()
+  let release: (() => void) | undefined
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let started: (() => void) | undefined
+  const reached = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  const pending = runCrawl(
+    db,
+    reader({
+      searchCode: async () => {
+        started?.()
+        await waiting
+        throw new GitHubFatalError('unauthorized', 401)
+      },
+    }),
+    'recovered-during-failure',
+    { ranges: [firstRange] },
+  )
+
+  await reached
+  expect(failRun(db, 'recovered-during-failure', '2026-09-23T01:00:00Z', 'operator_recovery')).toBe(true)
+  release?.()
+
+  await expect(pending).rejects.toMatchObject({ category: 'run_not_active' })
+  expect(getRun(db, 'recovered-during-failure')).toMatchObject({
+    status: 'failed',
+    last_error: 'operator_recovery',
+    completed_at: '2026-09-23T01:00:00Z',
+  })
+})
+
 it('refuses overlapping runs and allows retry with another id after the first fails', async () => {
   const db = database()
   let release: (() => void) | undefined
