@@ -321,3 +321,29 @@ it('keeps the publication lease when shutdown arrives after a candidate commit b
   expect(db.prepare("SELECT COUNT(*) AS n FROM stats WHERE run_id = 'shutdown-publish'").get()).toEqual({ n: 0 })
   db.close()
 })
+
+it('preserves shutdown as terminated when Git branch-head retrieval aborts', async () => {
+  const db = await dbFixture()
+  await executeCrawl(db, reader, 'shutdown-head', { now, ranges: range, dryRun: true })
+  const git: GitHubGit = {
+    getBranchHead: vi.fn(async () => {
+      throw new ShutdownError()
+    }),
+    createTree: vi.fn(async () => 'c'.repeat(40)),
+    createCommit: vi.fn(async () => 'd'.repeat(40)),
+    updateBranch: vi.fn(async () => {}),
+    isCommitReachable: vi.fn(async () => false),
+  }
+
+  await expect(executePublish(db, git, 'shutdown-head', { now, writeEnabled: true, log: vi.fn() })).rejects.toMatchObject({
+    category: 'terminated',
+  })
+
+  expect(git.createTree).not.toHaveBeenCalled()
+  expect(git.createCommit).not.toHaveBeenCalled()
+  expect(git.updateBranch).not.toHaveBeenCalled()
+  expect(listRunErrors(db, 'shutdown-head')).toContainEqual(
+    expect.objectContaining({ phase: 'publish', error_type: 'terminated' }),
+  )
+  db.close()
+})
