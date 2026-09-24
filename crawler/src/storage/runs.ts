@@ -131,6 +131,31 @@ export function terminateRun(db: Database.Database, runId: string, at: string): 
   return failRun(db, runId, at, 'terminated')
 }
 
+export function recoverStaleRun(db: Database.Database, cutoffAt: string, recoveredAt: string): RunRow | null {
+  const cutoff = Date.parse(cutoffAt)
+  if (!Number.isFinite(cutoff)) throw new Error('Stale-run cutoff must be a valid date')
+
+  return db
+    .transaction(() => {
+      if (getPublicationLease(db)) return null
+      const active = getActiveRun(db)
+      if (!active) return null
+      const heartbeat = Date.parse(active.heartbeat_at)
+      if (!Number.isFinite(heartbeat) || heartbeat >= cutoff) return null
+
+      recordRunError(db, {
+        run_id: active.run_id,
+        phase: 'crawl',
+        error_type: 'stale_run',
+        retry_count: 0,
+        occurred_at: recoveredAt,
+      })
+      if (!failRun(db, active.run_id, recoveredAt, 'stale_run')) return null
+      return active
+    })
+    .immediate()
+}
+
 export function recoverStoppedCrawl(db: Database.Database, runId: string, at: string): void {
   db.transaction(() => {
     if (getPublicationLease(db)) throw new PublicationLeaseError('publication_locked')
