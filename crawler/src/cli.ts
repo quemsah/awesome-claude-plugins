@@ -18,6 +18,7 @@ import { inspect } from './storage/inspect.js'
 import { optimizeDatabase, runMaintenance } from './storage/maintenance.js'
 import { listPublishable } from './storage/repositories.js'
 import {
+  beginRun,
   getActiveRun,
   getPublicationLease,
   getSetting,
@@ -201,6 +202,7 @@ async function runCrawl(
   config: RuntimeConfig,
   dependencies: CliDependencies,
   options: Pick<ParsedOptions, 'dryRun'>,
+  runId: string,
   now: () => Date,
   output: (line: string) => void,
   rates: ReturnType<typeof rateTracker>,
@@ -211,7 +213,6 @@ async function runCrawl(
   const git = !options.dryRun && config.publishEnabled ? gitFor(config, dependencies) : undefined
   const notifier = notifierFor(config, dependencies)
   if (!notifier) output(JSON.stringify({ status: 'notifier-disabled' }))
-  const runId = (dependencies.runId ?? randomUUID)()
   try {
     const result = await executeCrawl(db, reader, runId, {
       now,
@@ -221,6 +222,7 @@ async function runCrawl(
       notifier,
       rateBuckets: () => rates.buckets,
       signal: dependencies.signal,
+      started: true,
     })
     output(JSON.stringify(result))
   } finally {
@@ -242,8 +244,27 @@ async function runCrawlCommand(
     return
   }
   runMaintenance(db, now())
+  const runId = (dependencies.runId ?? randomUUID)()
   try {
-    await runCrawl(db, config, dependencies, options, now, output, rateTracker())
+    beginRun(db, runId, now().toISOString())
+  } catch (error) {
+    if (error instanceof PublicationLeaseError) {
+      await notifyBlockedCrawl(db, 'publication_locked', config, dependencies)
+      throw error
+    }
+    if (error !== null && typeof error === 'object' && 'code' in error && error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      const active = getActiveRun(db)
+      if (active) {
+        await notifyBlockedCrawl(db, 'active_run', config, dependencies)
+        output(JSON.stringify({ status: 'skipped', reason: 'active_run', runId: active.run_id }))
+        return
+      }
+    }
+    throw error
+  }
+
+  try {
+    await runCrawl(db, config, dependencies, options, runId, now, output, rateTracker())
   } finally {
     try {
       optimizeDatabase(db)
