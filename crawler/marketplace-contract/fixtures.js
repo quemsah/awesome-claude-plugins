@@ -56,6 +56,15 @@ export const marketplaceFixtures = [
     pluginsCount: 0,
   },
   {
+    name: 'invalid top-level plugins take precedence over nested marketplace',
+    input: {
+      plugins: [{}],
+      marketplace: { plugins: [{ name: 'nested-fallback', source: './plugins/nested-fallback' }] },
+    },
+    valid: false,
+    pluginsCount: 0,
+  },
+  {
     name: 'unsafe source URL',
     input: { plugins: [{ name: 'unsafe', source: { source: 'url', url: 'https://user:pass@example.com/plugin.git' } }] },
     valid: false,
