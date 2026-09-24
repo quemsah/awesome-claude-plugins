@@ -117,6 +117,7 @@ it('pages by id after deleting blank and 404 rows, visiting newly discovered ids
     html_url: 'https://github.com/team/new',
     createdAt: expect.any(String),
     plugins_count: 0,
+    marketplace_etag: 'W/"marketplace-v1"',
   })
 })
 
@@ -191,7 +192,7 @@ it('refreshes a complete row using the same owner and repo for both calls withou
     },
     async (owner, name) => {
       requests.push(`marketplace:${owner}/${name}`)
-      return { kind: 'found', data: { plugins: [] } }
+      return { kind: 'found', data: { plugins: [], etag: 'W/"marketplace-v1"' } }
     },
   )
 
