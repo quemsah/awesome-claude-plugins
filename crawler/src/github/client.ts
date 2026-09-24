@@ -32,9 +32,7 @@ export type RepoResult<T> =
 
 export type ConditionalRepoResult<T> = RepoResult<T> | { kind: 'not-modified'; retryCount: number }
 
-type ResponseAction<T> =
-  | { kind: 'retry'; secondaryCount: number }
-  | { kind: 'result'; result: ConditionalRepoResult<T> }
+type ResponseAction<T> = { kind: 'retry'; secondaryCount: number } | { kind: 'result'; result: ConditionalRepoResult<T> }
 
 export interface GitHubReader {
   searchCode(query: string, page: number): Promise<SearchPage>
