@@ -222,7 +222,7 @@ async function enrichOne(
   const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts, now)
   if (!loaded) return
   onProgress?.()
-  const cachedEtag = !loaded.moved && row.plugins_count !== null ? row.marketplace_etag ?? undefined : undefined
+  const cachedEtag = !loaded.moved && row.plugins_count !== null ? (row.marketplace_etag ?? undefined) : undefined
   const marketplace =
     cachedEtag === undefined
       ? await reader.getMarketplace(loaded.owner, loaded.repo)
