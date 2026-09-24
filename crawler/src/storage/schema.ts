@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 4
+const schemaVersion = 5
 
 export function initializeSchema(db: Database.Database): void {
   const version = db.pragma('user_version', { simple: true }) as number
@@ -175,5 +175,12 @@ export function initializeSchema(db: Database.Database): void {
         PRAGMA user_version = 4;
       `)
     }
+    if (version < 5) {
+      db.exec(`
+        ALTER TABLE repositories ADD COLUMN marketplace_etag TEXT;
+        PRAGMA user_version = 5;
+      `)
+    }
+
   })()
 }
