@@ -181,6 +181,5 @@ export function initializeSchema(db: Database.Database): void {
         PRAGMA user_version = 5;
       `)
     }
-
   })()
 }
