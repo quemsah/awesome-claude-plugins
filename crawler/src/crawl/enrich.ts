@@ -10,6 +10,7 @@ import {
   type RepositoryRow,
   rebindCanonicalUrl,
   updateEnriched,
+  updateMarketplaceEtag,
 } from '../storage/repositories.js'
 import { recordRunError, runWhileActive } from '../storage/runs.js'
 
@@ -120,6 +121,7 @@ function persistEnrichment(
   row: RepositoryRow,
   loaded: LoadedRepository,
   pluginsCount: number,
+  marketplaceEtag: string | null,
   at: string,
 ): EnrichmentTarget {
   return runWhileActive(db, runId, () => {
@@ -143,6 +145,7 @@ function persistEnrichment(
       },
       at,
     )
+    if (!updateMarketplaceEtag(db, rebound.id, marketplaceEtag)) throw new Error('Repository disappeared while saving marketplace ETag')
     return { id: rebound.id, removedId: rebound.removedId, ready }
   })
 }
@@ -219,7 +222,20 @@ async function enrichOne(
   const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts, now)
   if (!loaded) return
   onProgress?.()
-  const marketplace = await reader.getMarketplace(loaded.owner, loaded.repo)
+  const cachedEtag = !loaded.moved && row.plugins_count !== null ? row.marketplace_etag ?? undefined : undefined
+  const marketplace = await reader.getMarketplace(loaded.owner, loaded.repo, cachedEtag)
+  if (marketplace.kind === 'not-modified') {
+    if (row.plugins_count === null || cachedEtag === undefined) {
+      recordProblem(db, runId, counts, row, 'marketplace_cache_miss', loaded.ready, true, now, marketplace.retryCount)
+      return
+    }
+    const target = persistEnrichment(db, runId, row, loaded, row.plugins_count, cachedEtag, now())
+    if (target.removedId !== null) removedIds.add(target.removedId)
+    counts.conclusive++
+    if (target.ready) counts.updated++
+    else counts.newReady++
+    return
+  }
   if (marketplace.kind === 'not-found') {
     runWhileActive(db, runId, () => {
       if (loaded.moved) {
@@ -235,7 +251,7 @@ async function enrichOne(
     recordProblem(db, runId, counts, row, temporaryCategory('marketplace', marketplace), loaded.ready, false, now, marketplace.retryCount)
     return
   }
-  const target = persistEnrichment(db, runId, row, loaded, marketplace.data.plugins.length, now())
+  const target = persistEnrichment(db, runId, row, loaded, marketplace.data.plugins.length, marketplace.data.etag, now())
   if (target.removedId !== null) removedIds.add(target.removedId)
   counts.conclusive++
   if (target.ready) counts.updated++
