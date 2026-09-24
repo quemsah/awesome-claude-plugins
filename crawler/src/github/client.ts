@@ -23,7 +23,7 @@ export type GitHubRepo = Pick<
   private?: RepositoryResponse['private']
 }
 
-export type Marketplace = { plugins: unknown[]; etag: string | null }
+export type Marketplace = { plugins: unknown[]; etag?: string | null }
 
 export type RepoResult<T> =
   | { kind: 'found'; data: T }
