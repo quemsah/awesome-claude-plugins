@@ -167,13 +167,17 @@ export const MarketplacePluginsSchema = z.unknown().transform((value, context): 
     return []
   }
 
-  const candidates: Array<{
+  const candidates: {
     container: Record<string, unknown> | undefined
     key: 'plugins' | 'repositories'
     path: PropertyKey[]
-  }> = [
+  }[] = [
     { container: value, key: 'plugins', path: ['plugins'] },
-    { container: isRecord(value.marketplace) ? value.marketplace : undefined, key: 'plugins', path: ['marketplace', 'plugins'] },
+    {
+      container: isRecord(value.marketplace) ? value.marketplace : undefined,
+      key: 'plugins',
+      path: ['marketplace', 'plugins'],
+    },
     { container: value, key: 'repositories', path: ['repositories'] },
   ]
 
@@ -190,7 +194,11 @@ export const MarketplacePluginsSchema = z.unknown().transform((value, context): 
     if (isEmptyMarketplace(value)) return []
 
     for (const issue of parsedPlugin.error.issues) {
-      context.addIssue(issue)
+      context.addIssue({
+        code: 'custom',
+        message: issue.message,
+        path: issue.path,
+      })
     }
     return []
   }
