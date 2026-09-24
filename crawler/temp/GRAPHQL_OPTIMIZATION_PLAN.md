@@ -8,7 +8,7 @@
 - Start batches at 25 repositories; grow to 50 after stable responses and reduce to 25 or 10 when latency, cost, or errors rise.
 - Keep a 10% GraphQL quota reserve, honor GitHub reset and retry headers, and record cost, latency, remaining quota, and waits.
 - Replace static Code Search size ranges with recursive splitting when `total_count >= 1000`.
-- Run the full pilot against a local copy of the current SQLite catalog. Do not point the pilot at the Railway production database.
+- Run the full pilot against a fresh, empty local SQLite database in `crawler/temp`. Do not point the pilot at or copy the Railway production database.
 - Export the draft to a temporary directory outside `ui`, then compare `README.md`, `ui/src/data/repos.json`, and `ui/src/data/stats.json` with the current checked-in files.
 
 ## Implementation
@@ -30,8 +30,8 @@
 
 ## Local pilot and comparison
 
-- [ ] Get the user's local copy of the current SQLite catalog and read-only GitHub token into the local environment.
-- [ ] Run a full crawl with publication disabled against that local database copy.
-- [ ] Record total duration, Code Search request count, GraphQL batch count/cost/latency, marketplace content request count, waits, and errors.
-- [ ] Export the prepared draft outside `ui`.
-- [ ] Compare the exported README and both JSON files with the current repository artifacts; report row-level differences and explain expected changes.
+- [x] Create a fresh local SQLite database per run and provide a read-only GitHub token only through the hidden local prompt.
+- [x] Run a full crawl with publication disabled against the fresh database.
+- [x] Record total duration, Code Search request count, GraphQL batch count/cost/latency, marketplace content request count, waits, and errors in the run log.
+- [x] Export the prepared draft outside `ui`.
+- [x] Compare the exported README and both JSON files with the current repository artifacts; report row-level differences and explain expected changes.
