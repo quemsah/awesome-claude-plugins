@@ -135,25 +135,71 @@ export const PluginSchema: z.ZodType<Plugin> = z
     }
   })
 
-const EmptyMarketplaceSchema = z
-  .union([
-    z.object({ agents: z.array(z.unknown()), skills: z.array(z.unknown()) }),
-    z.object({ skills: z.array(z.unknown()) }),
-    z.object({ skills: z.record(z.string(), z.unknown()) }),
-  ])
-  .transform(() => [] as Plugin[])
+const PluginListSchema = z.array(PluginSchema)
 
-export const MarketplacePluginsSchema = z.union([
-  z.array(PluginSchema),
-  z.object({ plugins: z.array(PluginSchema) }).transform((marketplace) => marketplace.plugins),
-  z.object({ marketplace: z.object({ plugins: z.array(PluginSchema) }) }).transform((marketplace) => marketplace.marketplace.plugins),
-  z.object({ repositories: z.array(PluginSchema) }).transform((marketplace) => marketplace.repositories),
-  PluginSchema.refine((plugin) => {
-    const obj = plugin as Record<string, unknown>
-    return !('plugins' in obj || 'repositories' in obj || 'marketplace' in obj)
-  }, 'Must not contain marketplace wrapper keys').transform((plugin) => [plugin]),
-  EmptyMarketplaceSchema,
-])
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isEmptyMarketplace(value: Record<string, unknown>): boolean {
+  return Array.isArray(value.skills) || isRecord(value.skills)
+}
+
+export const MarketplacePluginsSchema = z.unknown().transform((value, context): Plugin[] => {
+  const parsePluginList = (plugins: unknown, path: PropertyKey[] = []): Plugin[] => {
+    const parsed = PluginListSchema.safeParse(plugins)
+    if (parsed.success) return parsed.data
+
+    for (const issue of parsed.error.issues) {
+      context.addIssue({
+        code: 'custom',
+        message: issue.message,
+        path: [...path, ...issue.path],
+      })
+    }
+    return []
+  }
+
+  if (Array.isArray(value)) return parsePluginList(value)
+
+  if (!isRecord(value)) {
+    context.addIssue({ code: 'custom', message: 'Unsupported marketplace manifest shape' })
+    return []
+  }
+
+  const candidates: Array<{
+    container: Record<string, unknown> | undefined
+    key: 'plugins' | 'repositories'
+    path: PropertyKey[]
+  }> = [
+    { container: value, key: 'plugins', path: ['plugins'] },
+    { container: isRecord(value.marketplace) ? value.marketplace : undefined, key: 'plugins', path: ['marketplace', 'plugins'] },
+    { container: value, key: 'repositories', path: ['repositories'] },
+  ]
+
+  for (const { container, key, path } of candidates) {
+    if (container && Array.isArray(container[key])) {
+      return parsePluginList(container[key], path)
+    }
+  }
+
+  const hasMarketplaceWrapper = ['plugins', 'repositories', 'marketplace'].some((key) => key in value)
+  if (!hasMarketplaceWrapper) {
+    const parsedPlugin = PluginSchema.safeParse(value)
+    if (parsedPlugin.success) return [parsedPlugin.data]
+    if (isEmptyMarketplace(value)) return []
+
+    for (const issue of parsedPlugin.error.issues) {
+      context.addIssue(issue)
+    }
+    return []
+  }
+
+  if (isEmptyMarketplace(value)) return []
+
+  context.addIssue({ code: 'custom', message: 'Unsupported marketplace manifest shape' })
+  return []
+})
 
 export function getMarketplaceName(value: unknown): string | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
