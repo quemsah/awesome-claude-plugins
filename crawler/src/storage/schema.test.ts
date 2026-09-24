@@ -82,7 +82,9 @@ it('upgrades a populated v2 database without changing drafts or pending commit S
   ).run('a'.repeat(64), 'b'.repeat(40))
   db.close()
   const old = new Database(path)
-  old.exec('DROP INDEX repositories_html_url_nocase_unique; DROP TABLE publication_lease; ALTER TABLE repositories DROP COLUMN marketplace_etag; PRAGMA user_version = 2;')
+  old.exec(
+    'DROP INDEX repositories_html_url_nocase_unique; DROP TABLE publication_lease; ALTER TABLE repositories DROP COLUMN marketplace_etag; PRAGMA user_version = 2;',
+  )
   old.close()
   const migrated = openDatabase(path)
   expect(migrated.pragma('user_version', { simple: true })).toBe(5)
