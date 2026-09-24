@@ -5,9 +5,49 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  changes:
+    name: changed paths
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: read
+
+    outputs:
+      app: ${{ steps.filter.outputs.app }}
+      crawler: ${{ steps.filter.outputs.crawler }}
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v6
+
+      - name: Detect affected areas
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            app:
+              - 'ui/**'
+              - '.github/workflows/ci.yml'
+            crawler:
+              - 'crawler/**'
+              - 'README.md'
+              - 'ui/src/data/repos.json'
+              - 'ui/src/schemas/**'
+              - 'ui/src/lib/repositoryIdentity.ts'
+              - 'ui/package.json'
+              - 'ui/package-lock.json'
+              - '.github/workflows/ci.yml'
+
   app:
     name: app
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
 
     permissions:
@@ -61,6 +101,8 @@ jobs:
 
   crawler:
     name: crawler
+    needs: changes
+    if: needs.changes.outputs.crawler == 'true'
     runs-on: ubuntu-latest
 
     permissions:
