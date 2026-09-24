@@ -251,7 +251,7 @@ async function enrichOne(
     recordProblem(db, runId, counts, row, temporaryCategory('marketplace', marketplace), loaded.ready, false, now, marketplace.retryCount)
     return
   }
-  const target = persistEnrichment(db, runId, row, loaded, marketplace.data.plugins.length, marketplace.data.etag, now())
+  const target = persistEnrichment(db, runId, row, loaded, marketplace.data.plugins.length, marketplace.data.etag ?? null, now())
   if (target.removedId !== null) removedIds.add(target.removedId)
   counts.conclusive++
   if (target.ready) counts.updated++
