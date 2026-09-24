@@ -223,7 +223,10 @@ async function enrichOne(
   if (!loaded) return
   onProgress?.()
   const cachedEtag = !loaded.moved && row.plugins_count !== null ? row.marketplace_etag ?? undefined : undefined
-  const marketplace = await reader.getMarketplace(loaded.owner, loaded.repo, cachedEtag)
+  const marketplace =
+    cachedEtag === undefined
+      ? await reader.getMarketplace(loaded.owner, loaded.repo)
+      : await reader.getMarketplace(loaded.owner, loaded.repo, cachedEtag)
   if (marketplace.kind === 'not-modified') {
     if (row.plugins_count === null || cachedEtag === undefined) {
       recordProblem(db, runId, counts, row, 'marketplace_cache_miss', loaded.ready, true, now, marketplace.retryCount)
