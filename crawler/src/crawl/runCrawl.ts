@@ -20,6 +20,7 @@ export type RunCrawlOptions = {
   ranges?: readonly SizeRange[]
   now?: () => Date
   signal?: AbortSignal
+  started?: boolean
 }
 
 export type CrawlSummary = {
@@ -142,7 +143,11 @@ export async function runCrawl(
 ): Promise<CrawlSummary> {
   const now = () => (options.now ?? (() => new Date()))().toISOString()
   // The caller's stale-run threshold must allow for a single rate-limited request (or a full 50-row batch).
-  beginCrawl(db, runId, now)
+  if (options.started) {
+    if (getActiveRun(db)?.run_id !== runId) throw new CrawlError('run_not_active')
+  } else {
+    beginCrawl(db, runId, now)
+  }
   try {
     return await crawlAndComplete(db, reader, runId, options, now)
   } catch (error) {
