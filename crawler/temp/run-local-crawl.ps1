@@ -16,25 +16,64 @@ $progressPath = Join-Path $tempRoot 'progress.mjs'
 
 New-Item -ItemType Directory -Path $runRoot -Force | Out-Null
 
+$baselineDb = Get-ChildItem -LiteralPath $runsRoot -Filter 'catalog.sqlite' -Recurse -File |
+  Where-Object { $_.FullName -ne $dbPath } |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -First 1
+$baselineDurationMs = $null
+if ($baselineDb) {
+  $baselineRaw = & node $progressPath $baselineDb.FullName
+  if ($LASTEXITCODE -eq 0) {
+    $baseline = ConvertFrom-Json -InputObject ($baselineRaw -join '')
+    if ($baseline.status -eq 'completed' -and $baseline.durationMs -gt 0) {
+      $baselineDurationMs = [double]$baseline.durationMs
+      Write-Host ("ETA baseline: {0} repos, {1:N1} hours from previous completed local crawl." -f $baseline.total, ($baselineDurationMs / 3600000))
+    }
+  }
+}
+
 function Write-ProgressSnapshot {
+  if (-not (Test-Path -LiteralPath $dbPath -PathType Leaf)) {
+    Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Progress snapshot unavailable; database is still starting."
+    return
+  }
   $raw = & node $progressPath $dbPath
   if ($LASTEXITCODE -ne 0) {
     Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Progress snapshot unavailable yet."
     return
   }
   $progress = ConvertFrom-Json -InputObject ($raw -join '')
-  $delta = if ($null -eq $previousProgress) {
-    'first sample'
+  $now = Get-Date
+  $repoRate = $null
+  $enrichedRate = $null
+  $delta = 'first sample'
+  if ($null -ne $script:previousProgress) {
+    $sampleMinutes = [math]::Max(0.01, ($now - $script:previousProgressAt).TotalMinutes)
+    $repoDelta = $progress.total - $script:previousProgress.total
+    $enrichedDelta = $progress.enriched - $script:previousProgress.enriched
+    $repoRate = [math]::Max(0, $repoDelta / $sampleMinutes)
+    $enrichedRate = [math]::Max(0, $enrichedDelta / $sampleMinutes)
+    $delta = "change repos=$repoDelta, enriched=$enrichedDelta; rates=$('{0:N1}' -f $repoRate)/min, $('{0:N1}' -f $enrichedRate)/min"
+  }
+  if ($progress.status -ne 'running') {
+    $eta = if ($progress.status -eq 'completed') { 'complete' } else { 'n/a' }
+  } elseif ($progress.phase -eq 'enrichment' -and $enrichedRate -gt 0) {
+    $etaMinutes = $progress.pending / $enrichedRate
+    $eta = "~$([math]::Floor($etaMinutes / 60))h $([math]::Floor($etaMinutes % 60))m (current enrichment rate)"
+  } elseif ($null -ne $script:baselineDurationMs) {
+    $etaMinutes = [math]::Max(0, ($script:baselineDurationMs - $progress.durationMs) / 60000)
+    $eta = "~$([math]::Floor($etaMinutes / 60))h $([math]::Floor($etaMinutes % 60))m (previous-run baseline)"
   } else {
-    "change repos=$($progress.total - $previousProgress.total), enriched=$($progress.enriched - $previousProgress.enriched) since last report"
+    $eta = 'n/a (waiting for a completed baseline)'
   }
   $eventSummary = if ($progress.events.Count) {
     ($progress.events | ForEach-Object { "$($_.phase):$($_.type)=$($_.count)" }) -join ', '
   } else {
     'none'
   }
-  Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] phase=$($progress.phase) status=$($progress.status) repos=$($progress.total) enriched=$($progress.enriched) pending=$($progress.pending) marketplace-counts=$($progress.marketplaceCounted); $delta; events=$eventSummary"
+  Write-Host "[$($now.ToString('yyyy-MM-dd HH:mm:ss'))] phase=$($progress.phase) status=$($progress.status) repos=$($progress.total) enriched=$($progress.enriched) pending=$($progress.pending) marketplace-counts=$($progress.marketplaceCounted); $delta; ETA=$eta; events=$eventSummary"
   $script:previousProgress = $progress
+  $script:previousProgressAt = $now
 }
 
 Push-Location $crawlerRoot
@@ -56,7 +95,9 @@ foreach ($name in $envNames) { $previousEnv[$name] = [Environment]::GetEnvironme
 
 $crawlExitCode = 1
 $process = $null
-$previousProgress = $null
+$script:previousProgress = $null
+$script:previousProgressAt = $null
+$script:baselineDurationMs = $baselineDurationMs
 try {
   foreach ($name in $envNames) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
   $env:DB_PATH = $dbPath
@@ -75,7 +116,7 @@ try {
     while ($true) {
       $process.Refresh()
       if ($process.HasExited) { break }
-      if (((Get-Date) - $lastProgressAt).TotalMinutes -ge 5) {
+      if (((Get-Date) - $lastProgressAt).TotalSeconds -ge 30) {
         Write-ProgressSnapshot
         $lastProgressAt = Get-Date
       }

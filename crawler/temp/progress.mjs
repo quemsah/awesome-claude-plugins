@@ -8,6 +8,9 @@ try {
   const run =
     db.prepare("SELECT run_id, status, started_at, heartbeat_at, completed_at FROM runs WHERE status = 'running' ORDER BY started_at DESC LIMIT 1").get() ??
     db.prepare('SELECT run_id, status, started_at, heartbeat_at, completed_at FROM runs ORDER BY started_at DESC LIMIT 1').get()
+  const durationMs = run
+    ? Math.max(0, Date.parse(run.completed_at ?? new Date().toISOString()) - Date.parse(run.started_at))
+    : null
   const total = db.prepare('SELECT count(*) AS count FROM repositories').get().count
   const enriched = db
     .prepare('SELECT count(*) AS count FROM repositories WHERE stargazers_count IS NOT NULL AND forks_count IS NOT NULL AND subscribers_count IS NOT NULL')
@@ -21,7 +24,7 @@ try {
 
   // ponytail: infer the sequential phase from persisted enrichment fields; add explicit phase state if the crawl phases become concurrent.
   const phase = run?.status === 'running' ? (enriched > 0 ? 'enrichment' : 'discovery') : (run?.status ?? 'starting')
-  console.log(JSON.stringify({ runId: run?.run_id ?? null, status: run?.status ?? 'starting', phase, total, enriched, pending: Math.max(0, total - enriched), marketplaceCounted, heartbeatAt: run?.heartbeat_at ?? null, events }))
+  console.log(JSON.stringify({ runId: run?.run_id ?? null, status: run?.status ?? 'starting', phase, total, enriched, pending: Math.max(0, total - enriched), marketplaceCounted, heartbeatAt: run?.heartbeat_at ?? null, durationMs, events }))
 } finally {
   db.close()
 }

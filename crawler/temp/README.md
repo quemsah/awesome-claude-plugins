@@ -7,7 +7,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\crawler\temp\run-local-crawl.ps1
 ```
 
-The script builds the crawler, prompts for `GITHUB_READ_TOKEN` with hidden input, creates a fresh SQLite database, and runs `crawl --dry-run` with publication disabled. It prints a progress snapshot immediately and every five minutes. The token is held only in the process environment while crawling and is not written to disk or the log.
+The script builds the crawler, prompts for `GITHUB_READ_TOKEN` with hidden input, creates a fresh SQLite database, and runs `crawl --dry-run` with publication disabled. It prints live progress every 30 seconds, including per-minute discovery/enrichment rates and an approximate ETA. Discovery ETA uses the previous completed local run; during enrichment it switches to the current enrichment rate. The token is held only in the process environment while crawling and is not written to disk or the log.
 
 To monitor a crawl that was started before progress reporting was added, open a second PowerShell window and run:
 
