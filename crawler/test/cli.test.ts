@@ -274,6 +274,50 @@ describe('CLI', () => {
     verified.close()
   })
 
+  it('skips a concurrent crawl that starts after preflight without creating a losing run', async () => {
+    const path = databasePath()
+    populateTestDatabase(path)
+    let db: ReturnType<typeof openDatabase> | undefined
+    let nowCalls = 0
+    const reader = vi.fn()
+    const output = vi.fn()
+    const notifyFailure = vi.fn(async () => {})
+    const notifier = {
+      notifyStart: vi.fn(async () => {}),
+      notifyDryRun: vi.fn(async () => {}),
+      notifySuccess: vi.fn(async () => {}),
+      notifyFailure,
+    }
+
+    await runCli(['crawl'], {
+      env: { DB_PATH: path, GITHUB_READ_TOKEN: 'fake-read-token', PUBLISH_ENABLED: 'false' },
+      open: (dbPath) => {
+        db = openDatabase(dbPath)
+        return db
+      },
+      now: () => {
+        nowCalls++
+        if (nowCalls === 3) beginRun(db!, 'concurrent-run', '2026-09-24T01:00:00.000Z')
+        return new Date('2026-09-24T01:00:00.000Z')
+      },
+      runId: () => 'losing-run',
+      reader,
+      notifier: () => notifier,
+      output,
+    })
+
+    expect(reader).not.toHaveBeenCalled()
+    expect(notifier.notifyStart).not.toHaveBeenCalled()
+    expect(notifyFailure).toHaveBeenCalledOnce()
+    expect(notifyFailure).toHaveBeenCalledWith(expect.objectContaining({ runId: 'concurrent-run', reason: 'active_run' }))
+    expect(output).toHaveBeenCalledWith(JSON.stringify({ status: 'skipped', reason: 'active_run', runId: 'concurrent-run' }))
+
+    const verified = openDatabase(path)
+    expect(getRun(verified, 'concurrent-run')?.status).toBe('running')
+    expect(getRun(verified, 'losing-run')).toBeNull()
+    verified.close()
+  })
+
   it('recovers a stale active run and starts the scheduled crawl', async () => {
     const path = databasePath()
     populateTestDatabase(path)
