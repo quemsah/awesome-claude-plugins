@@ -11,6 +11,7 @@ import {
   listRunErrors,
   PublicationLeaseError,
   recordRunError,
+  RunNotActiveError,
   terminateRun,
 } from '../storage/runs.js'
 import { type DiscoverySummary, discover } from './discover.js'
@@ -55,6 +56,7 @@ export class CrawlError extends Error {
 
 function failureCategory(error: unknown): CrawlFailureCategory {
   if (error instanceof CrawlError) return error.category
+  if (error instanceof RunNotActiveError) return 'run_not_active'
   if (error instanceof ShutdownError) return 'terminated'
   if (error instanceof GitHubFatalError) return 'github_fatal_error'
   if (error instanceof GitHubTemporaryError && (error.status === 401 || error.status === 422)) return 'github_fatal_error'

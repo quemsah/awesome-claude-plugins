@@ -3,7 +3,7 @@ import { type GitHubReader, GitHubTemporaryError } from '../github/client.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import { SIZE_RANGES, type SizeRange } from '../github/sizeRanges.js'
 import { upsertDiscovery } from '../storage/repositories.js'
-import { recordRunError } from '../storage/runs.js'
+import { recordRunError, runWhileActive } from '../storage/runs.js'
 
 export type DiscoveryWarningCategory = 'saturated' | 'page-limit' | 'incomplete-results' | 'temporary-error' | 'invalid-url' | 'short-page'
 
@@ -28,17 +28,19 @@ type RangeState = {
 
 function warn(db: Database.Database, state: RangeState, category: DiscoveryWarningCategory, retryCount = 0): void {
   if (state.warned.has(category)) return
-  state.warned.add(category)
   const [min, max] = state.range
-  recordRunError(db, {
-    run_id: state.runId,
-    phase: 'search',
-    range_start: min,
-    range_end: max,
-    error_type: category,
-    retry_count: retryCount,
-    occurred_at: state.now(),
+  runWhileActive(db, state.runId, () => {
+    recordRunError(db, {
+      run_id: state.runId,
+      phase: 'search',
+      range_start: min,
+      range_end: max,
+      error_type: category,
+      retry_count: retryCount,
+      occurred_at: state.now(),
+    })
   })
+  state.warned.add(category)
   state.summary.warnings.push({ range: state.range, category })
   state.summary.warningCount++
 }
@@ -72,9 +74,12 @@ function processItems(
       warn(db, state, 'invalid-url')
       continue
     }
-    if (lookup.get(url)) state.summary.existingUrls++
+    const existing = Boolean(lookup.get(url))
+    runWhileActive(db, state.runId, () => {
+      upsertDiscovery(db, url, repository.description, state.now())
+    })
+    if (existing) state.summary.existingUrls++
     else state.summary.newUrls++
-    upsertDiscovery(db, url, repository.description, state.now())
   }
 }
 
@@ -97,12 +102,14 @@ async function searchRange(
   range: SizeRange,
   summary: DiscoverySummary,
   now: () => string,
+  onProgress?: () => void,
 ): Promise<void> {
   const [min, max] = range
   const query = `filename:marketplace.json path:.claude-plugin size:${min}..${max}`
   const state: RangeState = { runId, range, warned: new Set(), summary, now }
   let found = 0
   for (let page = 1; page <= 10; page++) {
+    onProgress?.()
     const result = await searchPage(reader, query, page, db, state)
     if (!result) break
     if (page === 1) summary.successfulRanges++
@@ -119,15 +126,15 @@ export async function discover(
   reader: GitHubReader,
   runId: string,
   ranges: readonly SizeRange[] = SIZE_RANGES,
-  onRangeComplete?: () => void,
+  onProgress?: () => void,
   now: () => string = () => new Date().toISOString(),
 ): Promise<DiscoverySummary> {
   const summary: DiscoverySummary = { newUrls: 0, existingUrls: 0, successfulRanges: 0, warningCount: 0, warnings: [] }
   const lookup = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE LIMIT 1')
 
   for (const range of ranges) {
-    await searchRange(db, reader, runId, lookup, range, summary, now)
-    onRangeComplete?.()
+    await searchRange(db, reader, runId, lookup, range, summary, now, onProgress)
+    onProgress?.()
   }
 
   return summary

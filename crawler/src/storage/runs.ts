@@ -55,6 +55,13 @@ export class PublicationLeaseError extends Error {
   }
 }
 
+export class RunNotActiveError extends Error {
+  constructor(readonly runId: string) {
+    super('Run is no longer active')
+    this.name = 'RunNotActiveError'
+  }
+}
+
 export function getPublicationLease(db: Database.Database): { run_id: string; owner: string } | null {
   return (
     (db.prepare('SELECT run_id, owner FROM publication_lease WHERE slot = 1').get() as { run_id: string; owner: string } | undefined) ??
@@ -107,6 +114,16 @@ export function getActiveRun(db: Database.Database): RunRow | null {
 
 export function heartbeatRun(db: Database.Database, runId: string, at: string): boolean {
   return db.prepare("UPDATE runs SET heartbeat_at = ? WHERE run_id = ? AND status = 'running'").run(at, runId).changes !== 0
+}
+
+export function runWhileActive<T>(db: Database.Database, runId: string, operation: () => T): T {
+  return db
+    .transaction(() => {
+      const active = db.prepare("SELECT 1 FROM runs WHERE run_id = ? AND status = 'running'").get(runId)
+      if (!active) throw new RunNotActiveError(runId)
+      return operation()
+    })
+    .immediate()
 }
 
 export function completeRun(db: Database.Database, runId: string, at: string, warningCount: number): boolean {

@@ -12,6 +12,7 @@ import {
   getRun,
   listRunErrors,
   recordRunError,
+  recoverStaleRun,
   saveRunDraft,
 } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
@@ -216,7 +217,7 @@ it('counts any valid persisted error category without inheriting object properti
   expect(getRun(db, 'category')?.warning_count).toBe(1)
 })
 
-it('heartbeats after each 50-row enrichment batch without adding reader requests', async () => {
+it('heartbeats throughout enrichment batches without adding reader requests', async () => {
   const db = database()
   for (let i = 0; i < 51; i++) upsertDiscovery(db, `https://github.com/team/repo${i}`, null)
   let time = Date.parse('2026-09-23T00:00:00Z')
@@ -237,7 +238,9 @@ it('heartbeats after each 50-row enrichment batch without adding reader requests
   const result = await runCrawl(db, client, 'batches', { ranges: [firstRange], now: () => new Date(time) })
 
   expect(result.enrichment.conclusive).toBe(51)
-  expect(heartbeatAt).toEqual(['2026-09-23T00:00:00.000Z', '2026-09-23T00:00:50.000Z'])
+  expect(heartbeatAt[0]).toBe('2026-09-23T00:00:01.000Z')
+  expect(heartbeatAt[49]).toBe('2026-09-23T00:00:50.000Z')
+  expect(heartbeatAt.at(-1)).toBe('2026-09-23T00:00:51.000Z')
   expect(getRun(db, 'batches')?.heartbeat_at).toBe('2026-09-23T00:00:51.000Z')
 })
 
@@ -301,8 +304,9 @@ it('also treats an authentication error mislabeled temporary by a reader as fata
   expect(getRun(db, 'bad-auth')).toMatchObject({ status: 'failed', last_error: 'github_fatal_error' })
 })
 
-it('keeps an interrupted run active until explicitly recovered and never completes it after recovery', async () => {
+it('prevents a recovered stale crawl from writing after its in-flight request returns', async () => {
   const db = database()
+  const staleUrl = 'https://github.com/stale/late-write'
   let resume: (() => void) | undefined
   const waiting = new Promise<void>((resolve) => {
     resume = resolve
@@ -317,11 +321,11 @@ it('keeps an interrupted run active until explicitly recovered and never complet
       searchCode: async () => {
         started?.()
         await waiting
-        return { items: [], total_count: 0, incomplete_results: false }
+        return { items: [{ repository: { html_url: staleUrl, description: 'stale' } }], total_count: 1, incomplete_results: false }
       },
     }),
     'interrupted',
-    { ranges: [firstRange] },
+    { ranges: [firstRange], now: () => new Date('2026-09-23T00:00:00.000Z') },
   )
   const rejection = pending.then(
     () => {
@@ -335,14 +339,25 @@ it('keeps an interrupted run active until explicitly recovered and never complet
   try {
     expect(getActiveRun(db)?.run_id).toBe('interrupted')
     expect(getRun(db, 'interrupted')?.completed_at).toBeNull()
-    expect(failRun(db, 'interrupted', '2026-09-23T01:00:00Z', 'stale-heartbeat')).toBe(true)
-    expect((await runCrawl(db, reader(), 'after-crash', { ranges: [firstRange] })).status).toBe('completed')
+    expect(recoverStaleRun(db, '2026-09-23T00:30:00.000Z', '2026-09-23T01:00:00.000Z')).toMatchObject({
+      run_id: 'interrupted',
+    })
+    expect(
+      (
+        await runCrawl(db, reader(), 'after-crash', {
+          ranges: [firstRange],
+          now: () => new Date('2026-09-23T01:00:00.000Z'),
+        })
+      ).status,
+    ).toBe('completed')
   } finally {
     resume?.()
   }
   await rejection
-  expect(getRun(db, 'interrupted')).toMatchObject({ status: 'failed', last_error: 'stale-heartbeat' })
+  expect(getRun(db, 'interrupted')).toMatchObject({ status: 'failed', last_error: 'stale_run' })
   expect(getRun(db, 'after-crash')?.status).toBe('completed')
+  expect(db.prepare('SELECT id FROM repositories WHERE html_url = ?').get(staleUrl)).toBeUndefined()
+  expect(db.prepare('SELECT id FROM repositories WHERE html_url = ?').get(url)).toBeDefined()
 })
 
 it('reports run_not_active when operator recovery wins a concurrent failure', async () => {
