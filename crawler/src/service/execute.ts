@@ -32,6 +32,7 @@ export type ExecuteOptions = {
 export type CrawlOptions = ExecuteOptions & {
   ranges?: readonly SizeRange[]
   dryRun: boolean
+  started?: boolean
   git?: GitHubGit
   rateBuckets?: () => GitHubRateBuckets
 }
@@ -321,7 +322,12 @@ async function crawlAndPrepare(
   onCrawlComplete: (counts: CrawlSummary) => void,
 ): Promise<{ counts: CrawlSummary; size: number; report: RunReport }> {
   const crawlStartedAt = performance.now()
-  const counts = await runCrawl(db, reader, runId, { ranges: options.ranges, now, signal: options.signal })
+  const counts = await runCrawl(db, reader, runId, {
+    ranges: options.ranges,
+    now,
+    signal: options.signal,
+    started: options.started,
+  })
   onCrawlComplete(counts)
   const size = prepareDraft(db, runId, now()).size
   const report: RunReport = {
