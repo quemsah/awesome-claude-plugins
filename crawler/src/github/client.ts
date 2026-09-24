@@ -23,19 +23,23 @@ export type GitHubRepo = Pick<
   private?: RepositoryResponse['private']
 }
 
-export type Marketplace = { plugins: unknown[] }
+export type Marketplace = { plugins: unknown[]; etag: string | null }
 
 export type RepoResult<T> =
   | { kind: 'found'; data: T }
   | { kind: 'not-found'; retryCount?: number }
   | { kind: 'temporary-error'; status: number | null; reason: string; retryCount: number }
 
-type ResponseAction<T> = { kind: 'retry'; secondaryCount: number } | { kind: 'result'; result: RepoResult<T> }
+export type ConditionalRepoResult<T> = RepoResult<T> | { kind: 'not-modified'; retryCount: number }
+
+type ResponseAction<T> =
+  | { kind: 'retry'; secondaryCount: number }
+  | { kind: 'result'; result: ConditionalRepoResult<T> }
 
 export interface GitHubReader {
   searchCode(query: string, page: number): Promise<SearchPage>
   getRepository(owner: string, repo: string): Promise<RepoResult<GitHubRepo>>
-  getMarketplace(owner: string, repo: string): Promise<RepoResult<Marketplace>>
+  getMarketplace(owner: string, repo: string, etag?: string): Promise<ConditionalRepoResult<Marketplace>>
 }
 
 export class GitHubFatalError extends Error {
@@ -124,8 +128,14 @@ function parseRepository(value: unknown): GitHubRepo {
   return value as GitHubRepo
 }
 
-function parseMarketplace(value: unknown): Marketplace {
-  return parseMarketplaceManifest(value)
+function safeEntityTag(value: string | null): string | null {
+  if (value === null) return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 && trimmed.length <= 512 && !/[\r\n]/.test(trimmed) ? trimmed : null
+}
+
+function parseMarketplace(value: unknown, response: Response): Marketplace {
+  return { ...parseMarketplaceManifest(value), etag: safeEntityTag(response.headers.get('etag')) }
 }
 
 function retryAfter(headers: Headers, now: number): number | null {
@@ -175,24 +185,38 @@ export class GitHubClient implements GitHubReader {
     return result
   }
 
-  getMarketplace(owner: string, repo: string): Promise<RepoResult<Marketplace>> {
-    return this.request(
-      'core',
-      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/.claude-plugin/marketplace.json`,
-      parseMarketplace,
-      'application/vnd.github.raw+json',
-    )
+  getMarketplace(owner: string, repo: string, etag?: string): Promise<ConditionalRepoResult<Marketplace>> {
+    const validator = safeEntityTag(etag ?? null)
+    if (etag !== undefined && validator === null) throw new GitHubFatalError('Invalid marketplace ETag', null)
+    const path = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/.claude-plugin/marketplace.json`
+    return validator
+      ? this.request('core', path, parseMarketplace, 'application/vnd.github.raw+json', validator)
+      : this.request('core', path, parseMarketplace, 'application/vnd.github.raw+json')
   }
 
   private request<T>(
     bucket: RateResource,
     path: string,
-    parse: (value: unknown) => T,
+    parse: (value: unknown, response: Response) => T,
+    accept?: string,
+  ): Promise<RepoResult<T>>
+  private request<T>(
+    bucket: RateResource,
+    path: string,
+    parse: (value: unknown, response: Response) => T,
+    accept: string,
+    ifNoneMatch: string,
+  ): Promise<ConditionalRepoResult<T>>
+  private request<T>(
+    bucket: RateResource,
+    path: string,
+    parse: (value: unknown, response: Response) => T,
     accept = 'application/vnd.github+json',
-  ): Promise<RepoResult<T>> {
+    ifNoneMatch?: string,
+  ): Promise<ConditionalRepoResult<T>> {
     const run = this.pending.then(() => {
       throwIfShutdown(this.signal)
-      return this.perform(bucket, path, parse, accept)
+      return this.perform(bucket, path, parse, accept, ifNoneMatch)
     })
     this.pending = run.then(
       () => {},
@@ -201,7 +225,13 @@ export class GitHubClient implements GitHubReader {
     return run
   }
 
-  private async perform<T>(bucket: RateResource, path: string, parse: (value: unknown) => T, accept: string): Promise<RepoResult<T>> {
+  private async perform<T>(
+    bucket: RateResource,
+    path: string,
+    parse: (value: unknown, response: Response) => T,
+    accept: string,
+    ifNoneMatch?: string,
+  ): Promise<ConditionalRepoResult<T>> {
     let secondaryCount = 0
     for (let attempt = 0; attempt < 4; attempt++) {
       await this.budget.acquire(bucket, this.signal)
@@ -214,6 +244,7 @@ export class GitHubClient implements GitHubReader {
             Authorization: `Bearer ${this.token}`,
             Accept: accept,
             'X-GitHub-Api-Version': '2022-11-28',
+            ...(ifNoneMatch ? { 'If-None-Match': ifNoneMatch } : {}),
           },
         })
       } catch {
@@ -233,7 +264,7 @@ export class GitHubClient implements GitHubReader {
   private async handleResponse<T>(
     bucket: RateResource,
     response: Response,
-    parse: (value: unknown) => T,
+    parse: (value: unknown, response: Response) => T,
     attempt: number,
     secondaryCount: number,
   ): Promise<ResponseAction<T>> {
@@ -241,6 +272,7 @@ export class GitHubClient implements GitHubReader {
     const delay = retryAfter(response.headers, this.clock.now())
     if (delay !== null) this.budget.defer(bucket, delay)
     const { status } = response
+    if (status === 304) return { kind: 'result', result: { kind: 'not-modified', retryCount: attempt } }
     if (status === 401 || status === 422) throw new GitHubFatalError(`GitHub request rejected (${status})`, status)
     if (status === 404) return { kind: 'result', result: { kind: 'not-found', retryCount: attempt } }
     if (status === 403 || status === 429) return this.handleRateLimit(bucket, response, attempt, delay, secondaryCount)
@@ -288,12 +320,12 @@ export class GitHubClient implements GitHubReader {
   private async parseResponse<T>(
     bucket: RateResource,
     response: Response,
-    parse: (value: unknown) => T,
+    parse: (value: unknown, response: Response) => T,
     attempt: number,
     secondaryCount: number,
   ): Promise<ResponseAction<T>> {
     try {
-      return { kind: 'result', result: { kind: 'found', data: parse((await response.json()) as unknown) } }
+      return { kind: 'result', result: { kind: 'found', data: parse((await response.json()) as unknown, response) } }
     } catch {
       if (attempt === 3) {
         return {
