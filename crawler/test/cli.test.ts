@@ -251,20 +251,52 @@ describe('CLI', () => {
     check.close()
   })
 
-  it('does not start while an active-run lock exists and never makes an API call', async () => {
+  it('skips a fresh active run without making an API call or crashing the scheduler', async () => {
     const path = databasePath()
     populateTestDatabase(path)
     const setup = openDatabase(path)
-    beginRun(setup, 'old-run', '2020-01-01T00:00:00.000Z')
+    beginRun(setup, 'active-run', '2026-09-24T00:30:00.000Z')
     setup.close()
     const reader = vi.fn()
-    await expect(
-      runCli(['crawl'], {
-        env: { DB_PATH: path, GITHUB_READ_TOKEN: 'fake-read-token' },
-        reader,
-      }),
-    ).rejects.toMatchObject({ category: 'active_run' })
+    const output = vi.fn()
+
+    await runCli(['crawl'], {
+      env: { DB_PATH: path, GITHUB_READ_TOKEN: 'fake-read-token' },
+      now: () => new Date('2026-09-24T01:00:00.000Z'),
+      reader,
+      output,
+    })
+
     expect(reader).not.toHaveBeenCalled()
+    expect(output).toHaveBeenCalledWith(JSON.stringify({ status: 'skipped', reason: 'active_run', runId: 'active-run' }))
+    const verified = openDatabase(path)
+    expect(getRun(verified, 'active-run')?.status).toBe('running')
+    verified.close()
+  })
+
+  it('recovers a stale active run and starts the scheduled crawl', async () => {
+    const path = databasePath()
+    populateTestDatabase(path)
+    const setup = openDatabase(path)
+    beginRun(setup, 'stale-run', '2026-09-23T20:00:00.000Z')
+    setup.close()
+    const reader = readerFixture()
+
+    await runCli(['crawl', '--dry-run'], {
+      env: { DB_PATH: path, GITHUB_READ_TOKEN: 'fake-read-token', PUBLISH_ENABLED: 'false' },
+      now: () => new Date('2026-09-24T01:00:00.000Z'),
+      runId: () => 'replacement-run',
+      reader: () => reader,
+      ranges: [[0, 150]],
+      output: vi.fn(),
+    })
+
+    expect(reader.searchCode).toHaveBeenCalledOnce()
+    const verified = openDatabase(path)
+    expect(getRun(verified, 'stale-run')).toMatchObject({ status: 'failed', last_error: 'stale_run' })
+    expect(listRunErrors(verified, 'stale-run')).toContainEqual(expect.objectContaining({ phase: 'crawl', error_type: 'stale_run' }))
+    expect(getRun(verified, 'replacement-run')?.status).toBe('completed')
+    verified.close()
   })
 
   it.each(['active_run', 'publication_locked'] as const)('notifies once when a crawl sees a persisted %s lock', async (category) => {
@@ -287,12 +319,18 @@ describe('CLI', () => {
     }
     const dependencies = {
       env: { DB_PATH: path, GITHUB_READ_TOKEN: 'read-token', PUBLISH_ENABLED: 'false' },
+      now: () => new Date('2026-09-22T01:30:00.000Z'),
       notifier: () => notifier,
       reader: vi.fn(),
     }
 
-    await expect(runCli(['crawl'], dependencies)).rejects.toMatchObject({ category })
-    await expect(runCli(['crawl'], dependencies)).rejects.toMatchObject({ category })
+    if (category === 'active_run') {
+      await runCli(['crawl'], dependencies)
+      await runCli(['crawl'], dependencies)
+    } else {
+      await expect(runCli(['crawl'], dependencies)).rejects.toMatchObject({ category })
+      await expect(runCli(['crawl'], dependencies)).rejects.toMatchObject({ category })
+    }
 
     expect(notifyFailure).toHaveBeenCalledOnce()
     expect(notifyFailure).toHaveBeenCalledWith(expect.objectContaining({ runId: 'blocked', reason: category }))
