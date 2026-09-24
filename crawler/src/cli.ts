@@ -17,7 +17,15 @@ import { openDatabase } from './storage/db.js'
 import { inspect } from './storage/inspect.js'
 import { optimizeDatabase, runMaintenance } from './storage/maintenance.js'
 import { listPublishable } from './storage/repositories.js'
-import { getActiveRun, getPublicationLease, getSetting, PublicationLeaseError, recoverStoppedCrawl, setSetting } from './storage/runs.js'
+import {
+  getActiveRun,
+  getPublicationLease,
+  getSetting,
+  PublicationLeaseError,
+  recoverStaleRun,
+  recoverStoppedCrawl,
+  setSetting,
+} from './storage/runs.js'
 
 export type CliDependencies = {
   env?: NodeJS.ProcessEnv
@@ -150,12 +158,26 @@ async function notifyBlockedCrawl(
   }
 }
 
-async function ensureCrawlAvailable(db: Database.Database, config: RuntimeConfig, dependencies: CliDependencies): Promise<void> {
-  const blocked = getActiveRun(db) ? 'active_run' : getPublicationLease(db) ? 'publication_locked' : null
-  if (blocked) {
-    await notifyBlockedCrawl(db, blocked, config, dependencies)
-    throw new PublicationLeaseError(blocked)
+const STALE_RUN_THRESHOLD_MS = 2 * 60 * 60 * 1000
+
+async function ensureCrawlAvailable(
+  db: Database.Database,
+  config: RuntimeConfig,
+  dependencies: CliDependencies,
+  now: () => Date,
+): Promise<string | null> {
+  if (getPublicationLease(db)) {
+    await notifyBlockedCrawl(db, 'publication_locked', config, dependencies)
+    throw new PublicationLeaseError('publication_locked')
   }
+
+  const current = now()
+  recoverStaleRun(db, new Date(current.getTime() - STALE_RUN_THRESHOLD_MS).toISOString(), current.toISOString())
+  const active = getActiveRun(db)
+  if (!active) return null
+
+  await notifyBlockedCrawl(db, 'active_run', config, dependencies)
+  return active.run_id
 }
 
 function rateTracker(): { buckets: GitHubRateBuckets; log: RateLog; observed: () => boolean } {
@@ -214,7 +236,11 @@ async function runCrawlCommand(
   now: () => Date,
   output: (line: string) => void,
 ): Promise<void> {
-  await ensureCrawlAvailable(db, config, dependencies)
+  const activeRunId = await ensureCrawlAvailable(db, config, dependencies, now)
+  if (activeRunId) {
+    output(JSON.stringify({ status: 'skipped', reason: 'active_run', runId: activeRunId }))
+    return
+  }
   runMaintenance(db, now())
   try {
     await runCrawl(db, config, dependencies, options, now, output, rateTracker())
