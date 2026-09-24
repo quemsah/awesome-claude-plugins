@@ -10,8 +10,8 @@ import {
   heartbeatRun,
   listRunErrors,
   PublicationLeaseError,
-  recordRunError,
   RunNotActiveError,
+  recordRunError,
   terminateRun,
 } from '../storage/runs.js'
 import { type DiscoverySummary, discover } from './discover.js'

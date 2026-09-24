@@ -297,7 +297,10 @@ describe('CLI', () => {
       },
       now: () => {
         nowCalls++
-        if (nowCalls === 3) beginRun(db!, 'concurrent-run', '2026-09-24T01:00:00.000Z')
+        if (nowCalls === 3) {
+          if (!db) throw new Error('Database must be open before the concurrent start')
+          beginRun(db, 'concurrent-run', '2026-09-24T01:00:00.000Z')
+        }
         return new Date('2026-09-24T01:00:00.000Z')
       },
       runId: () => 'losing-run',
