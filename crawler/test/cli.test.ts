@@ -318,6 +318,27 @@ describe('CLI', () => {
     verified.close()
   })
 
+  it('fails a claimed run when crawl setup throws before execution', async () => {
+    const path = databasePath()
+    populateTestDatabase(path)
+
+    await expect(
+      runCli(['crawl'], {
+        env: { DB_PATH: path, GITHUB_READ_TOKEN: 'fake-read-token', PUBLISH_ENABLED: 'false' },
+        now: () => new Date('2026-09-24T01:00:00.000Z'),
+        runId: () => 'setup-failure',
+        reader: () => {
+          throw new Error('reader setup failed')
+        },
+        output: vi.fn(),
+      }),
+    ).rejects.toThrow('reader setup failed')
+
+    const verified = openDatabase(path)
+    expect(getRun(verified, 'setup-failure')).toMatchObject({ status: 'failed', last_error: 'startup_failed' })
+    verified.close()
+  })
+
   it('recovers a stale active run and starts the scheduled crawl', async () => {
     const path = databasePath()
     populateTestDatabase(path)

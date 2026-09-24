@@ -19,6 +19,7 @@ import { optimizeDatabase, runMaintenance } from './storage/maintenance.js'
 import { listPublishable } from './storage/repositories.js'
 import {
   beginRun,
+  failRun,
   getActiveRun,
   getPublicationLease,
   getSetting,
@@ -265,6 +266,11 @@ async function runCrawlCommand(
 
   try {
     await runCrawl(db, config, dependencies, options, runId, now, output, rateTracker())
+  } catch (error) {
+    try {
+      failRun(db, runId, now().toISOString(), 'startup_failed')
+    } catch {}
+    throw error
   } finally {
     try {
       optimizeDatabase(db)
