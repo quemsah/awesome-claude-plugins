@@ -117,7 +117,6 @@ it('pages by id after deleting blank and 404 rows, visiting newly discovered ids
     html_url: 'https://github.com/team/new',
     createdAt: expect.any(String),
     plugins_count: 0,
-    marketplace_etag: 'W/"marketplace-v1"',
   })
 })
 
@@ -209,6 +208,7 @@ it('refreshes a complete row using the same owner and repo for both calls withou
     description: 'fresh',
     repo_updated: '2026-09-22T12:00:00Z',
     plugins_count: 0,
+    marketplace_etag: 'W/"marketplace-v1"',
   })
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 1 })
 })
