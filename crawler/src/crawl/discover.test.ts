@@ -158,6 +158,32 @@ it('splits a saturated size range until each child is below the search cap', asy
   expect(result).toMatchObject({ newUrls: 2, successfulRanges: 2, warningCount: 0 })
 })
 
+it('splits a range when page ten is full even if the first total_count was below the cap', async () => {
+  const db = database()
+  const calls: Array<[string, number]> = []
+  const result = await discover(
+    db,
+    reader(async (query, number) => {
+      calls.push([query, number])
+      if (query.endsWith('0..3'))
+        return page(Array.from({ length: 100 }, (_, i) => item(`https://github.com/owner/parent-${number}-${i}`)), 999)
+      if (query.endsWith('0..1')) return page([item('https://github.com/owner/small')])
+      if (query.endsWith('2..3')) return page([item('https://github.com/owner/large')])
+      throw new Error(`Unexpected range: ${query}`)
+    }),
+    'run-1',
+    [[0, 3]],
+  )
+
+  expect(calls).toEqual([
+    ...Array.from({ length: 10 }, (_, i) => ['filename:marketplace.json path:.claude-plugin size:0..3', i + 1] as [string, number]),
+    ['filename:marketplace.json path:.claude-plugin size:0..1', 1],
+    ['filename:marketplace.json path:.claude-plugin size:2..3', 1],
+  ])
+  expect(result).toMatchObject({ newUrls: 1002, successfulRanges: 2, warningCount: 0 })
+  expect(errors(db)).toEqual([])
+})
+
 it.each([1000, 1001, 20_000])(
   'caps an unsplittable search claiming %i results at ten pages and records saturated coverage',
   async (total) => {

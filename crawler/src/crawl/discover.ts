@@ -96,6 +96,24 @@ function recordPageWarnings(
   if (page === 10 && result.items.length === 100) warn(db, state, 'page-limit')
 }
 
+async function splitRange(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  lookup: Database.Statement,
+  [min, max]: SizeRange,
+  summary: DiscoverySummary,
+  now: () => string,
+  onProgress: (() => void) | undefined,
+  countedAsSuccessful: boolean,
+): Promise<void> {
+  if (countedAsSuccessful) summary.successfulRanges--
+  onProgress?.()
+  const middle = Math.floor((min + max) / 2)
+  await searchRange(db, reader, runId, lookup, [min, middle], summary, now, onProgress)
+  await searchRange(db, reader, runId, lookup, [middle + 1, max], summary, now, onProgress)
+}
+
 async function searchRange(
   db: Database.Database,
   reader: GitHubReader,
@@ -118,10 +136,13 @@ async function searchRange(
     if (!result) break
     if (page === 1 && result.total_count >= 1000 && min < max) {
       if (result.incomplete_results) warn(db, state, 'incomplete-results')
-      onProgress?.()
-      const middle = Math.floor((min + max) / 2)
-      await searchRange(db, reader, runId, lookup, [min, middle], summary, now, onProgress)
-      await searchRange(db, reader, runId, lookup, [middle + 1, max], summary, now, onProgress)
+      await splitRange(db, reader, runId, lookup, range, summary, now, onProgress, false)
+      return
+    }
+    if (page === 10 && result.items.length === 100 && min < max) {
+      if (result.incomplete_results) warn(db, state, 'incomplete-results')
+      processItems(db, lookup, result, state)
+      await splitRange(db, reader, runId, lookup, range, summary, now, onProgress, true)
       return
     }
     if (page === 1) summary.successfulRanges++
