@@ -1,6 +1,13 @@
 import Database from 'better-sqlite3'
 import { afterEach, expect, it, vi } from 'vitest'
-import { GitHubFatalError, type GitHubReader, type GitHubRepo, type Marketplace, type RepoResult } from '../github/client.js'
+import {
+  type ConditionalRepoResult,
+  GitHubFatalError,
+  type GitHubReader,
+  type GitHubRepo,
+  type Marketplace,
+  type RepoResult,
+} from '../github/client.js'
 import { listPublishable, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
 import { beginRun, listRunErrors } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
@@ -39,7 +46,7 @@ function reader(
     kind: 'found',
     data: githubRepo(owner, repo),
   }),
-  getMarketplace: (owner: string, repo: string) => Promise<RepoResult<Marketplace>> = async () => ({
+  getMarketplace: (owner: string, repo: string, etag?: string) => Promise<ConditionalRepoResult<Marketplace>> = async () => ({
     kind: 'found',
     data: { plugins: [] },
   }),
@@ -203,6 +210,30 @@ it('refreshes a complete row using the same owner and repo for both calls withou
     plugins_count: 0,
   })
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 1 })
+})
+
+it('revalidates a cached marketplace with its ETag and reuses the plugin count on 304', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old')
+  ready(db, id)
+  db.prepare('UPDATE repositories SET marketplace_etag = ? WHERE id = ?').run('W/"marketplace-v1"', id)
+  const getMarketplace = vi.fn(async (_owner: string, _repo: string, etag?: string) => {
+    expect(etag).toBe('W/"marketplace-v1"')
+    return { kind: 'not-modified' as const, retryCount: 0 }
+  })
+
+  const counts = await enrichRepositories(db, reader(undefined, getMarketplace), 'crawl-1')
+
+  expect(counts).toMatchObject({ updated: 1, newReady: 0, conclusive: 1, warnings: 0 })
+  expect(getMarketplace).toHaveBeenCalledWith('team', 'repo', 'W/"marketplace-v1"')
+  expect(
+    db.prepare('SELECT description, stargazers_count, plugins_count, marketplace_etag FROM repositories WHERE id = ?').get(id),
+  ).toEqual({
+    description: 'fresh',
+    stargazers_count: 10,
+    plugins_count: 3,
+    marketplace_etag: 'W/"marketplace-v1"',
+  })
 })
 
 it('canonicalizes a case-variant URL while preserving the repository id', async () => {
