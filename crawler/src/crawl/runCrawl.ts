@@ -10,6 +10,7 @@ import {
   heartbeatRun,
   listRunErrors,
   PublicationLeaseError,
+  RunNotActiveError,
   recordRunError,
   terminateRun,
 } from '../storage/runs.js'
@@ -20,6 +21,7 @@ export type RunCrawlOptions = {
   ranges?: readonly SizeRange[]
   now?: () => Date
   signal?: AbortSignal
+  started?: boolean
 }
 
 export type CrawlSummary = {
@@ -54,6 +56,7 @@ export class CrawlError extends Error {
 
 function failureCategory(error: unknown): CrawlFailureCategory {
   if (error instanceof CrawlError) return error.category
+  if (error instanceof RunNotActiveError) return 'run_not_active'
   if (error instanceof ShutdownError) return 'terminated'
   if (error instanceof GitHubFatalError) return 'github_fatal_error'
   if (error instanceof GitHubTemporaryError && (error.status === 401 || error.status === 422)) return 'github_fatal_error'
@@ -142,7 +145,11 @@ export async function runCrawl(
 ): Promise<CrawlSummary> {
   const now = () => (options.now ?? (() => new Date()))().toISOString()
   // The caller's stale-run threshold must allow for a single rate-limited request (or a full 50-row batch).
-  beginCrawl(db, runId, now)
+  if (options.started) {
+    if (getActiveRun(db)?.run_id !== runId) throw new CrawlError('run_not_active')
+  } else {
+    beginCrawl(db, runId, now)
+  }
   try {
     return await crawlAndComplete(db, reader, runId, options, now)
   } catch (error) {

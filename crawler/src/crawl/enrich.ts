@@ -11,7 +11,7 @@ import {
   rebindCanonicalUrl,
   updateEnriched,
 } from '../storage/repositories.js'
-import { recordRunError } from '../storage/runs.js'
+import { recordRunError, runWhileActive } from '../storage/runs.js'
 
 export type EnrichmentCounts = {
   updated: number
@@ -88,13 +88,15 @@ function recordProblem(
   now: () => string = () => new Date().toISOString(),
   retryCount = 0,
 ): void {
-  recordRunError(db, {
-    run_id: runId,
-    phase: 'enrich',
-    repository_id: row.id,
-    error_type: errorType,
-    retry_count: retryCount,
-    occurred_at: now(),
+  runWhileActive(db, runId, () => {
+    recordRunError(db, {
+      run_id: runId,
+      phase: 'enrich',
+      repository_id: row.id,
+      error_type: errorType,
+      retry_count: retryCount,
+      occurred_at: now(),
+    })
   })
   if (warning) counts.warnings++
   if (previouslyReady) counts.unchangedOnError++
@@ -114,12 +116,13 @@ type EnrichmentTarget = { id: number; removedId: number | null; ready: boolean }
 
 function persistEnrichment(
   db: Database.Database,
+  runId: string,
   row: RepositoryRow,
   loaded: LoadedRepository,
   pluginsCount: number,
   at: string,
 ): EnrichmentTarget {
-  return db.transaction(() => {
+  return runWhileActive(db, runId, () => {
     const rebound = loaded.moved ? rebindCanonicalUrl(db, row.id, loaded.canonical.htmlUrl, at) : { id: row.id, removedId: null }
     const target = loaded.moved ? getRepositoryById(db, rebound.id) : null
     if (loaded.moved && !target) throw new Error('Canonical repository disappeared during rebind')
@@ -141,7 +144,7 @@ function persistEnrichment(
       at,
     )
     return { id: rebound.id, removedId: rebound.removedId, ready }
-  })()
+  })
 }
 
 async function loadRepository(
@@ -156,7 +159,9 @@ async function loadRepository(
 ): Promise<LoadedRepository | null> {
   const result = await reader.getRepository(identity.owner, identity.repo)
   if (result.kind === 'not-found') {
-    deleteById(db, row.id)
+    runWhileActive(db, runId, () => {
+      deleteById(db, row.id)
+    })
     counts.deleted404++
     counts.conclusive++
     return null
@@ -195,9 +200,12 @@ async function enrichOne(
   counts: EnrichmentCounts,
   removedIds: Set<number>,
   now: () => string,
+  onProgress?: () => void,
 ): Promise<void> {
   if (!row.html_url?.trim()) {
-    deleteById(db, row.id)
+    runWhileActive(db, runId, () => {
+      deleteById(db, row.id)
+    })
     counts.deletedBlankUrl++
     return
   }
@@ -207,14 +215,18 @@ async function enrichOne(
     recordProblem(db, runId, counts, row, 'invalid_repository_url', previouslyReady, true, now)
     return
   }
+  onProgress?.()
   const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts, now)
   if (!loaded) return
+  onProgress?.()
   const marketplace = await reader.getMarketplace(loaded.owner, loaded.repo)
   if (marketplace.kind === 'not-found') {
-    if (loaded.moved) {
-      const removedId = deleteCanonicalRows(db, row.id, loaded.canonical.htmlUrl)
-      if (removedId !== null) removedIds.add(removedId)
-    } else deleteById(db, row.id)
+    runWhileActive(db, runId, () => {
+      if (loaded.moved) {
+        const removedId = deleteCanonicalRows(db, row.id, loaded.canonical.htmlUrl)
+        if (removedId !== null) removedIds.add(removedId)
+      } else deleteById(db, row.id)
+    })
     counts.deleted404++
     counts.conclusive++
     return
@@ -223,7 +235,7 @@ async function enrichOne(
     recordProblem(db, runId, counts, row, temporaryCategory('marketplace', marketplace), loaded.ready, false, now, marketplace.retryCount)
     return
   }
-  const target = persistEnrichment(db, row, loaded, marketplace.data.plugins.length, now())
+  const target = persistEnrichment(db, runId, row, loaded, marketplace.data.plugins.length, now())
   if (target.removedId !== null) removedIds.add(target.removedId)
   counts.conclusive++
   if (target.ready) counts.updated++
@@ -234,7 +246,7 @@ export async function enrichRepositories(
   db: Database.Database,
   reader: GitHubReader,
   runId: string,
-  onBatchComplete?: () => void,
+  onProgress?: () => void,
   now: () => string = () => new Date().toISOString(),
 ): Promise<EnrichmentCounts> {
   const counts: EnrichmentCounts = {
@@ -255,9 +267,9 @@ export async function enrichRepositories(
     for (const row of rows) {
       lastId = row.id
       if (removedIds.has(row.id)) continue
-      await enrichOne(db, reader, runId, row, counts, removedIds, now)
+      await enrichOne(db, reader, runId, row, counts, removedIds, now, onProgress)
     }
-    onBatchComplete?.()
+    onProgress?.()
   }
   return counts
 }

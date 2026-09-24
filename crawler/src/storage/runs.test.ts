@@ -42,14 +42,22 @@ it('allows one running crawl at a time, tracks heartbeat and completion, then re
   expect(getRun(db, 'run-2')?.status).toBe('running')
 })
 
-it('exposes the active run for stale-heartbeat recovery after a process restart', () => {
-  const { beginRun, getActiveRun, failRun } = runStorage
+it('recovers only a stale active run from its heartbeat', () => {
+  const { beginRun, getActiveRun, getRun, listRunErrors, recoverStaleRun } = runStorage
   const db = database()
   expect(getActiveRun(db)).toBeNull()
   beginRun(db, 'stale-run', '2025-01-01T00:00:00Z')
-  expect(getActiveRun(db)).toMatchObject({ run_id: 'stale-run', heartbeat_at: '2025-01-01T00:00:00Z' })
-  failRun(db, 'stale-run', '2025-01-02T00:00:00Z', 'stale-heartbeat')
+  expect(recoverStaleRun(db, '2024-12-31T23:59:00Z', '2025-01-01T01:00:00Z')).toBeNull()
+  expect(getActiveRun(db)?.run_id).toBe('stale-run')
+
+  expect(recoverStaleRun(db, '2025-01-01T00:30:00Z', '2025-01-01T01:00:00Z')).toMatchObject({ run_id: 'stale-run' })
   expect(getActiveRun(db)).toBeNull()
+  expect(getRun(db, 'stale-run')).toMatchObject({
+    status: 'failed',
+    completed_at: '2025-01-01T01:00:00Z',
+    last_error: 'stale_run',
+  })
+  expect(listRunErrors(db, 'stale-run')).toContainEqual(expect.objectContaining({ phase: 'crawl', error_type: 'stale_run' }))
 })
 
 it('persists structured errors without storing tokens or HTTP response bodies', () => {

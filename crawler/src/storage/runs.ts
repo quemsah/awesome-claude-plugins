@@ -55,6 +55,13 @@ export class PublicationLeaseError extends Error {
   }
 }
 
+export class RunNotActiveError extends Error {
+  constructor(readonly runId: string) {
+    super('Run is no longer active')
+    this.name = 'RunNotActiveError'
+  }
+}
+
 export function getPublicationLease(db: Database.Database): { run_id: string; owner: string } | null {
   return (
     (db.prepare('SELECT run_id, owner FROM publication_lease WHERE slot = 1').get() as { run_id: string; owner: string } | undefined) ??
@@ -109,6 +116,16 @@ export function heartbeatRun(db: Database.Database, runId: string, at: string): 
   return db.prepare("UPDATE runs SET heartbeat_at = ? WHERE run_id = ? AND status = 'running'").run(at, runId).changes !== 0
 }
 
+export function runWhileActive<T>(db: Database.Database, runId: string, operation: () => T): T {
+  return db
+    .transaction(() => {
+      const active = db.prepare("SELECT 1 FROM runs WHERE run_id = ? AND status = 'running'").get(runId)
+      if (!active) throw new RunNotActiveError(runId)
+      return operation()
+    })
+    .immediate()
+}
+
 export function completeRun(db: Database.Database, runId: string, at: string, warningCount: number): boolean {
   if (!Number.isSafeInteger(warningCount) || warningCount < 0) throw new Error('warningCount must be nonnegative')
   return (
@@ -129,6 +146,31 @@ export function failRun(db: Database.Database, runId: string, at: string, lastEr
 
 export function terminateRun(db: Database.Database, runId: string, at: string): boolean {
   return failRun(db, runId, at, 'terminated')
+}
+
+export function recoverStaleRun(db: Database.Database, cutoffAt: string, recoveredAt: string): RunRow | null {
+  const cutoff = Date.parse(cutoffAt)
+  if (!Number.isFinite(cutoff)) throw new Error('Stale-run cutoff must be a valid date')
+
+  return db
+    .transaction(() => {
+      if (getPublicationLease(db)) return null
+      const active = getActiveRun(db)
+      if (!active) return null
+      const heartbeat = Date.parse(active.heartbeat_at)
+      if (!Number.isFinite(heartbeat) || heartbeat >= cutoff) return null
+
+      recordRunError(db, {
+        run_id: active.run_id,
+        phase: 'crawl',
+        error_type: 'stale_run',
+        retry_count: 0,
+        occurred_at: recoveredAt,
+      })
+      if (!failRun(db, active.run_id, recoveredAt, 'stale_run')) return null
+      return active
+    })
+    .immediate()
 }
 
 export function recoverStoppedCrawl(db: Database.Database, runId: string, at: string): void {

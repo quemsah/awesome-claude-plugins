@@ -17,7 +17,17 @@ import { openDatabase } from './storage/db.js'
 import { inspect } from './storage/inspect.js'
 import { optimizeDatabase, runMaintenance } from './storage/maintenance.js'
 import { listPublishable } from './storage/repositories.js'
-import { getActiveRun, getPublicationLease, getSetting, PublicationLeaseError, recoverStoppedCrawl, setSetting } from './storage/runs.js'
+import {
+  beginRun,
+  failRun,
+  getActiveRun,
+  getPublicationLease,
+  getSetting,
+  PublicationLeaseError,
+  recoverStaleRun,
+  recoverStoppedCrawl,
+  setSetting,
+} from './storage/runs.js'
 
 export type CliDependencies = {
   env?: NodeJS.ProcessEnv
@@ -150,12 +160,26 @@ async function notifyBlockedCrawl(
   }
 }
 
-async function ensureCrawlAvailable(db: Database.Database, config: RuntimeConfig, dependencies: CliDependencies): Promise<void> {
-  const blocked = getActiveRun(db) ? 'active_run' : getPublicationLease(db) ? 'publication_locked' : null
-  if (blocked) {
-    await notifyBlockedCrawl(db, blocked, config, dependencies)
-    throw new PublicationLeaseError(blocked)
+const STALE_RUN_THRESHOLD_MS = 2 * 60 * 60 * 1000
+
+async function ensureCrawlAvailable(
+  db: Database.Database,
+  config: RuntimeConfig,
+  dependencies: CliDependencies,
+  now: () => Date,
+): Promise<string | null> {
+  if (getPublicationLease(db)) {
+    await notifyBlockedCrawl(db, 'publication_locked', config, dependencies)
+    throw new PublicationLeaseError('publication_locked')
   }
+
+  const current = now()
+  recoverStaleRun(db, new Date(current.getTime() - STALE_RUN_THRESHOLD_MS).toISOString(), current.toISOString())
+  const active = getActiveRun(db)
+  if (!active) return null
+
+  await notifyBlockedCrawl(db, 'active_run', config, dependencies)
+  return active.run_id
 }
 
 function rateTracker(): { buckets: GitHubRateBuckets; log: RateLog; observed: () => boolean } {
@@ -179,6 +203,7 @@ async function runCrawl(
   config: RuntimeConfig,
   dependencies: CliDependencies,
   options: Pick<ParsedOptions, 'dryRun'>,
+  runId: string,
   now: () => Date,
   output: (line: string) => void,
   rates: ReturnType<typeof rateTracker>,
@@ -189,7 +214,6 @@ async function runCrawl(
   const git = !options.dryRun && config.publishEnabled ? gitFor(config, dependencies) : undefined
   const notifier = notifierFor(config, dependencies)
   if (!notifier) output(JSON.stringify({ status: 'notifier-disabled' }))
-  const runId = (dependencies.runId ?? randomUUID)()
   try {
     const result = await executeCrawl(db, reader, runId, {
       now,
@@ -199,6 +223,7 @@ async function runCrawl(
       notifier,
       rateBuckets: () => rates.buckets,
       signal: dependencies.signal,
+      started: true,
     })
     output(JSON.stringify(result))
   } finally {
@@ -214,10 +239,38 @@ async function runCrawlCommand(
   now: () => Date,
   output: (line: string) => void,
 ): Promise<void> {
-  await ensureCrawlAvailable(db, config, dependencies)
+  const activeRunId = await ensureCrawlAvailable(db, config, dependencies, now)
+  if (activeRunId) {
+    output(JSON.stringify({ status: 'skipped', reason: 'active_run', runId: activeRunId }))
+    return
+  }
   runMaintenance(db, now())
+  const runId = (dependencies.runId ?? randomUUID)()
   try {
-    await runCrawl(db, config, dependencies, options, now, output, rateTracker())
+    beginRun(db, runId, now().toISOString())
+  } catch (error) {
+    if (error instanceof PublicationLeaseError) {
+      await notifyBlockedCrawl(db, 'publication_locked', config, dependencies)
+      throw error
+    }
+    if (error !== null && typeof error === 'object' && 'code' in error && error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      const active = getActiveRun(db)
+      if (active) {
+        await notifyBlockedCrawl(db, 'active_run', config, dependencies)
+        output(JSON.stringify({ status: 'skipped', reason: 'active_run', runId: active.run_id }))
+        return
+      }
+    }
+    throw error
+  }
+
+  try {
+    await runCrawl(db, config, dependencies, options, runId, now, output, rateTracker())
+  } catch (error) {
+    try {
+      failRun(db, runId, now().toISOString(), 'startup_failed')
+    } catch {}
+    throw error
   } finally {
     try {
       optimizeDatabase(db)
