@@ -110,6 +110,8 @@ async function searchRange(
   const query = `filename:marketplace.json path:.claude-plugin size:${min}..${max}`
   const state: RangeState = { runId, range, warned: new Set(), summary, now }
   let found = 0
+  let lastTotalCount = 0
+  let sawShortPage = false
   for (let page = 1; page <= 10; page++) {
     onProgress?.()
     const result = await searchPage(reader, query, page, db, state)
@@ -125,10 +127,12 @@ async function searchRange(
     if (page === 1) summary.successfulRanges++
     recordPageWarnings(db, result, page, state)
     processItems(db, lookup, result, state)
+    lastTotalCount = result.total_count
+    if (result.items.length < 100 && found + result.items.length < result.total_count) sawShortPage = true
     found += result.items.length
-    if (result.items.length < 100 && found < result.total_count) warn(db, state, 'short-page')
-    if (result.items.length < 100 || found >= result.total_count) break
+    if (result.items.length === 0 || found >= result.total_count) break
   }
+  if (sawShortPage && found < lastTotalCount) warn(db, state, 'short-page')
   onProgress?.()
 }
 

@@ -94,6 +94,26 @@ it('persists 100+1 results across two pages and stops on the short page', async 
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 101 })
 })
 
+it('continues past a short page when total_count says more results remain', async () => {
+  const db = database()
+  const visited: number[] = []
+  const result = await discover(
+    db,
+    reader(async (_query, number) => {
+      visited.push(number)
+      if (number === 1) return page(Array.from({ length: 40 }, (_, i) => item(`https://github.com/owner/first-${i}`)), 140)
+      if (number === 2) return page(Array.from({ length: 100 }, (_, i) => item(`https://github.com/owner/second-${i}`)), 140)
+      throw new Error('Unexpected extra page')
+    }),
+    'run-1',
+    [firstRange],
+  )
+
+  expect(visited).toEqual([1, 2])
+  expect(result).toMatchObject({ newUrls: 140, successfulRanges: 1, warningCount: 0 })
+  expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 140 })
+})
+
 it('stops at total_count even if the last page is full', async () => {
   const db = database()
   const visited: number[] = []
