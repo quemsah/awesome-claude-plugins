@@ -257,7 +257,10 @@ async function enrichMarketplace(
   now: () => string,
 ): Promise<void> {
   const cachedEtag = !loaded.moved && row.plugins_count !== null ? (row.marketplace_etag ?? undefined) : undefined
-  const marketplace = await reader.getMarketplace(loaded.owner, loaded.repo, cachedEtag)
+  const marketplace =
+    cachedEtag === undefined
+      ? await reader.getMarketplace(loaded.owner, loaded.repo)
+      : await reader.getMarketplace(loaded.owner, loaded.repo, cachedEtag)
 
   switch (marketplace.kind) {
     case 'not-modified':
