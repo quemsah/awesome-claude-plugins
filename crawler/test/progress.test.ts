@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runCli } from '../src/cli.js'
@@ -84,6 +84,14 @@ describe('crawl progress inspection', () => {
     const verified = openDatabase(path)
     expect(verified.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 5 })
     verified.close()
+  })
+
+  it('does not create a missing database while inspecting progress', async () => {
+    const path = databasePath()
+    expect(existsSync(path)).toBe(false)
+
+    await expect(runCli(['inspect-progress'], { env: { DB_PATH: path } })).rejects.toThrow()
+    expect(existsSync(path)).toBe(false)
   })
 
   it('reports repository state when there are no runs yet', () => {
