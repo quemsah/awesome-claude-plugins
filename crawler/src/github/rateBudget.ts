@@ -73,21 +73,22 @@ export class RateBudget {
     private readonly pacingMs: Partial<Record<RateResource, number>> = {},
   ) {}
 
-  private graphQLQuotaDeadline(bucket: RateResource, now: number): number {
+  private graphQLQuotaDeadline(bucket: RateResource, now: number, expectedCost: number): number {
     if (bucket !== 'graphql' || this.graphqlQuota === null) return now
     const reserve = Math.ceil(this.graphqlQuota.limit * 0.1)
     const usable = this.graphqlQuota.remaining - reserve
-    if (usable < this.graphqlQuota.lastCost) return this.graphqlQuota.resetAt + 1_000
+    const projectedCost = Math.max(1, this.graphqlQuota.lastCost, expectedCost)
+    if (usable < projectedCost) return this.graphqlQuota.resetAt + 1_000
     const remainingWindowMs = this.graphqlQuota.resetAt - now
     const lastSent = this.lastSent.graphql
     if (remainingWindowMs <= 0 || lastSent === null) return now
 
-    const affordableRequests = Math.max(1, Math.floor(usable / Math.max(1, this.graphqlQuota.lastCost)))
+    const affordableRequests = Math.max(1, Math.floor(usable / projectedCost))
     const smoothSpacingMs = Math.ceil(remainingWindowMs / affordableRequests)
     return Math.max(now, lastSent + smoothSpacingMs)
   }
 
-  acquire(bucket: RateResource, signal?: AbortSignal): Promise<void> {
+  acquire(bucket: RateResource, signal?: AbortSignal, expectedCost = 1): Promise<void> {
     const reservation = this.reservations.then(async () => {
       throwIfShutdown(signal)
       const rule = rules[bucket]
@@ -101,7 +102,7 @@ export class RateBudget {
           this.blockedUntil[bucket],
           this.lastSent[bucket] === null ? now : this.lastSent[bucket] + (this.pacingMs[bucket] ?? rule.spacingMs),
           recent.length >= rule.limit ? recent[0] + rule.windowMs : now,
-          this.graphQLQuotaDeadline(bucket, now),
+          this.graphQLQuotaDeadline(bucket, now, expectedCost),
         )
         if (deadline <= now) {
           recent.push(now)
