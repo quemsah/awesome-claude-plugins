@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3'
-import { hasCanonicalIdentity, listPublishable, type PublishableRepository } from './repositories.js'
+import { hasCanonicalIdentity, isPublishableRepository, listCoreComplete } from './repositories.js'
 
 export type CrawlProgressInspection = {
   run: {
@@ -40,45 +40,13 @@ type LatestRun = NonNullable<CrawlProgressInspection['run']>
 
 type RepositoryBreakdown = {
   total: number
-  coreComplete: number
   latestUpdatedAt: string | null
 }
 
 function repositoryBreakdown(db: Database.Database): RepositoryBreakdown {
   return db
-    .prepare(`
-      SELECT
-        COUNT(*) AS total,
-        COUNT(
-          CASE
-            WHEN html_url IS NOT NULL
-              AND owner IS NOT NULL
-              AND owner_url IS NOT NULL
-              AND repo_name IS NOT NULL
-              AND stargazers_count IS NOT NULL
-              AND forks_count IS NOT NULL
-              AND subscribers_count IS NOT NULL
-            THEN 1
-          END
-        ) AS coreComplete,
-        MAX(updatedAt) AS latestUpdatedAt
-      FROM repositories
-    `)
+    .prepare('SELECT COUNT(*) AS total, MAX(updatedAt) AS latestUpdatedAt FROM repositories')
     .get() as RepositoryBreakdown
-}
-
-function listCoreComplete(db: Database.Database): PublishableRepository[] {
-  return db
-    .prepare(`
-      SELECT id, html_url, stargazers_count, forks_count, subscribers_count,
-             description, owner, owner_url, repo_name, plugins_count
-      FROM repositories
-      WHERE html_url IS NOT NULL AND owner IS NOT NULL AND repo_name IS NOT NULL AND owner_url IS NOT NULL
-        AND stargazers_count IS NOT NULL AND forks_count IS NOT NULL
-        AND subscribers_count IS NOT NULL
-      ORDER BY id
-    `)
-    .all() as PublishableRepository[]
 }
 
 function publicationState(db: Database.Database, currentPublishableSize: number): CrawlProgressInspection['publication'] {
@@ -93,6 +61,10 @@ function publicationState(db: Database.Database, currentPublishableSize: number)
 
 /** Returns persisted progress for the latest crawl without modifying the database. */
 export function inspectProgress(db: Database.Database): CrawlProgressInspection {
+  return db.transaction(() => inspectProgressSnapshot(db))()
+}
+
+function inspectProgressSnapshot(db: Database.Database): CrawlProgressInspection {
   const run =
     (db
       .prepare(`
@@ -112,12 +84,12 @@ export function inspectProgress(db: Database.Database): CrawlProgressInspection 
 
   const breakdown = repositoryBreakdown(db)
   const coreCompleteRows = listCoreComplete(db)
-  const publishableRows = listPublishable(db)
+  const publishableRows = coreCompleteRows.filter(isPublishableRepository)
   const publishable = publishableRows.length
   const repositoryState = {
     total: breakdown.total,
     publishable,
-    incomplete: breakdown.total - breakdown.coreComplete,
+    incomplete: breakdown.total - coreCompleteRows.length,
     invalidIdentity: coreCompleteRows.filter((row) => !hasCanonicalIdentity(row)).length,
     missingMarketplace: publishableRows.filter((row) => row.plugins_count === null).length,
     latestUpdatedAt: breakdown.latestUpdatedAt,
