@@ -111,6 +111,17 @@ describe('GitHubClient', () => {
     expect(test.requests[0].init?.headers).toMatchObject({ 'If-None-Match': 'W/"marketplace-v1"' })
   })
 
+  it('treats an unexpected 304 without a conditional request as a temporary error', async () => {
+    const test = harness([new Response(null, { status: 304 })])
+    expect(await test.client.getRepository('acme', 'catalog')).toEqual({
+      kind: 'temporary-error',
+      status: 304,
+      reason: 'Unexpected GitHub 304 response',
+      retryCount: 0,
+    })
+    expect(test.requests).toHaveLength(1)
+  })
+
   it.each(marketplaceFixtures.filter((fixture) => fixture.valid))('uses the shared marketplace contract for $name', async (fixture) => {
     const test = harness([manifest(fixture.input)])
     const result = await test.client.getMarketplace('acme', 'catalog')
