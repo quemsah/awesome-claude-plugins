@@ -94,7 +94,7 @@ export function updateEnriched(db: Database.Database, id: number, fields: Enrich
 
 /** Stores the validated marketplace ETag used by subsequent conditional requests. */
 export function updateMarketplaceEtag(db: Database.Database, id: number, etag: string | null): boolean {
-  if (etag !== null && (etag.length === 0 || etag.length > 512 || /[\r\n]/.test(etag))) {
+  if (etag !== null && (etag.length === 0 || etag.length > 512 || etag.includes('\r') || etag.includes('\n'))) {
     throw new Error('marketplace_etag must be a safe HTTP entity tag or null')
   }
   return db.prepare('UPDATE repositories SET marketplace_etag = ? WHERE id = ?').run(etag, id).changes !== 0
