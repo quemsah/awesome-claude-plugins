@@ -17,6 +17,7 @@ export type CrawlProgressInspection = {
     publishable: number
     incomplete: number
     invalidIdentity: number
+    invalidMetrics: number
     missingMarketplace: number
     updatedThisRun: number | null
     pendingThisRun: number | null
@@ -89,6 +90,7 @@ function inspectProgressSnapshot(db: Database.Database): CrawlProgressInspection
     publishable,
     incomplete: breakdown.total - coreCompleteRows.length,
     invalidIdentity: coreCompleteRows.filter((row) => !hasCanonicalIdentity(row)).length,
+    invalidMetrics: coreCompleteRows.filter((row) => hasCanonicalIdentity(row) && !isPublishableRepository(row)).length,
     missingMarketplace: publishableRows.filter((row) => row.plugins_count === null).length,
     latestUpdatedAt: breakdown.latestUpdatedAt,
   }
