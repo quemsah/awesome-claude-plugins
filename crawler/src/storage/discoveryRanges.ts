@@ -23,7 +23,7 @@ export function listCachedDiscoveryRanges(db: Database.Database, root: SizeRange
     .prepare(
       `SELECT range_start, range_end
        FROM discovery_ranges
-       WHERE range_start >= ? AND range_end <= ?
+       WHERE root_start = ? AND root_end = ?
        ORDER BY range_start, range_end`,
     )
     .all(rootStart, rootEnd) as DiscoveryRangeRow[]
@@ -39,9 +39,11 @@ export function replaceCachedDiscoveryRanges(
   if (!isExactPartition(root, ranges)) throw new Error('Discovery ranges must exactly partition the root range')
   const [rootStart, rootEnd] = root
   const replace = db.transaction(() => {
-    db.prepare('DELETE FROM discovery_ranges WHERE range_start <= ? AND range_end >= ?').run(rootEnd, rootStart)
-    const insert = db.prepare('INSERT INTO discovery_ranges (range_start, range_end) VALUES (?, ?)')
-    for (const [start, end] of ranges) insert.run(start, end)
+    db.prepare('DELETE FROM discovery_ranges WHERE root_start = ? AND root_end = ?').run(rootStart, rootEnd)
+    const insert = db.prepare(
+      'INSERT INTO discovery_ranges (root_start, root_end, range_start, range_end) VALUES (?, ?, ?, ?)',
+    )
+    for (const [start, end] of ranges) insert.run(rootStart, rootEnd, start, end)
   })
   replace()
 }
