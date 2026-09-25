@@ -13,9 +13,10 @@ import { type GitHubGit, GitHubGitClient } from './publish/githubGit.js'
 import { PublicationError } from './publish/publishRun.js'
 import { ActiveRunError, executeCrawl, executePublish, type Notifier } from './service/execute.js'
 import { ShutdownError } from './shutdown.js'
-import { openDatabase } from './storage/db.js'
+import { openDatabase, openReadOnlyDatabase } from './storage/db.js'
 import { inspect } from './storage/inspect.js'
 import { optimizeDatabase, runMaintenance } from './storage/maintenance.js'
+import { inspectProgress } from './storage/progress.js'
 import { listPublishable } from './storage/repositories.js'
 import {
   beginRun,
@@ -34,6 +35,7 @@ export type CliDependencies = {
   now?: () => Date
   runId?: () => string
   open?: (path: string) => Database.Database
+  openReadonly?: (path: string) => Database.Database
   reader?: (config: RuntimeConfig, log: RateLog, signal?: AbortSignal) => GitHubReader
   git?: (config: RuntimeConfig, signal?: AbortSignal) => GitHubGit
   notifier?: (config: RuntimeConfig) => Notifier | undefined
@@ -64,7 +66,7 @@ function notifierFor(config: RuntimeConfig, dependencies: CliDependencies): Noti
   )
 }
 
-type CliCommand = 'inspect' | 'crawl' | 'publish' | 'recover-crawl' | 'export' | 'maintenance'
+type CliCommand = 'inspect' | 'inspect-progress' | 'crawl' | 'publish' | 'recover-crawl' | 'export' | 'maintenance'
 type ParsedOptions = {
   dryRun: boolean
   publishId?: string
@@ -108,15 +110,16 @@ function parseOptions(command: CliCommand, args: string[]): ParsedOptions {
     const exportId = parseRunId(args, command)
     return { ...defaults, exportId, exportDirectory: args[3] }
   }
-  if ((command === 'inspect' || command === 'maintenance') && args.length) throw new Error(`Unknown ${command} option`)
+  if ((command === 'inspect' || command === 'inspect-progress' || command === 'maintenance') && args.length)
+    throw new Error(`Unknown ${command} option`)
   return defaults
 }
 
 function parseCommand(value: string | undefined): CliCommand {
-  if (value && ['inspect', 'crawl', 'publish', 'recover-crawl', 'export', 'maintenance'].includes(value)) {
+  if (value && ['inspect', 'inspect-progress', 'crawl', 'publish', 'recover-crawl', 'export', 'maintenance'].includes(value)) {
     return value as CliCommand
   }
-  throw new Error('Unknown command. Available: inspect, crawl, publish, recover-crawl, export, maintenance')
+  throw new Error('Unknown command. Available: inspect, inspect-progress, crawl, publish, recover-crawl, export, maintenance')
 }
 
 async function notifyBlockedCrawl(
@@ -315,6 +318,10 @@ async function runLocalCommand(
     output(JSON.stringify(inspect(db)))
     return true
   }
+  if (command === 'inspect-progress') {
+    output(JSON.stringify(inspectProgress(db)))
+    return true
+  }
   if (command === 'maintenance') {
     const result = runMaintenance(db, now())
     try {
@@ -346,7 +353,8 @@ export async function runCli(argv: string[], dependencies: CliDependencies = {})
   const command = parseCommand(rawCommand)
   const parsed = parseOptions(command, args)
   const config = command === 'crawl' || command === 'publish' ? parseConfig(command, env) : undefined
-  const db = (dependencies.open ?? openDatabase)(config?.dbPath ?? env.DB_PATH ?? '')
+  const open = command === 'inspect-progress' ? (dependencies.openReadonly ?? openReadOnlyDatabase) : (dependencies.open ?? openDatabase)
+  const db = open(config?.dbPath ?? env.DB_PATH ?? '')
   try {
     const handled = await runLocalCommand(db, command, parsed, now, output)
     if (!handled && command === 'crawl' && config) {

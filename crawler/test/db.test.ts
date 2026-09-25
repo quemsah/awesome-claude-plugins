@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { assertRailwayTarget, assertRailwayVolume, openDatabase } from '../src/storage/db.js'
+import { assertRailwayTarget, assertRailwayVolume, openDatabase, openReadOnlyDatabase } from '../src/storage/db.js'
 
 const directories: string[] = []
 
@@ -58,6 +58,22 @@ describe('openDatabase', () => {
       if (previous === undefined) delete process.env.RAILWAY_PROJECT_ID
       else process.env.RAILWAY_PROJECT_ID = previous
     }
+  })
+  it('opens an existing database read-only without creating or migrating files', () => {
+    const path = databasePath()
+    expect(() => openReadOnlyDatabase(path)).toThrow()
+    expect(existsSync(path)).toBe(false)
+
+    const writable = openDatabase(path)
+    writable.exec('CREATE TABLE read_only_probe (value TEXT NOT NULL)')
+    writable.close()
+
+    const readonly = openReadOnlyDatabase(path)
+    expect(readonly.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'read_only_probe'").get()).toEqual({
+      name: 'read_only_probe',
+    })
+    expect(() => readonly.exec("INSERT INTO read_only_probe VALUES ('nope')")).toThrow(/readonly|read-only/i)
+    readonly.close()
   })
 })
 
