@@ -51,6 +51,15 @@ function integerHeader(headers: Headers | undefined, name: string): number | und
   return value !== null && value !== undefined && /^\d+$/.test(value) ? Number(value) : undefined
 }
 
+function validDateTimestamp(value: number): number | undefined {
+  return Number.isFinite(value) && Math.abs(value) <= 8_640_000_000_000_000 ? value : undefined
+}
+
+function resetHeaderTimestamp(headers: Headers | undefined): number | undefined {
+  const reset = integerHeader(headers, 'x-ratelimit-reset')
+  return reset === undefined ? undefined : validDateTimestamp(reset * 1_000)
+}
+
 export class RateBudget {
   private readonly sent: Record<RateResource, number[]> = { code_search: [], core: [], graphql: [] }
   private readonly blockedUntil: Record<RateResource, number> = { code_search: 0, core: 0, graphql: 0 }
@@ -104,11 +113,11 @@ export class RateBudget {
   }
 
   private updateGraphQLQuota(headers: Headers, remaining: number): void {
-    const reset = integerHeader(headers, 'x-ratelimit-reset')
+    const resetAt = resetHeaderTimestamp(headers)
     this.graphqlQuota = {
       limit: integerHeader(headers, 'x-ratelimit-limit') ?? this.graphqlQuota?.limit ?? 5_000,
       remaining,
-      resetAt: reset === undefined ? (this.graphqlQuota?.resetAt ?? this.clock.now() + rules.graphql.windowMs) : reset * 1_000,
+      resetAt: resetAt ?? this.graphqlQuota?.resetAt ?? this.clock.now() + rules.graphql.windowMs,
       lastCost: this.graphqlQuota?.lastCost ?? 1,
     }
   }
@@ -122,8 +131,8 @@ export class RateBudget {
     if (bucket === 'graphql' && remaining !== undefined) this.updateGraphQLQuota(headers, remaining)
     if (remaining !== 0) return
 
-    const reset = integerHeader(headers, 'x-ratelimit-reset')
-    const deadline = reset === undefined ? this.clock.now() + rules[bucket].windowMs : reset * 1_000 + 1_000
+    const resetAt = resetHeaderTimestamp(headers)
+    const deadline = resetAt === undefined ? this.clock.now() + rules[bucket].windowMs : resetAt + 1_000
     this.blockedUntil[bucket] = Math.max(this.blockedUntil[bucket], deadline)
   }
 
@@ -131,11 +140,9 @@ export class RateBudget {
     const limit = integerHeader(headers, 'x-ratelimit-limit') ?? rateLimit.limit
     const remaining = integerHeader(headers, 'x-ratelimit-remaining') ?? rateLimit.remaining
     const used = integerHeader(headers, 'x-ratelimit-used') ?? rateLimit.used
-    const reset = integerHeader(headers, 'x-ratelimit-reset')
-    const parsedResetAt = reset === undefined ? Date.parse(rateLimit.resetAt) : reset * 1_000
-    const resetAt = Number.isFinite(parsedResetAt)
-      ? parsedResetAt
-      : (this.graphqlQuota?.resetAt ?? this.clock.now() + rules.graphql.windowMs)
+    const headerResetAt = resetHeaderTimestamp(headers)
+    const payloadResetAt = validDateTimestamp(Date.parse(rateLimit.resetAt))
+    const resetAt = headerResetAt ?? payloadResetAt ?? this.graphqlQuota?.resetAt ?? this.clock.now() + rules.graphql.windowMs
     this.graphqlQuota = { limit, remaining, resetAt, lastCost: rateLimit.cost }
     this.log?.({
       bucket: 'graphql',
