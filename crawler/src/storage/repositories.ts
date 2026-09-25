@@ -154,32 +154,37 @@ export function listForEnrichment(db: Database.Database, cursor: number, limit: 
   return db.prepare('SELECT * FROM repositories WHERE id > ? ORDER BY id LIMIT ?').all(cursor, limit) as RepositoryRow[]
 }
 
-function canonicalIdentity(row: PublishableRepository): boolean {
+export function hasCanonicalIdentity(row: PublishableRepository): boolean {
   const { html_url, owner, owner_url, repo_name } = row
   if (!owner || !repo_name || !owner_url || !html_url) return false
   if (!isValidGitHubPathSegment(owner) || !isValidGitHubPathSegment(repo_name)) return false
   return owner_url === `https://github.com/${owner}` && html_url === `${owner_url}/${repo_name}`
 }
 
-export function listPublishable(db: Database.Database): PublishableRepository[] {
-  const rows = db
+export function listCoreComplete(db: Database.Database): PublishableRepository[] {
+  return db
     .prepare(`
-    SELECT id, html_url, stargazers_count, forks_count, subscribers_count,
-           description, owner, owner_url, repo_name, plugins_count
-    FROM repositories
-    WHERE html_url IS NOT NULL AND owner IS NOT NULL AND repo_name IS NOT NULL AND owner_url IS NOT NULL
-      AND stargazers_count IS NOT NULL AND forks_count IS NOT NULL
-      AND subscribers_count IS NOT NULL
-    ORDER BY id
-  `)
+      SELECT id, html_url, stargazers_count, forks_count, subscribers_count,
+             description, owner, owner_url, repo_name, plugins_count
+      FROM repositories
+      WHERE html_url IS NOT NULL AND owner IS NOT NULL AND repo_name IS NOT NULL AND owner_url IS NOT NULL
+        AND stargazers_count IS NOT NULL AND forks_count IS NOT NULL
+        AND subscribers_count IS NOT NULL
+      ORDER BY id
+    `)
     .all() as PublishableRepository[]
+}
 
-  return rows.filter(
-    (row) =>
-      canonicalIdentity(row) &&
-      [row.stargazers_count, row.forks_count, row.subscribers_count].every(
-        (count) => Number.isSafeInteger(count) && (count as number) >= 0,
-      ) &&
-      (row.plugins_count === null || (Number.isSafeInteger(row.plugins_count) && row.plugins_count >= 0)),
+export function isPublishableRepository(row: PublishableRepository): boolean {
+  return (
+    hasCanonicalIdentity(row) &&
+    [row.stargazers_count, row.forks_count, row.subscribers_count].every(
+      (count) => Number.isSafeInteger(count) && (count as number) >= 0,
+    ) &&
+    (row.plugins_count === null || (Number.isSafeInteger(row.plugins_count) && row.plugins_count >= 0))
   )
+}
+
+export function listPublishable(db: Database.Database): PublishableRepository[] {
+  return listCoreComplete(db).filter(isPublishableRepository)
 }
