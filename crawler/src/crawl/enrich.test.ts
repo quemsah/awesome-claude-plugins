@@ -76,8 +76,11 @@ function ready(db: Database.Database, id: number, owner = 'team', repo = 'repo')
   })
 }
 
-const validMarketplaceFixture = marketplaceFixtures.find((fixture) => fixture.valid)
-if (!validMarketplaceFixture) throw new Error('Expected at least one valid marketplace fixture')
+const validMarketplaceFixture = (() => {
+  const fixture = marketplaceFixtures.find((candidate) => candidate.valid)
+  if (!fixture) throw new Error('Expected at least one valid marketplace fixture')
+  return fixture
+})()
 
 function graphQLMarketplaceBlob(
   repositoryNodeId: string,
