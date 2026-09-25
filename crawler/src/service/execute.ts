@@ -159,6 +159,25 @@ function problematicRanges(errors: ReturnType<typeof listRunErrors>): string[] {
   ]
 }
 
+function telegramProgress(db: Database.Database, runId: string, includeProgress: boolean): TelegramSummary['progress'] {
+  if (!includeProgress) return undefined
+  const progress = inspectProgress(db)
+  if (progress.run?.runId !== runId) return undefined
+  return {
+    repositories: {
+      total: progress.repositories.total,
+      publishable: progress.repositories.publishable,
+      incomplete: progress.repositories.incomplete,
+      invalidIdentity: progress.repositories.invalidIdentity,
+      invalidMetrics: progress.repositories.invalidMetrics,
+      missingMarketplace: progress.repositories.missingMarketplace,
+      updatedThisRun: progress.repositories.updatedThisRun,
+      pendingThisRun: progress.repositories.pendingThisRun,
+    },
+    publication: progress.publication,
+  }
+}
+
 function summary(
   db: Database.Database,
   runId: string,
@@ -171,23 +190,7 @@ function summary(
   const saved = storedReport(db, runId)
   const report = counts?.enrichment ?? saved?.enrichment
   const categories = errorCategories(errors, counts, saved)
-  const progress = includeProgress ? inspectProgress(db) : null
-  const progressForRun =
-    progress?.run?.runId === runId
-      ? {
-          repositories: {
-            total: progress.repositories.total,
-            publishable: progress.repositories.publishable,
-            incomplete: progress.repositories.incomplete,
-            invalidIdentity: progress.repositories.invalidIdentity,
-            invalidMetrics: progress.repositories.invalidMetrics,
-            missingMarketplace: progress.repositories.missingMarketplace,
-            updatedThisRun: progress.repositories.updatedThisRun,
-            pendingThisRun: progress.repositories.pendingThisRun,
-          },
-          publication: progress.publication,
-        }
-      : undefined
+  const progressForRun = telegramProgress(db, runId, includeProgress)
   return {
     runId,
     catalogSize: run?.draft_size ?? listPublishable(db).length,
