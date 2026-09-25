@@ -202,9 +202,7 @@ function needsMarketplaceContent(row: RepositoryRow, currentMarketplaceOid: stri
   )
 }
 
-function decodeGraphQLMarketplaceBlob(
-  blob: GitHubGraphQLMarketplaceBlob,
-): { pluginsCount: number; marketplaceOid: string } | null {
+function decodeGraphQLMarketplaceBlob(blob: GitHubGraphQLMarketplaceBlob): { pluginsCount: number; marketplaceOid: string } | null {
   if (blob.is_truncated || blob.is_binary || blob.text === null) return null
   try {
     const marketplace = parseMarketplaceManifest(JSON.parse(blob.text))
@@ -673,18 +671,7 @@ async function enrichGraphQLBatch(
   const marketplaceBlobs = await loadGraphQLMarketplaceBlobs(reader, rows, result.data, onProgress)
   for (const [index, row] of rows.entries()) {
     const marketplaceBlob = row.github_node_id ? (marketplaceBlobs.get(row.github_node_id) ?? null) : null
-    await enrichGraphQLOne(
-      db,
-      reader,
-      runId,
-      row,
-      result.data[index] ?? null,
-      marketplaceBlob,
-      counts,
-      removedIds,
-      now,
-      onProgress,
-    )
+    await enrichGraphQLOne(db, reader, runId, row, result.data[index] ?? null, marketplaceBlob, counts, removedIds, now, onProgress)
   }
 }
 
