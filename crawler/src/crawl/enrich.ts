@@ -115,6 +115,7 @@ type LoadedRepository = {
 }
 type EnrichmentTarget = { id: number; removedId: number | null; ready: boolean }
 
+/** Persists refreshed repository metadata together with the marketplace cache validator atomically. */
 function persistEnrichment(
   db: Database.Database,
   runId: string,
@@ -195,6 +196,7 @@ async function loadRepository(
   }
 }
 
+/** Enriches one repository, reusing a cached marketplace count only after successful ETag revalidation. */
 async function enrichOne(
   db: Database.Database,
   reader: GitHubReader,
