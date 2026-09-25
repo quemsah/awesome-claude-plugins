@@ -42,6 +42,7 @@ jobs:
               - 'ui/src/lib/repositoryIdentity.ts'
               - 'ui/package.json'
               - 'ui/package-lock.json'
+              - 'ui/.npmrc'
               - '.github/workflows/ci.yml'
 
   app:
