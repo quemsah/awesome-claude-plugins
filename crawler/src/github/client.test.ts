@@ -86,8 +86,11 @@ describe('GitHubClient', () => {
   })
 
   it('reads raw marketplace content and preserves an empty plugins array', async () => {
-    const test = harness([manifest({ plugins: [] })])
-    expect(await test.client.getMarketplace('acme', 'catalog')).toEqual({ kind: 'found', data: { plugins: [] } })
+    const test = harness([Response.json({ plugins: [] }, { headers: { etag: 'W/"marketplace-v1"' } })])
+    expect(await test.client.getMarketplace('acme', 'catalog')).toEqual({
+      kind: 'found',
+      data: { plugins: [], etag: 'W/"marketplace-v1"' },
+    })
     expect(test.requests[0].url).toBe('https://api.github.com/repos/acme/catalog/contents/.claude-plugin/marketplace.json')
     expect(test.requests[0].init?.headers).toMatchObject({ Accept: 'application/vnd.github.raw+json' })
   })
@@ -95,7 +98,27 @@ describe('GitHubClient', () => {
   it('parses marketplace files larger than the Contents API base64 limit', async () => {
     const largeManifest = { plugins: [], padding: 'x'.repeat(1_100_000) }
     const test = harness([manifest(largeManifest)])
-    expect(await test.client.getMarketplace('acme', 'catalog')).toEqual({ kind: 'found', data: { plugins: [] } })
+    expect(await test.client.getMarketplace('acme', 'catalog')).toEqual({ kind: 'found', data: { plugins: [], etag: null } })
+    expect(test.requests).toHaveLength(1)
+  })
+
+  it('uses If-None-Match and accepts a 304 marketplace response without parsing a body', async () => {
+    const test = harness([new Response(null, { status: 304 })])
+    expect(await test.client.getMarketplace('acme', 'catalog', 'W/"marketplace-v1"')).toEqual({
+      kind: 'not-modified',
+      retryCount: 0,
+    })
+    expect(test.requests[0].init?.headers).toMatchObject({ 'If-None-Match': 'W/"marketplace-v1"' })
+  })
+
+  it('treats an unexpected 304 without a conditional request as a temporary error', async () => {
+    const test = harness([new Response(null, { status: 304 })])
+    expect(await test.client.getRepository('acme', 'catalog')).toEqual({
+      kind: 'temporary-error',
+      status: 304,
+      reason: 'Unexpected GitHub 304 response',
+      retryCount: 0,
+    })
     expect(test.requests).toHaveLength(1)
   })
 

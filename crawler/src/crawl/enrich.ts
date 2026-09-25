@@ -10,6 +10,7 @@ import {
   type RepositoryRow,
   rebindCanonicalUrl,
   updateEnriched,
+  updateMarketplaceEtag,
 } from '../storage/repositories.js'
 import { recordRunError, runWhileActive } from '../storage/runs.js'
 
@@ -114,12 +115,14 @@ type LoadedRepository = {
 }
 type EnrichmentTarget = { id: number; removedId: number | null; ready: boolean }
 
+/** Persists refreshed repository metadata together with the marketplace cache validator atomically. */
 function persistEnrichment(
   db: Database.Database,
   runId: string,
   row: RepositoryRow,
   loaded: LoadedRepository,
   pluginsCount: number,
+  marketplaceEtag: string | null,
   at: string,
 ): EnrichmentTarget {
   return runWhileActive(db, runId, () => {
@@ -143,6 +146,7 @@ function persistEnrichment(
       },
       at,
     )
+    if (!updateMarketplaceEtag(db, rebound.id, marketplaceEtag)) throw new Error('Repository disappeared while saving marketplace ETag')
     return { id: rebound.id, removedId: rebound.removedId, ready }
   })
 }
@@ -192,6 +196,90 @@ async function loadRepository(
   }
 }
 
+/** Applies common bookkeeping after marketplace data is persisted. */
+function recordPersistedTarget(target: EnrichmentTarget, counts: EnrichmentCounts, removedIds: Set<number>): void {
+  if (target.removedId !== null) removedIds.add(target.removedId)
+  counts.conclusive++
+  if (target.ready) counts.updated++
+  else counts.newReady++
+}
+
+/** Reuses cached marketplace data after a successful conditional 304 response. */
+function reuseCachedMarketplace(
+  db: Database.Database,
+  runId: string,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  cachedEtag: string | undefined,
+  retryCount: number,
+  counts: EnrichmentCounts,
+  removedIds: Set<number>,
+  now: () => string,
+): void {
+  if (row.plugins_count === null || cachedEtag === undefined) {
+    recordProblem(db, runId, counts, row, 'marketplace_cache_miss', loaded.ready, true, now, retryCount)
+    return
+  }
+  const target = persistEnrichment(db, runId, row, loaded, row.plugins_count, cachedEtag, now())
+  recordPersistedTarget(target, counts, removedIds)
+}
+
+/** Removes a repository after a definitive marketplace 404. */
+function removeMissingMarketplace(
+  db: Database.Database,
+  runId: string,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  counts: EnrichmentCounts,
+  removedIds: Set<number>,
+): void {
+  runWhileActive(db, runId, () => {
+    if (!loaded.moved) {
+      deleteById(db, row.id)
+      return
+    }
+    const removedId = deleteCanonicalRows(db, row.id, loaded.canonical.htmlUrl)
+    if (removedId !== null) removedIds.add(removedId)
+  })
+  counts.deleted404++
+  counts.conclusive++
+}
+
+/** Revalidates and persists marketplace data for an already loaded repository. */
+async function enrichMarketplace(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  counts: EnrichmentCounts,
+  removedIds: Set<number>,
+  now: () => string,
+): Promise<void> {
+  const cachedEtag = !loaded.moved && row.plugins_count !== null ? (row.marketplace_etag ?? undefined) : undefined
+  const marketplace =
+    cachedEtag === undefined
+      ? await reader.getMarketplace(loaded.owner, loaded.repo)
+      : await reader.getMarketplace(loaded.owner, loaded.repo, cachedEtag)
+
+  switch (marketplace.kind) {
+    case 'not-modified':
+      reuseCachedMarketplace(db, runId, row, loaded, cachedEtag, marketplace.retryCount, counts, removedIds, now)
+      return
+    case 'not-found':
+      removeMissingMarketplace(db, runId, row, loaded, counts, removedIds)
+      return
+    case 'temporary-error':
+      recordProblem(db, runId, counts, row, temporaryCategory('marketplace', marketplace), loaded.ready, false, now, marketplace.retryCount)
+      return
+    case 'found': {
+      const target = persistEnrichment(db, runId, row, loaded, marketplace.data.plugins.length, marketplace.data.etag ?? null, now())
+      recordPersistedTarget(target, counts, removedIds)
+    }
+  }
+}
+
+/** Enriches one repository, reusing a cached marketplace count only after successful ETag revalidation. */
 async function enrichOne(
   db: Database.Database,
   reader: GitHubReader,
@@ -209,37 +297,20 @@ async function enrichOne(
     counts.deletedBlankUrl++
     return
   }
+
   const previouslyReady = wasReady(row)
   const identity = parseRepositoryUrl(row.html_url)
   if (!identity) {
     recordProblem(db, runId, counts, row, 'invalid_repository_url', previouslyReady, true, now)
     return
   }
+
   onProgress?.()
   const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts, now)
   if (!loaded) return
+
   onProgress?.()
-  const marketplace = await reader.getMarketplace(loaded.owner, loaded.repo)
-  if (marketplace.kind === 'not-found') {
-    runWhileActive(db, runId, () => {
-      if (loaded.moved) {
-        const removedId = deleteCanonicalRows(db, row.id, loaded.canonical.htmlUrl)
-        if (removedId !== null) removedIds.add(removedId)
-      } else deleteById(db, row.id)
-    })
-    counts.deleted404++
-    counts.conclusive++
-    return
-  }
-  if (marketplace.kind === 'temporary-error') {
-    recordProblem(db, runId, counts, row, temporaryCategory('marketplace', marketplace), loaded.ready, false, now, marketplace.retryCount)
-    return
-  }
-  const target = persistEnrichment(db, runId, row, loaded, marketplace.data.plugins.length, now())
-  if (target.removedId !== null) removedIds.add(target.removedId)
-  counts.conclusive++
-  if (target.ready) counts.updated++
-  else counts.newReady++
+  await enrichMarketplace(db, reader, runId, row, loaded, counts, removedIds, now)
 }
 
 export async function enrichRepositories(
