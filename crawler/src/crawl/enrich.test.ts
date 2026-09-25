@@ -217,6 +217,194 @@ it('reads changed marketplace content and persists the GraphQL OID and REST ETag
   })
 })
 
+it('batches changed marketplace contents through GraphQL and avoids per-repository REST reads', async () => {
+  const db = database()
+  const firstId = upsertDiscovery(db, 'https://github.com/team/one', 'old', new Date().toISOString(), 'node-one')
+  const secondId = upsertDiscovery(db, 'https://github.com/team/two', 'old', new Date().toISOString(), 'node-two')
+  ready(db, firstId, 'team', 'one')
+  ready(db, secondId, 'team', 'two')
+  db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = 1 WHERE id IN (?, ?)').run(
+    'a'.repeat(40),
+    firstId,
+    secondId,
+  )
+
+  const metadata: GitHubGraphQLRepo[] = [
+    {
+      ...githubRepo('team', 'one'),
+      node_id: 'node-one',
+      marketplace_oid: 'b'.repeat(40),
+      marketplace_byte_size: 120,
+      marketplace_is_binary: false,
+    },
+    {
+      ...githubRepo('team', 'two'),
+      node_id: 'node-two',
+      marketplace_oid: 'c'.repeat(40),
+      marketplace_byte_size: 160,
+      marketplace_is_binary: false,
+    },
+  ]
+  const getMarketplace = vi.fn(async () => {
+    throw new Error('REST marketplace should not be used for a complete GraphQL blob')
+  })
+  const getMarketplacesByNodeId = vi.fn(async () => ({
+    kind: 'found' as const,
+    data: [
+      {
+        oid: 'b'.repeat(40),
+        byteSize: 120,
+        isBinary: false,
+        isTruncated: false,
+        text: JSON.stringify({ plugins: [{ name: 'one', source: './one' }] }),
+      },
+      {
+        oid: 'c'.repeat(40),
+        byteSize: 160,
+        isBinary: false,
+        isTruncated: false,
+        text: JSON.stringify({
+          plugins: [
+            { name: 'two-a', source: './two-a' },
+            { name: 'two-b', source: './two-b' },
+          ],
+        }),
+      },
+    ],
+    rateLimit: { cost: 2, remaining: 4_998, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 2 },
+  }))
+  const client = {
+    ...reader(undefined, getMarketplace),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: metadata,
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+    getMarketplacesByNodeId,
+  }
+
+  const counts = await enrichRepositories(db, client, 'crawl-1')
+
+  expect(counts).toMatchObject({ updated: 2, conclusive: 2, unchangedOnError: 0, warnings: 0 })
+  expect(getMarketplacesByNodeId).toHaveBeenCalledOnce()
+  expect(getMarketplacesByNodeId).toHaveBeenCalledWith(['node-one', 'node-two'])
+  expect(getMarketplace).not.toHaveBeenCalled()
+  expect(db.prepare('SELECT repo_name, plugins_count, marketplace_oid FROM repositories ORDER BY id').all()).toEqual([
+    { repo_name: 'one', plugins_count: 1, marketplace_oid: 'b'.repeat(40) },
+    { repo_name: 'two', plugins_count: 2, marketplace_oid: 'c'.repeat(40) },
+  ])
+})
+
+it('falls back to REST for a truncated GraphQL marketplace blob', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), 'node-one')
+  ready(db, id)
+  db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = 1 WHERE id = ?').run('a'.repeat(40), id)
+
+  const getMarketplace = vi.fn(async () => ({
+    kind: 'found' as const,
+    data: { plugins: [{ name: 'rest-a' }, { name: 'rest-b' }] },
+    etag: '"rest-new"',
+  }))
+  const client = {
+    ...reader(undefined, getMarketplace),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [
+        {
+          ...githubRepo('team', 'repo'),
+          node_id: 'node-one',
+          marketplace_oid: 'b'.repeat(40),
+          marketplace_byte_size: 100,
+          marketplace_is_binary: false,
+        },
+      ],
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+    getMarketplacesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [
+        {
+          oid: 'b'.repeat(40),
+          byteSize: 100,
+          isBinary: false,
+          isTruncated: true,
+          text: '{"plugins":',
+        },
+      ],
+      rateLimit: { cost: 1, remaining: 4_998, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 2 },
+    }),
+  }
+
+  const counts = await enrichRepositories(db, client, 'crawl-1')
+
+  expect(getMarketplace).toHaveBeenCalledWith('team', 'repo')
+  expect(counts).toMatchObject({ updated: 1, conclusive: 1, warnings: 0 })
+  expect(db.prepare('SELECT plugins_count, marketplace_oid, marketplace_etag FROM repositories WHERE id = ?').get(id)).toEqual({
+    plugins_count: 2,
+    marketplace_oid: 'b'.repeat(40),
+    marketplace_etag: '"rest-new"',
+  })
+})
+
+it('splits marketplace GraphQL batches before their estimated blob payload exceeds the safety cap', async () => {
+  const db = database()
+  const ids = ['one', 'two'].map((name, index) =>
+    upsertDiscovery(db, `https://github.com/team/${name}`, 'old', new Date().toISOString(), `node-${index + 1}`),
+  )
+  const [firstId, secondId] = ids
+  if (firstId === undefined || secondId === undefined) throw new Error('Expected fixtures')
+  ready(db, firstId, 'team', 'one')
+  ready(db, secondId, 'team', 'two')
+  db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = 1 WHERE id IN (?, ?)').run(
+    'a'.repeat(40),
+    firstId,
+    secondId,
+  )
+
+  const metadata: GitHubGraphQLRepo[] = [
+    {
+      ...githubRepo('team', 'one'),
+      node_id: 'node-1',
+      marketplace_oid: 'b'.repeat(40),
+      marketplace_byte_size: 600_000,
+      marketplace_is_binary: false,
+    },
+    {
+      ...githubRepo('team', 'two'),
+      node_id: 'node-2',
+      marketplace_oid: 'c'.repeat(40),
+      marketplace_byte_size: 200_000,
+      marketplace_is_binary: false,
+    },
+  ]
+  const getMarketplacesByNodeId = vi.fn(async (nodeIds: readonly string[]) => ({
+    kind: 'found' as const,
+    data: nodeIds.map((nodeId) => ({
+      oid: nodeId === 'node-1' ? 'b'.repeat(40) : 'c'.repeat(40),
+      byteSize: nodeId === 'node-1' ? 600_000 : 200_000,
+      isBinary: false,
+      isTruncated: false,
+      text: JSON.stringify({ plugins: [] }),
+    })),
+    rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+  }))
+  const client = {
+    ...reader(),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: metadata,
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+    getMarketplacesByNodeId,
+  }
+
+  await enrichRepositories(db, client, 'crawl-1')
+
+  expect(getMarketplacesByNodeId).toHaveBeenCalledTimes(2)
+  expect(getMarketplacesByNodeId.mock.calls.map(([nodeIds]) => nodeIds)).toEqual([['node-1'], ['node-2']])
+})
+
 it('bypasses a cached marketplace ETag when the plugin count is missing', async () => {
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), 'MDEwOlJlcG9zaXRvcnkx')
