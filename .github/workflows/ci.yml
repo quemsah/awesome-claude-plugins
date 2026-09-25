@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [main, graphql-marketplace-batching]
+    branches: [main]
   pull_request:
     branches: [main, graphql]
 
