@@ -22,6 +22,7 @@ it('initializes all tables and remains idempotent on reopen', () => {
   const path = db.name
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
   expect(tables).toEqual([
+    { name: 'discovery_ranges' },
     { name: 'publication_lease' },
     { name: 'repositories' },
     { name: 'run_errors' },
@@ -29,7 +30,7 @@ it('initializes all tables and remains idempotent on reopen', () => {
     { name: 'settings' },
     { name: 'stats' },
   ])
-  expect(db.pragma('user_version', { simple: true })).toBe(7)
+  expect(db.pragma('user_version', { simple: true })).toBe(8)
   const columns = db.prepare('PRAGMA table_info(repositories)').all() as Array<{ name: string }>
   expect(columns.map((row) => row.name)).toEqual(
     expect.arrayContaining(['github_node_id', 'marketplace_oid', 'repository_etag', 'marketplace_etag', 'marketplace_parser_version']),
@@ -67,7 +68,7 @@ it('migrates populated v1 runs, imported IDs and historical stats atomically and
     `)
     initializeSchema(db)
     initializeSchema(db)
-    expect(db.pragma('user_version', { simple: true })).toBe(7)
+    expect(db.pragma('user_version', { simple: true })).toBe(8)
     expect(db.prepare('SELECT id, createdAt FROM repositories').all()).toEqual([{ id: 53000, createdAt: 'before' }])
     expect(db.prepare('SELECT id, date, size FROM stats').all()).toEqual([{ id: 264, date: '2024-01-01', size: 42 }])
     expect(db.prepare('SELECT run_id, warning_count, draft_date, draft_id, draft_size, draft_hash FROM runs').all()).toEqual([
@@ -98,7 +99,7 @@ it('upgrades a populated v2 database without changing drafts or pending commit S
   `)
   old.close()
   const migrated = openDatabase(path)
-  expect(migrated.pragma('user_version', { simple: true })).toBe(7)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(8)
   expect(migrated.prepare("SELECT draft_hash, pending_commit_sha FROM runs WHERE run_id = 'pending'").get()).toEqual({
     draft_hash: 'a'.repeat(64),
     pending_commit_sha: 'b'.repeat(40),
@@ -124,7 +125,7 @@ it('upgrades main schema v5 while preserving its marketplace ETag', () => {
   db.close()
 
   const migrated = openDatabase(path)
-  expect(migrated.pragma('user_version', { simple: true })).toBe(7)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(8)
   expect(migrated.prepare('SELECT marketplace_etag FROM repositories').get()).toEqual({ marketplace_etag: 'W/"marketplace"' })
   expect((migrated.pragma('table_info(repositories)') as Array<{ name: string }>).map((column) => column.name)).toEqual(
     expect.arrayContaining(['github_node_id', 'marketplace_oid', 'repository_etag', 'marketplace_parser_version']),
@@ -193,7 +194,7 @@ it('deduplicates case-variant repository URLs without mixing identity or revivin
   db.close()
 
   const migrated = openDatabase(path)
-  expect(migrated.pragma('user_version', { simple: true })).toBe(7)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(8)
   expect(
     migrated
       .prepare(
