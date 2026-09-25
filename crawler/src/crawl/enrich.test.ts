@@ -373,10 +373,7 @@ it('uses one GraphQL content request for 25 changed marketplaces', async () => {
     const nodeId = `node-${index}`
     const id = upsertDiscovery(db, `https://github.com/team/${repoName}`, 'old', new Date().toISOString(), nodeId)
     ready(db, id, 'team', repoName)
-    db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = 1 WHERE id = ?').run(
-      `old-${index}`,
-      id,
-    )
+    db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = 1 WHERE id = ?').run(`old-${index}`, id)
     nodeIds.push(nodeId)
     const oid = `new-${index}`
     repositories.push({ ...githubRepo('team', repoName), node_id: nodeId, marketplace_oid: oid })
