@@ -106,6 +106,24 @@ function signed(value: number): string {
   return value > 0 ? `+${value}` : String(value)
 }
 
+function progressDetails(progress: TelegramProgressBreakdown | undefined): string[] {
+  if (!progress) return []
+  const { repositories, publication } = progress
+  return [
+    `repositories total: ${repositories.total}`,
+    `publishable: ${repositories.publishable}`,
+    `incomplete: ${repositories.incomplete}`,
+    `invalid identity: ${repositories.invalidIdentity}`,
+    `invalid metrics: ${repositories.invalidMetrics}`,
+    `missing marketplace: ${repositories.missingMarketplace}`,
+    ...(repositories.updatedThisRun === null ? [] : [`updated this run: ${repositories.updatedThisRun}`]),
+    ...(repositories.pendingThisRun === null ? [] : [`pending this run: ${repositories.pendingThisRun}`]),
+    `previous published: ${publication.lastPublishedSize ?? 'none'}`,
+    `current publishable: ${publication.currentPublishableSize}`,
+    `publication delta: ${publication.delta === null ? 'n/a' : signed(publication.delta)}`,
+  ]
+}
+
 function summaryText(summary: TelegramSummary): string {
   const details = summary.enrichment
     ? [
@@ -117,24 +135,7 @@ function summaryText(summary: TelegramSummary): string {
         `deleted blank URL: ${summary.enrichment.deletedBlankUrl}`,
       ]
     : []
-  if (summary.progress) {
-    const { repositories, publication } = summary.progress
-    details.push(
-      `repositories total: ${repositories.total}`,
-      `publishable: ${repositories.publishable}`,
-      `incomplete: ${repositories.incomplete}`,
-      `invalid identity: ${repositories.invalidIdentity}`,
-      `invalid metrics: ${repositories.invalidMetrics}`,
-      `missing marketplace: ${repositories.missingMarketplace}`,
-    )
-    if (repositories.updatedThisRun !== null) details.push(`updated this run: ${repositories.updatedThisRun}`)
-    if (repositories.pendingThisRun !== null) details.push(`pending this run: ${repositories.pendingThisRun}`)
-    details.push(
-      `previous published: ${publication.lastPublishedSize ?? 'none'}`,
-      `current publishable: ${publication.currentPublishableSize}`,
-      `publication delta: ${publication.delta === null ? 'n/a' : signed(publication.delta)}`,
-    )
-  }
+  details.push(...progressDetails(summary.progress))
   if (summary.errorCategories) {
     const categories = Object.entries(summary.errorCategories).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     details.push(
