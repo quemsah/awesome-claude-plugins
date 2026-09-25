@@ -77,13 +77,14 @@ export class RateBudget {
     if (bucket !== 'graphql' || this.graphqlQuota === null) return now
     const reserve = Math.ceil(this.graphqlQuota.limit * 0.1)
     const usable = this.graphqlQuota.remaining - reserve
-    const projectedCost = Math.max(1, this.graphqlQuota.lastCost, expectedCost)
-    if (usable < projectedCost) return this.graphqlQuota.resetAt + 1_000
+    const reserveCost = Math.max(1, this.graphqlQuota.lastCost, expectedCost)
+    if (usable < reserveCost) return this.graphqlQuota.resetAt + 1_000
     const remainingWindowMs = this.graphqlQuota.resetAt - now
     const lastSent = this.lastSent.graphql
     if (remainingWindowMs <= 0 || lastSent === null) return now
 
-    const affordableRequests = Math.max(1, Math.floor(usable / projectedCost))
+    const pacingCost = Math.max(1, this.graphqlQuota.lastCost)
+    const affordableRequests = Math.max(1, Math.floor(usable / pacingCost))
     const smoothSpacingMs = Math.ceil(remainingWindowMs / affordableRequests)
     return Math.max(now, lastSent + smoothSpacingMs)
   }
