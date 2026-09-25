@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 7
+const schemaVersion = 8
 
 function createSchema(db: Database.Database): void {
   db.exec(`
@@ -204,6 +204,17 @@ function migrateTo7(db: Database.Database): void {
   db.pragma('user_version = 7')
 }
 
+function migrateTo8(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE discovery_ranges (
+      range_start INTEGER NOT NULL CHECK(range_start >= 0),
+      range_end INTEGER NOT NULL CHECK(range_end >= range_start),
+      PRIMARY KEY (range_start, range_end)
+    );
+    PRAGMA user_version = 8;
+  `)
+}
+
 function migrateSchema(db: Database.Database, version: number): void {
   if (version === 0) createSchema(db)
   if (version < 2) migrateTo2(db)
@@ -212,6 +223,7 @@ function migrateSchema(db: Database.Database, version: number): void {
   if (version < 5) migrateTo5(db)
   if (version < 6) migrateTo6(db)
   if (version < 7) migrateTo7(db)
+  if (version < 8) migrateTo8(db)
 }
 
 export function initializeSchema(db: Database.Database): void {
