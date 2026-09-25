@@ -42,7 +42,7 @@ export type GitHubGraphQLMarketplaceBlob = {
   oid: string
   text: string | null
   byte_size: number
-  is_binary: boolean
+  is_binary: boolean | null
   is_truncated: boolean
 }
 
@@ -220,7 +220,7 @@ function parseGraphQLMarketplaceBlob(value: unknown): GitHubGraphQLMarketplaceBl
     !nonempty(blob.oid) ||
     (blob.text !== null && typeof blob.text !== 'string') ||
     !count(blob.byteSize) ||
-    typeof blob.isBinary !== 'boolean' ||
+    (blob.isBinary !== null && typeof blob.isBinary !== 'boolean') ||
     typeof blob.isTruncated !== 'boolean'
   ) {
     throw new Error('Invalid GraphQL marketplace blob response')
