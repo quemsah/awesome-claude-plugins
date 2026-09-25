@@ -58,6 +58,14 @@ describe('orchestration', () => {
     expect(getRun(db, 'dry')).toMatchObject({ status: 'completed', draft_id: 8, draft_size: 1 })
     expect(notify.notifyStart).toHaveBeenCalledOnce()
     expect(notify.notifyDryRun).toHaveBeenCalledOnce()
+    expect(notify.notifyDryRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        progress: expect.objectContaining({
+          repositories: expect.objectContaining({ total: 1, publishable: 1, pendingThisRun: 0 }),
+          publication: { lastPublishedSize: 3, currentPublishableSize: 1, delta: -2 },
+        }),
+      }),
+    )
     expect(notify.notifySuccess).not.toHaveBeenCalled()
     expect(git.updateBranch).not.toHaveBeenCalled()
     expect(db.prepare('SELECT COUNT(*) AS n FROM stats').get()).toEqual({ n: 2 })
@@ -150,7 +158,15 @@ describe('orchestration', () => {
     expect(log).toHaveBeenCalledWith(expect.objectContaining({ phase: 'notify', category: 'delivery_failed' }))
     expect(git.updateBranch).toHaveBeenCalledOnce()
     expect(notify.notifySuccess).toHaveBeenCalledWith(
-      expect.objectContaining({ deletedCount: 4, rateBuckets, confirmedGitSha: 'd'.repeat(40) }),
+      expect.objectContaining({
+        deletedCount: 4,
+        rateBuckets,
+        confirmedGitSha: 'd'.repeat(40),
+        progress: expect.objectContaining({
+          repositories: expect.objectContaining({ total: 1, publishable: 1 }),
+          publication: { lastPublishedSize: 3, currentPublishableSize: 1, delta: -2 },
+        }),
+      }),
     )
     db.close()
   })
