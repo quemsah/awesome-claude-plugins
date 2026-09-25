@@ -227,6 +227,78 @@ describe('GitHubClient', () => {
     expect(test.logs).toContainEqual(expect.objectContaining({ bucket: 'graphql', cost: 3 }))
   })
 
+  it('keeps valid marketplace blobs when another node is malformed', async () => {
+    const firstId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
+    const secondId = 'MDEwOlJlcG9zaXRvcnkxMjk2Mjcw'
+    const text = JSON.stringify({ plugins: [{ name: 'first' }] })
+    const test = harness([
+      Response.json({
+        data: {
+          nodes: [
+            {
+              object: {
+                oid: 'b'.repeat(40),
+                byteSize: text.length,
+                isBinary: false,
+                isTruncated: false,
+                text,
+              },
+            },
+            {
+              object: {
+                byteSize: 10,
+                isBinary: false,
+                isTruncated: false,
+                text: '{}',
+              },
+            },
+          ],
+          rateLimit: { cost: 2, remaining: 4_498, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 502 },
+        },
+      }),
+    ])
+
+    const result = await test.client.getMarketplacesByNodeId([firstId, secondId])
+
+    expect(result.kind).toBe('found')
+    if (result.kind !== 'found') throw new Error('Expected a successful GraphQL batch')
+    expect(result.data[0]).toMatchObject({ oid: 'b'.repeat(40), text })
+    expect(result.data[1]).toBeNull()
+  })
+
+  it('isolates marketplace node-scoped GraphQL errors instead of failing the whole batch', async () => {
+    const firstId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
+    const secondId = 'MDEwOlJlcG9zaXRvcnkxMjk2Mjcw'
+    const text = JSON.stringify({ plugins: [{ name: 'first' }] })
+    const test = harness([
+      Response.json({
+        data: {
+          nodes: [
+            {
+              object: {
+                oid: 'b'.repeat(40),
+                byteSize: text.length,
+                isBinary: false,
+                isTruncated: false,
+                text,
+              },
+            },
+            null,
+          ],
+          rateLimit: { cost: 2, remaining: 4_498, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 502 },
+        },
+        errors: [{ type: 'SOME_NODE_ERROR', path: ['nodes', 1, 'object', 'text'], message: 'blob unavailable' }],
+      }),
+    ])
+
+    const result = await test.client.getMarketplacesByNodeId([firstId, secondId])
+
+    expect(result.kind).toBe('found')
+    if (result.kind !== 'found') throw new Error('Expected a successful GraphQL batch')
+    expect(result.data[0]).toMatchObject({ oid: 'b'.repeat(40), text })
+    expect(result.data[1]).toBeNull()
+  })
+
   it('accepts per-node NOT_FOUND errors when the matching GraphQL node is null', async () => {
     const firstId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
     const missingId = 'MDEwOlJlcG9zaXRvcnkxMjk2Mjcw'
