@@ -9,6 +9,7 @@ import { TelegramNotificationError, type TelegramNotifier } from '../notify/tele
 import type { GitHubGit } from '../publish/githubGit.js'
 import { PublicationError, prepareDraft, publishRun } from '../publish/publishRun.js'
 import { ShutdownError } from '../shutdown.js'
+import { inspectProgress } from '../storage/progress.js'
 import { listPublishable } from '../storage/repositories.js'
 import { getActiveRun, getRun, getSetting, listRunErrors, recordRunError, setSetting } from '../storage/runs.js'
 
@@ -158,12 +159,35 @@ function problematicRanges(errors: ReturnType<typeof listRunErrors>): string[] {
   ]
 }
 
-function summary(db: Database.Database, runId: string, counts?: CrawlSummary, buckets?: GitHubRateBuckets): TelegramSummary {
+function summary(
+  db: Database.Database,
+  runId: string,
+  counts?: CrawlSummary,
+  buckets?: GitHubRateBuckets,
+  includeProgress = false,
+): TelegramSummary {
   const errors = listRunErrors(db, runId)
   const run = getRun(db, runId)
   const saved = storedReport(db, runId)
   const report = counts?.enrichment ?? saved?.enrichment
   const categories = errorCategories(errors, counts, saved)
+  const progress = includeProgress ? inspectProgress(db) : null
+  const progressForRun =
+    progress?.run?.runId === runId
+      ? {
+          repositories: {
+            total: progress.repositories.total,
+            publishable: progress.repositories.publishable,
+            incomplete: progress.repositories.incomplete,
+            invalidIdentity: progress.repositories.invalidIdentity,
+            invalidMetrics: progress.repositories.invalidMetrics,
+            missingMarketplace: progress.repositories.missingMarketplace,
+            updatedThisRun: progress.repositories.updatedThisRun,
+            pendingThisRun: progress.repositories.pendingThisRun,
+          },
+          publication: progress.publication,
+        }
+      : undefined
   return {
     runId,
     catalogSize: run?.draft_size ?? listPublishable(db).length,
@@ -174,6 +198,7 @@ function summary(db: Database.Database, runId: string, counts?: CrawlSummary, bu
     ...(counts || saved || Object.keys(categories).length ? { errorCategories: categories } : {}),
     ...((buckets ?? saved?.rateBuckets) ? { rateBuckets: buckets ?? saved?.rateBuckets } : {}),
     ...(saved?.durationMs === undefined ? {} : { durationMs: saved.durationMs }),
+    ...(progressForRun ? { progress: progressForRun } : {}),
     problematicRanges: problematicRanges(errors),
   }
 }
@@ -203,7 +228,7 @@ async function notifyFailure(
   log({ level: 'error', phase: 'execute', category: reason, runId })
   if (!notifier) return
   try {
-    await notifier.notifyFailure({ ...summary(db, runId, counts, buckets), reason })
+    await notifier.notifyFailure({ ...summary(db, runId, counts, buckets, true), reason })
   } catch (error) {
     logDelivery(db, runId, now, log, error)
   }
@@ -254,13 +279,14 @@ async function notifyPublishSuccess(
   db: Database.Database,
   runId: string,
   sha: string,
+  notificationSummary: TelegramSummary | undefined,
   notifier: Notifier | undefined,
   now: () => Date,
   log: (event: LogEvent) => void,
 ): Promise<void> {
-  if (!notifier) return
+  if (!notifier || !notificationSummary) return
   try {
-    await notifier.notifySuccess({ ...summary(db, runId), confirmedGitSha: sha })
+    await notifier.notifySuccess({ ...notificationSummary, confirmedGitSha: sha })
   } catch (error) {
     logDelivery(db, runId, now, log, error)
   }
@@ -277,6 +303,7 @@ export async function executePublish(
   let sha: string
   let blocked = false
   const report = storedReport(db, runId)
+  const notificationSummary = options.notifier ? summary(db, runId, undefined, undefined, true) : undefined
   try {
     if (getActiveRun(db)) throw new ActiveRunError()
     sha = await publishRun(
@@ -299,7 +326,7 @@ export async function executePublish(
     await notifyFailure(db, runId, reason, options.notifier, now, log)
     throw failure
   }
-  await notifyPublishSuccess(db, runId, sha, options.notifier, now, log)
+  await notifyPublishSuccess(db, runId, sha, notificationSummary, options.notifier, now, log)
   return { status: 'published', runId, sha, ...(report ? { report } : {}) }
 }
 
@@ -377,7 +404,7 @@ async function notifyDryRun(
 ): Promise<void> {
   if (!options.notifier) return
   try {
-    await options.notifier.notifyDryRun(summary(db, runId, counts, options.rateBuckets?.()))
+    await options.notifier.notifyDryRun(summary(db, runId, counts, options.rateBuckets?.(), true))
   } catch (error) {
     logDelivery(db, runId, now, log, error)
   }
