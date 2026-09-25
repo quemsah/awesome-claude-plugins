@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { listPublishable } from './repositories.js'
 
 export type CrawlProgressInspection = {
   run: {
@@ -13,10 +14,21 @@ export type CrawlProgressInspection = {
   } | null
   repositories: {
     total: number
+    publishable: number
+    incomplete: number
+    invalidIdentity: number
+    missingMarketplace: number
+    updatedThisRun: number | null
+    pendingThisRun: number | null
     updatedSinceRunStart: number | null
     enrichedSinceRunStart: number | null
     latestUpdatedAt: string | null
     updatedPercent: number | null
+  }
+  publication: {
+    lastPublishedSize: number | null
+    currentPublishableSize: number
+    delta: number | null
   }
   errors: {
     count: number
@@ -25,6 +37,48 @@ export type CrawlProgressInspection = {
 }
 
 type LatestRun = NonNullable<CrawlProgressInspection['run']>
+
+type RepositoryBreakdown = {
+  total: number
+  coreComplete: number
+  latestUpdatedAt: string | null
+}
+
+function repositoryBreakdown(db: Database.Database): RepositoryBreakdown {
+  return db
+    .prepare(`
+      SELECT
+        COUNT(*) AS total,
+        COUNT(
+          CASE
+            WHEN html_url IS NOT NULL
+              AND owner IS NOT NULL
+              AND owner_url IS NOT NULL
+              AND repo_name IS NOT NULL
+              AND stargazers_count IS NOT NULL
+              AND forks_count IS NOT NULL
+              AND subscribers_count IS NOT NULL
+            THEN 1
+          END
+        ) AS coreComplete,
+        MAX(updatedAt) AS latestUpdatedAt
+      FROM repositories
+    `)
+    .get() as RepositoryBreakdown
+}
+
+function publicationState(
+  db: Database.Database,
+  currentPublishableSize: number,
+): CrawlProgressInspection['publication'] {
+  const latest = db.prepare('SELECT size FROM stats ORDER BY id DESC LIMIT 1').get() as { size: number } | undefined
+  const lastPublishedSize = latest?.size ?? null
+  return {
+    lastPublishedSize,
+    currentPublishableSize,
+    delta: lastPublishedSize === null ? null : currentPublishableSize - lastPublishedSize,
+  }
+}
 
 /** Returns persisted progress for the latest crawl without modifying the database. */
 export function inspectProgress(db: Database.Database): CrawlProgressInspection {
@@ -45,49 +99,57 @@ export function inspectProgress(db: Database.Database): CrawlProgressInspection 
       `)
       .get() as LatestRun | undefined) ?? null
 
+  const breakdown = repositoryBreakdown(db)
+  const publishableRows = listPublishable(db)
+  const publishable = publishableRows.length
+  const repositoryState = {
+    total: breakdown.total,
+    publishable,
+    incomplete: breakdown.total - breakdown.coreComplete,
+    invalidIdentity: breakdown.coreComplete - publishable,
+    missingMarketplace: publishableRows.filter((row) => row.plugins_count === null).length,
+    latestUpdatedAt: breakdown.latestUpdatedAt,
+  }
+  const publication = publicationState(db, publishable)
+
   if (!run) {
-    const repositories = db.prepare('SELECT COUNT(*) AS total, MAX(updatedAt) AS latestUpdatedAt FROM repositories').get() as {
-      total: number
-      latestUpdatedAt: string | null
-    }
     return {
       run: null,
       repositories: {
-        total: repositories.total,
+        ...repositoryState,
+        updatedThisRun: null,
+        pendingThisRun: null,
         updatedSinceRunStart: null,
         enrichedSinceRunStart: null,
-        latestUpdatedAt: repositories.latestUpdatedAt,
         updatedPercent: null,
       },
+      publication,
       errors: null,
     }
   }
 
   const repositories = db
     .prepare(`
-      SELECT COUNT(*) AS total,
-             COUNT(CASE WHEN updatedAt >= @startedAt THEN 1 END) AS updatedSinceRunStart,
-             COUNT(
-               CASE
-                 WHEN updatedAt >= @startedAt
-                  AND html_url IS NOT NULL
-                  AND owner IS NOT NULL
-                  AND owner_url IS NOT NULL
-                  AND repo_name IS NOT NULL
-                  AND stargazers_count IS NOT NULL
-                  AND forks_count IS NOT NULL
-                  AND subscribers_count IS NOT NULL
-                 THEN 1
-               END
-             ) AS enrichedSinceRunStart,
-             MAX(updatedAt) AS latestUpdatedAt
+      SELECT
+        COUNT(CASE WHEN updatedAt >= @startedAt THEN 1 END) AS updatedSinceRunStart,
+        COUNT(
+          CASE
+            WHEN updatedAt >= @startedAt
+              AND html_url IS NOT NULL
+              AND owner IS NOT NULL
+              AND owner_url IS NOT NULL
+              AND repo_name IS NOT NULL
+              AND stargazers_count IS NOT NULL
+              AND forks_count IS NOT NULL
+              AND subscribers_count IS NOT NULL
+            THEN 1
+          END
+        ) AS enrichedSinceRunStart
       FROM repositories
     `)
     .get({ startedAt: run.startedAt }) as {
-    total: number
     updatedSinceRunStart: number
     enrichedSinceRunStart: number
-    latestUpdatedAt: string | null
   }
 
   const errors = db.prepare('SELECT COUNT(*) AS count, MAX(occurred_at) AS latestAt FROM run_errors WHERE run_id = ?').get(run.runId) as {
@@ -95,12 +157,27 @@ export function inspectProgress(db: Database.Database): CrawlProgressInspection 
     latestAt: string | null
   }
 
+  const attemptedErrors = db
+    .prepare(`
+      SELECT COUNT(DISTINCT repository_id) AS count
+      FROM run_errors
+      WHERE run_id = ? AND phase = 'enrich' AND repository_id IS NOT NULL
+    `)
+    .get(run.runId) as { count: number }
+
+  const updatedThisRun = repositories.enrichedSinceRunStart
+  const pendingThisRun = Math.max(0, repositoryState.total - updatedThisRun - attemptedErrors.count)
+
   return {
     run,
     repositories: {
+      ...repositoryState,
+      updatedThisRun,
+      pendingThisRun,
       ...repositories,
-      updatedPercent: repositories.total === 0 ? 100 : Math.round((repositories.updatedSinceRunStart / repositories.total) * 10_000) / 100,
+      updatedPercent: repositoryState.total === 0 ? 100 : Math.round((updatedThisRun / repositoryState.total) * 10_000) / 100,
     },
+    publication,
     errors,
   }
 }
