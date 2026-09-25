@@ -353,7 +353,7 @@ export async function runCli(argv: string[], dependencies: CliDependencies = {})
   const command = parseCommand(rawCommand)
   const parsed = parseOptions(command, args)
   const config = command === 'crawl' || command === 'publish' ? parseConfig(command, env) : undefined
-  const open = command === 'inspect-progress' ? dependencies.openReadonly ?? openReadOnlyDatabase : dependencies.open ?? openDatabase
+  const open = command === 'inspect-progress' ? (dependencies.openReadonly ?? openReadOnlyDatabase) : (dependencies.open ?? openDatabase)
   const db = open(config?.dbPath ?? env.DB_PATH ?? '')
   try {
     const handled = await runLocalCommand(db, command, parsed, now, output)
