@@ -178,11 +178,7 @@ function telegramProgress(db: Database.Database, runId: string, includeProgress:
   }
 }
 
-function progressSnapshot(
-  db: Database.Database,
-  runId: string,
-  log: (event: LogEvent) => void,
-): TelegramSummary['progress'] {
+function progressSnapshot(db: Database.Database, runId: string, log: (event: LogEvent) => void): TelegramSummary['progress'] {
   try {
     return telegramProgress(db, runId, true)
   } catch {
