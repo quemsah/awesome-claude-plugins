@@ -251,6 +251,14 @@ function parseGraphQLMarketplace(value: unknown): GitHubGraphQLMarketplace | nul
   }
 }
 
+function tryParseGraphQLMarketplace(value: unknown): GitHubGraphQLMarketplace | null {
+  try {
+    return parseGraphQLMarketplace(value)
+  } catch {
+    return null
+  }
+}
+
 function parseGraphQLRateLimit(value: unknown): GraphQLRateLimit {
   if (
     !record(value) ||
@@ -458,6 +466,29 @@ export class GitHubClient implements GitHubReader {
     return null
   }
 
+  private marketplaceErrorNodeIndexes(payload: Record<string, unknown>, idsLength: number): Set<number> | null {
+    const data = payload.data
+    if (!record(data) || !Array.isArray(data.nodes) || data.nodes.length !== idsLength) return null
+    if (!Array.isArray(payload.errors) || payload.errors.length === 0) return new Set<number>()
+
+    const indexes = new Set<number>()
+    for (const error of payload.errors) {
+      if (!record(error) || !Array.isArray(error.path) || error.path.length < 2) return null
+      const [root, index] = error.path
+      if (
+        root !== 'nodes' ||
+        typeof index !== 'number' ||
+        !Number.isInteger(index) ||
+        index < 0 ||
+        index >= data.nodes.length
+      ) {
+        return null
+      }
+      indexes.add(index)
+    }
+    return indexes
+  }
+
   private isExpectedNodeNotFoundErrors(payload: Record<string, unknown>, idsLength: number): boolean {
     const data = payload.data
     if (!record(data)) return false
@@ -516,7 +547,7 @@ export class GitHubClient implements GitHubReader {
   }
 
   private async sendGraphQLRequest(ids: readonly string[], attempt: number): Promise<GraphQLRequestAction> {
-    await this.budget.acquire('graphql', this.signal)
+    await this.budget.acquire('graphql', this.signal, 1)
     throwIfShutdown(this.signal)
     const requestStartedAt = this.clock.now()
     try {
@@ -598,12 +629,9 @@ export class GitHubClient implements GitHubReader {
   ): Promise<GraphQLMarketplaceAction> {
     try {
       const payload: unknown = await response.json()
-      if (
-        record(payload) &&
-        Array.isArray(payload.errors) &&
-        payload.errors.length > 0 &&
-        !this.isExpectedNodeNotFoundErrors(payload, ids.length)
-      ) {
+      if (!record(payload)) throw new Error('Invalid GraphQL response')
+      let errorNodeIndexes = new Set<number>()
+      if (Array.isArray(payload.errors) && payload.errors.length > 0) {
         const message = payload.errors
           .map((error: unknown) => (record(error) && typeof error.message === 'string' ? error.message : ''))
           .join(' ')
@@ -612,14 +640,19 @@ export class GitHubClient implements GitHubReader {
           if (errorAction.kind === 'retry') return errorAction
           if (errorAction.result.kind === 'temporary-error') return { kind: 'result', result: errorAction.result }
         }
-        throw new Error('GraphQL returned errors')
+        const indexes = this.marketplaceErrorNodeIndexes(payload, ids.length)
+        if (indexes === null) throw new Error('GraphQL returned non-node marketplace errors')
+        errorNodeIndexes = indexes
       }
-      if (!record(payload) || !record(payload.data) || !Array.isArray(payload.data.nodes) || payload.data.nodes.length !== ids.length) {
+      if (!record(payload.data) || !Array.isArray(payload.data.nodes) || payload.data.nodes.length !== ids.length) {
         throw new Error('Invalid GraphQL response')
       }
       const rateLimit = parseGraphQLRateLimit(payload.data.rateLimit)
       this.budget.observeGraphQL({ ...rateLimit, latencyMs: Math.max(0, this.clock.now() - requestStartedAt) }, response.headers)
-      return { kind: 'result', result: { kind: 'found', data: payload.data.nodes.map(parseGraphQLMarketplace), rateLimit } }
+      const data = payload.data.nodes.map((node, index) =>
+        errorNodeIndexes.has(index) ? null : tryParseGraphQLMarketplace(node),
+      )
+      return { kind: 'result', result: { kind: 'found', data, rateLimit } }
     } catch {
       return {
         kind: 'result',
@@ -629,11 +662,11 @@ export class GitHubClient implements GitHubReader {
   }
 
   private async sendGraphQLMarketplaceRequest(ids: readonly string[], attempt: number): Promise<GraphQLMarketplaceRequestAction> {
-    await this.budget.acquire('graphql', this.signal)
+    await this.budget.acquire('graphql', this.signal, 1)
     throwIfShutdown(this.signal)
     const requestStartedAt = this.clock.now()
+    const timeoutSignal = AbortSignal.timeout(10_000)
     try {
-      const timeoutSignal = AbortSignal.timeout(10_000)
       const signal = this.signal ? AbortSignal.any([this.signal, timeoutSignal]) : timeoutSignal
       const response = await this.transport('https://api.github.com/graphql', {
         method: 'POST',
@@ -663,7 +696,14 @@ export class GitHubClient implements GitHubReader {
     } catch {
       throwIfShutdown(this.signal)
       if (attempt === 3) {
-        return { kind: 'result', result: { kind: 'temporary-error', status: null, reason: 'GitHub marketplace GraphQL network error' } }
+        return {
+          kind: 'result',
+          result: {
+            kind: 'temporary-error',
+            status: null,
+            reason: timeoutSignal.aborted ? 'GitHub marketplace GraphQL timeout' : 'GitHub marketplace GraphQL network error',
+          },
+        }
       }
       await this.clock.sleep(this.transientDelay(attempt), this.signal)
       return { kind: 'retry' }
