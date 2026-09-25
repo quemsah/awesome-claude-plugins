@@ -294,7 +294,8 @@ async function loadGraphQLMarketplace(
     if (parsed) return parsed
   }
 
-  const changedOid = row.marketplace_oid !== currentMarketplaceOid
+  const authoritativeMarketplaceOid = prefetched?.oid ?? currentMarketplaceOid
+  const changedOid = row.marketplace_oid !== authoritativeMarketplaceOid
   const result =
     row.marketplace_etag && !changedOid && row.plugins_count !== null && !parserVersionChanged
       ? await reader.getMarketplace(loaded.owner, loaded.repo, row.marketplace_etag)
@@ -313,14 +314,14 @@ async function loadGraphQLMarketplace(
     if (!acceptGraphQLNotModified(db, runId, row, loaded, changedOid, counts, now)) return null
     return {
       pluginsCount: row.plugins_count,
-      marketplaceOid: currentMarketplaceOid,
+      marketplaceOid: authoritativeMarketplaceOid,
       marketplaceEtag,
       parserVersion: MARKETPLACE_PARSER_VERSION,
     }
   }
   return {
     pluginsCount: result.data.plugins.length,
-    marketplaceOid: currentMarketplaceOid,
+    marketplaceOid: authoritativeMarketplaceOid,
     marketplaceEtag,
     parserVersion: MARKETPLACE_PARSER_VERSION,
   }
@@ -609,6 +610,7 @@ async function recoverGraphQLBatch(
   counts: EnrichmentCounts,
   removedIds: Set<number>,
   state: GraphQLBatchState,
+  marketplaceState: GraphQLMarketplaceBatchState,
   now: () => string,
   onProgress?: () => void,
 ): Promise<void> {
@@ -621,7 +623,18 @@ async function recoverGraphQLBatch(
   const smallerSize = rows.length > 25 ? 25 : 10
   state.size = smallerSize
   for (let offset = 0; offset < rows.length; offset += smallerSize) {
-    await enrichGraphQLBatch(db, reader, runId, rows.slice(offset, offset + smallerSize), counts, removedIds, state, now, onProgress)
+    await enrichGraphQLBatch(
+      db,
+      reader,
+      runId,
+      rows.slice(offset, offset + smallerSize),
+      counts,
+      removedIds,
+      state,
+      marketplaceState,
+      now,
+      onProgress,
+    )
   }
 }
 
@@ -684,8 +697,36 @@ async function enrichGraphQLMarketplaceCandidates(
     if (result.kind === 'temporary-error') {
       state.stableBatches = 0
       state.size = Math.max(10, Math.min(20, state.size))
-      for (const { row, data } of batch) {
-        await enrichGraphQLOne(db, reader, runId, row, data, counts, removedIds, now, onProgress)
+      const canBenefitFromSplit =
+        batch.length > 1 && /timeout|invalid graphql marketplace response/i.test(result.reason)
+      if (canBenefitFromSplit) {
+        const midpoint = Math.ceil(batch.length / 2)
+        await enrichGraphQLMarketplaceCandidates(
+          db,
+          reader,
+          runId,
+          batch.slice(0, midpoint),
+          counts,
+          removedIds,
+          state,
+          now,
+          onProgress,
+        )
+        await enrichGraphQLMarketplaceCandidates(
+          db,
+          reader,
+          runId,
+          batch.slice(midpoint),
+          counts,
+          removedIds,
+          state,
+          now,
+          onProgress,
+        )
+      } else {
+        for (const { row, data } of batch) {
+          await enrichGraphQLOne(db, reader, runId, row, data, counts, removedIds, now, onProgress)
+        }
       }
       continue
     }
@@ -729,7 +770,7 @@ async function enrichGraphQLBatch(
   const result = await getBatch.call(reader, ids)
   const latency = Date.now() - startedAt
   if (result.kind === 'temporary-error') {
-    await recoverGraphQLBatch(db, reader, runId, rows, counts, removedIds, state, now, onProgress)
+    await recoverGraphQLBatch(db, reader, runId, rows, counts, removedIds, state, marketplaceState, now, onProgress)
     return
   }
 
