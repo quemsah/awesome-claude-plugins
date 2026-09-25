@@ -168,6 +168,28 @@ async function searchCompletePage(
   return result
 }
 
+async function retryUnexpectedShortPage(
+  reader: GitHubReader,
+  query: string,
+  page: number,
+  db: Database.Database,
+  state: RangeState,
+  onProgress: (() => void) | undefined,
+  result: Awaited<ReturnType<GitHubReader['searchCode']>>,
+  found: number,
+): Promise<Awaited<ReturnType<GitHubReader['searchCode']>>> {
+  const completeEnough =
+    result.incomplete_results ||
+    result.total_count >= 1000 ||
+    result.items.length >= 100 ||
+    found + result.items.length >= result.total_count
+  if (completeEnough) return result
+
+  onProgress?.()
+  const retry = await searchCompletePage(reader, query, page, db, state, onProgress)
+  return retry && retry.items.length > result.items.length ? retry : result
+}
+
 async function recoverIncompleteRange(
   db: Database.Database,
   reader: GitHubReader,
@@ -221,16 +243,7 @@ async function searchRange(
       rangeComplete = false
       break
     }
-    if (
-      !result.incomplete_results &&
-      result.total_count < 1000 &&
-      result.items.length < 100 &&
-      found + result.items.length < result.total_count
-    ) {
-      onProgress?.()
-      const retry = await searchCompletePage(reader, query, page, db, state, onProgress)
-      if (retry && retry.items.length > result.items.length) result = retry
-    }
+    result = await retryUnexpectedShortPage(reader, query, page, db, state, onProgress, result, found)
     if (
       await recoverIncompleteRange(db, reader, runId, lookup, range, summary, now, onProgress, page, result, state, countedUrls, coverage)
     )
