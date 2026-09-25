@@ -1,6 +1,6 @@
-import { readFileSync, writeFileSync } from 'node:fs'
-import { resolve, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 
 const [repoRootArg, exportRootArg, outputRootArg] = process.argv.slice(2)
 if (!repoRootArg || !exportRootArg || !outputRootArg) throw new Error('Usage: compare-pilot.mjs <repo-root> <export-root> <output-root>')
@@ -35,18 +35,21 @@ function compareRows(before, after, keyOf, fields) {
   return { added, removed, changed }
 }
 
-const repoDiff = compareRows(
-  baselineRepos,
-  draftRepos,
-  (row) => row.html_url,
-  ['stargazers_count', 'forks_count', 'subscribers_count', 'description', 'owner', 'owner_url', 'repo_name', 'plugins_count'],
-)
+const repoDiff = compareRows(baselineRepos, draftRepos, (row) => row.html_url, [
+  'stargazers_count',
+  'forks_count',
+  'subscribers_count',
+  'description',
+  'owner',
+  'owner_url',
+  'repo_name',
+  'plugins_count',
+])
 const statsDiff = compareRows(baselineStats, draftStats, (row) => `${row.id}:${row.date}`, ['size'])
-const readmeDiff = spawnSync(
-  'git',
-  ['diff', '--no-index', '--', join(repoRoot, 'README.md'), join(exportRoot, 'README.md')],
-  { cwd: repoRoot, encoding: 'utf8' },
-)
+const readmeDiff = spawnSync('git', ['diff', '--no-index', '--', join(repoRoot, 'README.md'), join(exportRoot, 'README.md')], {
+  cwd: repoRoot,
+  encoding: 'utf8',
+})
 if (readmeDiff.error) throw readmeDiff.error
 if (readmeDiff.status !== 0 && readmeDiff.status !== 1) throw new Error(readmeDiff.stderr || `git diff exited ${readmeDiff.status}`)
 
