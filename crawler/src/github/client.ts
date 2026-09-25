@@ -264,6 +264,18 @@ export class GitHubClient implements GitHubReader {
     return { kind: 'temporary-error', status: null, reason: 'GitHub retry limit exceeded', retryCount: 3 }
   }
 
+  /** Handles terminal statuses that do not require retry bookkeeping or response parsing. */
+  private terminalResult<T>(status: number, attempt: number, conditional: boolean): ConditionalRepoResult<T> | null {
+    if (status === 304) {
+      return conditional
+        ? { kind: 'not-modified', retryCount: attempt }
+        : { kind: 'temporary-error', status, reason: 'Unexpected GitHub 304 response', retryCount: attempt }
+    }
+    if (status === 401 || status === 422) throw new GitHubFatalError(`GitHub request rejected (${status})`, status)
+    if (status === 404) return { kind: 'not-found', retryCount: attempt }
+    return null
+  }
+
   /** Maps one GitHub response into retry, terminal, or conditional-cache outcomes. */
   private async handleResponse<T>(
     bucket: RateResource,
@@ -277,15 +289,8 @@ export class GitHubClient implements GitHubReader {
     const delay = retryAfter(response.headers, this.clock.now())
     if (delay !== null) this.budget.defer(bucket, delay)
     const { status } = response
-    if (status === 304) {
-      if (conditional) return { kind: 'result', result: { kind: 'not-modified', retryCount: attempt } }
-      return {
-        kind: 'result',
-        result: { kind: 'temporary-error', status, reason: 'Unexpected GitHub 304 response', retryCount: attempt },
-      }
-    }
-    if (status === 401 || status === 422) throw new GitHubFatalError(`GitHub request rejected (${status})`, status)
-    if (status === 404) return { kind: 'result', result: { kind: 'not-found', retryCount: attempt } }
+    const terminal = this.terminalResult<T>(status, attempt, conditional)
+    if (terminal !== null) return { kind: 'result', result: terminal }
     if (status === 403 || status === 429) return this.handleRateLimit(bucket, response, attempt, delay, secondaryCount)
     if (status >= 500 && status <= 599) return this.handleServerError(bucket, status, attempt, delay, secondaryCount)
     if (!response.ok)
