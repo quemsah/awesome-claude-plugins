@@ -555,11 +555,7 @@ it('splits a timed-out marketplace GraphQL batch before falling back to REST', a
   const counts = await enrichRepositories(db, client, 'crawl-1')
 
   expect(counts).toMatchObject({ updated: 2, conclusive: 2, warnings: 0 })
-  expect(getMarketplacesByNodeId.mock.calls.map(([nodeIds]) => nodeIds)).toEqual([
-    ['node-one', 'node-two'],
-    ['node-one'],
-    ['node-two'],
-  ])
+  expect(getMarketplacesByNodeId.mock.calls.map(([nodeIds]) => nodeIds)).toEqual([['node-one', 'node-two'], ['node-one'], ['node-two']])
   expect(getMarketplace).not.toHaveBeenCalled()
 })
 
@@ -789,10 +785,7 @@ it('recovers a failed metadata batch without losing marketplace batching state',
     const nodeId = `node-${index}`
     const id = upsertDiscovery(db, `https://github.com/team/${name}`, 'old', new Date().toISOString(), nodeId)
     ready(db, id, 'team', name)
-    db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = 1 WHERE id = ?').run(
-      'a'.repeat(40),
-      id,
-    )
+    db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = 1 WHERE id = ?').run('a'.repeat(40), id)
     return { name, nodeId }
   })
 
