@@ -423,7 +423,7 @@ export class GitHubClient implements GitHubReader {
     attempt: number,
     delay: number | null,
     secondaryCount: number,
-  ): Promise<GraphQLAction | null> {
+  ): Promise<GraphQLAction<T> | null> {
     if (response.status === 401 || response.status === 422) {
       throw new GitHubFatalError(`GitHub GraphQL request rejected (${response.status})`, response.status)
     }
