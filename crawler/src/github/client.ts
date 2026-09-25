@@ -539,7 +539,7 @@ export class GitHubClient implements GitHubReader {
   }
 
   private async sendGraphQLRequest(ids: readonly string[], attempt: number): Promise<GraphQLRequestAction> {
-    await this.budget.acquire('graphql', this.signal, 1)
+    await this.budget.acquire('graphql', this.signal, Math.max(1, ids.length))
     throwIfShutdown(this.signal)
     const requestStartedAt = this.clock.now()
     try {
@@ -652,7 +652,7 @@ export class GitHubClient implements GitHubReader {
   }
 
   private async sendGraphQLMarketplaceRequest(ids: readonly string[], attempt: number): Promise<GraphQLMarketplaceRequestAction> {
-    await this.budget.acquire('graphql', this.signal, 1)
+    await this.budget.acquire('graphql', this.signal, Math.max(1, ids.length))
     throwIfShutdown(this.signal)
     const requestStartedAt = this.clock.now()
     const timeoutSignal = AbortSignal.timeout(10_000)
