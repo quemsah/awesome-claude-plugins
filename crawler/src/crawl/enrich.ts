@@ -634,9 +634,12 @@ async function loadGraphQLMarketplaceBlobs(
     onProgress?.()
     const result = await getBlobs.call(reader, batch)
     if (result.kind === 'temporary-error') continue
-    for (const [index, nodeId] of batch.entries()) {
+    for (const [index, requestedNodeId] of batch.entries()) {
       const blob = result.data[index] ?? null
-      if (blob && blob.repository_node_id === nodeId) blobs.set(nodeId, blob)
+      // GitHub may return a migrated global node ID when X-Github-Next-Global-ID is enabled,
+      // even if the request used a legacy ID. nodes(ids:) preserves positional alignment,
+      // so correlate by the requested ID instead of comparing the returned ID string.
+      if (blob) blobs.set(requestedNodeId, blob)
     }
   }
   return blobs
