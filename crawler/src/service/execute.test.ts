@@ -203,7 +203,8 @@ describe('orchestration', () => {
     expect(notify.notifySuccess).toHaveBeenCalledWith(
       expect.objectContaining({ confirmedGitSha: 'd'.repeat(40) }),
     )
-    expect(notify.notifySuccess.mock.calls[0]?.[0]).not.toHaveProperty('progress')
+    const successSummary = (notify.notifySuccess.mock.calls as unknown as [[Record<string, unknown>]])[0][0]
+    expect(successSummary).not.toHaveProperty('progress')
     db.close()
   })
 
