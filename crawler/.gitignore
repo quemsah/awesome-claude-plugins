@@ -4,4 +4,5 @@ coverage/
 *.sqlite
 *.sqlite-*
 test/.scratch-*/
-temp/
+temp/*
+!temp/GRAPHQL_OPTIMIZATION_PLAN.md

@@ -495,13 +495,10 @@ async function enrichGraphQLOne(
     recordProblem(db, runId, counts, row, 'repository_identity_mismatch', wasReady(row), true, now)
     return
   }
-  if (!loaded.marketplaceOid) {
-    removeLoadedRepository(db, runId, row, loaded, counts, removedIds)
-    return
-  }
-
   onProgress?.()
-  const marketplace = await loadGraphQLMarketplace(db, reader, runId, row, loaded, loaded.marketplaceOid, counts, removedIds, now)
+  const marketplace = loaded.marketplaceOid
+    ? await loadGraphQLMarketplace(db, reader, runId, row, loaded, loaded.marketplaceOid, counts, removedIds, now)
+    : await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now)
   if (!marketplace) return
   const target = persistEnrichment(
     db,

@@ -362,6 +362,56 @@ it('preserves a repository when a null GraphQL node cannot be confirmed missing 
   expect(listRunErrors(db, 'crawl-1').map(({ error_type }) => error_type)).toEqual(['repository_temporary_error'])
 })
 
+it.each(['found', 'temporary-error'] as const)(
+  'does not delete a repository when GraphQL has no marketplace OID and REST returns %s',
+  async (kind) => {
+    const db = database()
+    const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), 'legacy-node-id')
+    ready(db, id)
+    const getMarketplace = vi.fn(
+      async (): Promise<RepoResult<Marketplace>> =>
+        kind === 'found'
+          ? { kind: 'found', data: { plugins: [1, 2] } }
+          : { kind: 'temporary-error', status: 503, reason: 'temporary', retryCount: 0 },
+    )
+    const client = {
+      ...reader(undefined, getMarketplace),
+      getRepositoriesByNodeId: async () => ({
+        kind: 'found' as const,
+        data: [{ ...githubRepo('team', 'repo'), node_id: 'legacy-node-id', marketplace_oid: null }],
+        rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+      }),
+    }
+
+    const counts = await enrichRepositories(db, client, 'crawl-1')
+
+    expect(getMarketplace).toHaveBeenCalledWith('team', 'repo')
+    expect(db.prepare('SELECT id FROM repositories WHERE id = ?').get(id)).toEqual({ id })
+    expect(counts.deleted404).toBe(0)
+    if (kind === 'found') expect(counts.updated).toBe(1)
+    else expect(counts.unchangedOnError).toBe(1)
+  },
+)
+
+it('deletes a repository only when REST confirms a null GraphQL marketplace OID is a 404', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), 'legacy-node-id')
+  ready(db, id)
+  const client = {
+    ...reader(undefined, async () => ({ kind: 'not-found' as const })),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [{ ...githubRepo('team', 'repo'), node_id: 'legacy-node-id', marketplace_oid: null }],
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+  }
+
+  const counts = await enrichRepositories(db, client, 'crawl-1')
+
+  expect(counts).toMatchObject({ deleted404: 1, conclusive: 1 })
+  expect(db.prepare('SELECT id FROM repositories WHERE id = ?').get(id)).toBeUndefined()
+})
+
 it('heartbeats immediately before a GraphQL marketplace REST fetch', async () => {
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), 'MDEwOlJlcG9zaXRvcnkx')

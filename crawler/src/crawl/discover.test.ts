@@ -117,7 +117,7 @@ it('continues past a short page when total_count says more results remain', asyn
     [firstRange],
   )
 
-  expect(visited).toEqual([1, 2])
+  expect(visited).toEqual([1, 1, 2])
   expect(result).toMatchObject({ newUrls: 140, successfulRanges: 1, warningCount: 0 })
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 140 })
 })
@@ -303,6 +303,35 @@ it('retries incomplete results and splits the range before accepting coverage', 
   ])
   expect(result).toMatchObject({ successfulRanges: 2, newUrls: 2, warningCount: 1 })
   expect(errors(db)).toEqual([{ phase: 'search', range_start: 150, range_end: 200, error_type: 'incomplete-results' }])
+})
+
+it('retries a short Code Search page and splits the range if pagination still underfetches', async () => {
+  const db = database()
+  const calls: Array<[string, number]> = []
+  const result = await discover(
+    db,
+    reader(async (query, number) => {
+      calls.push([query, number])
+      if (query.endsWith('0..3') && number === 1) return page([item('https://github.com/owner/partial')], 5)
+      if (query.endsWith('0..3')) return page([], 5)
+      if (query.endsWith('0..1')) return page([item('https://github.com/owner/left')])
+      if (query.endsWith('2..3')) return page([item('https://github.com/owner/right')])
+      throw new Error(`Unexpected request: ${query} page ${number}`)
+    }),
+    'run-1',
+    [[0, 3]],
+  )
+
+  expect(calls).toEqual([
+    ['filename:marketplace.json path:.claude-plugin size:0..3', 1],
+    ['filename:marketplace.json path:.claude-plugin size:0..3', 1],
+    ['filename:marketplace.json path:.claude-plugin size:0..3', 2],
+    ['filename:marketplace.json path:.claude-plugin size:0..3', 2],
+    ['filename:marketplace.json path:.claude-plugin size:0..1', 1],
+    ['filename:marketplace.json path:.claude-plugin size:2..3', 1],
+  ])
+  expect(result).toMatchObject({ newUrls: 3, successfulRanges: 2, warningCount: 1 })
+  expect(errors(db)).toEqual([{ phase: 'search', range_start: 0, range_end: 3, error_type: 'short-page' }])
 })
 
 it('records an unsplittable incomplete range and continues with later ranges', async () => {

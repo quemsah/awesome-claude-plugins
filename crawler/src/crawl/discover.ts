@@ -204,8 +204,18 @@ async function searchRange(
   let sawShortPage = false
   for (let page = 1; page <= 10; page++) {
     onProgress?.()
-    const result = await searchCompletePage(reader, query, page, db, state, onProgress)
+    let result = await searchCompletePage(reader, query, page, db, state, onProgress)
     if (!result) break
+    if (
+      !result.incomplete_results &&
+      result.total_count < 1000 &&
+      result.items.length < 100 &&
+      found + result.items.length < result.total_count
+    ) {
+      onProgress?.()
+      const retry = await searchCompletePage(reader, query, page, db, state, onProgress)
+      if (retry && retry.items.length > result.items.length) result = retry
+    }
     if (await recoverIncompleteRange(db, reader, runId, lookup, range, summary, now, onProgress, page, result, state, countedUrls)) return
     if (await splitSaturatedRange(db, reader, runId, lookup, range, summary, now, onProgress, page, result, state, countedUrls)) return
     if (page === 1) summary.successfulRanges++
@@ -216,7 +226,12 @@ async function searchRange(
     found += result.items.length
     if (result.items.length === 0 || found >= result.total_count) break
   }
-  if (sawShortPage && found < lastTotalCount) warn(db, state, 'short-page')
+  if (sawShortPage && found < lastTotalCount) {
+    warn(db, state, 'short-page')
+    if (min < max) {
+      await splitRange(db, reader, runId, lookup, range, summary, now, onProgress, countedUrls, true)
+    }
+  }
   onProgress?.()
 }
 
