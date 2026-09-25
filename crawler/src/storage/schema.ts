@@ -207,9 +207,11 @@ function migrateTo7(db: Database.Database): void {
 function migrateTo8(db: Database.Database): void {
   db.exec(`
     CREATE TABLE discovery_ranges (
-      range_start INTEGER NOT NULL CHECK(range_start >= 0),
-      range_end INTEGER NOT NULL CHECK(range_end >= range_start),
-      PRIMARY KEY (range_start, range_end)
+      root_start INTEGER NOT NULL CHECK(root_start >= 0),
+      root_end INTEGER NOT NULL CHECK(root_end >= root_start),
+      range_start INTEGER NOT NULL CHECK(range_start >= root_start),
+      range_end INTEGER NOT NULL CHECK(range_end >= range_start AND range_end <= root_end),
+      PRIMARY KEY (root_start, root_end, range_start, range_end)
     );
     PRAGMA user_version = 8;
   `)
