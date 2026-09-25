@@ -395,22 +395,25 @@ describe('GitHubClient', () => {
 })
 it('aborts an in-flight GraphQL request when shutdown is requested', async () => {
   const shutdown = new AbortController()
-  let requestSignal: AbortSignal | null = null
+  const requestSignals: AbortSignal[] = []
   const client = new GitHubClient({
     token: 'test-secret',
     signal: shutdown.signal,
     clock: { now: () => 0, sleep: async () => {} },
     fetch: (async (_input: RequestInfo | URL, init?: RequestInit) => {
-      requestSignal = init?.signal instanceof AbortSignal ? init.signal : null
+      const signal = init?.signal
+      if (!(signal instanceof AbortSignal)) throw new Error('Expected request abort signal')
+      requestSignals.push(signal)
       return await new Promise<Response>((_resolve, reject) => {
-        requestSignal?.addEventListener('abort', () => reject(requestSignal?.reason ?? new Error('aborted')), { once: true })
+        signal.addEventListener('abort', () => reject(signal.reason ?? new Error('aborted')), { once: true })
         queueMicrotask(() => shutdown.abort())
       })
     }) as typeof fetch,
   })
 
   await expect(client.getRepositoriesByNodeId(['MDEwOlJlcG9zaXRvcnkx'])).rejects.toMatchObject({ category: 'terminated' })
-  expect(requestSignal?.aborted).toBe(true)
+  expect(requestSignals).toHaveLength(1)
+  expect(requestSignals[0]?.aborted).toBe(true)
 })
 
 it('cancels a production rate-limit wait when shutdown is requested', async () => {
