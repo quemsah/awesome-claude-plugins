@@ -249,10 +249,7 @@ function acceptGraphQLNotModified(
   return true
 }
 
-function parseGraphQLMarketplace(
-  row: RepositoryRow,
-  blob: GitHubGraphQLMarketplace | null,
-): MarketplaceState | undefined {
+function parseGraphQLMarketplace(row: RepositoryRow, blob: GitHubGraphQLMarketplace | null): MarketplaceState | undefined {
   if (blob === null || blob.isBinary !== false || blob.isTruncated || blob.text === null) return undefined
   try {
     const parsed: unknown = JSON.parse(blob.text)
@@ -524,18 +521,7 @@ async function enrichGraphQLOne(
   }
   onProgress?.()
   const marketplace = loaded.marketplaceOid
-    ? await loadGraphQLMarketplace(
-        db,
-        reader,
-        runId,
-        row,
-        loaded,
-        loaded.marketplaceOid,
-        counts,
-        removedIds,
-        now,
-        marketplaceBlob,
-      )
+    ? await loadGraphQLMarketplace(db, reader, runId, row, loaded, loaded.marketplaceOid, counts, removedIds, now, marketplaceBlob)
     : await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now)
   if (!marketplace) return
   const target = persistEnrichment(
@@ -697,32 +683,11 @@ async function enrichGraphQLMarketplaceCandidates(
     if (result.kind === 'temporary-error') {
       state.stableBatches = 0
       state.size = Math.max(10, Math.min(20, state.size))
-      const canBenefitFromSplit =
-        batch.length > 1 && /timeout|invalid graphql marketplace response/i.test(result.reason)
+      const canBenefitFromSplit = batch.length > 1 && /timeout|invalid graphql marketplace response/i.test(result.reason)
       if (canBenefitFromSplit) {
         const midpoint = Math.ceil(batch.length / 2)
-        await enrichGraphQLMarketplaceCandidates(
-          db,
-          reader,
-          runId,
-          batch.slice(0, midpoint),
-          counts,
-          removedIds,
-          state,
-          now,
-          onProgress,
-        )
-        await enrichGraphQLMarketplaceCandidates(
-          db,
-          reader,
-          runId,
-          batch.slice(midpoint),
-          counts,
-          removedIds,
-          state,
-          now,
-          onProgress,
-        )
+        await enrichGraphQLMarketplaceCandidates(db, reader, runId, batch.slice(0, midpoint), counts, removedIds, state, now, onProgress)
+        await enrichGraphQLMarketplaceCandidates(db, reader, runId, batch.slice(midpoint), counts, removedIds, state, now, onProgress)
       } else {
         for (const { row, data } of batch) {
           await enrichGraphQLOne(db, reader, runId, row, data, counts, removedIds, now, onProgress)
@@ -733,18 +698,7 @@ async function enrichGraphQLMarketplaceCandidates(
 
     tuneMarketplaceBatch(state, batch.length, latency, result.rateLimit.cost)
     for (const [index, { row, data }] of batch.entries()) {
-      await enrichGraphQLOne(
-        db,
-        reader,
-        runId,
-        row,
-        data,
-        counts,
-        removedIds,
-        now,
-        onProgress,
-        result.data[index] ?? null,
-      )
+      await enrichGraphQLOne(db, reader, runId, row, data, counts, removedIds, now, onProgress, result.data[index] ?? null)
     }
   }
 }
@@ -778,28 +732,13 @@ async function enrichGraphQLBatch(
   const marketplaceCandidates: Array<{ row: RepositoryRow; data: GitHubGraphQLRepo }> = []
   for (const [index, row] of rows.entries()) {
     const data = result.data[index] ?? null
-    if (
-      data !== null &&
-      reader.getMarketplacesByNodeId &&
-      needsMarketplaceContent(row, data) &&
-      canFetchMarketplaceByGraphQL(data)
-    ) {
+    if (data !== null && reader.getMarketplacesByNodeId && needsMarketplaceContent(row, data) && canFetchMarketplaceByGraphQL(data)) {
       marketplaceCandidates.push({ row, data })
       continue
     }
     await enrichGraphQLOne(db, reader, runId, row, data, counts, removedIds, now, onProgress)
   }
-  await enrichGraphQLMarketplaceCandidates(
-    db,
-    reader,
-    runId,
-    marketplaceCandidates,
-    counts,
-    removedIds,
-    marketplaceState,
-    now,
-    onProgress,
-  )
+  await enrichGraphQLMarketplaceCandidates(db, reader, runId, marketplaceCandidates, counts, removedIds, marketplaceState, now, onProgress)
 }
 
 export async function enrichRepositories(
