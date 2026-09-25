@@ -64,9 +64,7 @@ type GraphQLRequestAction =
   | { kind: 'response'; response: Response; requestStartedAt: number }
   | { kind: 'retry' }
   | { kind: 'result'; result: GraphQLBatchResult }
-type GraphQLMarketplaceAction =
-  | { kind: 'retry'; secondaryCount: number }
-  | { kind: 'result'; result: GraphQLMarketplaceBatchResult }
+type GraphQLMarketplaceAction = { kind: 'retry'; secondaryCount: number } | { kind: 'result'; result: GraphQLMarketplaceBatchResult }
 type GraphQLMarketplaceRequestAction =
   | { kind: 'response'; response: Response; requestStartedAt: number }
   | { kind: 'retry' }
@@ -475,13 +473,7 @@ export class GitHubClient implements GitHubReader {
     for (const error of payload.errors) {
       if (!record(error) || !Array.isArray(error.path) || error.path.length < 2) return null
       const [root, index] = error.path
-      if (
-        root !== 'nodes' ||
-        typeof index !== 'number' ||
-        !Number.isInteger(index) ||
-        index < 0 ||
-        index >= data.nodes.length
-      ) {
+      if (root !== 'nodes' || typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= data.nodes.length) {
         return null
       }
       indexes.add(index)
@@ -649,9 +641,7 @@ export class GitHubClient implements GitHubReader {
       }
       const rateLimit = parseGraphQLRateLimit(payload.data.rateLimit)
       this.budget.observeGraphQL({ ...rateLimit, latencyMs: Math.max(0, this.clock.now() - requestStartedAt) }, response.headers)
-      const data = payload.data.nodes.map((node, index) =>
-        errorNodeIndexes.has(index) ? null : tryParseGraphQLMarketplace(node),
-      )
+      const data = payload.data.nodes.map((node, index) => (errorNodeIndexes.has(index) ? null : tryParseGraphQLMarketplace(node)))
       return { kind: 'result', result: { kind: 'found', data, rateLimit } }
     } catch {
       return {
@@ -738,13 +728,7 @@ export class GitHubClient implements GitHubReader {
       if (request.kind === 'result') return request.result
       if (request.kind === 'retry') continue
 
-      const action = await this.processGraphQLMarketplaceResponse(
-        request.response,
-        ids,
-        request.requestStartedAt,
-        attempt,
-        secondaryCount,
-      )
+      const action = await this.processGraphQLMarketplaceResponse(request.response, ids, request.requestStartedAt, attempt, secondaryCount)
       if (action.kind === 'result') return action.result
       secondaryCount = action.secondaryCount
     }
