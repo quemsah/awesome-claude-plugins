@@ -251,23 +251,14 @@ function acceptGraphQLNotModified(
 
 function parseGraphQLMarketplace(
   row: RepositoryRow,
-  currentMarketplaceOid: string,
   blob: GitHubGraphQLMarketplace | null,
 ): MarketplaceState | undefined {
-  if (
-    blob === null ||
-    blob.oid !== currentMarketplaceOid ||
-    blob.isBinary !== false ||
-    blob.isTruncated ||
-    blob.text === null
-  ) {
-    return undefined
-  }
+  if (blob === null || blob.isBinary !== false || blob.isTruncated || blob.text === null) return undefined
   try {
     const parsed: unknown = JSON.parse(blob.text)
     return {
       pluginsCount: parseMarketplaceManifest(parsed).plugins.length,
-      marketplaceOid: currentMarketplaceOid,
+      marketplaceOid: blob.oid,
       marketplaceEtag: row.marketplace_etag,
       parserVersion: MARKETPLACE_PARSER_VERSION,
     }
@@ -299,7 +290,7 @@ async function loadGraphQLMarketplace(
   }
 
   if (prefetched !== undefined) {
-    const parsed = parseGraphQLMarketplace(row, currentMarketplaceOid, prefetched)
+    const parsed = parseGraphQLMarketplace(row, prefetched)
     if (parsed) return parsed
   }
 
