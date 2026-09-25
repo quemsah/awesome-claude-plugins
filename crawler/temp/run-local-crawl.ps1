@@ -156,7 +156,7 @@ try {
       $entry = ConvertFrom-Json -InputObject $line -ErrorAction Stop
       if ($entry.status -eq 'draft' -and $entry.runId) { $runId = $entry.runId }
     } catch {
-      # Ignore non-JSON progress lines in the CLI log.
+      Write-Verbose "Ignoring non-JSON progress line: $($_.Exception.Message)"
     }
   }
   if (-not $runId) { throw "Crawl completed without a draft run ID. See $logPath" }
