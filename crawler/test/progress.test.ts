@@ -51,6 +51,7 @@ describe('crawl progress inspection', () => {
         publishable: 2,
         incomplete: 3,
         invalidIdentity: 0,
+        invalidMetrics: 0,
         missingMarketplace: 0,
         updatedThisRun: 1,
         pendingThisRun: 3,
@@ -84,6 +85,7 @@ describe('crawl progress inspection', () => {
         publishable: 1,
         incomplete: 3,
         invalidIdentity: 1,
+        invalidMetrics: 0,
         missingMarketplace: 1,
       },
       publication: {
@@ -106,6 +108,7 @@ describe('crawl progress inspection', () => {
         publishable: 1,
         incomplete: 3,
         invalidIdentity: 0,
+        invalidMetrics: 1,
       },
     })
     db.close()
@@ -155,6 +158,7 @@ describe('crawl progress inspection', () => {
         publishable: 2,
         incomplete: 3,
         invalidIdentity: 0,
+        invalidMetrics: 0,
         missingMarketplace: 0,
         updatedThisRun: 1,
         pendingThisRun: 4,
@@ -189,6 +193,7 @@ describe('crawl progress inspection', () => {
         publishable: 2,
         incomplete: 3,
         invalidIdentity: 0,
+        invalidMetrics: 0,
         missingMarketplace: 0,
         updatedThisRun: null,
         pendingThisRun: null,
