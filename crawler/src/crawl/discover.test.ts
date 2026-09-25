@@ -205,9 +205,7 @@ it('reuses persisted terminal size ranges instead of probing the saturated paren
     'filename:marketplace.json path:.claude-plugin size:0..1',
     'filename:marketplace.json path:.claude-plugin size:2..3',
   ])
-  expect(
-    db.prepare('SELECT root_start, root_end, range_start, range_end FROM discovery_ranges ORDER BY range_start').all(),
-  ).toEqual([
+  expect(db.prepare('SELECT root_start, root_end, range_start, range_end FROM discovery_ranges ORDER BY range_start').all()).toEqual([
     { root_start: 0, root_end: 3, range_start: 0, range_end: 1 },
     { root_start: 0, root_end: 3, range_start: 2, range_end: 3 },
   ])
@@ -240,9 +238,7 @@ it('keeps the previous cached partition when a refined child range fails tempora
     [[0, 3]],
   )
 
-  expect(
-    db.prepare('SELECT root_start, root_end, range_start, range_end FROM discovery_ranges ORDER BY range_start').all(),
-  ).toEqual([
+  expect(db.prepare('SELECT root_start, root_end, range_start, range_end FROM discovery_ranges ORDER BY range_start').all()).toEqual([
     { root_start: 0, root_end: 3, range_start: 0, range_end: 1 },
     { root_start: 0, root_end: 3, range_start: 2, range_end: 3 },
   ])

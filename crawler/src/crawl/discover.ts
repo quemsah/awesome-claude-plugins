@@ -232,40 +232,10 @@ async function searchRange(
       if (retry && retry.items.length > result.items.length) result = retry
     }
     if (
-      await recoverIncompleteRange(
-        db,
-        reader,
-        runId,
-        lookup,
-        range,
-        summary,
-        now,
-        onProgress,
-        page,
-        result,
-        state,
-        countedUrls,
-        coverage,
-      )
+      await recoverIncompleteRange(db, reader, runId, lookup, range, summary, now, onProgress, page, result, state, countedUrls, coverage)
     )
       return
-    if (
-      await splitSaturatedRange(
-        db,
-        reader,
-        runId,
-        lookup,
-        range,
-        summary,
-        now,
-        onProgress,
-        page,
-        result,
-        state,
-        countedUrls,
-        coverage,
-      )
-    )
+    if (await splitSaturatedRange(db, reader, runId, lookup, range, summary, now, onProgress, page, result, state, countedUrls, coverage))
       return
     if (page === 1) summary.successfulRanges++
     recordPageWarnings(db, result, page, state)
