@@ -295,6 +295,40 @@ it('batches changed marketplace contents through GraphQL and avoids per-reposito
   ])
 })
 
+it('uses REST when GitHub cannot determine whether the marketplace blob is binary', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), 'node-one')
+  ready(db, id)
+  db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = 1 WHERE id = ?').run('a'.repeat(40), id)
+
+  const getMarketplace = vi.fn(async () => ({ kind: 'found' as const, data: { plugins: [] } }))
+  const getMarketplacesByNodeId = vi.fn(async () => {
+    throw new Error('indeterminate encodings should bypass GraphQL text batching')
+  })
+  const client = {
+    ...reader(undefined, getMarketplace),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [
+        {
+          ...githubRepo('team', 'repo'),
+          node_id: 'node-one',
+          marketplace_oid: 'b'.repeat(40),
+          marketplace_byte_size: 100,
+          marketplace_is_binary: null,
+        },
+      ],
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+    getMarketplacesByNodeId,
+  }
+
+  await enrichRepositories(db, client, 'crawl-1')
+
+  expect(getMarketplacesByNodeId).not.toHaveBeenCalled()
+  expect(getMarketplace).toHaveBeenCalledWith('team', 'repo')
+})
+
 it('falls back to REST for a truncated GraphQL marketplace blob', async () => {
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), 'node-one')
