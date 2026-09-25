@@ -117,7 +117,7 @@ describe('GitHubClient', () => {
                 isPrivate: false,
                 owner: { login: repo.owner.login, url: repo.owner.html_url },
                 watchers: { totalCount: repo.subscribers_count },
-                object: { oid: 'a'.repeat(40) },
+                object: { oid: 'a'.repeat(40), byteSize: 12_345, isBinary: false },
               },
             ],
             rateLimit: { cost: 2, remaining: 4_500, resetAt, limit: 5_000, used: 500 },
@@ -150,6 +150,8 @@ describe('GitHubClient', () => {
           pushed_at: repo.pushed_at,
           owner: repo.owner,
           marketplace_oid: 'a'.repeat(40),
+          marketplace_byte_size: 12_345,
+          marketplace_is_binary: false,
           private: false,
         },
       ],
@@ -160,6 +162,69 @@ describe('GitHubClient', () => {
     expect(test.requests[0].init?.method).toBe('POST')
     expect(new Headers(test.requests[0].init?.headers).get('x-github-next-global-id')).toBe('1')
     expect(JSON.parse(String(test.requests[0].init?.body))).toMatchObject({ variables: { ids: [nodeId] } })
+  })
+
+  it('loads marketplace blob text for multiple repositories in one GraphQL request', async () => {
+    const firstId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
+    const secondId = 'MDEwOlJlcG9zaXRvcnkxMjk2Mjcw'
+    const resetAt = '2026-09-23T22:00:00Z'
+    const firstText = JSON.stringify({ plugins: [{ name: 'first' }] })
+    const secondText = JSON.stringify({ plugins: [{ name: 'second' }, { name: 'third' }] })
+    const test = harness([
+      Response.json({
+        data: {
+          nodes: [
+            {
+              object: {
+                oid: 'b'.repeat(40),
+                byteSize: firstText.length,
+                isBinary: false,
+                isTruncated: false,
+                text: firstText,
+              },
+            },
+            {
+              object: {
+                oid: 'c'.repeat(40),
+                byteSize: secondText.length,
+                isBinary: false,
+                isTruncated: false,
+                text: secondText,
+              },
+            },
+          ],
+          rateLimit: { cost: 3, remaining: 4_497, resetAt, limit: 5_000, used: 503 },
+        },
+      }),
+    ])
+
+    const result = await test.client.getMarketplacesByNodeId([firstId, secondId])
+
+    expect(result).toEqual({
+      kind: 'found',
+      data: [
+        {
+          oid: 'b'.repeat(40),
+          byteSize: firstText.length,
+          isBinary: false,
+          isTruncated: false,
+          text: firstText,
+        },
+        {
+          oid: 'c'.repeat(40),
+          byteSize: secondText.length,
+          isBinary: false,
+          isTruncated: false,
+          text: secondText,
+        },
+      ],
+      rateLimit: { cost: 3, remaining: 4_497, resetAt, limit: 5_000, used: 503 },
+    })
+    expect(test.requests).toHaveLength(1)
+    const body = JSON.parse(String(test.requests[0].init?.body))
+    expect(body.variables).toEqual({ ids: [firstId, secondId] })
+    expect(body.query).toContain('isTruncated text')
+    expect(test.logs).toContainEqual(expect.objectContaining({ bucket: 'graphql', cost: 3 }))
   })
 
   it('accepts per-node NOT_FOUND errors when the matching GraphQL node is null', async () => {
