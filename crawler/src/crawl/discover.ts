@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3'
 import { type GitHubReader, GitHubTemporaryError } from '../github/client.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import type { SizeRange } from '../github/sizeRanges.js'
+import { listCachedDiscoveryRanges, replaceCachedDiscoveryRanges } from '../storage/discoveryRanges.js'
 import { upsertDiscovery } from '../storage/repositories.js'
 import { recordRunError, runWhileActive } from '../storage/runs.js'
 
@@ -27,6 +28,11 @@ type RangeState = {
   countedUrls: Set<string>
   summary: DiscoverySummary
   now: () => string
+}
+
+type CoverageState = {
+  complete: boolean
+  leaves: SizeRange[]
 }
 
 function warn(db: Database.Database, state: RangeState, category: DiscoveryWarningCategory, retryCount = 0): void {
@@ -111,12 +117,13 @@ async function splitRange(
   onProgress: (() => void) | undefined,
   countedUrls: Set<string>,
   countedAsSuccessful: boolean,
+  coverage: CoverageState,
 ): Promise<void> {
   if (countedAsSuccessful) summary.successfulRanges--
   onProgress?.()
   const middle = Math.floor((min + max) / 2)
-  await searchRange(db, reader, runId, lookup, [min, middle], summary, now, onProgress, countedUrls)
-  await searchRange(db, reader, runId, lookup, [middle + 1, max], summary, now, onProgress, countedUrls)
+  await searchRange(db, reader, runId, lookup, [min, middle], summary, now, coverage, onProgress, countedUrls)
+  await searchRange(db, reader, runId, lookup, [middle + 1, max], summary, now, coverage, onProgress, countedUrls)
 }
 
 async function splitSaturatedRange(
@@ -132,6 +139,7 @@ async function splitSaturatedRange(
   result: Awaited<ReturnType<GitHubReader['searchCode']>>,
   state: RangeState,
   countedUrls: Set<string>,
+  coverage: CoverageState,
 ): Promise<boolean> {
   const [min, max] = range
   if (min >= max) return false
@@ -140,7 +148,7 @@ async function splitSaturatedRange(
   if (!saturatedRange && !fullLastPage) return false
   if (result.incomplete_results) warn(db, state, 'incomplete-results')
   if (fullLastPage) processItems(db, lookup, result, state)
-  await splitRange(db, reader, runId, lookup, range, summary, now, onProgress, countedUrls, page > 1)
+  await splitRange(db, reader, runId, lookup, range, summary, now, onProgress, countedUrls, page > 1, coverage)
   return true
 }
 
@@ -173,15 +181,17 @@ async function recoverIncompleteRange(
   result: Awaited<ReturnType<GitHubReader['searchCode']>>,
   state: RangeState,
   countedUrls: Set<string>,
+  coverage: CoverageState,
 ): Promise<boolean> {
   if (!result.incomplete_results) return false
   warn(db, state, 'incomplete-results')
   const [min, max] = range
   if (min >= max) {
     if (page > 1) summary.successfulRanges--
+    coverage.complete = false
     return true
   }
-  await splitRange(db, reader, runId, lookup, range, summary, now, onProgress, countedUrls, page > 1)
+  await splitRange(db, reader, runId, lookup, range, summary, now, onProgress, countedUrls, page > 1, coverage)
   return true
 }
 
@@ -193,6 +203,7 @@ async function searchRange(
   range: SizeRange,
   summary: DiscoverySummary,
   now: () => string,
+  coverage: CoverageState,
   onProgress?: () => void,
   countedUrls: Set<string> = new Set(),
 ): Promise<void> {
@@ -202,10 +213,14 @@ async function searchRange(
   let found = 0
   let lastTotalCount = 0
   let sawShortPage = false
+  let rangeComplete = true
   for (let page = 1; page <= 10; page++) {
     onProgress?.()
     let result = await searchCompletePage(reader, query, page, db, state, onProgress)
-    if (!result) break
+    if (!result) {
+      rangeComplete = false
+      break
+    }
     if (
       !result.incomplete_results &&
       result.total_count < 1000 &&
@@ -216,8 +231,42 @@ async function searchRange(
       const retry = await searchCompletePage(reader, query, page, db, state, onProgress)
       if (retry && retry.items.length > result.items.length) result = retry
     }
-    if (await recoverIncompleteRange(db, reader, runId, lookup, range, summary, now, onProgress, page, result, state, countedUrls)) return
-    if (await splitSaturatedRange(db, reader, runId, lookup, range, summary, now, onProgress, page, result, state, countedUrls)) return
+    if (
+      await recoverIncompleteRange(
+        db,
+        reader,
+        runId,
+        lookup,
+        range,
+        summary,
+        now,
+        onProgress,
+        page,
+        result,
+        state,
+        countedUrls,
+        coverage,
+      )
+    )
+      return
+    if (
+      await splitSaturatedRange(
+        db,
+        reader,
+        runId,
+        lookup,
+        range,
+        summary,
+        now,
+        onProgress,
+        page,
+        result,
+        state,
+        countedUrls,
+        coverage,
+      )
+    )
+      return
     if (page === 1) summary.successfulRanges++
     recordPageWarnings(db, result, page, state)
     processItems(db, lookup, result, state)
@@ -229,9 +278,15 @@ async function searchRange(
   if (sawShortPage && found < lastTotalCount) {
     warn(db, state, 'short-page')
     if (min < max) {
-      await splitRange(db, reader, runId, lookup, range, summary, now, onProgress, countedUrls, true)
+      await splitRange(db, reader, runId, lookup, range, summary, now, onProgress, countedUrls, true, coverage)
+      onProgress?.()
+      return
     }
+    rangeComplete = false
   }
+  if (found < lastTotalCount) rangeComplete = false
+  if (rangeComplete) coverage.leaves.push(range)
+  else coverage.complete = false
   onProgress?.()
 }
 
@@ -247,8 +302,15 @@ export async function discover(
   const lookup = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE LIMIT 1')
   const countedUrls = new Set<string>()
 
-  for (const range of ranges) {
-    await searchRange(db, reader, runId, lookup, range, summary, now, onProgress, countedUrls)
+  for (const rootRange of ranges) {
+    const cachedRanges = listCachedDiscoveryRanges(db, rootRange) ?? [rootRange]
+    const coverage: CoverageState = { complete: true, leaves: [] }
+    for (const range of cachedRanges) {
+      await searchRange(db, reader, runId, lookup, range, summary, now, coverage, onProgress, countedUrls)
+    }
+    if (coverage.complete) {
+      runWhileActive(db, runId, () => replaceCachedDiscoveryRanges(db, rootRange, coverage.leaves))
+    }
     onProgress?.()
   }
 
