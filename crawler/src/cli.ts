@@ -109,7 +109,8 @@ function parseOptions(command: CliCommand, args: string[]): ParsedOptions {
     const exportId = parseRunId(args, command)
     return { ...defaults, exportId, exportDirectory: args[3] }
   }
-  if ((command === 'inspect' || command === 'inspect-progress' || command === 'maintenance') && args.length) throw new Error(`Unknown ${command} option`)
+  if ((command === 'inspect' || command === 'inspect-progress' || command === 'maintenance') && args.length)
+    throw new Error(`Unknown ${command} option`)
   return defaults
 }
 
