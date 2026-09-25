@@ -13,7 +13,7 @@ import { type GitHubGit, GitHubGitClient } from './publish/githubGit.js'
 import { PublicationError } from './publish/publishRun.js'
 import { ActiveRunError, executeCrawl, executePublish, type Notifier } from './service/execute.js'
 import { ShutdownError } from './shutdown.js'
-import { openDatabase } from './storage/db.js'
+import { openDatabase, openReadOnlyDatabase } from './storage/db.js'
 import { inspect } from './storage/inspect.js'
 import { optimizeDatabase, runMaintenance } from './storage/maintenance.js'
 import { inspectProgress } from './storage/progress.js'
@@ -35,6 +35,7 @@ export type CliDependencies = {
   now?: () => Date
   runId?: () => string
   open?: (path: string) => Database.Database
+  openReadonly?: (path: string) => Database.Database
   reader?: (config: RuntimeConfig, log: RateLog, signal?: AbortSignal) => GitHubReader
   git?: (config: RuntimeConfig, signal?: AbortSignal) => GitHubGit
   notifier?: (config: RuntimeConfig) => Notifier | undefined
@@ -318,7 +319,6 @@ async function runLocalCommand(
     return true
   }
   if (command === 'inspect-progress') {
-    db.pragma('query_only = ON')
     output(JSON.stringify(inspectProgress(db)))
     return true
   }
@@ -353,7 +353,8 @@ export async function runCli(argv: string[], dependencies: CliDependencies = {})
   const command = parseCommand(rawCommand)
   const parsed = parseOptions(command, args)
   const config = command === 'crawl' || command === 'publish' ? parseConfig(command, env) : undefined
-  const db = (dependencies.open ?? openDatabase)(config?.dbPath ?? env.DB_PATH ?? '')
+  const open = command === 'inspect-progress' ? dependencies.openReadonly ?? openReadOnlyDatabase : dependencies.open ?? openDatabase
+  const db = open(config?.dbPath ?? env.DB_PATH ?? '')
   try {
     const handled = await runLocalCommand(db, command, parsed, now, output)
     if (!handled && command === 'crawl' && config) {
