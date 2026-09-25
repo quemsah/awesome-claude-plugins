@@ -171,6 +171,42 @@ describe('orchestration', () => {
     db.close()
   })
 
+  it('publishes even when the optional Telegram progress snapshot cannot be collected', async () => {
+    const db = await dbFixture()
+    await executeCrawl(db, reader, 'prepared-progress-failure', { now, ranges: range, dryRun: true })
+    const git: GitHubGit = {
+      getBranchHead: vi.fn(async () => ({ sha: 'a'.repeat(40), treeSha: 'b'.repeat(40) })),
+      createTree: vi.fn(async () => 'c'.repeat(40)),
+      createCommit: vi.fn(async () => 'd'.repeat(40)),
+      updateBranch: vi.fn(async () => {}),
+      isCommitReachable: vi.fn(async () => false),
+    }
+    const notify = notifier()
+    const log = vi.fn()
+    const originalPrepare = db.prepare.bind(db)
+    vi.spyOn(db, 'prepare').mockImplementation((sql) => {
+      if (sql.includes('SELECT COUNT(*) AS total, MAX(updatedAt) AS latestUpdatedAt FROM repositories')) {
+        throw new Error('progress snapshot unavailable')
+      }
+      return originalPrepare(sql)
+    })
+
+    await expect(
+      executePublish(db, git, 'prepared-progress-failure', { now, notifier: notify, log, writeEnabled: true }),
+    ).resolves.toMatchObject({ status: 'published', sha: 'd'.repeat(40) })
+
+    expect(git.updateBranch).toHaveBeenCalledOnce()
+    expect(getRun(db, 'prepared-progress-failure')?.status).toBe('published')
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ phase: 'notify', category: 'progress_snapshot_failed', runId: 'prepared-progress-failure' }),
+    )
+    expect(notify.notifySuccess).toHaveBeenCalledWith(
+      expect.objectContaining({ confirmedGitSha: 'd'.repeat(40) }),
+    )
+    expect(notify.notifySuccess.mock.calls[0]?.[0]).not.toHaveProperty('progress')
+    db.close()
+  })
+
   it('records start and failure notification errors as categories without masking the crawl failure', async () => {
     const db = await dbFixture()
     const notify = notifier()
