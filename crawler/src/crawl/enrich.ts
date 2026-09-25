@@ -257,7 +257,7 @@ function parseGraphQLMarketplace(
   if (
     blob === null ||
     blob.oid !== currentMarketplaceOid ||
-    blob.isBinary ||
+    blob.isBinary !== false ||
     blob.isTruncated ||
     blob.text === null
   ) {
@@ -578,7 +578,7 @@ function needsMarketplaceContent(row: RepositoryRow, data: GitHubGraphQLRepo): b
 }
 
 function canFetchMarketplaceByGraphQL(data: GitHubGraphQLRepo): boolean {
-  return data.marketplace_is_binary !== true && (data.marketplace_byte_size ?? MARKETPLACE_UNKNOWN_BYTES) <= MARKETPLACE_BATCH_MAX_BYTES
+  return data.marketplace_is_binary === false && (data.marketplace_byte_size ?? MARKETPLACE_UNKNOWN_BYTES) <= MARKETPLACE_BATCH_MAX_BYTES
 }
 
 function marketplaceEstimatedBytes(data: GitHubGraphQLRepo): number {
