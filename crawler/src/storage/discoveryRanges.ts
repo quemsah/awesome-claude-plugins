@@ -38,12 +38,13 @@ export function replaceCachedDiscoveryRanges(
 ): void {
   if (!isExactPartition(root, ranges)) throw new Error('Discovery ranges must exactly partition the root range')
   const [rootStart, rootEnd] = root
-  const replace = db.transaction(() => {
+  const replace = () => {
     db.prepare('DELETE FROM discovery_ranges WHERE root_start = ? AND root_end = ?').run(rootStart, rootEnd)
     const insert = db.prepare(
       'INSERT INTO discovery_ranges (root_start, root_end, range_start, range_end) VALUES (?, ?, ?, ?)',
     )
     for (const [start, end] of ranges) insert.run(rootStart, rootEnd, start, end)
-  })
-  replace()
+  }
+  if (db.inTransaction) replace()
+  else db.transaction(replace)()
 }
