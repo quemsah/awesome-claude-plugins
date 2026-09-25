@@ -67,3 +67,49 @@ export function openDatabase(
     throw error
   }
 }
+
+
+/**
+ * Opens an existing database without allowing creation, schema migration, or writes.
+ */
+export function openReadOnlyDatabase(
+  dbPath: string = process.env.DB_PATH ?? '',
+  options: { railway?: boolean; mountInfo?: string } = {},
+): Database.Database {
+  const railway =
+    options.railway === true ||
+    Boolean(process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_SERVICE_ID)
+
+  if (railway) {
+    if (!isAbsolute(dbPath) || !isWithinData(resolve(dbPath))) {
+      throw new Error('Railway DB_PATH must be an absolute database file inside /data')
+    }
+    let mountInfo = options.mountInfo
+    if (mountInfo === undefined) {
+      try {
+        mountInfo = readFileSync('/proc/self/mountinfo', 'utf8')
+      } catch {
+        throw new Error('Cannot verify Railway /data mount; refusing to open the database')
+      }
+    }
+    assertRailwayVolume(dbPath, mountInfo)
+
+    if (lstatSync(dbPath, { throwIfNoEntry: false })?.isSymbolicLink()) {
+      throw new Error('Railway DB_PATH must not be a symbolic link')
+    }
+    assertRailwayTarget(dbPath, realpathSync(dirname(dbPath)))
+  } else if (!dbPath) {
+    throw new Error('DB_PATH is required to open the database')
+  }
+
+  const db = new Database(dbPath, { readonly: true, fileMustExist: true })
+  try {
+    db.pragma('query_only = ON')
+    db.pragma('foreign_keys = ON')
+    db.pragma('busy_timeout = 5000')
+    return db
+  } catch (error) {
+    db.close()
+    throw error
+  }
+}
