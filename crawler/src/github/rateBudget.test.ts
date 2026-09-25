@@ -18,6 +18,29 @@ function virtualClock() {
 }
 
 describe('RateBudget', () => {
+  it('ignores an out-of-range GraphQL reset header and uses the payload reset time', () => {
+    const events: Parameters<NonNullable<ConstructorParameters<typeof RateBudget>[1]>>[0][] = []
+    const clock = virtualClock()
+    const budget = new RateBudget(clock, (event) => events.push(event))
+    const payloadResetAt = '2030-01-01T00:00:00Z'
+    const headers = new Headers({
+      'x-ratelimit-resource': 'graphql',
+      'x-ratelimit-limit': '5000',
+      'x-ratelimit-remaining': '100',
+      'x-ratelimit-used': '4900',
+      'x-ratelimit-reset': '9999999999999',
+    })
+
+    expect(() =>
+      budget.observeGraphQL({ cost: 1, remaining: 100, resetAt: payloadResetAt, limit: 5000, used: 4900 }, headers),
+    ).not.toThrow()
+
+    expect(events.at(-1)).toMatchObject({
+      bucket: 'graphql',
+      resetAt: new Date(payloadResetAt).toISOString(),
+    })
+  })
+
   it('logs the effective GraphQL reset time used by the budget', () => {
     const events: Parameters<NonNullable<ConstructorParameters<typeof RateBudget>[1]>>[0][] = []
     const clock = virtualClock()
