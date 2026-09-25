@@ -14,6 +14,7 @@
     "test": "npm run build && vitest run --exclude 'dist/**' --exclude 'test/integration/**'",
     "test:integration": "vitest run test/integration",
     "inspect": "node dist/cli.js inspect",
+    "inspect:progress": "node dist/cli.js inspect-progress",
     "crawl": "node dist/cli.js crawl",
     "publish": "node dist/cli.js publish",
     "maintenance": "node dist/cli.js maintenance"

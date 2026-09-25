@@ -38,8 +38,10 @@ export type GraphQLBatchResult =
 export type RepoResult<T> =
   | { kind: 'found'; data: T; etag?: string }
   | { kind: 'not-found'; retryCount?: number }
-  | { kind: 'not-modified'; etag?: string }
+  | { kind: 'not-modified'; etag?: string; retryCount?: number }
   | { kind: 'temporary-error'; status: number | null; reason: string; retryCount: number }
+
+export type ConditionalRepoResult<T> = RepoResult<T> | { kind: 'not-modified'; retryCount: number }
 
 type ResponseAction<T> = { kind: 'retry'; secondaryCount: number } | { kind: 'result'; result: RepoResult<T> }
 type GraphQLAction = { kind: 'retry'; secondaryCount: number } | { kind: 'result'; result: GraphQLBatchResult }
@@ -213,6 +215,12 @@ function parseMarketplace(value: unknown): Marketplace {
   return parseMarketplaceManifest(value)
 }
 
+function safeEntityTag(value: string | null): string | null {
+  if (value === null) return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 && trimmed.length <= 512 && !trimmed.includes('\r') && !trimmed.includes('\n') ? trimmed : null
+}
+
 function retryAfter(headers: Headers, now: number): number | null {
   const raw = headers.get('retry-after')
   if (raw === null) return null
@@ -280,6 +288,7 @@ export class GitHubClient implements GitHubReader {
     accept = 'application/vnd.github+json',
     etag?: string,
   ): Promise<RepoResult<T>> {
+    etag = safeEntityTag(etag ?? null) ?? undefined
     const run = this.pending.then(() => {
       throwIfShutdown(this.signal)
       return this.perform(bucket, path, parse, accept, etag)
@@ -540,7 +549,7 @@ export class GitHubClient implements GitHubReader {
         this.budget.defer(bucket, this.transientDelay(attempt))
         continue
       }
-      const action = await this.handleResponse(bucket, response, parse, attempt, secondaryCount)
+      const action = await this.handleResponse(bucket, response, parse, attempt, secondaryCount, etag !== undefined)
       throwIfShutdown(this.signal)
       if (action.kind === 'result') return action.result
       secondaryCount = action.secondaryCount
@@ -554,13 +563,23 @@ export class GitHubClient implements GitHubReader {
     parse: (value: unknown) => T,
     attempt: number,
     secondaryCount: number,
+    conditional: boolean,
   ): Promise<ResponseAction<T>> {
     this.budget.observe(bucket, response.headers)
     const delay = retryAfter(response.headers, this.clock.now())
     if (delay !== null) this.budget.defer(bucket, delay)
     const { status } = response
     if (status === 401 || status === 422) throw new GitHubFatalError(`GitHub request rejected (${status})`, status)
-    if (status === 304) return { kind: 'result', result: { kind: 'not-modified', etag: response.headers.get('etag') ?? undefined } }
+    if (status === 304 && !conditional) {
+      return {
+        kind: 'result',
+        result: { kind: 'temporary-error', status, reason: 'Unexpected GitHub 304 response', retryCount: attempt },
+      }
+    }
+    if (status === 304) {
+      const etag = safeEntityTag(response.headers.get('etag'))
+      return { kind: 'result', result: { kind: 'not-modified', ...(etag ? { etag } : {}), retryCount: attempt } }
+    }
     if (status === 404) return { kind: 'result', result: { kind: 'not-found', retryCount: attempt } }
     if (status === 403 || status === 429) return this.handleRateLimit(bucket, response, attempt, delay, secondaryCount)
     if (status >= 500 && status <= 599) return this.handleServerError(bucket, status, attempt, delay, secondaryCount)
@@ -612,12 +631,13 @@ export class GitHubClient implements GitHubReader {
     secondaryCount: number,
   ): Promise<ResponseAction<T>> {
     try {
+      const etag = safeEntityTag(response.headers.get('etag'))
       return {
         kind: 'result',
         result: {
           kind: 'found',
           data: parse((await response.json()) as unknown),
-          ...(response.headers.get('etag') ? { etag: response.headers.get('etag') as string } : {}),
+          ...(etag ? { etag } : {}),
         },
       }
     } catch {

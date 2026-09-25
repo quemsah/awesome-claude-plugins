@@ -148,6 +148,23 @@ describe('TelegramNotifier', () => {
         code_search: { requests: 221, waitMs: 6000, lastRemaining: 7 },
         core: { requests: 81000, waitMs: 180000, lastRemaining: 200 },
       },
+      progress: {
+        repositories: {
+          total: 51748,
+          publishable: 41026,
+          incomplete: 7813,
+          invalidIdentity: 797,
+          invalidMetrics: 4,
+          missingMarketplace: 2112,
+          updatedThisRun: 39504,
+          pendingThisRun: 2244,
+        },
+        publication: {
+          lastPublishedSize: 40919,
+          currentPublishableSize: 41026,
+          delta: 107,
+        },
+      },
     })
     const message = body(test.requests[0]).text
     expect(message).toContain('updated: 23')
@@ -156,6 +173,17 @@ describe('TelegramNotifier', () => {
     expect(message).toContain('marketplace_rate_limited: 2')
     expect(message).toContain('code_search requests: 221')
     expect(message).toContain('core requests: 81000')
+    expect(message).toContain('repositories total: 51748')
+    expect(message).toContain('publishable: 41026')
+    expect(message).toContain('incomplete: 7813')
+    expect(message).toContain('invalid identity: 797')
+    expect(message).toContain('invalid metrics: 4')
+    expect(message).toContain('missing marketplace: 2112')
+    expect(message).toContain('updated this run: 39504')
+    expect(message).toContain('pending this run: 2244')
+    expect(message).toContain('previous published: 40919')
+    expect(message).toContain('current publishable: 41026')
+    expect(message).toContain('publication delta: +107')
     expect(message.length).toBeLessThanOrEqual(4096)
   })
 

@@ -58,6 +58,14 @@ describe('orchestration', () => {
     expect(getRun(db, 'dry')).toMatchObject({ status: 'completed', draft_id: 8, draft_size: 1 })
     expect(notify.notifyStart).toHaveBeenCalledOnce()
     expect(notify.notifyDryRun).toHaveBeenCalledOnce()
+    expect(notify.notifyDryRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        progress: expect.objectContaining({
+          repositories: expect.objectContaining({ total: 1, publishable: 1, pendingThisRun: 0 }),
+          publication: { lastPublishedSize: 3, currentPublishableSize: 1, delta: -2 },
+        }),
+      }),
+    )
     expect(notify.notifySuccess).not.toHaveBeenCalled()
     expect(git.updateBranch).not.toHaveBeenCalled()
     expect(db.prepare('SELECT COUNT(*) AS n FROM stats').get()).toEqual({ n: 2 })
@@ -150,7 +158,107 @@ describe('orchestration', () => {
     expect(log).toHaveBeenCalledWith(expect.objectContaining({ phase: 'notify', category: 'delivery_failed' }))
     expect(git.updateBranch).toHaveBeenCalledOnce()
     expect(notify.notifySuccess).toHaveBeenCalledWith(
-      expect.objectContaining({ deletedCount: 4, rateBuckets, confirmedGitSha: 'd'.repeat(40) }),
+      expect.objectContaining({
+        deletedCount: 4,
+        rateBuckets,
+        confirmedGitSha: 'd'.repeat(40),
+        progress: expect.objectContaining({
+          repositories: expect.objectContaining({ total: 1, publishable: 1 }),
+          publication: { lastPublishedSize: 3, currentPublishableSize: 1, delta: -2 },
+        }),
+      }),
+    )
+    db.close()
+  })
+
+  it('publishes even when the optional Telegram progress snapshot cannot be collected', async () => {
+    const db = await dbFixture()
+    await executeCrawl(db, reader, 'prepared-progress-failure', { now, ranges: range, dryRun: true })
+    const git: GitHubGit = {
+      getBranchHead: vi.fn(async () => ({ sha: 'a'.repeat(40), treeSha: 'b'.repeat(40) })),
+      createTree: vi.fn(async () => 'c'.repeat(40)),
+      createCommit: vi.fn(async () => 'd'.repeat(40)),
+      updateBranch: vi.fn(async () => {}),
+      isCommitReachable: vi.fn(async () => false),
+    }
+    const notify = notifier()
+    const log = vi.fn()
+    const originalPrepare = db.prepare.bind(db)
+    vi.spyOn(db, 'prepare').mockImplementation((sql) => {
+      if (sql.includes('SELECT COUNT(*) AS total, MAX(updatedAt) AS latestUpdatedAt FROM repositories')) {
+        throw new Error('progress snapshot unavailable')
+      }
+      return originalPrepare(sql)
+    })
+
+    await expect(
+      executePublish(db, git, 'prepared-progress-failure', { now, notifier: notify, log, writeEnabled: true }),
+    ).resolves.toMatchObject({ status: 'published', sha: 'd'.repeat(40) })
+
+    expect(git.updateBranch).toHaveBeenCalledOnce()
+    expect(getRun(db, 'prepared-progress-failure')?.status).toBe('published')
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ phase: 'notify', category: 'progress_snapshot_failed', runId: 'prepared-progress-failure' }),
+    )
+    expect(notify.notifySuccess).toHaveBeenCalledWith(expect.objectContaining({ confirmedGitSha: 'd'.repeat(40) }))
+    const successSummary = (notify.notifySuccess.mock.calls as unknown as [[Record<string, unknown>]])[0][0]
+    expect(successSummary).not.toHaveProperty('progress')
+    db.close()
+  })
+
+  it('sends a dry-run notification without progress when progress inspection fails', async () => {
+    const db = await dbFixture()
+    const notify = notifier()
+    const log = vi.fn()
+    const originalPrepare = db.prepare.bind(db)
+    vi.spyOn(db, 'prepare').mockImplementation((sql) => {
+      if (sql.includes('SELECT COUNT(*) AS total, MAX(updatedAt) AS latestUpdatedAt FROM repositories')) {
+        throw new Error('progress snapshot unavailable')
+      }
+      return originalPrepare(sql)
+    })
+
+    await expect(
+      executeCrawl(db, reader, 'dry-progress-failure', { now, ranges: range, dryRun: true, notifier: notify, log }),
+    ).resolves.toMatchObject({ status: 'draft' })
+
+    expect(notify.notifyDryRun).toHaveBeenCalledOnce()
+    const dryRunSummary = (notify.notifyDryRun.mock.calls as unknown as [[Record<string, unknown>]])[0][0]
+    expect(dryRunSummary).not.toHaveProperty('progress')
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ phase: 'notify', category: 'progress_snapshot_failed', runId: 'dry-progress-failure' }),
+    )
+    db.close()
+  })
+
+  it('sends a failure notification without progress when progress inspection fails', async () => {
+    const db = await dbFixture()
+    const notify = notifier()
+    const log = vi.fn()
+    const originalPrepare = db.prepare.bind(db)
+    vi.spyOn(db, 'prepare').mockImplementation((sql) => {
+      if (sql.includes('SELECT COUNT(*) AS total, MAX(updatedAt) AS latestUpdatedAt FROM repositories')) {
+        throw new Error('progress snapshot unavailable')
+      }
+      return originalPrepare(sql)
+    })
+    const failing: GitHubReader = {
+      ...reader,
+      searchCode: async () => {
+        throw new GitHubTemporaryError('read-secret', 503)
+      },
+    }
+
+    await expect(
+      executeCrawl(db, failing, 'failed-progress-failure', { now, ranges: range, dryRun: true, notifier: notify, log }),
+    ).rejects.toThrow()
+
+    expect(notify.notifyFailure).toHaveBeenCalledOnce()
+    const failureSummary = (notify.notifyFailure.mock.calls as unknown as [[Record<string, unknown>]])[0][0]
+    expect(failureSummary).not.toHaveProperty('progress')
+    expect(failureSummary).toMatchObject({ reason: 'no_successful_ranges' })
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ phase: 'notify', category: 'progress_snapshot_failed', runId: 'failed-progress-failure' }),
     )
     db.close()
   })

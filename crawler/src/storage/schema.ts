@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 6
+const schemaVersion = 7
 
 function createSchema(db: Database.Database): void {
   db.exec(`
@@ -181,19 +181,27 @@ function migrateTo4(db: Database.Database): void {
 
 function migrateTo5(db: Database.Database): void {
   db.exec(`
-    ALTER TABLE repositories ADD COLUMN github_node_id TEXT;
-    ALTER TABLE repositories ADD COLUMN marketplace_oid TEXT;
-    ALTER TABLE repositories ADD COLUMN repository_etag TEXT;
     ALTER TABLE repositories ADD COLUMN marketplace_etag TEXT;
     PRAGMA user_version = 5;
   `)
 }
 
+function hasColumn(db: Database.Database, name: string): boolean {
+  return (db.pragma('table_info(repositories)') as Array<{ name: string }>).some((column) => column.name === name)
+}
+
 function migrateTo6(db: Database.Database): void {
-  db.exec(`
-    ALTER TABLE repositories ADD COLUMN marketplace_parser_version INTEGER CHECK(marketplace_parser_version >= 1);
-    PRAGMA user_version = 6;
-  `)
+  for (const column of ['github_node_id', 'marketplace_oid', 'repository_etag']) {
+    if (!hasColumn(db, column)) db.exec(`ALTER TABLE repositories ADD COLUMN ${column} TEXT`)
+  }
+  db.pragma('user_version = 6')
+}
+
+function migrateTo7(db: Database.Database): void {
+  if (!hasColumn(db, 'marketplace_parser_version')) {
+    db.exec('ALTER TABLE repositories ADD COLUMN marketplace_parser_version INTEGER CHECK(marketplace_parser_version >= 1)')
+  }
+  db.pragma('user_version = 7')
 }
 
 function migrateSchema(db: Database.Database, version: number): void {
@@ -203,6 +211,7 @@ function migrateSchema(db: Database.Database, version: number): void {
   if (version < 4) migrateTo4(db)
   if (version < 5) migrateTo5(db)
   if (version < 6) migrateTo6(db)
+  if (version < 7) migrateTo7(db)
 }
 
 export function initializeSchema(db: Database.Database): void {
