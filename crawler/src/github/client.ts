@@ -371,11 +371,7 @@ export class GitHubClient implements GitHubReader {
     return this.enqueueGraphQL(ids, MARKETPLACE_BLOBS_QUERY, parseGraphQLMarketplaceBlob)
   }
 
-  private enqueueGraphQL<T>(
-    ids: readonly string[],
-    query: string,
-    parseNode: (value: unknown) => T | null,
-  ): Promise<GraphQLResult<T>> {
+  private enqueueGraphQL<T>(ids: readonly string[], query: string, parseNode: (value: unknown) => T | null): Promise<GraphQLResult<T>> {
     const run = this.pending.then(() => {
       throwIfShutdown(this.signal)
       return this.performGraphQL(ids, query, parseNode)
