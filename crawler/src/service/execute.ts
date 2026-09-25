@@ -178,19 +178,31 @@ function telegramProgress(db: Database.Database, runId: string, includeProgress:
   }
 }
 
+function progressSnapshot(
+  db: Database.Database,
+  runId: string,
+  log: (event: LogEvent) => void,
+): TelegramSummary['progress'] {
+  try {
+    return telegramProgress(db, runId, true)
+  } catch {
+    log({ level: 'error', phase: 'notify', category: 'progress_snapshot_failed', runId })
+    return undefined
+  }
+}
+
 function summary(
   db: Database.Database,
   runId: string,
   counts?: CrawlSummary,
   buckets?: GitHubRateBuckets,
-  includeProgress = false,
+  progress?: TelegramSummary['progress'],
 ): TelegramSummary {
   const errors = listRunErrors(db, runId)
   const run = getRun(db, runId)
   const saved = storedReport(db, runId)
   const report = counts?.enrichment ?? saved?.enrichment
   const categories = errorCategories(errors, counts, saved)
-  const progressForRun = telegramProgress(db, runId, includeProgress)
   return {
     runId,
     catalogSize: run?.draft_size ?? listPublishable(db).length,
@@ -201,7 +213,7 @@ function summary(
     ...(counts || saved || Object.keys(categories).length ? { errorCategories: categories } : {}),
     ...((buckets ?? saved?.rateBuckets) ? { rateBuckets: buckets ?? saved?.rateBuckets } : {}),
     ...(saved?.durationMs === undefined ? {} : { durationMs: saved.durationMs }),
-    ...(progressForRun ? { progress: progressForRun } : {}),
+    ...(progress ? { progress } : {}),
     problematicRanges: problematicRanges(errors),
   }
 }
@@ -231,7 +243,8 @@ async function notifyFailure(
   log({ level: 'error', phase: 'execute', category: reason, runId })
   if (!notifier) return
   try {
-    await notifier.notifyFailure({ ...summary(db, runId, counts, buckets, true), reason })
+    const progress = progressSnapshot(db, runId, log)
+    await notifier.notifyFailure({ ...summary(db, runId, counts, buckets, progress), reason })
   } catch (error) {
     logDelivery(db, runId, now, log, error)
   }
@@ -310,14 +323,7 @@ export async function executePublish(
   let sha: string
   let blocked = false
   const report = storedReport(db, runId)
-  let notificationProgress: TelegramSummary['progress']
-  if (options.notifier) {
-    try {
-      notificationProgress = telegramProgress(db, runId, true)
-    } catch {
-      log({ level: 'error', phase: 'notify', category: 'progress_snapshot_failed', runId })
-    }
-  }
+  const notificationProgress = options.notifier ? progressSnapshot(db, runId, log) : undefined
   try {
     if (getActiveRun(db)) throw new ActiveRunError()
     sha = await publishRun(
@@ -418,7 +424,8 @@ async function notifyDryRun(
 ): Promise<void> {
   if (!options.notifier) return
   try {
-    await options.notifier.notifyDryRun(summary(db, runId, counts, options.rateBuckets?.(), true))
+    const progress = progressSnapshot(db, runId, log)
+    await options.notifier.notifyDryRun(summary(db, runId, counts, options.rateBuckets?.(), progress))
   } catch (error) {
     logDelivery(db, runId, now, log, error)
   }
