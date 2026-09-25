@@ -78,8 +78,6 @@ export class RateBudget {
     const reserve = Math.ceil(this.graphqlQuota.limit * 0.1)
     const usable = this.graphqlQuota.remaining - reserve
     if (usable < this.graphqlQuota.lastCost) return this.graphqlQuota.resetAt + 1_000
-    if (this.graphqlQuota.remaining > reserve * 2) return now
-
     const remainingWindowMs = this.graphqlQuota.resetAt - now
     const lastSent = this.lastSent.graphql
     if (remainingWindowMs <= 0 || lastSent === null) return now
