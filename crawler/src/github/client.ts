@@ -126,12 +126,14 @@ function parseRepository(value: unknown): GitHubRepo {
   return value as GitHubRepo
 }
 
+/** Normalizes an HTTP entity tag before persisting or sending it as a validator. */
 function safeEntityTag(value: string | null): string | null {
   if (value === null) return null
   const trimmed = value.trim()
   return trimmed.length > 0 && trimmed.length <= 512 && !/[\r\n]/.test(trimmed) ? trimmed : null
 }
 
+/** Parses a marketplace manifest and carries forward the response ETag for future revalidation. */
 function parseMarketplace(value: unknown, response: Response): Marketplace {
   return { ...parseMarketplaceManifest(value), etag: safeEntityTag(response.headers.get('etag')) }
 }
@@ -183,6 +185,7 @@ export class GitHubClient implements GitHubReader {
     return result
   }
 
+  /** Fetches a marketplace manifest, optionally revalidating a cached representation with its ETag. */
   getMarketplace(owner: string, repo: string, etag?: string): Promise<ConditionalRepoResult<Marketplace>> {
     const validator = safeEntityTag(etag ?? null)
     if (etag !== undefined && validator === null) throw new GitHubFatalError('Invalid marketplace ETag', null)
@@ -205,6 +208,7 @@ export class GitHubClient implements GitHubReader {
     accept: string,
     ifNoneMatch: string,
   ): Promise<ConditionalRepoResult<T>>
+  /** Queues one API request so GitHub rate-budget accounting remains serialized. */
   private request<T>(
     bucket: RateResource,
     path: string,
@@ -223,6 +227,7 @@ export class GitHubClient implements GitHubReader {
     return run
   }
 
+  /** Executes an API request with bounded retries and optional conditional-request validation. */
   private async perform<T>(
     bucket: RateResource,
     path: string,
@@ -251,7 +256,7 @@ export class GitHubClient implements GitHubReader {
         this.budget.defer(bucket, this.transientDelay(attempt))
         continue
       }
-      const action = await this.handleResponse(bucket, response, parse, attempt, secondaryCount)
+      const action = await this.handleResponse(bucket, response, parse, attempt, secondaryCount, ifNoneMatch !== undefined)
       throwIfShutdown(this.signal)
       if (action.kind === 'result') return action.result
       secondaryCount = action.secondaryCount
@@ -259,18 +264,26 @@ export class GitHubClient implements GitHubReader {
     return { kind: 'temporary-error', status: null, reason: 'GitHub retry limit exceeded', retryCount: 3 }
   }
 
+  /** Maps one GitHub response into retry, terminal, or conditional-cache outcomes. */
   private async handleResponse<T>(
     bucket: RateResource,
     response: Response,
     parse: (value: unknown, response: Response) => T,
     attempt: number,
     secondaryCount: number,
+    conditional: boolean,
   ): Promise<ResponseAction<T>> {
     this.budget.observe(bucket, response.headers)
     const delay = retryAfter(response.headers, this.clock.now())
     if (delay !== null) this.budget.defer(bucket, delay)
     const { status } = response
-    if (status === 304) return { kind: 'result', result: { kind: 'not-modified', retryCount: attempt } }
+    if (status === 304) {
+      if (conditional) return { kind: 'result', result: { kind: 'not-modified', retryCount: attempt } }
+      return {
+        kind: 'result',
+        result: { kind: 'temporary-error', status, reason: 'Unexpected GitHub 304 response', retryCount: attempt },
+      }
+    }
     if (status === 401 || status === 422) throw new GitHubFatalError(`GitHub request rejected (${status})`, status)
     if (status === 404) return { kind: 'result', result: { kind: 'not-found', retryCount: attempt } }
     if (status === 403 || status === 429) return this.handleRateLimit(bucket, response, attempt, delay, secondaryCount)
@@ -280,6 +293,7 @@ export class GitHubClient implements GitHubReader {
     return this.parseResponse(bucket, response, parse, attempt, secondaryCount)
   }
 
+  /** Handles primary and secondary rate limits, including exponential deferral. */
   private async handleRateLimit<T>(
     bucket: RateResource,
     response: Response,
@@ -302,6 +316,7 @@ export class GitHubClient implements GitHubReader {
     return { kind: 'retry', secondaryCount }
   }
 
+  /** Retries transient GitHub server failures using the shared backoff budget. */
   private async handleServerError<T>(
     bucket: RateResource,
     status: number,
@@ -315,6 +330,7 @@ export class GitHubClient implements GitHubReader {
     return { kind: 'retry', secondaryCount }
   }
 
+  /** Parses a successful response and retries malformed payloads before failing temporarily. */
   private async parseResponse<T>(
     bucket: RateResource,
     response: Response,
@@ -336,6 +352,7 @@ export class GitHubClient implements GitHubReader {
     }
   }
 
+  /** Computes the jittered exponential delay used for transient retryable failures. */
   private transientDelay(attempt: number): number {
     return 1_000 * 2 ** attempt + Math.floor(this.random() * 250)
   }
