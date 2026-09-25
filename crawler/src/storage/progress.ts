@@ -26,6 +26,7 @@ export type CrawlProgressInspection = {
 
 type LatestRun = NonNullable<CrawlProgressInspection['run']>
 
+/** Returns persisted progress for the latest crawl without modifying the database. */
 export function inspectProgress(db: Database.Database): CrawlProgressInspection {
   const run =
     (db
