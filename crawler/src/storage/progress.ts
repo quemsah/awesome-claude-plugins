@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3'
-import { listPublishable } from './repositories.js'
+import { hasCanonicalIdentity, listPublishable, type PublishableRepository } from './repositories.js'
 
 export type CrawlProgressInspection = {
   run: {
@@ -67,10 +67,21 @@ function repositoryBreakdown(db: Database.Database): RepositoryBreakdown {
     .get() as RepositoryBreakdown
 }
 
-function publicationState(
-  db: Database.Database,
-  currentPublishableSize: number,
-): CrawlProgressInspection['publication'] {
+function listCoreComplete(db: Database.Database): PublishableRepository[] {
+  return db
+    .prepare(`
+      SELECT id, html_url, stargazers_count, forks_count, subscribers_count,
+             description, owner, owner_url, repo_name, plugins_count
+      FROM repositories
+      WHERE html_url IS NOT NULL AND owner IS NOT NULL AND repo_name IS NOT NULL AND owner_url IS NOT NULL
+        AND stargazers_count IS NOT NULL AND forks_count IS NOT NULL
+        AND subscribers_count IS NOT NULL
+      ORDER BY id
+    `)
+    .all() as PublishableRepository[]
+}
+
+function publicationState(db: Database.Database, currentPublishableSize: number): CrawlProgressInspection['publication'] {
   const latest = db.prepare('SELECT size FROM stats ORDER BY id DESC LIMIT 1').get() as { size: number } | undefined
   const lastPublishedSize = latest?.size ?? null
   return {
@@ -100,13 +111,14 @@ export function inspectProgress(db: Database.Database): CrawlProgressInspection 
       .get() as LatestRun | undefined) ?? null
 
   const breakdown = repositoryBreakdown(db)
+  const coreCompleteRows = listCoreComplete(db)
   const publishableRows = listPublishable(db)
   const publishable = publishableRows.length
   const repositoryState = {
     total: breakdown.total,
     publishable,
     incomplete: breakdown.total - breakdown.coreComplete,
-    invalidIdentity: breakdown.coreComplete - publishable,
+    invalidIdentity: coreCompleteRows.filter((row) => !hasCanonicalIdentity(row)).length,
     missingMarketplace: publishableRows.filter((row) => row.plugins_count === null).length,
     latestUpdatedAt: breakdown.latestUpdatedAt,
   }
@@ -159,11 +171,24 @@ export function inspectProgress(db: Database.Database): CrawlProgressInspection 
 
   const attemptedErrors = db
     .prepare(`
-      SELECT COUNT(DISTINCT repository_id) AS count
+      SELECT COUNT(DISTINCT run_errors.repository_id) AS count
       FROM run_errors
-      WHERE run_id = ? AND phase = 'enrich' AND repository_id IS NOT NULL
+      LEFT JOIN repositories ON repositories.id = run_errors.repository_id
+      WHERE run_errors.run_id = @runId
+        AND run_errors.phase = 'enrich'
+        AND run_errors.repository_id IS NOT NULL
+        AND NOT (
+          repositories.updatedAt >= @startedAt
+          AND repositories.html_url IS NOT NULL
+          AND repositories.owner IS NOT NULL
+          AND repositories.owner_url IS NOT NULL
+          AND repositories.repo_name IS NOT NULL
+          AND repositories.stargazers_count IS NOT NULL
+          AND repositories.forks_count IS NOT NULL
+          AND repositories.subscribers_count IS NOT NULL
+        )
     `)
-    .get(run.runId) as { count: number }
+    .get({ runId: run.runId, startedAt: run.startedAt }) as { count: number }
 
   const updatedThisRun = repositories.enrichedSinceRunStart
   const pendingThisRun = Math.max(0, repositoryState.total - updatedThisRun - attemptedErrors.count)
