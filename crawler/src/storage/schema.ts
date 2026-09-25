@@ -206,7 +206,7 @@ function migrateTo7(db: Database.Database): void {
 
 function migrateTo8(db: Database.Database): void {
   db.exec(`
-    CREATE TABLE discovery_ranges (
+    CREATE TABLE IF NOT EXISTS discovery_ranges (
       root_start INTEGER NOT NULL CHECK(root_start >= 0),
       root_end INTEGER NOT NULL CHECK(root_end >= root_start),
       range_start INTEGER NOT NULL CHECK(range_start >= root_start),
