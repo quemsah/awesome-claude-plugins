@@ -189,6 +189,23 @@ describe('RateBudget', () => {
     expect(clock.time).toBeGreaterThanOrEqual(121_000)
   })
 
+  it('reserves enough GraphQL quota for the expected next request cost', async () => {
+    const clock = virtualClock()
+    const budget = new RateBudget(clock)
+    await budget.acquire('graphql')
+    budget.observeGraphQL({
+      cost: 1,
+      remaining: 520,
+      resetAt: new Date(120_000).toISOString(),
+      limit: 5_000,
+      used: 4_480,
+    })
+
+    await budget.acquire('graphql', undefined, 21)
+
+    expect(clock.time).toBeGreaterThanOrEqual(121_000)
+  })
+
   it('serializes simultaneous reservations rather than sending a burst', async () => {
     const clock = virtualClock()
     const budget = new RateBudget(clock)
