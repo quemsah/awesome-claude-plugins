@@ -200,9 +200,7 @@ describe('orchestration', () => {
     expect(log).toHaveBeenCalledWith(
       expect.objectContaining({ phase: 'notify', category: 'progress_snapshot_failed', runId: 'prepared-progress-failure' }),
     )
-    expect(notify.notifySuccess).toHaveBeenCalledWith(
-      expect.objectContaining({ confirmedGitSha: 'd'.repeat(40) }),
-    )
+    expect(notify.notifySuccess).toHaveBeenCalledWith(expect.objectContaining({ confirmedGitSha: 'd'.repeat(40) }))
     const successSummary = (notify.notifySuccess.mock.calls as unknown as [[Record<string, unknown>]])[0][0]
     expect(successSummary).not.toHaveProperty('progress')
     db.close()
