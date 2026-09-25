@@ -462,7 +462,7 @@ function loadGraphQLRepository(db: Database.Database, row: RepositoryRow, data: 
     owner: canonical.owner,
     repo: canonical.repo,
     ownerUrl: canonical.ownerUrl,
-    githubNodeId: data.node_id,
+    githubNodeId: row.github_node_id,
     marketplaceOid: data.marketplace_oid,
     repositoryEtag: row.repository_etag,
   }

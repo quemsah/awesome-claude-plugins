@@ -135,7 +135,7 @@ it('uses batched GraphQL metadata and skips marketplace REST when the stored OID
   ready(db, id)
   const oid = 'a'.repeat(40)
   db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = 1 WHERE id = ?').run(oid, id)
-  const repository: GitHubGraphQLRepo = { ...githubRepo('team', 'repo'), node_id: 'MDEwOlJlcG9zaXRvcnkx', marketplace_oid: oid }
+  const repository: GitHubGraphQLRepo = { ...githubRepo('team', 'repo'), node_id: 'new-global-id', marketplace_oid: oid }
   const getRepositoriesByNodeId = vi.fn(async () => ({
     kind: 'found' as const,
     data: [repository],
@@ -151,6 +151,9 @@ it('uses batched GraphQL metadata and skips marketplace REST when the stored OID
   expect(getRepositoriesByNodeId).toHaveBeenCalledWith(['MDEwOlJlcG9zaXRvcnkx'])
   expect(getRepository).not.toHaveBeenCalled()
   expect(getMarketplace).not.toHaveBeenCalled()
+  expect(db.prepare('SELECT github_node_id FROM repositories WHERE id = ?').get(id)).toEqual({
+    github_node_id: 'MDEwOlJlcG9zaXRvcnkx',
+  })
 })
 
 it('reparses an unchanged marketplace OID when the cached parser version is missing', async () => {
