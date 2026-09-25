@@ -27,8 +27,9 @@ export type CrawlProgressInspection = {
 type LatestRun = NonNullable<CrawlProgressInspection['run']>
 
 export function inspectProgress(db: Database.Database): CrawlProgressInspection {
-  const run = (db
-    .prepare(`
+  const run =
+    (db
+      .prepare(`
       SELECT run_id AS runId,
              status,
              started_at AS startedAt,
@@ -40,13 +41,14 @@ export function inspectProgress(db: Database.Database): CrawlProgressInspection 
       FROM runs
       ORDER BY started_at DESC, rowid DESC
       LIMIT 1
-    `)
-    .get() as LatestRun | undefined) ?? null
+      `)
+      .get() as LatestRun | undefined) ?? null
 
   if (!run) {
-    const repositories = db
-      .prepare('SELECT COUNT(*) AS total, MAX(updatedAt) AS latestUpdatedAt FROM repositories')
-      .get() as { total: number; latestUpdatedAt: string | null }
+    const repositories = db.prepare('SELECT COUNT(*) AS total, MAX(updatedAt) AS latestUpdatedAt FROM repositories').get() as {
+      total: number
+      latestUpdatedAt: string | null
+    }
     return {
       run: null,
       repositories: {
@@ -87,16 +89,16 @@ export function inspectProgress(db: Database.Database): CrawlProgressInspection 
     latestUpdatedAt: string | null
   }
 
-  const errors = db
-    .prepare('SELECT COUNT(*) AS count, MAX(occurred_at) AS latestAt FROM run_errors WHERE run_id = ?')
-    .get(run.runId) as { count: number; latestAt: string | null }
+  const errors = db.prepare('SELECT COUNT(*) AS count, MAX(occurred_at) AS latestAt FROM run_errors WHERE run_id = ?').get(run.runId) as {
+    count: number
+    latestAt: string | null
+  }
 
   return {
     run,
     repositories: {
       ...repositories,
-      updatedPercent:
-        repositories.total === 0 ? 100 : Math.round((repositories.updatedSinceRunStart / repositories.total) * 10_000) / 100,
+      updatedPercent: repositories.total === 0 ? 100 : Math.round((repositories.updatedSinceRunStart / repositories.total) * 10_000) / 100,
     },
     errors,
   }
