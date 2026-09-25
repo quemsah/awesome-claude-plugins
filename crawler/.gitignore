@@ -4,3 +4,4 @@ coverage/
 *.sqlite
 *.sqlite-*
 test/.scratch-*/
+temp/
