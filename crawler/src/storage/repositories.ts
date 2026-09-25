@@ -145,7 +145,7 @@ export function listForEnrichment(db: Database.Database, cursor: number, limit: 
   return db.prepare('SELECT * FROM repositories WHERE id > ? ORDER BY id LIMIT ?').all(cursor, limit) as RepositoryRow[]
 }
 
-function canonicalIdentity(row: PublishableRepository): boolean {
+export function hasCanonicalIdentity(row: PublishableRepository): boolean {
   const { html_url, owner, owner_url, repo_name } = row
   if (!owner || !repo_name || !owner_url || !html_url) return false
   if (!isValidGitHubPathSegment(owner) || !isValidGitHubPathSegment(repo_name)) return false
@@ -167,7 +167,7 @@ export function listPublishable(db: Database.Database): PublishableRepository[] 
 
   return rows.filter(
     (row) =>
-      canonicalIdentity(row) &&
+      hasCanonicalIdentity(row) &&
       [row.stargazers_count, row.forks_count, row.subscribers_count].every(
         (count) => Number.isSafeInteger(count) && (count as number) >= 0,
       ) &&
