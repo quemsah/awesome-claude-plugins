@@ -68,7 +68,6 @@ export function openDatabase(
   }
 }
 
-
 /**
  * Opens an existing database without allowing creation, schema migration, or writes.
  */
