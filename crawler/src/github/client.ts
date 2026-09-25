@@ -130,7 +130,7 @@ function parseRepository(value: unknown): GitHubRepo {
 function safeEntityTag(value: string | null): string | null {
   if (value === null) return null
   const trimmed = value.trim()
-  return trimmed.length > 0 && trimmed.length <= 512 && !/[\r\n]/.test(trimmed) ? trimmed : null
+  return trimmed.length > 0 && trimmed.length <= 512 && !trimmed.includes('\r') && !trimmed.includes('\n') ? trimmed : null
 }
 
 /** Parses a marketplace manifest and carries forward the response ETag for future revalidation. */
