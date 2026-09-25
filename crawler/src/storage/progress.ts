@@ -44,9 +44,7 @@ type RepositoryBreakdown = {
 }
 
 function repositoryBreakdown(db: Database.Database): RepositoryBreakdown {
-  return db
-    .prepare('SELECT COUNT(*) AS total, MAX(updatedAt) AS latestUpdatedAt FROM repositories')
-    .get() as RepositoryBreakdown
+  return db.prepare('SELECT COUNT(*) AS total, MAX(updatedAt) AS latestUpdatedAt FROM repositories').get() as RepositoryBreakdown
 }
 
 function publicationState(db: Database.Database, currentPublishableSize: number): CrawlProgressInspection['publication'] {
