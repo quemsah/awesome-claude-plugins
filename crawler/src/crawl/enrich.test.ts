@@ -408,7 +408,7 @@ it('falls back to REST for a truncated GraphQL marketplace blob', async () => {
       kind: 'found' as const,
       data: [
         {
-          oid: 'b'.repeat(40),
+          oid: 'c'.repeat(40),
           byteSize: 100,
           isBinary: false,
           isTruncated: true,
@@ -425,7 +425,7 @@ it('falls back to REST for a truncated GraphQL marketplace blob', async () => {
   expect(counts).toMatchObject({ updated: 1, conclusive: 1, warnings: 0 })
   expect(db.prepare('SELECT plugins_count, marketplace_oid, marketplace_etag FROM repositories WHERE id = ?').get(id)).toEqual({
     plugins_count: 2,
-    marketplace_oid: 'b'.repeat(40),
+    marketplace_oid: 'c'.repeat(40),
     marketplace_etag: '"rest-new"',
   })
 })
@@ -486,6 +486,81 @@ it('splits marketplace GraphQL batches before their estimated blob payload excee
 
   expect(getMarketplacesByNodeId).toHaveBeenCalledTimes(2)
   expect(getMarketplacesByNodeId.mock.calls.map(([nodeIds]) => nodeIds)).toEqual([['node-1'], ['node-2']])
+})
+
+it('splits a timed-out marketplace GraphQL batch before falling back to REST', async () => {
+  const db = database()
+  const firstId = upsertDiscovery(db, 'https://github.com/team/one', 'old', new Date().toISOString(), 'node-one')
+  const secondId = upsertDiscovery(db, 'https://github.com/team/two', 'old', new Date().toISOString(), 'node-two')
+  ready(db, firstId, 'team', 'one')
+  ready(db, secondId, 'team', 'two')
+  db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = 1 WHERE id IN (?, ?)').run(
+    'a'.repeat(40),
+    firstId,
+    secondId,
+  )
+
+  const metadata: GitHubGraphQLRepo[] = [
+    {
+      ...githubRepo('team', 'one'),
+      node_id: 'node-one',
+      marketplace_oid: 'b'.repeat(40),
+      marketplace_byte_size: 100,
+      marketplace_is_binary: false,
+    },
+    {
+      ...githubRepo('team', 'two'),
+      node_id: 'node-two',
+      marketplace_oid: 'c'.repeat(40),
+      marketplace_byte_size: 100,
+      marketplace_is_binary: false,
+    },
+  ]
+  const getMarketplace = vi.fn(async () => {
+    throw new Error('REST marketplace should not be used after a successful split retry')
+  })
+  const getMarketplacesByNodeId = vi.fn(async (nodeIds: readonly string[]) => {
+    if (nodeIds.length > 1) {
+      return {
+        kind: 'temporary-error' as const,
+        status: null,
+        reason: 'GitHub marketplace GraphQL timeout',
+      }
+    }
+    const nodeId = nodeIds[0]
+    return {
+      kind: 'found' as const,
+      data: [
+        {
+          oid: nodeId === 'node-one' ? 'b'.repeat(40) : 'c'.repeat(40),
+          byteSize: 100,
+          isBinary: false,
+          isTruncated: false,
+          text: JSON.stringify({ plugins: [{ name: nodeId }] }),
+        },
+      ],
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }
+  })
+  const client = {
+    ...reader(undefined, getMarketplace),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: metadata,
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+    getMarketplacesByNodeId,
+  }
+
+  const counts = await enrichRepositories(db, client, 'crawl-1')
+
+  expect(counts).toMatchObject({ updated: 2, conclusive: 2, warnings: 0 })
+  expect(getMarketplacesByNodeId.mock.calls.map(([nodeIds]) => nodeIds)).toEqual([
+    ['node-one', 'node-two'],
+    ['node-one'],
+    ['node-two'],
+  ])
+  expect(getMarketplace).not.toHaveBeenCalled()
 })
 
 it('bypasses a cached marketplace ETag when the plugin count is missing', async () => {
