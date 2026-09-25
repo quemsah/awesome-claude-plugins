@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3'
 
 const schemaVersion = 5
 
+/** Initializes or transactionally migrates the crawler SQLite schema to the current version. */
 export function initializeSchema(db: Database.Database): void {
   const version = db.pragma('user_version', { simple: true }) as number
   if (version > schemaVersion) throw new Error(`Unsupported SQLite schema version: ${version}`)
