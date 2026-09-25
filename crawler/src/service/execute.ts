@@ -282,14 +282,18 @@ async function notifyPublishSuccess(
   db: Database.Database,
   runId: string,
   sha: string,
-  notificationSummary: TelegramSummary | undefined,
+  progress: TelegramSummary['progress'],
   notifier: Notifier | undefined,
   now: () => Date,
   log: (event: LogEvent) => void,
 ): Promise<void> {
-  if (!notifier || !notificationSummary) return
+  if (!notifier) return
   try {
-    await notifier.notifySuccess({ ...notificationSummary, confirmedGitSha: sha })
+    await notifier.notifySuccess({
+      ...summary(db, runId),
+      ...(progress ? { progress } : {}),
+      confirmedGitSha: sha,
+    })
   } catch (error) {
     logDelivery(db, runId, now, log, error)
   }
@@ -306,7 +310,14 @@ export async function executePublish(
   let sha: string
   let blocked = false
   const report = storedReport(db, runId)
-  const notificationSummary = options.notifier ? summary(db, runId, undefined, undefined, true) : undefined
+  let notificationProgress: TelegramSummary['progress']
+  if (options.notifier) {
+    try {
+      notificationProgress = telegramProgress(db, runId, true)
+    } catch {
+      log({ level: 'error', phase: 'notify', category: 'progress_snapshot_failed', runId })
+    }
+  }
   try {
     if (getActiveRun(db)) throw new ActiveRunError()
     sha = await publishRun(
@@ -329,7 +340,7 @@ export async function executePublish(
     await notifyFailure(db, runId, reason, options.notifier, now, log)
     throw failure
   }
-  await notifyPublishSuccess(db, runId, sha, notificationSummary, options.notifier, now, log)
+  await notifyPublishSuccess(db, runId, sha, notificationProgress, options.notifier, now, log)
   return { status: 'published', runId, sha, ...(report ? { report } : {}) }
 }
 
