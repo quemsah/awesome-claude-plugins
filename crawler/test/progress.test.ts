@@ -95,6 +95,45 @@ describe('crawl progress inspection', () => {
     db.close()
   })
 
+  it('does not classify invalid metrics as invalid identity', () => {
+    const db = openDatabase(databasePath())
+    populateFixture(db)
+    db.prepare('UPDATE repositories SET stargazers_count = -1 WHERE id = 3').run()
+
+    expect(inspectProgress(db)).toMatchObject({
+      repositories: {
+        total: 5,
+        publishable: 1,
+        incomplete: 3,
+        invalidIdentity: 0,
+      },
+    })
+    db.close()
+  })
+
+  it('does not double-count a repository that fails and later succeeds in the same run', () => {
+    const db = openDatabase(databasePath())
+    populateFixture(db)
+    beginRun(db, 'current-run', '2026-09-24T08:34:58.000Z')
+    recordRunError(db, {
+      run_id: 'current-run',
+      phase: 'enrich',
+      repository_id: 1,
+      error_type: 'repository_temporary_error',
+      retry_count: 1,
+      occurred_at: '2026-09-24T08:40:00.000Z',
+    })
+    db.prepare("UPDATE repositories SET updatedAt = '2026-09-24T09:00:00.000Z' WHERE id = 1").run()
+
+    expect(inspectProgress(db)).toMatchObject({
+      repositories: {
+        updatedThisRun: 1,
+        pendingThisRun: 4,
+      },
+    })
+    db.close()
+  })
+
   it('exposes progress through a read-only CLI command without GitHub credentials', async () => {
     const path = databasePath()
     const setup = openDatabase(path)
