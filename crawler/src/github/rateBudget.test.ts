@@ -242,4 +242,23 @@ describe('RateBudget', () => {
 
     expect(clock.time).toBe(2_000)
   })
+
+  it('paces GraphQL point spend across the reset window before quota becomes scarce', async () => {
+    const clock = virtualClock()
+    const budget = new RateBudget(clock)
+    await budget.acquire('graphql')
+    budget.observeGraphQL({
+      cost: 10,
+      remaining: 4_500,
+      resetAt: new Date(1_000_000).toISOString(),
+      limit: 5_000,
+      used: 500,
+    })
+
+    await budget.acquire('graphql')
+
+    // 4,000 usable points after the 10% reserve at 10 points/request
+    // means at most 400 further requests across the remaining 1,000 seconds.
+    expect(clock.time).toBe(2_500)
+  })
 })
