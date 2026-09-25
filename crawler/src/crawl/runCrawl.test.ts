@@ -89,7 +89,7 @@ it('runs discovery before enrichment and completes with a typed report and store
   expect(result).toMatchObject({
     runId: 'success',
     status: 'completed',
-    discovery: { newUrls: 1, existingUrls: 1, successfulRanges: 2, warningCount: 0 },
+    discovery: { newUrls: 1, existingUrls: 0, successfulRanges: 2, warningCount: 0 },
     enrichment: { newReady: 1, updated: 0, deleted404: 0, conclusive: 1 },
     warningCount: 0,
     errorCategories: {},
@@ -175,7 +175,11 @@ it('completes with warnings from stored search and enrichment errors, including 
   const client = reader({
     searchCode: async (query) => {
       if (query.endsWith('150..200')) throw new GitHubTemporaryError('outage', null)
-      return { items: [{ repository: { html_url: url, description: null } }], total_count: 1, incomplete_results: true }
+      return {
+        items: [{ repository: { html_url: url, description: null } }],
+        total_count: 1,
+        incomplete_results: query.endsWith('0..150'),
+      }
     },
     getRepository: async (owner, name) =>
       name === 'transient'
@@ -185,7 +189,7 @@ it('completes with warnings from stored search and enrichment errors, including 
 
   const result = await runCrawl(db, client, 'partial', { ranges })
 
-  expect(result.discovery.successfulRanges).toBe(1)
+  expect(result.discovery.successfulRanges).toBe(2)
   expect(result.enrichment).toMatchObject({ newIncomplete: 1, conclusive: 1 })
   expect(result.errorCategories).toEqual({ 'incomplete-results': 1, 'temporary-error': 1, repository_temporary_error: 1 })
   expect(result.warningCount).toBe(3)

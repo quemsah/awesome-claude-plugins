@@ -30,6 +30,7 @@ const enriched = {
   marketplace_oid: null,
   repository_etag: null,
   marketplace_etag: null,
+  marketplace_parser_version: null,
 }
 
 afterEach(() => {
@@ -81,15 +82,21 @@ it('stores the GraphQL node ID from discovery and caches enrichment OIDs and ETa
     marketplace_oid: 'a'.repeat(40),
     repository_etag: '"repo-tag"',
     marketplace_etag: '"marketplace-tag"',
+    marketplace_parser_version: 1,
   })
 
   expect(
-    db.prepare('SELECT github_node_id, marketplace_oid, repository_etag, marketplace_etag FROM repositories WHERE id = ?').get(id),
+    db
+      .prepare(
+        'SELECT github_node_id, marketplace_oid, repository_etag, marketplace_etag, marketplace_parser_version FROM repositories WHERE id = ?',
+      )
+      .get(id),
   ).toEqual({
     github_node_id: 'MDEwOlJlcG9zaXRvcnkx',
     marketplace_oid: 'a'.repeat(40),
     repository_etag: '"repo-tag"',
     marketplace_etag: '"marketplace-tag"',
+    marketplace_parser_version: 1,
   })
 })
 

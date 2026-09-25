@@ -182,6 +182,21 @@ async function ensureCrawlAvailable(
   return active.run_id
 }
 
+function updateGraphQLRateBucket(bucket: NonNullable<GitHubRateBuckets['graphql']>, event: Parameters<RateLog>[0]): void {
+  if (event.cost !== undefined) {
+    bucket.totalCost += event.cost
+    bucket.lastCost = event.cost
+  }
+  if (event.limit !== undefined) bucket.lastLimit = event.limit
+  if (event.used !== undefined) bucket.lastUsed = event.used
+  if (event.resetAt !== undefined) bucket.resetAt = event.resetAt
+  if (event.latencyMs !== undefined) {
+    bucket.totalLatencyMs = (bucket.totalLatencyMs ?? 0) + event.latencyMs
+    bucket.latencySamples = (bucket.latencySamples ?? 0) + 1
+    bucket.lastLatencyMs = event.latencyMs
+  }
+}
+
 function rateTracker(): { buckets: GitHubRateBuckets; log: RateLog; observed: () => boolean } {
   const buckets: GitHubRateBuckets = {
     code_search: { requests: 0, waitMs: 0, lastRemaining: null },
@@ -208,20 +223,7 @@ function rateTracker(): { buckets: GitHubRateBuckets; log: RateLog; observed: ()
     if (event.request) bucket.requests++
     if (event.waitMs !== undefined) bucket.waitMs += event.waitMs
     if (event.remaining !== undefined) bucket.lastRemaining = event.remaining
-    if (event.bucket === 'graphql' && buckets.graphql) {
-      if (event.cost !== undefined) {
-        buckets.graphql.totalCost += event.cost
-        buckets.graphql.lastCost = event.cost
-      }
-      if (event.limit !== undefined) buckets.graphql.lastLimit = event.limit
-      if (event.used !== undefined) buckets.graphql.lastUsed = event.used
-      if (event.resetAt !== undefined) buckets.graphql.resetAt = event.resetAt
-      if (event.latencyMs !== undefined) {
-        buckets.graphql.totalLatencyMs = (buckets.graphql.totalLatencyMs ?? 0) + event.latencyMs
-        buckets.graphql.latencySamples = (buckets.graphql.latencySamples ?? 0) + 1
-        buckets.graphql.lastLatencyMs = event.latencyMs
-      }
-    }
+    if (event.bucket === 'graphql' && buckets.graphql) updateGraphQLRateBucket(buckets.graphql, event)
   }
   return { buckets, log: rateLog, observed: () => hasObserved }
 }

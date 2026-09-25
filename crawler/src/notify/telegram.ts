@@ -83,6 +83,21 @@ function retryAfterJson(value: unknown): number | null {
   return typeof seconds === 'number' && Number.isFinite(seconds) && seconds >= 0 ? Math.ceil(seconds * 1000) : null
 }
 
+function rateBucketDetails(rateBuckets: GitHubRateBuckets): string[] {
+  const details = (['code_search', 'core'] as const).map(
+    (bucket) => `${bucket} requests: ${rateBuckets[bucket].requests}; wait ms: ${rateBuckets[bucket].waitMs}`,
+  )
+  const graphql = rateBuckets.graphql
+  if (!graphql) return details
+
+  details.push(`graphql requests: ${graphql.requests}; cost: ${graphql.totalCost}; remaining: ${graphql.lastRemaining ?? 'unknown'}`)
+  if (graphql.totalLatencyMs === undefined || graphql.latencySamples === undefined || graphql.lastLatencyMs === undefined) return details
+
+  const average = graphql.latencySamples ? Math.round(graphql.totalLatencyMs / graphql.latencySamples) : 0
+  details.push(`graphql latency ms: avg ${average}; last ${graphql.lastLatencyMs ?? 'unknown'}`)
+  return details
+}
+
 function summaryText(summary: TelegramSummary): string {
   const details = summary.enrichment
     ? [
@@ -106,19 +121,7 @@ function summaryText(summary: TelegramSummary): string {
     )
     if (categories.length > 5) details.push(`${categories.length - 5} more error categories in run_errors`)
   }
-  if (summary.rateBuckets) {
-    for (const bucket of ['code_search', 'core'] as const) {
-      details.push(`${bucket} requests: ${summary.rateBuckets[bucket].requests}; wait ms: ${summary.rateBuckets[bucket].waitMs}`)
-    }
-    const graphql = summary.rateBuckets.graphql
-    if (graphql) {
-      details.push(`graphql requests: ${graphql.requests}; cost: ${graphql.totalCost}; remaining: ${graphql.lastRemaining ?? 'unknown'}`)
-      if (graphql.totalLatencyMs !== undefined && graphql.latencySamples !== undefined && graphql.lastLatencyMs !== undefined) {
-        const average = graphql.latencySamples ? Math.round(graphql.totalLatencyMs / graphql.latencySamples) : 0
-        details.push(`graphql latency ms: avg ${average}; last ${graphql.lastLatencyMs ?? 'unknown'}`)
-      }
-    }
-  }
+  if (summary.rateBuckets) details.push(...rateBucketDetails(summary.rateBuckets))
   if (summary.durationMs !== undefined) {
     const seconds = Math.floor(summary.durationMs / 1000)
     const hours = Math.floor(seconds / 3600)

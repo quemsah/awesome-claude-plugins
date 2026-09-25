@@ -59,16 +59,34 @@ function nonnegative(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 }
 
+function nullableNonnegative(value: unknown): boolean {
+  return value === null || nonnegative(value)
+}
+
+function optionalNonnegative(value: unknown): boolean {
+  return value === undefined || nonnegative(value)
+}
+
 function validGraphQLRate(value: unknown): boolean {
   if (!record(value)) return false
-  if (!['requests', 'waitMs', 'totalCost'].every((field) => nonnegative(value[field]))) return false
-  for (const field of ['lastRemaining', 'lastCost', 'lastLimit', 'lastUsed']) {
-    if (value[field] !== null && !nonnegative(value[field])) return false
-  }
-  if (value.totalLatencyMs !== undefined && !nonnegative(value.totalLatencyMs)) return false
-  if (value.latencySamples !== undefined && !nonnegative(value.latencySamples)) return false
-  if (value.lastLatencyMs !== undefined && value.lastLatencyMs !== null && !nonnegative(value.lastLatencyMs)) return false
-  return value.resetAt === null || (typeof value.resetAt === 'string' && !Number.isNaN(Date.parse(value.resetAt)))
+  const countersValid = ['requests', 'waitMs', 'totalCost'].every((field) => nonnegative(value[field]))
+  const nullableCountersValid = ['lastRemaining', 'lastCost', 'lastLimit', 'lastUsed'].every((field) => nullableNonnegative(value[field]))
+  const latencyValid =
+    optionalNonnegative(value.totalLatencyMs) &&
+    optionalNonnegative(value.latencySamples) &&
+    (value.lastLatencyMs === undefined || nullableNonnegative(value.lastLatencyMs))
+  const resetValid = value.resetAt === null || (typeof value.resetAt === 'string' && !Number.isNaN(Date.parse(value.resetAt)))
+  return countersValid && nullableCountersValid && latencyValid && resetValid
+}
+
+function validRateBucket(value: unknown): boolean {
+  return record(value) && nonnegative(value.requests) && nonnegative(value.waitMs) && nullableNonnegative(value.lastRemaining)
+}
+
+function validRateBuckets(value: unknown): boolean {
+  if (!record(value)) return false
+  if (!['code_search', 'core'].every((bucket) => validRateBucket(value[bucket]))) return false
+  return !Object.hasOwn(value, 'graphql') || validGraphQLRate(value.graphql)
 }
 
 function isDiscovery(value: unknown): value is RunReport['discovery'] {
@@ -113,27 +131,7 @@ function storedReport(db: Database.Database, runId: string): Partial<RunReport> 
     throw new Error('Invalid stored crawl error categories')
   }
   const rate = value.rateBuckets
-  if (
-    rate !== undefined &&
-    (!record(rate) ||
-      !['code_search', 'core'].every((bucket) => {
-        const entry = rate[bucket]
-        return (
-          record(entry) &&
-          typeof entry.requests === 'number' &&
-          Number.isSafeInteger(entry.requests) &&
-          entry.requests >= 0 &&
-          typeof entry.waitMs === 'number' &&
-          Number.isSafeInteger(entry.waitMs) &&
-          entry.waitMs >= 0 &&
-          (entry.lastRemaining === null ||
-            (typeof entry.lastRemaining === 'number' && Number.isSafeInteger(entry.lastRemaining) && entry.lastRemaining >= 0))
-        )
-      }) ||
-      (Object.hasOwn(rate, 'graphql') && !validGraphQLRate(rate.graphql)))
-  ) {
-    throw new Error('Invalid stored GitHub rate report')
-  }
+  if (rate !== undefined && !validRateBuckets(rate)) throw new Error('Invalid stored GitHub rate report')
   if (value.durationMs !== undefined && !nonnegative(value.durationMs)) throw new Error('Invalid stored crawl duration')
   return {
     discovery: value.discovery,

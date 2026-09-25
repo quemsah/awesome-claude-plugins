@@ -101,8 +101,16 @@ it('continues past a short page when total_count says more results remain', asyn
     db,
     reader(async (_query, number) => {
       visited.push(number)
-      if (number === 1) return page(Array.from({ length: 40 }, (_, i) => item(`https://github.com/owner/first-${i}`)), 140)
-      if (number === 2) return page(Array.from({ length: 100 }, (_, i) => item(`https://github.com/owner/second-${i}`)), 140)
+      if (number === 1)
+        return page(
+          Array.from({ length: 40 }, (_, i) => item(`https://github.com/owner/first-${i}`)),
+          140,
+        )
+      if (number === 2)
+        return page(
+          Array.from({ length: 100 }, (_, i) => item(`https://github.com/owner/second-${i}`)),
+          140,
+        )
       throw new Error('Unexpected extra page')
     }),
     'run-1',
@@ -158,6 +166,62 @@ it('splits a saturated size range until each child is below the search cap', asy
   expect(result).toMatchObject({ newUrls: 2, successfulRanges: 2, warningCount: 0 })
 })
 
+it('counts a URL only once when a parent page is replayed by split child ranges', async () => {
+  const db = database()
+  const duplicate = 'https://github.com/owner/duplicate'
+  const result = await discover(
+    db,
+    reader(async (query, number) => {
+      if (query.endsWith('0..3') && number === 1) return page([item(duplicate)], 1_000)
+      if (query.endsWith('0..1')) return page([item(duplicate)])
+      if (query.endsWith('2..3')) return page([item('https://github.com/owner/unique')])
+      throw new Error(`Unexpected request: ${query} page ${number}`)
+    }),
+    'run-1',
+    [[0, 3]],
+  )
+
+  expect(result).toMatchObject({ newUrls: 2, existingUrls: 0, successfulRanges: 2 })
+  expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 2 })
+})
+
+it('splits a range when a later page reports saturation even if that page is short', async () => {
+  const db = database()
+  const calls: Array<[string, number]> = []
+  const result = await discover(
+    db,
+    reader(async (query, number) => {
+      calls.push([query, number])
+      if (query.endsWith('0..3') && number === 1) {
+        return page(
+          Array.from({ length: 100 }, (_, i) => item(`https://github.com/owner/parent-${i}`)),
+          999,
+        )
+      }
+      if (query.endsWith('0..3') && number === 2) {
+        return page(
+          Array.from({ length: 20 }, (_, i) => item(`https://github.com/owner/late-${i}`)),
+          1_000,
+        )
+      }
+      if (query.endsWith('0..1')) return page([item('https://github.com/owner/small')])
+      if (query.endsWith('2..3')) return page([item('https://github.com/owner/large')])
+      throw new Error(`Unexpected range: ${query}`)
+    }),
+    'run-1',
+    [[0, 3]],
+  )
+
+  expect(calls).toEqual([
+    ['filename:marketplace.json path:.claude-plugin size:0..3', 1],
+    ['filename:marketplace.json path:.claude-plugin size:0..3', 2],
+    ['filename:marketplace.json path:.claude-plugin size:0..1', 1],
+    ['filename:marketplace.json path:.claude-plugin size:2..3', 1],
+  ])
+  expect(result).toMatchObject({ newUrls: 102, successfulRanges: 2, warningCount: 0 })
+  expect(errors(db)).toEqual([])
+})
+
 it('splits a range when page ten is full even if the first total_count was below the cap', async () => {
   const db = database()
   const calls: Array<[string, number]> = []
@@ -166,7 +230,10 @@ it('splits a range when page ten is full even if the first total_count was below
     reader(async (query, number) => {
       calls.push([query, number])
       if (query.endsWith('0..3'))
-        return page(Array.from({ length: 100 }, (_, i) => item(`https://github.com/owner/parent-${number}-${i}`)), 999)
+        return page(
+          Array.from({ length: 100 }, (_, i) => item(`https://github.com/owner/parent-${number}-${i}`)),
+          999,
+        )
       if (query.endsWith('0..1')) return page([item('https://github.com/owner/small')])
       if (query.endsWith('2..3')) return page([item('https://github.com/owner/large')])
       throw new Error(`Unexpected range: ${query}`)
@@ -211,16 +278,59 @@ it.each([1000, 1001, 20_000])(
   },
 )
 
-it('records incomplete_results with range bounds even when the first page is empty', async () => {
+it('retries incomplete results and splits the range before accepting coverage', async () => {
   const db = database()
+  const calls: string[] = []
   const result = await discover(
     db,
-    reader(async () => page([], 0, true)),
+    reader(async (query) => {
+      calls.push(query)
+      if (query.endsWith('150..200')) return page([], 0, true)
+      if (query.endsWith('150..175')) return page([item('https://github.com/owner/left')])
+      if (query.endsWith('176..200')) return page([item('https://github.com/owner/right')])
+      throw new Error(`Unexpected range: ${query}`)
+    }),
     'run-1',
     [secondRange],
   )
-  expect(result).toMatchObject({ successfulRanges: 1, newUrls: 0, warningCount: 1 })
+
+  expect(calls).toEqual([
+    'filename:marketplace.json path:.claude-plugin size:150..200',
+    'filename:marketplace.json path:.claude-plugin size:150..200',
+    'filename:marketplace.json path:.claude-plugin size:150..200',
+    'filename:marketplace.json path:.claude-plugin size:150..175',
+    'filename:marketplace.json path:.claude-plugin size:176..200',
+  ])
+  expect(result).toMatchObject({ successfulRanges: 2, newUrls: 2, warningCount: 1 })
   expect(errors(db)).toEqual([{ phase: 'search', range_start: 150, range_end: 200, error_type: 'incomplete-results' }])
+})
+
+it('records an unsplittable incomplete range and continues with later ranges', async () => {
+  const db = database()
+  const calls: string[] = []
+  const result = await discover(
+    db,
+    reader(async (query) => {
+      calls.push(query)
+      if (query.endsWith('0..0')) return page([], 0, true)
+      if (query.endsWith('1..1')) return page([item('https://github.com/owner/next')])
+      throw new Error(`Unexpected range: ${query}`)
+    }),
+    'run-1',
+    [
+      [0, 0],
+      [1, 1],
+    ],
+  )
+
+  expect(calls).toEqual([
+    'filename:marketplace.json path:.claude-plugin size:0..0',
+    'filename:marketplace.json path:.claude-plugin size:0..0',
+    'filename:marketplace.json path:.claude-plugin size:0..0',
+    'filename:marketplace.json path:.claude-plugin size:1..1',
+  ])
+  expect(result).toMatchObject({ successfulRanges: 1, newUrls: 1, warningCount: 1 })
+  expect(errors(db)).toEqual([{ phase: 'search', range_start: 0, range_end: 0, error_type: 'incomplete-results' }])
 })
 
 it('counts overlapping URLs as existing and preserves enriched data while refreshing only unenriched descriptions', async () => {
@@ -251,7 +361,7 @@ it('counts overlapping URLs as existing and preserves enriched data while refres
     [firstRange, secondRange],
   )
 
-  expect(result).toMatchObject({ newUrls: 1, existingUrls: 3, successfulRanges: 2, warningCount: 0 })
+  expect(result).toMatchObject({ newUrls: 1, existingUrls: 1, successfulRanges: 2, warningCount: 0 })
   expect(db.prepare('SELECT id, description, stargazers_count FROM repositories WHERE html_url = ?').get(enrichedUrl)).toEqual({
     id: originalId,
     description: 'authoritative REST description',

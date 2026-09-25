@@ -17,6 +17,7 @@ export interface RepositoryRow {
   marketplace_oid: string | null
   repository_etag: string | null
   marketplace_etag: string | null
+  marketplace_parser_version: number | null
   createdAt: string
   updatedAt: string
 }
@@ -33,7 +34,7 @@ export type EnrichmentFields = Pick<
   | 'repo_updated'
   | 'plugins_count'
 > &
-  Partial<Pick<RepositoryRow, 'github_node_id' | 'marketplace_oid' | 'repository_etag' | 'marketplace_etag'>>
+  Partial<Pick<RepositoryRow, 'github_node_id' | 'marketplace_oid' | 'repository_etag' | 'marketplace_etag' | 'marketplace_parser_version'>>
 
 export type PublishableRepository = Pick<
   RepositoryRow,
@@ -107,6 +108,7 @@ export function updateEnriched(db: Database.Database, id: number, fields: Enrich
       marketplace_oid = COALESCE(@marketplace_oid, marketplace_oid),
       repository_etag = COALESCE(@repository_etag, repository_etag),
       marketplace_etag = COALESCE(@marketplace_etag, marketplace_etag),
+      marketplace_parser_version = COALESCE(@marketplace_parser_version, marketplace_parser_version),
       updatedAt = @updatedAt
     WHERE id = @id
   `)
@@ -116,6 +118,7 @@ export function updateEnriched(db: Database.Database, id: number, fields: Enrich
       marketplace_oid: fields.marketplace_oid ?? null,
       repository_etag: fields.repository_etag ?? null,
       marketplace_etag: fields.marketplace_etag ?? null,
+      marketplace_parser_version: fields.marketplace_parser_version ?? null,
       id,
       updatedAt: at,
     })

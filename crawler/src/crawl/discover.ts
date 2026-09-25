@@ -24,6 +24,7 @@ type RangeState = {
   runId: string
   range: SizeRange
   warned: Set<DiscoveryWarningCategory>
+  countedUrls: Set<string>
   summary: DiscoverySummary
   now: () => string
 }
@@ -80,6 +81,9 @@ function processItems(
     runWhileActive(db, state.runId, () => {
       upsertDiscovery(db, url, repository.description, state.now(), repository.node_id)
     })
+    const countKey = url.toLowerCase()
+    if (state.countedUrls.has(countKey)) continue
+    state.countedUrls.add(countKey)
     if (existing) state.summary.existingUrls++
     else state.summary.newUrls++
   }
@@ -105,13 +109,80 @@ async function splitRange(
   summary: DiscoverySummary,
   now: () => string,
   onProgress: (() => void) | undefined,
+  countedUrls: Set<string>,
   countedAsSuccessful: boolean,
 ): Promise<void> {
   if (countedAsSuccessful) summary.successfulRanges--
   onProgress?.()
   const middle = Math.floor((min + max) / 2)
-  await searchRange(db, reader, runId, lookup, [min, middle], summary, now, onProgress)
-  await searchRange(db, reader, runId, lookup, [middle + 1, max], summary, now, onProgress)
+  await searchRange(db, reader, runId, lookup, [min, middle], summary, now, onProgress, countedUrls)
+  await searchRange(db, reader, runId, lookup, [middle + 1, max], summary, now, onProgress, countedUrls)
+}
+
+async function splitSaturatedRange(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  lookup: Database.Statement,
+  range: SizeRange,
+  summary: DiscoverySummary,
+  now: () => string,
+  onProgress: (() => void) | undefined,
+  page: number,
+  result: Awaited<ReturnType<GitHubReader['searchCode']>>,
+  state: RangeState,
+  countedUrls: Set<string>,
+): Promise<boolean> {
+  const [min, max] = range
+  if (min >= max) return false
+  const saturatedRange = result.total_count >= 1000
+  const fullLastPage = page === 10 && result.items.length === 100
+  if (!saturatedRange && !fullLastPage) return false
+  if (result.incomplete_results) warn(db, state, 'incomplete-results')
+  if (fullLastPage) processItems(db, lookup, result, state)
+  await splitRange(db, reader, runId, lookup, range, summary, now, onProgress, countedUrls, page > 1)
+  return true
+}
+
+async function searchCompletePage(
+  reader: GitHubReader,
+  query: string,
+  page: number,
+  db: Database.Database,
+  state: RangeState,
+  onProgress: (() => void) | undefined,
+): Promise<Awaited<ReturnType<GitHubReader['searchCode']>> | null> {
+  let result = await searchPage(reader, query, page, db, state)
+  for (let retry = 0; result?.incomplete_results && retry < 2; retry++) {
+    onProgress?.()
+    result = await searchPage(reader, query, page, db, state)
+  }
+  return result
+}
+
+async function recoverIncompleteRange(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  lookup: Database.Statement,
+  range: SizeRange,
+  summary: DiscoverySummary,
+  now: () => string,
+  onProgress: (() => void) | undefined,
+  page: number,
+  result: Awaited<ReturnType<GitHubReader['searchCode']>>,
+  state: RangeState,
+  countedUrls: Set<string>,
+): Promise<boolean> {
+  if (!result.incomplete_results) return false
+  warn(db, state, 'incomplete-results')
+  const [min, max] = range
+  if (min >= max) {
+    if (page > 1) summary.successfulRanges--
+    return true
+  }
+  await splitRange(db, reader, runId, lookup, range, summary, now, onProgress, countedUrls, page > 1)
+  return true
 }
 
 async function searchRange(
@@ -123,28 +194,20 @@ async function searchRange(
   summary: DiscoverySummary,
   now: () => string,
   onProgress?: () => void,
+  countedUrls: Set<string> = new Set(),
 ): Promise<void> {
   const [min, max] = range
   const query = `filename:marketplace.json path:.claude-plugin size:${min}..${max}`
-  const state: RangeState = { runId, range, warned: new Set(), summary, now }
+  const state: RangeState = { runId, range, warned: new Set(), countedUrls, summary, now }
   let found = 0
   let lastTotalCount = 0
   let sawShortPage = false
   for (let page = 1; page <= 10; page++) {
     onProgress?.()
-    const result = await searchPage(reader, query, page, db, state)
+    const result = await searchCompletePage(reader, query, page, db, state, onProgress)
     if (!result) break
-    if (page === 1 && result.total_count >= 1000 && min < max) {
-      if (result.incomplete_results) warn(db, state, 'incomplete-results')
-      await splitRange(db, reader, runId, lookup, range, summary, now, onProgress, false)
-      return
-    }
-    if (page === 10 && result.items.length === 100 && min < max) {
-      if (result.incomplete_results) warn(db, state, 'incomplete-results')
-      processItems(db, lookup, result, state)
-      await splitRange(db, reader, runId, lookup, range, summary, now, onProgress, true)
-      return
-    }
+    if (await recoverIncompleteRange(db, reader, runId, lookup, range, summary, now, onProgress, page, result, state, countedUrls)) return
+    if (await splitSaturatedRange(db, reader, runId, lookup, range, summary, now, onProgress, page, result, state, countedUrls)) return
     if (page === 1) summary.successfulRanges++
     recordPageWarnings(db, result, page, state)
     processItems(db, lookup, result, state)
@@ -167,9 +230,10 @@ export async function discover(
 ): Promise<DiscoverySummary> {
   const summary: DiscoverySummary = { newUrls: 0, existingUrls: 0, successfulRanges: 0, warningCount: 0, warnings: [] }
   const lookup = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE LIMIT 1')
+  const countedUrls = new Set<string>()
 
   for (const range of ranges) {
-    await searchRange(db, reader, runId, lookup, range, summary, now, onProgress)
+    await searchRange(db, reader, runId, lookup, range, summary, now, onProgress, countedUrls)
     onProgress?.()
   }
 

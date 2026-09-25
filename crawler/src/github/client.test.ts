@@ -154,7 +154,44 @@ describe('GitHubClient', () => {
     expect(test.logs).toContainEqual(expect.objectContaining({ bucket: 'graphql', latencyMs: 0, cost: 2 }))
     expect(test.requests[0].url).toBe('https://api.github.com/graphql')
     expect(test.requests[0].init?.method).toBe('POST')
+    expect(new Headers(test.requests[0].init?.headers).get('x-github-next-global-id')).toBe('1')
     expect(JSON.parse(String(test.requests[0].init?.body))).toMatchObject({ variables: { ids: [nodeId] } })
+  })
+
+  it('accepts per-node NOT_FOUND errors when the matching GraphQL node is null', async () => {
+    const firstId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
+    const missingId = 'MDEwOlJlcG9zaXRvcnkxMjk2Mjcw'
+    const test = harness([
+      Response.json({
+        data: {
+          nodes: [
+            {
+              id: firstId,
+              url: repo.html_url,
+              name: repo.name,
+              description: repo.description,
+              stargazerCount: repo.stargazers_count,
+              forkCount: repo.forks_count,
+              pushedAt: repo.pushed_at,
+              isPrivate: false,
+              owner: { login: repo.owner.login, url: repo.owner.html_url },
+              watchers: { totalCount: repo.subscribers_count },
+              object: { oid: 'a'.repeat(40) },
+            },
+            null,
+          ],
+          rateLimit: { cost: 2, remaining: 4_500, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 500 },
+        },
+        errors: [{ type: 'NOT_FOUND', path: ['nodes', 1], message: 'Could not resolve to a node with the global id' }],
+      }),
+    ])
+
+    const result = await test.client.getRepositoriesByNodeId([firstId, missingId])
+
+    expect(result.kind).toBe('found')
+    if (result.kind !== 'found') throw new Error('Expected a successful GraphQL batch')
+    expect(result.data[0]).toMatchObject({ node_id: firstId, html_url: repo.html_url })
+    expect(result.data[1]).toBeNull()
   })
 
   it('backs off exponentially for GraphQL secondary limits and does not retry permission failures', async () => {
@@ -356,6 +393,26 @@ describe('GitHubClient', () => {
     expect((await test.client.getRepository('acme', 'catalog')).kind).toBe('temporary-error')
   })
 })
+it('aborts an in-flight GraphQL request when shutdown is requested', async () => {
+  const shutdown = new AbortController()
+  let requestSignal: AbortSignal | null = null
+  const client = new GitHubClient({
+    token: 'test-secret',
+    signal: shutdown.signal,
+    clock: { now: () => 0, sleep: async () => {} },
+    fetch: (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestSignal = init?.signal instanceof AbortSignal ? init.signal : null
+      return await new Promise<Response>((_resolve, reject) => {
+        requestSignal?.addEventListener('abort', () => reject(requestSignal?.reason ?? new Error('aborted')), { once: true })
+        queueMicrotask(() => shutdown.abort())
+      })
+    }) as typeof fetch,
+  })
+
+  await expect(client.getRepositoriesByNodeId(['MDEwOlJlcG9zaXRvcnkx'])).rejects.toMatchObject({ category: 'terminated' })
+  expect(requestSignal?.aborted).toBe(true)
+})
+
 it('cancels a production rate-limit wait when shutdown is requested', async () => {
   const shutdown = new AbortController()
   let requests = 0
