@@ -38,7 +38,7 @@ export type GitHubGraphQLRepo = GitHubRepo & {
 export type GitHubGraphQLMarketplace = {
   oid: string
   byteSize: number
-  isBinary: boolean
+  isBinary: boolean | null
   isTruncated: boolean
   text: string | null
 }
@@ -179,7 +179,7 @@ type GraphQLRepoPayload = {
   isPrivate: boolean
   owner: { login: string; url: string }
   watchers: { totalCount: number }
-  object: { oid: string; byteSize?: number; isBinary?: boolean } | null
+  object: { oid: string; byteSize?: number; isBinary?: boolean | null } | null
 }
 
 function isGraphQLRepoPayload(value: unknown): value is GraphQLRepoPayload {
@@ -189,7 +189,7 @@ function isGraphQLRepoPayload(value: unknown): value is GraphQLRepoPayload {
     (record(value.object) &&
       nonempty(value.object.oid) &&
       (value.object.byteSize === undefined || count(value.object.byteSize)) &&
-      (value.object.isBinary === undefined || typeof value.object.isBinary === 'boolean'))
+      (value.object.isBinary === undefined || value.object.isBinary === null || typeof value.object.isBinary === 'boolean'))
   return [
     nonempty(value.id),
     nonempty(value.url),
@@ -236,7 +236,7 @@ function parseGraphQLMarketplace(value: unknown): GitHubGraphQLMarketplace | nul
   if (
     !nonempty(object.oid) ||
     !count(object.byteSize) ||
-    typeof object.isBinary !== 'boolean' ||
+    (object.isBinary !== null && typeof object.isBinary !== 'boolean') ||
     typeof object.isTruncated !== 'boolean' ||
     (object.text !== null && typeof object.text !== 'string')
   ) {
