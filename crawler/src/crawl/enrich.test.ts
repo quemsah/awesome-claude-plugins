@@ -782,6 +782,70 @@ it('heartbeats immediately before a GraphQL marketplace REST fetch', async () =>
   expect(getMarketplace).toHaveBeenCalledOnce()
 })
 
+it('recovers a failed metadata batch without losing marketplace batching state', async () => {
+  const db = database()
+  const rows = Array.from({ length: 11 }, (_, index) => {
+    const name = `repo-${index}`
+    const nodeId = `node-${index}`
+    const id = upsertDiscovery(db, `https://github.com/team/${name}`, 'old', new Date().toISOString(), nodeId)
+    ready(db, id, 'team', name)
+    db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = 1 WHERE id = ?').run(
+      'a'.repeat(40),
+      id,
+    )
+    return { name, nodeId }
+  })
+
+  let metadataCalls = 0
+  const getRepositoriesByNodeId = vi.fn(async (nodeIds: readonly string[]) => {
+    metadataCalls++
+    if (metadataCalls === 1) {
+      return { kind: 'temporary-error' as const, status: 503, reason: 'temporary' }
+    }
+    return {
+      kind: 'found' as const,
+      data: nodeIds.map((nodeId) => {
+        const fixture = rows.find((row) => row.nodeId === nodeId)
+        if (!fixture) return null
+        return {
+          ...githubRepo('team', fixture.name),
+          node_id: nodeId,
+          marketplace_oid: 'b'.repeat(40),
+          marketplace_byte_size: 100,
+          marketplace_is_binary: false,
+        }
+      }),
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }
+  })
+  const getMarketplacesByNodeId = vi.fn(async (nodeIds: readonly string[]) => ({
+    kind: 'found' as const,
+    data: nodeIds.map((nodeId) => ({
+      oid: 'b'.repeat(40),
+      byteSize: 100,
+      isBinary: false,
+      isTruncated: false,
+      text: JSON.stringify({ plugins: [{ name: nodeId }] }),
+    })),
+    rateLimit: { cost: 1, remaining: 4_998, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 2 },
+  }))
+  const getMarketplace = vi.fn(async () => {
+    throw new Error('REST marketplace should not be used after recovered GraphQL metadata batches')
+  })
+  const client = {
+    ...reader(undefined, getMarketplace),
+    getRepositoriesByNodeId,
+    getMarketplacesByNodeId,
+  }
+
+  const counts = await enrichRepositories(db, client, 'crawl-1')
+
+  expect(counts).toMatchObject({ updated: 11, conclusive: 11, warnings: 0 })
+  expect(getRepositoriesByNodeId.mock.calls.map(([nodeIds]) => nodeIds.length)).toEqual([11, 10, 1])
+  expect(getMarketplacesByNodeId.mock.calls.map(([nodeIds]) => nodeIds.length)).toEqual([10, 1])
+  expect(getMarketplace).not.toHaveBeenCalled()
+})
+
 it('falls back to per-repository REST when a small GraphQL batch fails', async () => {
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), 'MDEwOlJlcG9zaXRvcnkx')
