@@ -208,6 +208,63 @@ describe('orchestration', () => {
     db.close()
   })
 
+  it('sends a dry-run notification without progress when progress inspection fails', async () => {
+    const db = await dbFixture()
+    const notify = notifier()
+    const log = vi.fn()
+    const originalPrepare = db.prepare.bind(db)
+    vi.spyOn(db, 'prepare').mockImplementation((sql) => {
+      if (sql.includes('SELECT COUNT(*) AS total, MAX(updatedAt) AS latestUpdatedAt FROM repositories')) {
+        throw new Error('progress snapshot unavailable')
+      }
+      return originalPrepare(sql)
+    })
+
+    await expect(
+      executeCrawl(db, reader, 'dry-progress-failure', { now, ranges: range, dryRun: true, notifier: notify, log }),
+    ).resolves.toMatchObject({ status: 'draft' })
+
+    expect(notify.notifyDryRun).toHaveBeenCalledOnce()
+    const dryRunSummary = (notify.notifyDryRun.mock.calls as unknown as [[Record<string, unknown>]])[0][0]
+    expect(dryRunSummary).not.toHaveProperty('progress')
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ phase: 'notify', category: 'progress_snapshot_failed', runId: 'dry-progress-failure' }),
+    )
+    db.close()
+  })
+
+  it('sends a failure notification without progress when progress inspection fails', async () => {
+    const db = await dbFixture()
+    const notify = notifier()
+    const log = vi.fn()
+    const originalPrepare = db.prepare.bind(db)
+    vi.spyOn(db, 'prepare').mockImplementation((sql) => {
+      if (sql.includes('SELECT COUNT(*) AS total, MAX(updatedAt) AS latestUpdatedAt FROM repositories')) {
+        throw new Error('progress snapshot unavailable')
+      }
+      return originalPrepare(sql)
+    })
+    const failing: GitHubReader = {
+      ...reader,
+      searchCode: async () => {
+        throw new GitHubTemporaryError('read-secret', 503)
+      },
+    }
+
+    await expect(
+      executeCrawl(db, failing, 'failed-progress-failure', { now, ranges: range, dryRun: true, notifier: notify, log }),
+    ).rejects.toThrow()
+
+    expect(notify.notifyFailure).toHaveBeenCalledOnce()
+    const failureSummary = (notify.notifyFailure.mock.calls as unknown as [[Record<string, unknown>]])[0][0]
+    expect(failureSummary).not.toHaveProperty('progress')
+    expect(failureSummary).toMatchObject({ reason: 'no_successful_ranges' })
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ phase: 'notify', category: 'progress_snapshot_failed', runId: 'failed-progress-failure' }),
+    )
+    db.close()
+  })
+
   it('records start and failure notification errors as categories without masking the crawl failure', async () => {
     const db = await dbFixture()
     const notify = notifier()
