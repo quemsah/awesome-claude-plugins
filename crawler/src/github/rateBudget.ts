@@ -76,8 +76,16 @@ export class RateBudget {
   private graphQLQuotaDeadline(bucket: RateResource, now: number): number {
     if (bucket !== 'graphql' || this.graphqlQuota === null) return now
     const reserve = Math.ceil(this.graphqlQuota.limit * 0.1)
-    if (this.graphqlQuota.remaining - this.graphqlQuota.lastCost >= reserve) return now
-    return this.graphqlQuota.resetAt + 1_000
+    const usable = this.graphqlQuota.remaining - reserve
+    if (usable < this.graphqlQuota.lastCost) return this.graphqlQuota.resetAt + 1_000
+
+    const remainingWindowMs = this.graphqlQuota.resetAt - now
+    const lastSent = this.lastSent.graphql
+    if (remainingWindowMs <= 0 || lastSent === null) return now
+
+    const affordableRequests = Math.max(1, Math.floor(usable / Math.max(1, this.graphqlQuota.lastCost)))
+    const smoothSpacingMs = Math.ceil(remainingWindowMs / affordableRequests)
+    return Math.max(now, lastSent + smoothSpacingMs)
   }
 
   acquire(bucket: RateResource, signal?: AbortSignal): Promise<void> {
