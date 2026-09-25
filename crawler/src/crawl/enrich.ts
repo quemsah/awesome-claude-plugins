@@ -196,6 +196,55 @@ async function loadRepository(
   }
 }
 
+/** Applies common bookkeeping after marketplace data is persisted. */
+function recordPersistedTarget(target: EnrichmentTarget, counts: EnrichmentCounts, removedIds: Set<number>): void {
+  if (target.removedId !== null) removedIds.add(target.removedId)
+  counts.conclusive++
+  if (target.ready) counts.updated++
+  else counts.newReady++
+}
+
+/** Reuses cached marketplace data after a successful conditional 304 response. */
+function reuseCachedMarketplace(
+  db: Database.Database,
+  runId: string,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  cachedEtag: string | undefined,
+  retryCount: number,
+  counts: EnrichmentCounts,
+  removedIds: Set<number>,
+  now: () => string,
+): void {
+  if (row.plugins_count === null || cachedEtag === undefined) {
+    recordProblem(db, runId, counts, row, 'marketplace_cache_miss', loaded.ready, true, now, retryCount)
+    return
+  }
+  const target = persistEnrichment(db, runId, row, loaded, row.plugins_count, cachedEtag, now())
+  recordPersistedTarget(target, counts, removedIds)
+}
+
+/** Removes a repository after a definitive marketplace 404. */
+function removeMissingMarketplace(
+  db: Database.Database,
+  runId: string,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  counts: EnrichmentCounts,
+  removedIds: Set<number>,
+): void {
+  runWhileActive(db, runId, () => {
+    if (!loaded.moved) {
+      deleteById(db, row.id)
+      return
+    }
+    const removedId = deleteCanonicalRows(db, row.id, loaded.canonical.htmlUrl)
+    if (removedId !== null) removedIds.add(removedId)
+  })
+  counts.deleted404++
+  counts.conclusive++
+}
+
 /** Revalidates and persists marketplace data for an already loaded repository. */
 async function enrichMarketplace(
   db: Database.Database,
@@ -208,46 +257,23 @@ async function enrichMarketplace(
   now: () => string,
 ): Promise<void> {
   const cachedEtag = !loaded.moved && row.plugins_count !== null ? (row.marketplace_etag ?? undefined) : undefined
-  const marketplace =
-    cachedEtag === undefined
-      ? await reader.getMarketplace(loaded.owner, loaded.repo)
-      : await reader.getMarketplace(loaded.owner, loaded.repo, cachedEtag)
+  const marketplace = await reader.getMarketplace(loaded.owner, loaded.repo, cachedEtag)
 
-  if (marketplace.kind === 'not-modified') {
-    if (row.plugins_count === null || cachedEtag === undefined) {
-      recordProblem(db, runId, counts, row, 'marketplace_cache_miss', loaded.ready, true, now, marketplace.retryCount)
+  switch (marketplace.kind) {
+    case 'not-modified':
+      reuseCachedMarketplace(db, runId, row, loaded, cachedEtag, marketplace.retryCount, counts, removedIds, now)
       return
+    case 'not-found':
+      removeMissingMarketplace(db, runId, row, loaded, counts, removedIds)
+      return
+    case 'temporary-error':
+      recordProblem(db, runId, counts, row, temporaryCategory('marketplace', marketplace), loaded.ready, false, now, marketplace.retryCount)
+      return
+    case 'found': {
+      const target = persistEnrichment(db, runId, row, loaded, marketplace.data.plugins.length, marketplace.data.etag ?? null, now())
+      recordPersistedTarget(target, counts, removedIds)
     }
-    const target = persistEnrichment(db, runId, row, loaded, row.plugins_count, cachedEtag, now())
-    if (target.removedId !== null) removedIds.add(target.removedId)
-    counts.conclusive++
-    if (target.ready) counts.updated++
-    else counts.newReady++
-    return
   }
-
-  if (marketplace.kind === 'not-found') {
-    runWhileActive(db, runId, () => {
-      if (loaded.moved) {
-        const removedId = deleteCanonicalRows(db, row.id, loaded.canonical.htmlUrl)
-        if (removedId !== null) removedIds.add(removedId)
-      } else deleteById(db, row.id)
-    })
-    counts.deleted404++
-    counts.conclusive++
-    return
-  }
-
-  if (marketplace.kind === 'temporary-error') {
-    recordProblem(db, runId, counts, row, temporaryCategory('marketplace', marketplace), loaded.ready, false, now, marketplace.retryCount)
-    return
-  }
-
-  const target = persistEnrichment(db, runId, row, loaded, marketplace.data.plugins.length, marketplace.data.etag ?? null, now())
-  if (target.removedId !== null) removedIds.add(target.removedId)
-  counts.conclusive++
-  if (target.ready) counts.updated++
-  else counts.newReady++
 }
 
 /** Enriches one repository, reusing a cached marketplace count only after successful ETag revalidation. */
