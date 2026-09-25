@@ -225,4 +225,21 @@ describe('RateBudget', () => {
       { bucket: 'core', remaining: 4998 },
     ])
   })
+  it('paces GraphQL requests by observed point cost across the remaining reset window', async () => {
+    const clock = virtualClock()
+    const budget = new RateBudget(clock)
+    await budget.acquire('graphql')
+    budget.observeGraphQL({
+      cost: 10,
+      remaining: 1_000,
+      resetAt: new Date(100_000).toISOString(),
+      limit: 5_000,
+      used: 4_000,
+    })
+
+    await budget.acquire('graphql')
+
+    expect(clock.time).toBe(2_000)
+  })
+
 })
