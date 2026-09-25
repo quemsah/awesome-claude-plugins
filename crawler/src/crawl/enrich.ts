@@ -1,5 +1,6 @@
+import { parseMarketplaceManifest } from '@awesome-claude-plugins/marketplace-contract'
 import type Database from 'better-sqlite3'
-import type { GitHubGraphQLRepo, GitHubReader, GitHubRepo, RepoResult } from '../github/client.js'
+import type { GitHubGraphQLMarketplace, GitHubGraphQLRepo, GitHubReader, GitHubRepo, RepoResult } from '../github/client.js'
 import { isValidGitHubPathSegment, parseGitHubOwnerUrl } from '../github/identifiers.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import {
@@ -248,6 +249,33 @@ function acceptGraphQLNotModified(
   return true
 }
 
+function parseGraphQLMarketplace(
+  row: RepositoryRow,
+  currentMarketplaceOid: string,
+  blob: GitHubGraphQLMarketplace | null,
+): MarketplaceState | undefined {
+  if (
+    blob === null ||
+    blob.oid !== currentMarketplaceOid ||
+    blob.isBinary ||
+    blob.isTruncated ||
+    blob.text === null
+  ) {
+    return undefined
+  }
+  try {
+    const parsed: unknown = JSON.parse(blob.text)
+    return {
+      pluginsCount: parseMarketplaceManifest(parsed).plugins.length,
+      marketplaceOid: currentMarketplaceOid,
+      marketplaceEtag: row.marketplace_etag,
+      parserVersion: MARKETPLACE_PARSER_VERSION,
+    }
+  } catch {
+    return undefined
+  }
+}
+
 async function loadGraphQLMarketplace(
   db: Database.Database,
   reader: GitHubReader,
@@ -258,6 +286,7 @@ async function loadGraphQLMarketplace(
   counts: EnrichmentCounts,
   removedIds: Set<number>,
   now: () => string,
+  prefetched?: GitHubGraphQLMarketplace | null,
 ): Promise<MarketplaceState | null> {
   const parserVersionChanged = row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION
   if (row.marketplace_oid === currentMarketplaceOid && row.plugins_count !== null && !parserVersionChanged) {
@@ -267,6 +296,11 @@ async function loadGraphQLMarketplace(
       marketplaceEtag: row.marketplace_etag,
       parserVersion: MARKETPLACE_PARSER_VERSION,
     }
+  }
+
+  if (prefetched !== undefined) {
+    const parsed = parseGraphQLMarketplace(row, currentMarketplaceOid, prefetched)
+    if (parsed) return parsed
   }
 
   const changedOid = row.marketplace_oid !== currentMarketplaceOid
@@ -478,6 +512,7 @@ async function enrichGraphQLOne(
   removedIds: Set<number>,
   now: () => string,
   onProgress?: () => void,
+  marketplaceBlob?: GitHubGraphQLMarketplace | null,
 ): Promise<void> {
   if (removedIds.has(row.id)) return
   if (data === null) {
@@ -497,7 +532,18 @@ async function enrichGraphQLOne(
   }
   onProgress?.()
   const marketplace = loaded.marketplaceOid
-    ? await loadGraphQLMarketplace(db, reader, runId, row, loaded, loaded.marketplaceOid, counts, removedIds, now)
+    ? await loadGraphQLMarketplace(
+        db,
+        reader,
+        runId,
+        row,
+        loaded,
+        loaded.marketplaceOid,
+        counts,
+        removedIds,
+        now,
+        marketplaceBlob,
+      )
     : await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now)
   if (!marketplace) return
   const target = persistEnrichment(
@@ -515,6 +561,41 @@ async function enrichGraphQLOne(
 }
 
 type GraphQLBatchState = { size: number; stableBatches: number }
+type GraphQLMarketplaceBatchState = { size: number; stableBatches: number }
+
+const MARKETPLACE_BATCH_INITIAL = 20
+const MARKETPLACE_BATCH_MAX = 50
+const MARKETPLACE_BATCH_MAX_BYTES = 750_000
+const MARKETPLACE_UNKNOWN_BYTES = 32_768
+
+function needsMarketplaceContent(row: RepositoryRow, data: GitHubGraphQLRepo): boolean {
+  if (data.marketplace_oid === null) return false
+  return (
+    row.marketplace_oid !== data.marketplace_oid ||
+    row.plugins_count === null ||
+    row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION
+  )
+}
+
+function canFetchMarketplaceByGraphQL(data: GitHubGraphQLRepo): boolean {
+  return data.marketplace_is_binary !== true && (data.marketplace_byte_size ?? MARKETPLACE_UNKNOWN_BYTES) <= MARKETPLACE_BATCH_MAX_BYTES
+}
+
+function marketplaceEstimatedBytes(data: GitHubGraphQLRepo): number {
+  return data.marketplace_byte_size ?? MARKETPLACE_UNKNOWN_BYTES
+}
+
+function tuneMarketplaceBatch(state: GraphQLMarketplaceBatchState, rowCount: number, latency: number, cost: number): void {
+  if (latency >= 8_000 || cost > 50) {
+    state.stableBatches = 0
+    state.size = rowCount > 20 ? 20 : 10
+    return
+  }
+  state.stableBatches++
+  if (state.stableBatches < 5) return
+  state.stableBatches = 0
+  state.size = state.size < 25 ? 25 : state.size < 40 ? 40 : MARKETPLACE_BATCH_MAX
+}
 
 async function enrichLegacyBatch(
   db: Database.Database,
@@ -563,6 +644,79 @@ function tuneGraphQLBatch(state: GraphQLBatchState, rowCount: number, latency: n
   if (state.stableBatches >= 5) state.size = 50
 }
 
+async function enrichGraphQLMarketplaceCandidates(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  candidates: Array<{ row: RepositoryRow; data: GitHubGraphQLRepo }>,
+  counts: EnrichmentCounts,
+  removedIds: Set<number>,
+  state: GraphQLMarketplaceBatchState,
+  now: () => string,
+  onProgress?: () => void,
+): Promise<void> {
+  const getBatch = reader.getMarketplacesByNodeId
+  if (!getBatch) {
+    for (const { row, data } of candidates) {
+      await enrichGraphQLOne(db, reader, runId, row, data, counts, removedIds, now, onProgress)
+    }
+    return
+  }
+
+  let offset = 0
+  while (offset < candidates.length) {
+    const batch: Array<{ row: RepositoryRow; data: GitHubGraphQLRepo }> = []
+    let estimatedBytes = 0
+    while (offset < candidates.length && batch.length < state.size) {
+      const candidate = candidates[offset]
+      if (!candidate) break
+      const bytes = marketplaceEstimatedBytes(candidate.data)
+      if (batch.length > 0 && estimatedBytes + bytes > MARKETPLACE_BATCH_MAX_BYTES) break
+      batch.push(candidate)
+      estimatedBytes += bytes
+      offset++
+    }
+    if (batch.length === 0) {
+      const candidate = candidates[offset]
+      if (!candidate) break
+      batch.push(candidate)
+      offset++
+    }
+
+    onProgress?.()
+    const startedAt = Date.now()
+    const result = await getBatch.call(
+      reader,
+      batch.map(({ row }) => row.github_node_id as string),
+    )
+    const latency = Date.now() - startedAt
+    if (result.kind === 'temporary-error') {
+      state.stableBatches = 0
+      state.size = Math.max(10, Math.min(20, state.size))
+      for (const { row, data } of batch) {
+        await enrichGraphQLOne(db, reader, runId, row, data, counts, removedIds, now, onProgress)
+      }
+      continue
+    }
+
+    tuneMarketplaceBatch(state, batch.length, latency, result.rateLimit.cost)
+    for (const [index, { row, data }] of batch.entries()) {
+      await enrichGraphQLOne(
+        db,
+        reader,
+        runId,
+        row,
+        data,
+        counts,
+        removedIds,
+        now,
+        onProgress,
+        result.data[index] ?? null,
+      )
+    }
+  }
+}
+
 async function enrichGraphQLBatch(
   db: Database.Database,
   reader: GitHubReader,
@@ -571,6 +725,7 @@ async function enrichGraphQLBatch(
   counts: EnrichmentCounts,
   removedIds: Set<number>,
   state: GraphQLBatchState,
+  marketplaceState: GraphQLMarketplaceBatchState,
   now: () => string,
   onProgress?: () => void,
 ): Promise<void> {
@@ -588,9 +743,31 @@ async function enrichGraphQLBatch(
   }
 
   tuneGraphQLBatch(state, rows.length, latency, result.rateLimit.cost)
+  const marketplaceCandidates: Array<{ row: RepositoryRow; data: GitHubGraphQLRepo }> = []
   for (const [index, row] of rows.entries()) {
-    await enrichGraphQLOne(db, reader, runId, row, result.data[index] ?? null, counts, removedIds, now, onProgress)
+    const data = result.data[index] ?? null
+    if (
+      data !== null &&
+      reader.getMarketplacesByNodeId &&
+      needsMarketplaceContent(row, data) &&
+      canFetchMarketplaceByGraphQL(data)
+    ) {
+      marketplaceCandidates.push({ row, data })
+      continue
+    }
+    await enrichGraphQLOne(db, reader, runId, row, data, counts, removedIds, now, onProgress)
   }
+  await enrichGraphQLMarketplaceCandidates(
+    db,
+    reader,
+    runId,
+    marketplaceCandidates,
+    counts,
+    removedIds,
+    marketplaceState,
+    now,
+    onProgress,
+  )
 }
 
 export async function enrichRepositories(
@@ -613,6 +790,7 @@ export async function enrichRepositories(
   let lastId = 0
   const removedIds = new Set<number>()
   const batchState = { size: 25, stableBatches: 0 }
+  const marketplaceBatchState = { size: MARKETPLACE_BATCH_INITIAL, stableBatches: 0 }
   while (true) {
     const rows = listForEnrichment(db, lastId, 50)
     if (rows.length === 0) break
@@ -627,7 +805,7 @@ export async function enrichRepositories(
     for (let offset = 0; offset < graphQLRows.length; ) {
       const batch = graphQLRows.slice(offset, offset + batchState.size)
       offset += batch.length
-      await enrichGraphQLBatch(db, reader, runId, batch, counts, removedIds, batchState, now, onProgress)
+      await enrichGraphQLBatch(db, reader, runId, batch, counts, removedIds, batchState, marketplaceBatchState, now, onProgress)
     }
     onProgress?.()
   }
