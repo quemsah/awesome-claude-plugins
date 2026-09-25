@@ -16,6 +16,7 @@ import { ShutdownError } from './shutdown.js'
 import { openDatabase } from './storage/db.js'
 import { inspect } from './storage/inspect.js'
 import { optimizeDatabase, runMaintenance } from './storage/maintenance.js'
+import { inspectProgress } from './storage/progress.js'
 import { listPublishable } from './storage/repositories.js'
 import {
   beginRun,
@@ -64,7 +65,7 @@ function notifierFor(config: RuntimeConfig, dependencies: CliDependencies): Noti
   )
 }
 
-type CliCommand = 'inspect' | 'crawl' | 'publish' | 'recover-crawl' | 'export' | 'maintenance'
+type CliCommand = 'inspect' | 'inspect-progress' | 'crawl' | 'publish' | 'recover-crawl' | 'export' | 'maintenance'
 type ParsedOptions = {
   dryRun: boolean
   publishId?: string
@@ -108,15 +109,15 @@ function parseOptions(command: CliCommand, args: string[]): ParsedOptions {
     const exportId = parseRunId(args, command)
     return { ...defaults, exportId, exportDirectory: args[3] }
   }
-  if ((command === 'inspect' || command === 'maintenance') && args.length) throw new Error(`Unknown ${command} option`)
+  if ((command === 'inspect' || command === 'inspect-progress' || command === 'maintenance') && args.length) throw new Error(`Unknown ${command} option`)
   return defaults
 }
 
 function parseCommand(value: string | undefined): CliCommand {
-  if (value && ['inspect', 'crawl', 'publish', 'recover-crawl', 'export', 'maintenance'].includes(value)) {
+  if (value && ['inspect', 'inspect-progress', 'crawl', 'publish', 'recover-crawl', 'export', 'maintenance'].includes(value)) {
     return value as CliCommand
   }
-  throw new Error('Unknown command. Available: inspect, crawl, publish, recover-crawl, export, maintenance')
+  throw new Error('Unknown command. Available: inspect, inspect-progress, crawl, publish, recover-crawl, export, maintenance')
 }
 
 async function notifyBlockedCrawl(
@@ -313,6 +314,11 @@ async function runLocalCommand(
 ): Promise<boolean> {
   if (command === 'inspect') {
     output(JSON.stringify(inspect(db)))
+    return true
+  }
+  if (command === 'inspect-progress') {
+    db.pragma('query_only = ON')
+    output(JSON.stringify(inspectProgress(db)))
     return true
   }
   if (command === 'maintenance') {
