@@ -162,6 +162,54 @@ describe('GitHubClient', () => {
     expect(JSON.parse(String(test.requests[0].init?.body))).toMatchObject({ variables: { ids: [nodeId] } })
   })
 
+  it('loads marketplace blob text in a separate GraphQL batch and preserves per-node alignment', async () => {
+    const firstId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
+    const secondId = 'MDEwOlJlcG9zaXRvcnkxMjk2Mjcw'
+    const text = JSON.stringify({ plugins: [] })
+    const test = harness([
+      Response.json({
+        data: {
+          nodes: [
+            {
+              id: firstId,
+              object: {
+                oid: 'b'.repeat(40),
+                text,
+                isTruncated: false,
+                isBinary: false,
+                byteSize: text.length,
+              },
+            },
+            { id: secondId, object: null },
+          ],
+          rateLimit: { cost: 3, remaining: 4_497, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 503 },
+        },
+      }),
+    ])
+
+    const result = await test.client.getMarketplaceBlobsByNodeId([firstId, secondId])
+
+    expect(result).toEqual({
+      kind: 'found',
+      data: [
+        {
+          repository_node_id: firstId,
+          oid: 'b'.repeat(40),
+          text,
+          byte_size: text.length,
+          is_binary: false,
+          is_truncated: false,
+        },
+        null,
+      ],
+      rateLimit: { cost: 3, remaining: 4_497, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 503 },
+    })
+    const body = JSON.parse(String(test.requests[0].init?.body))
+    expect(body).toMatchObject({ variables: { ids: [firstId, secondId] } })
+    expect(body.query).toContain('query MarketplaceBlobs')
+    expect(body.query).toContain('oid text isTruncated isBinary byteSize')
+  })
+
   it('accepts per-node NOT_FOUND errors when the matching GraphQL node is null', async () => {
     const firstId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
     const missingId = 'MDEwOlJlcG9zaXRvcnkxMjk2Mjcw'
