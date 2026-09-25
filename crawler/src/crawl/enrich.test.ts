@@ -291,10 +291,11 @@ it('keeps the old plugin count and OID when changed content unexpectedly returns
   expect(listRunErrors(db, 'crawl-1').map(({ error_type }) => error_type)).toEqual(['marketplace_not_modified_after_oid_change'])
 })
 
-it('batches changed marketplace content over GraphQL and treats the content OID as authoritative', async () => {
+it('batches changed marketplace content across legacy node-id migration and treats the content OID as authoritative', async () => {
   const db = database()
-  const nodeId = 'MDEwOlJlcG9zaXRvcnkx'
-  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), nodeId)
+  const requestedNodeId = 'MDEwOlJlcG9zaXRvcnkx'
+  const returnedNodeId = 'R_kgDO_new-format'
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), requestedNodeId)
   ready(db, id)
   const metadataOid = 'b'.repeat(40)
   const contentOid = 'c'.repeat(40)
@@ -302,14 +303,14 @@ it('batches changed marketplace content over GraphQL and treats the content OID 
   const getMarketplace = vi.fn(async () => ({ kind: 'temporary-error' as const, status: 500, reason: 'REST must not run', retryCount: 0 }))
   const getMarketplaceBlobsByNodeId = vi.fn(async () => ({
     kind: 'found' as const,
-    data: [graphQLMarketplaceBlob(nodeId, contentOid)],
+    data: [graphQLMarketplaceBlob(returnedNodeId, contentOid)],
     rateLimit: { cost: 2, remaining: 4_998, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 2 },
   }))
   const client = {
     ...reader(undefined, getMarketplace),
     getRepositoriesByNodeId: async () => ({
       kind: 'found' as const,
-      data: [{ ...githubRepo('team', 'repo'), node_id: nodeId, marketplace_oid: metadataOid }],
+      data: [{ ...githubRepo('team', 'repo'), node_id: returnedNodeId, marketplace_oid: metadataOid }],
       rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
     }),
     getMarketplaceBlobsByNodeId,
@@ -318,7 +319,7 @@ it('batches changed marketplace content over GraphQL and treats the content OID 
   const counts = await enrichRepositories(db, client, 'crawl-1')
 
   expect(counts).toMatchObject({ updated: 1, conclusive: 1, warnings: 0 })
-  expect(getMarketplaceBlobsByNodeId).toHaveBeenCalledWith([nodeId])
+  expect(getMarketplaceBlobsByNodeId).toHaveBeenCalledWith([requestedNodeId])
   expect(getMarketplace).not.toHaveBeenCalled()
   expect(db.prepare('SELECT plugins_count, marketplace_oid FROM repositories WHERE id = ?').get(id)).toEqual({
     plugins_count: validMarketplaceFixture.pluginsCount,
