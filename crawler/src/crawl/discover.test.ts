@@ -166,6 +166,88 @@ it('splits a saturated size range until each child is below the search cap', asy
   expect(result).toMatchObject({ newUrls: 2, successfulRanges: 2, warningCount: 0 })
 })
 
+it('reuses persisted terminal size ranges instead of probing the saturated parent again', async () => {
+  const db = database()
+  const firstCalls: string[] = []
+  await discover(
+    db,
+    reader(async (query) => {
+      firstCalls.push(query)
+      if (query.endsWith('0..3')) return page([], 1_000)
+      if (query.endsWith('0..1')) return page([item('https://github.com/owner/small')])
+      if (query.endsWith('2..3')) return page([item('https://github.com/owner/large')])
+      throw new Error(`Unexpected range: ${query}`)
+    }),
+    'run-1',
+    [[0, 3]],
+  )
+
+  expect(firstCalls).toEqual([
+    'filename:marketplace.json path:.claude-plugin size:0..3',
+    'filename:marketplace.json path:.claude-plugin size:0..1',
+    'filename:marketplace.json path:.claude-plugin size:2..3',
+  ])
+
+  const secondCalls: string[] = []
+  await discover(
+    db,
+    reader(async (query) => {
+      secondCalls.push(query)
+      if (query.endsWith('0..1')) return page([item('https://github.com/owner/small')])
+      if (query.endsWith('2..3')) return page([item('https://github.com/owner/large')])
+      throw new Error(`Cached discovery unexpectedly probed: ${query}`)
+    }),
+    'run-1',
+    [[0, 3]],
+  )
+
+  expect(secondCalls).toEqual([
+    'filename:marketplace.json path:.claude-plugin size:0..1',
+    'filename:marketplace.json path:.claude-plugin size:2..3',
+  ])
+  expect(
+    db.prepare('SELECT root_start, root_end, range_start, range_end FROM discovery_ranges ORDER BY range_start').all(),
+  ).toEqual([
+    { root_start: 0, root_end: 3, range_start: 0, range_end: 1 },
+    { root_start: 0, root_end: 3, range_start: 2, range_end: 3 },
+  ])
+})
+
+it('keeps the previous cached partition when a refined child range fails temporarily', async () => {
+  const db = database()
+  await discover(
+    db,
+    reader(async (query) => {
+      if (query.endsWith('0..3')) return page([], 1_000)
+      if (query.endsWith('0..1')) return page([item('https://github.com/owner/small')])
+      if (query.endsWith('2..3')) return page([item('https://github.com/owner/large')])
+      throw new Error(`Unexpected range: ${query}`)
+    }),
+    'run-1',
+    [[0, 3]],
+  )
+
+  await discover(
+    db,
+    reader(async (query) => {
+      if (query.endsWith('0..1')) return page([], 1_000)
+      if (query.endsWith('0..0')) return page([item('https://github.com/owner/tiny')])
+      if (query.endsWith('1..1')) throw new GitHubTemporaryError('Retries exhausted', 503, 3)
+      if (query.endsWith('2..3')) return page([item('https://github.com/owner/large')])
+      throw new Error(`Unexpected range: ${query}`)
+    }),
+    'run-1',
+    [[0, 3]],
+  )
+
+  expect(
+    db.prepare('SELECT root_start, root_end, range_start, range_end FROM discovery_ranges ORDER BY range_start').all(),
+  ).toEqual([
+    { root_start: 0, root_end: 3, range_start: 0, range_end: 1 },
+    { root_start: 0, root_end: 3, range_start: 2, range_end: 3 },
+  ])
+})
+
 it('counts a URL only once when a parent page is replayed by split child ranges', async () => {
   const db = database()
   const duplicate = 'https://github.com/owner/duplicate'
