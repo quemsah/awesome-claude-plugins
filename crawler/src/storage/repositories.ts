@@ -66,9 +66,8 @@ export function upsertDiscovery(
     | undefined
   if (existing) {
     if (githubNodeId) {
-      db.prepare('UPDATE repositories SET github_node_id = ?, updatedAt = ? WHERE id = ? AND github_node_id IS NOT ?').run(
+      db.prepare('UPDATE repositories SET github_node_id = ? WHERE id = ? AND github_node_id IS NOT ?').run(
         githubNodeId,
-        at,
         existing.id,
         githubNodeId,
       )

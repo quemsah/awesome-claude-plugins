@@ -7,6 +7,11 @@ export type CrawlProgressInspection = {
   run: {
     runId: string
     status: string
+    phase: string
+    phaseStartedAt: string | null
+    phaseTotal: number | null
+    phaseProcessed: number
+    phasePercent: number | null
     startedAt: string
     heartbeatAt: string
     completedAt: string | null
@@ -87,6 +92,10 @@ function inspectProgressSnapshot(db: Database.Database): CrawlProgressInspection
       .prepare(`
       SELECT run_id AS runId,
              status,
+             phase,
+             phase_started_at AS phaseStartedAt,
+             phase_total AS phaseTotal,
+             phase_processed AS phaseProcessed,
              started_at AS startedAt,
              heartbeat_at AS heartbeatAt,
              completed_at AS completedAt,
@@ -160,29 +169,20 @@ function inspectProgressSnapshot(db: Database.Database): CrawlProgressInspection
     latestAt: string | null
   }
 
-  const attemptedErrors = db
-    .prepare(`
-      SELECT COUNT(DISTINCT run_errors.repository_id) AS count
-      FROM run_errors
-      LEFT JOIN repositories ON repositories.id = run_errors.repository_id
-      WHERE run_errors.run_id = @runId
-        AND run_errors.phase = 'enrich'
-        AND run_errors.repository_id IS NOT NULL
-        AND NOT (
-          repositories.updatedAt >= @startedAt
-          AND repositories.html_url IS NOT NULL
-          AND repositories.owner IS NOT NULL
-          AND repositories.owner_url IS NOT NULL
-          AND repositories.repo_name IS NOT NULL
-          AND repositories.stargazers_count IS NOT NULL
-          AND repositories.forks_count IS NOT NULL
-          AND repositories.subscribers_count IS NOT NULL
-        )
-    `)
-    .get({ runId: run.runId, startedAt: run.startedAt }) as { count: number }
-
+  const phasePercent =
+    run.phase === 'enrichment' && run.phaseTotal !== null
+      ? run.phaseTotal === 0
+        ? 100
+        : Math.round((run.phaseProcessed / run.phaseTotal) * 10_000) / 100
+      : null
   const updatedThisRun = repositories.enrichedSinceRunStart
-  const pendingThisRun = Math.max(0, repositoryState.total - updatedThisRun - attemptedErrors.count)
+  const updatedPercent =
+    run.phase === 'enrichment' && run.phaseTotal !== null
+      ? run.phaseTotal === 0
+        ? 100
+        : Math.min(100, Math.round((updatedThisRun / run.phaseTotal) * 10_000) / 100)
+      : null
+  const pendingThisRun = run.phase === 'enrichment' && run.phaseTotal !== null ? Math.max(0, run.phaseTotal - run.phaseProcessed) : null
   const knownInvalidSkipped = (
     db
       .prepare("SELECT COUNT(*) AS count FROM run_errors WHERE run_id = ? AND error_type = 'marketplace_known_invalid_content'")
@@ -190,13 +190,13 @@ function inspectProgressSnapshot(db: Database.Database): CrawlProgressInspection
   ).count
 
   return {
-    run,
+    run: { ...run, phasePercent },
     repositories: {
       ...repositoryState,
       updatedThisRun,
       pendingThisRun,
       ...repositories,
-      updatedPercent: repositoryState.total === 0 ? 100 : Math.round((updatedThisRun / repositoryState.total) * 10_000) / 100,
+      updatedPercent,
     },
     publication,
     errors,

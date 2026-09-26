@@ -30,7 +30,7 @@ it('initializes all tables and remains idempotent on reopen', () => {
     { name: 'settings' },
     { name: 'stats' },
   ])
-  expect(db.pragma('user_version', { simple: true })).toBe(9)
+  expect(db.pragma('user_version', { simple: true })).toBe(10)
   const columns = db.prepare('PRAGMA table_info(repositories)').all() as Array<{ name: string }>
   expect(columns.map((row) => row.name)).toEqual(
     expect.arrayContaining([
@@ -43,6 +43,8 @@ it('initializes all tables and remains idempotent on reopen', () => {
       'marketplace_failed_parser_version',
     ]),
   )
+  const runColumns = db.prepare('PRAGMA table_info(runs)').all() as Array<{ name: string }>
+  expect(runColumns.map((row) => row.name)).toEqual(expect.arrayContaining(['phase', 'phase_started_at', 'phase_total', 'phase_processed']))
   db.prepare("INSERT INTO repositories (id, html_url, createdAt, updatedAt) VALUES (400, NULL, '2024-01-01', '2024-01-02')").run()
   db.close()
 
@@ -76,7 +78,7 @@ it('migrates populated v1 runs, imported IDs and historical stats atomically and
     `)
     initializeSchema(db)
     initializeSchema(db)
-    expect(db.pragma('user_version', { simple: true })).toBe(9)
+    expect(db.pragma('user_version', { simple: true })).toBe(10)
     expect(db.prepare('SELECT id, createdAt FROM repositories').all()).toEqual([{ id: 53000, createdAt: 'before' }])
     expect(db.prepare('SELECT id, date, size FROM stats').all()).toEqual([{ id: 264, date: '2024-01-01', size: 42 }])
     expect(db.prepare('SELECT run_id, warning_count, draft_date, draft_id, draft_size, draft_hash FROM runs').all()).toEqual([
@@ -109,7 +111,7 @@ it('upgrades a populated v2 database without changing drafts or pending commit S
   `)
   old.close()
   const migrated = openDatabase(path)
-  expect(migrated.pragma('user_version', { simple: true })).toBe(9)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(10)
   expect(migrated.prepare("SELECT draft_hash, pending_commit_sha FROM runs WHERE run_id = 'pending'").get()).toEqual({
     draft_hash: 'a'.repeat(64),
     pending_commit_sha: 'b'.repeat(40),
@@ -137,7 +139,7 @@ it('upgrades main schema v5 while preserving its marketplace ETag', () => {
   db.close()
 
   const migrated = openDatabase(path)
-  expect(migrated.pragma('user_version', { simple: true })).toBe(9)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(10)
   expect(migrated.prepare('SELECT marketplace_etag FROM repositories').get()).toEqual({ marketplace_etag: 'W/"marketplace"' })
   expect((migrated.pragma('table_info(repositories)') as Array<{ name: string }>).map((column) => column.name)).toEqual(
     expect.arrayContaining([
@@ -215,7 +217,7 @@ it('deduplicates case-variant repository URLs without mixing identity or revivin
   db.close()
 
   const migrated = openDatabase(path)
-  expect(migrated.pragma('user_version', { simple: true })).toBe(9)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(10)
   expect(
     migrated
       .prepare(
@@ -243,6 +245,30 @@ it('deduplicates case-variant repository URLs without mixing identity or revivin
       .prepare("INSERT INTO repositories (html_url, createdAt, updatedAt) VALUES ('https://github.com/TEAM/REPO', 'later', 'later')")
       .run(),
   ).toThrow(/UNIQUE/)
+  migrated.close()
+})
+
+it('upgrades either v9 lineage to the combined v10 schema', () => {
+  const db = database()
+  const path = db.name
+  db.close()
+
+  const legacy = new Database(path)
+  legacy.exec(`
+    ALTER TABLE runs DROP COLUMN phase_processed;
+    ALTER TABLE runs DROP COLUMN phase_total;
+    ALTER TABLE runs DROP COLUMN phase_started_at;
+    ALTER TABLE runs DROP COLUMN phase;
+    PRAGMA user_version = 9;
+  `)
+  legacy.close()
+
+  const migrated = openDatabase(path)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(10)
+  const repositoryColumns = (migrated.pragma('table_info(repositories)') as Array<{ name: string }>).map((column) => column.name)
+  expect(repositoryColumns).toEqual(expect.arrayContaining(['marketplace_failed_oid', 'marketplace_failed_parser_version']))
+  const runColumns = (migrated.pragma('table_info(runs)') as Array<{ name: string }>).map((column) => column.name)
+  expect(runColumns).toEqual(expect.arrayContaining(['phase', 'phase_started_at', 'phase_total', 'phase_processed']))
   migrated.close()
 })
 

@@ -287,6 +287,10 @@ async function resumePendingCommit(
   return { snapshot }
 }
 
+function datasetCommitMessage(draftDate: string): string {
+  return `chore(data): refresh dataset ${draftDate.slice(8, 10)}.${draftDate.slice(5, 7)}.${draftDate.slice(0, 4)}`
+}
+
 async function createAndPublishSnapshot(
   db: Database.Database,
   git: GitHubGit,
@@ -301,7 +305,7 @@ async function createAndPublishSnapshot(
     try {
       const head = await git.getBranchHead()
       const tree = await git.createTree(head.treeSha, snapshot.files)
-      commit = await git.createCommit(tree, head.sha, `Update catalog snapshot for run ${runId}`)
+      commit = await git.createCommit(tree, head.sha, datasetCommitMessage(snapshot.draft.date))
     } catch (error) {
       if (error instanceof PublicationError) throw error
       if (error instanceof ShutdownError) throw new PublicationError('terminated')

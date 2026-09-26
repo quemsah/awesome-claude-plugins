@@ -19,7 +19,7 @@ import {
   rebindCanonicalUrl,
   updateEnriched,
 } from '../storage/repositories.js'
-import { recordRunError, runWhileActive } from '../storage/runs.js'
+import { advanceRunPhase, getRun, recordRunError, runWhileActive, startRunPhase } from '../storage/runs.js'
 
 export type EnrichmentCounts = {
   updated: number
@@ -266,7 +266,14 @@ type RestAttemptPolicy = {
   retryCountOffset: number
   deferTransient: boolean
 }
-type RetryTask = () => Promise<void>
+type RetryTask = { row: RepositoryRow; run: () => Promise<void> }
+type RetryQueue = { tasks: RetryTask[]; deferredIds: Set<number> }
+
+function queueRetry(queue: RetryQueue | undefined, row: RepositoryRow, run: () => Promise<void>): void {
+  if (!queue) return
+  queue.deferredIds.add(row.id)
+  queue.tasks.push({ row, run })
+}
 
 const FIRST_PASS_REST: RestAttemptPolicy = { maxAttempts: 1, retryCountOffset: 0, deferTransient: true }
 const RETRY_PASS_REST: RestAttemptPolicy = { maxAttempts: 2, retryCountOffset: 1, deferTransient: false }
@@ -999,7 +1006,7 @@ async function enrichOne(
   removedIds: Set<number>,
   now: () => string,
   policy: RestAttemptPolicy,
-  retryQueue: RetryTask[] | undefined,
+  retryQueue: RetryQueue | undefined,
   onProgress?: () => void,
   log?: Log,
 ): Promise<void> {
@@ -1033,7 +1040,7 @@ async function enrichOne(
   onProgress?.()
   const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts, now, policy, log)
   if (isRetryLater(loaded)) {
-    retryQueue?.push(() => {
+    queueRetry(retryQueue, row, () => {
       if (removedIds.has(row.id)) return Promise.resolve()
       reader.noteRetry?.('core', loaded.reason)
       return enrichOne(db, reader, runId, row, counts, removedIds, now, RETRY_PASS_REST, undefined, onProgress, log)
@@ -1044,7 +1051,7 @@ async function enrichOne(
   onProgress?.()
   const marketplace = await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, policy, log)
   if (isRetryLater(marketplace)) {
-    retryQueue?.push(async () => {
+    queueRetry(retryQueue, row, async () => {
       if (removedIds.has(row.id)) return
       reader.noteRetry?.('core', marketplace.reason)
       const retried = await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, RETRY_PASS_REST, log)
@@ -1113,7 +1120,7 @@ async function enrichGraphQLOne(
   removedIds: Set<number>,
   now: () => string,
   policy: RestAttemptPolicy,
-  retryQueue: RetryTask[] | undefined,
+  retryQueue: RetryQueue | undefined,
   onProgress?: () => void,
   log?: Log,
 ): Promise<void> {
@@ -1167,7 +1174,7 @@ async function enrichGraphQLOne(
       )
     : await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, policy, log)
   if (isRetryLater(marketplace)) {
-    retryQueue?.push(() => {
+    queueRetry(retryQueue, row, () => {
       if (removedIds.has(row.id)) return Promise.resolve()
       reader.noteRetry?.('core', marketplace.reason)
       return enrichGraphQLOne(
@@ -1205,6 +1212,7 @@ async function enrichGraphQLOne(
 }
 
 type GraphQLBatchState = { size: number; stableBatches: number }
+type RepositoryProcessed = (row: RepositoryRow) => void
 
 async function enrichLegacyBatch(
   db: Database.Database,
@@ -1215,12 +1223,14 @@ async function enrichLegacyBatch(
   removedIds: Set<number>,
   now: () => string,
   policy: RestAttemptPolicy,
-  retryQueue: RetryTask[] | undefined,
+  retryQueue: RetryQueue | undefined,
   onProgress?: () => void,
   log?: Log,
+  onRepositoryProcessed?: RepositoryProcessed,
 ): Promise<void> {
   for (const row of rows) {
     await enrichOne(db, reader, runId, row, counts, removedIds, now, policy, retryQueue, onProgress, log)
+    if (!retryQueue?.deferredIds.has(row.id)) onRepositoryProcessed?.(row)
   }
 }
 
@@ -1234,13 +1244,14 @@ async function recoverGraphQLBatch(
   state: GraphQLBatchState,
   now: () => string,
   policy: RestAttemptPolicy,
-  retryQueue: RetryTask[] | undefined,
+  retryQueue: RetryQueue | undefined,
   onProgress?: () => void,
   log?: Log,
+  onRepositoryProcessed?: RepositoryProcessed,
 ): Promise<void> {
   state.stableBatches = 0
   if (rows.length <= 10) {
-    await enrichLegacyBatch(db, reader, runId, rows, counts, removedIds, now, policy, retryQueue, onProgress, log)
+    await enrichLegacyBatch(db, reader, runId, rows, counts, removedIds, now, policy, retryQueue, onProgress, log, onRepositoryProcessed)
     return
   }
 
@@ -1260,6 +1271,7 @@ async function recoverGraphQLBatch(
       retryQueue,
       onProgress,
       log,
+      onRepositoryProcessed,
     )
   }
 }
@@ -1416,13 +1428,14 @@ async function enrichGraphQLBatch(
   state: GraphQLBatchState,
   now: () => string,
   policy: RestAttemptPolicy,
-  retryQueue: RetryTask[] | undefined,
+  retryQueue: RetryQueue | undefined,
   onProgress?: () => void,
   log?: Log,
+  onRepositoryProcessed?: RepositoryProcessed,
 ): Promise<void> {
   const getBatch = reader.getRepositoriesByNodeId
   if (!getBatch) {
-    return enrichLegacyBatch(db, reader, runId, rows, counts, removedIds, now, policy, retryQueue, onProgress, log)
+    return enrichLegacyBatch(db, reader, runId, rows, counts, removedIds, now, policy, retryQueue, onProgress, log, onRepositoryProcessed)
   }
 
   const ids = rows.map((row) => row.github_node_id as string)
@@ -1467,7 +1480,21 @@ async function enrichGraphQLBatch(
       repositoryUrls: rows.map((row) => row.html_url).filter((url): url is string => Boolean(url)),
       fallback: 'REST',
     })
-    await recoverGraphQLBatch(db, reader, runId, rows, counts, removedIds, state, now, policy, retryQueue, onProgress, log)
+    await recoverGraphQLBatch(
+      db,
+      reader,
+      runId,
+      rows,
+      counts,
+      removedIds,
+      state,
+      now,
+      policy,
+      retryQueue,
+      onProgress,
+      log,
+      onRepositoryProcessed,
+    )
     return
   }
 
@@ -1490,6 +1517,7 @@ async function enrichGraphQLBatch(
       onProgress,
       log,
     )
+    if (!retryQueue?.deferredIds.has(row.id)) onRepositoryProcessed?.(row)
   }
 }
 
@@ -1501,6 +1529,10 @@ export async function enrichRepositories(
   now: () => string = () => new Date().toISOString(),
   log?: Log,
 ): Promise<EnrichmentCounts> {
+  if (getRun(db, runId)?.phase !== 'enrichment') {
+    const total = (db.prepare('SELECT COUNT(*) AS count FROM repositories').get() as { count: number }).count
+    startRunPhase(db, runId, 'enrichment', now(), total)
+  }
   const counts: EnrichmentCounts = {
     updated: 0,
     unchangedOnError: 0,
@@ -1514,7 +1546,26 @@ export async function enrichRepositories(
   }
   let lastId = 0
   const removedIds = new Set<number>()
-  const retryQueue: RetryTask[] = []
+  const retryQueue: RetryQueue = { tasks: [], deferredIds: new Set<number>() }
+  const processedIds = new Set<number>()
+  const accountedRemovedIds = new Set<number>()
+  const markRepositoryProcessed = (row: RepositoryRow) => {
+    let processed = 0
+    if (!processedIds.has(row.id)) {
+      processedIds.add(row.id)
+      processed++
+    }
+    if (removedIds.size !== accountedRemovedIds.size) {
+      for (const removedId of removedIds) {
+        if (accountedRemovedIds.has(removedId)) continue
+        accountedRemovedIds.add(removedId)
+        if (processedIds.has(removedId)) continue
+        processedIds.add(removedId)
+        processed++
+      }
+    }
+    if (processed > 0) advanceRunPhase(db, runId, processed, now())
+  }
   const batchState = { size: 25, stableBatches: 0 }
   while (true) {
     const rows = listForEnrichment(db, lastId, 50)
@@ -1526,39 +1577,55 @@ export async function enrichRepositories(
       if (!removedIds.has(row.id)) {
         await enrichOne(db, reader, runId, row, counts, removedIds, now, FIRST_PASS_REST, retryQueue, onProgress, log)
       }
+      if (!retryQueue.deferredIds.has(row.id)) markRepositoryProcessed(row)
     }
     for (let offset = 0; offset < graphQLRows.length; ) {
       const batch = graphQLRows.slice(offset, offset + batchState.size)
       offset += batch.length
-      await enrichGraphQLBatch(db, reader, runId, batch, counts, removedIds, batchState, now, FIRST_PASS_REST, retryQueue, onProgress, log)
+      await enrichGraphQLBatch(
+        db,
+        reader,
+        runId,
+        batch,
+        counts,
+        removedIds,
+        batchState,
+        now,
+        FIRST_PASS_REST,
+        retryQueue,
+        onProgress,
+        log,
+        markRepositoryProcessed,
+      )
     }
     onProgress?.()
   }
 
-  if (retryQueue.length > 0) {
+  if (retryQueue.tasks.length > 0) {
     log?.({
       level: 'info',
       event: 'crawl.retry_queue_started',
       phase: 'enrichment',
       category: 'retry_queue',
       runId,
-      message: `Retrying ${retryQueue.length} repositories after the first enrichment pass`,
-      queued: retryQueue.length,
+      message: `Retrying ${retryQueue.tasks.length} repositories after the first enrichment pass`,
+      queued: retryQueue.tasks.length,
     })
   }
-  for (const retry of retryQueue) {
-    await retry()
+  for (const retry of retryQueue.tasks) {
+    await retry.run()
+    markRepositoryProcessed(retry.row)
     onProgress?.()
   }
-  if (retryQueue.length > 0) {
+  if (retryQueue.tasks.length > 0) {
     log?.({
       level: 'info',
       event: 'crawl.retry_queue_completed',
       phase: 'enrichment',
       category: 'retry_queue',
       runId,
-      message: `Completed retry queue for ${retryQueue.length} repositories`,
-      queued: retryQueue.length,
+      message: `Completed retry queue for ${retryQueue.tasks.length} repositories`,
+      queued: retryQueue.tasks.length,
     })
   }
   return counts

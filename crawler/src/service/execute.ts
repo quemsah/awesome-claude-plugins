@@ -471,6 +471,151 @@ async function notifyDryRun(
   }
 }
 
+type CrawlExecutionPhase = 'startup' | 'discovery' | 'enrichment' | 'finalize'
+type ProgressSample = { at: number; processed: number }
+
+function logDiscoveryProgress(
+  log: (event: LogEvent) => void,
+  snapshot: ReturnType<typeof inspectProgress>,
+  buckets: GitHubRateBuckets | undefined,
+  runId: string,
+  elapsedMs: number,
+  discoveryStartTotal: number | null,
+): void {
+  const newRepositories = discoveryStartTotal === null ? null : Math.max(0, snapshot.repositories.total - discoveryStartTotal)
+  const codeSearchRequests = buckets?.code_search.requests ?? null
+  log({
+    level: 'info',
+    event: 'crawl.progress',
+    phase: 'discovery',
+    category: 'progress_snapshot',
+    runId,
+    message: `Discovery progress: ${codeSearchRequests ?? 'unknown'} Code Search requests, ${newRepositories ?? 'unknown'} new repositories`,
+    elapsedMs,
+    totalRepositories: snapshot.repositories.total,
+    newRepositories,
+    publishableRepositories: snapshot.repositories.publishable,
+    incompleteRepositories: snapshot.repositories.incomplete,
+    missingMarketplace: snapshot.repositories.missingMarketplace,
+    errorCount: snapshot.errors?.count ?? 0,
+    ...(codeSearchRequests === null ? {} : { codeSearchRequests }),
+    ...(buckets ? { rateBuckets: buckets } : {}),
+  })
+}
+
+function logEnrichmentProgress(
+  log: (event: LogEvent) => void,
+  snapshot: ReturnType<typeof inspectProgress>,
+  buckets: GitHubRateBuckets | undefined,
+  runId: string,
+  elapsedMs: number,
+  samples: ProgressSample[],
+  sampledAt: number,
+): void {
+  const processed = snapshot.run?.phaseProcessed ?? 0
+  const total = snapshot.run?.phaseTotal ?? snapshot.repositories.total
+  const pending = Math.max(0, total - processed)
+  samples.push({ at: sampledAt, processed })
+  while (samples.length > 4) samples.shift()
+  const first = samples[0]
+  const last = samples[samples.length - 1]
+  const elapsedMinutes = first && last ? (last.at - first.at) / 60_000 : 0
+  const processedRate = elapsedMinutes > 0 && first && last ? (last.processed - first.processed) / elapsedMinutes : 0
+  const progressPercent = snapshot.run?.phasePercent ?? null
+  log({
+    level: 'info',
+    event: 'crawl.progress',
+    phase: 'enrichment',
+    category: 'progress_snapshot',
+    runId,
+    message: `Enrichment progress: ${processed}/${total} processed, ${pending} pending`,
+    elapsedMs,
+    totalRepositories: total,
+    processedRepositories: processed,
+    updatedRepositories: snapshot.repositories.updatedThisRun,
+    pendingRepositories: pending,
+    progressPercent,
+    publishableRepositories: snapshot.repositories.publishable,
+    incompleteRepositories: snapshot.repositories.incomplete,
+    missingMarketplace: snapshot.repositories.missingMarketplace,
+    errorCount: snapshot.errors?.count ?? 0,
+    ...(buckets ? { rateBuckets: buckets } : {}),
+    ...(processedRate > 0 ? { etaMinutes: Math.ceil(pending / processedRate) } : {}),
+  })
+}
+
+function logGenericProgress(
+  log: (event: LogEvent) => void,
+  snapshot: ReturnType<typeof inspectProgress>,
+  buckets: GitHubRateBuckets | undefined,
+  phase: CrawlExecutionPhase,
+  runId: string,
+  elapsedMs: number,
+): void {
+  log({
+    level: 'info',
+    event: 'crawl.progress',
+    phase,
+    category: 'progress_snapshot',
+    runId,
+    message: `Crawl progress: ${phase}`,
+    elapsedMs,
+    totalRepositories: snapshot.repositories.total,
+    publishableRepositories: snapshot.repositories.publishable,
+    incompleteRepositories: snapshot.repositories.incomplete,
+    errorCount: snapshot.errors?.count ?? 0,
+    ...(buckets ? { rateBuckets: buckets } : {}),
+  })
+}
+
+function emitProgressSnapshot(
+  db: Database.Database,
+  runId: string,
+  phase: CrawlExecutionPhase,
+  startedAt: Date,
+  now: () => Date,
+  log: (event: LogEvent) => void,
+  rateBuckets: (() => GitHubRateBuckets) | undefined,
+  discoveryStartTotal: number | null,
+  samples: ProgressSample[],
+): void {
+  try {
+    const snapshot = inspectProgress(db)
+    if (snapshot.run?.runId !== runId) {
+      log({
+        level: 'warn',
+        event: 'crawl.progress_unavailable',
+        phase,
+        category: 'progress_snapshot_mismatch',
+        runId,
+        message: 'Progress snapshot belongs to a different crawl run',
+      })
+      return
+    }
+    const buckets = rateBuckets?.()
+    const sampledAt = now().getTime()
+    const elapsedMs = Math.max(0, sampledAt - startedAt.getTime())
+    if (phase === 'discovery') {
+      logDiscoveryProgress(log, snapshot, buckets, runId, elapsedMs, discoveryStartTotal)
+      return
+    }
+    if (phase === 'enrichment') {
+      logEnrichmentProgress(log, snapshot, buckets, runId, elapsedMs, samples, sampledAt)
+      return
+    }
+    logGenericProgress(log, snapshot, buckets, phase, runId, elapsedMs)
+  } catch {
+    log({
+      level: 'warn',
+      event: 'crawl.progress_unavailable',
+      phase,
+      category: 'progress_snapshot_failed',
+      runId,
+      message: 'Could not read crawl progress snapshot',
+    })
+  }
+}
+
 export async function executeCrawl(
   db: Database.Database,
   reader: GitHubReader,
@@ -483,48 +628,10 @@ export async function executeCrawl(
   const now = options.now ?? (() => new Date())
   const log = options.log ?? ((event: LogEvent) => console.log(JSON.stringify(event)))
   const startedAt = now()
-  let phase = 'startup'
-  const samples: Array<{ at: number; pending: number }> = []
-  const emitProgress = () => {
-    try {
-      const snapshot = inspectProgress(db)
-      const at = Date.now()
-      samples.push({ at, pending: snapshot.repositories.pendingThisRun ?? 0 })
-      while (samples.length > 4) samples.shift()
-      const first = samples[0]
-      const last = samples[samples.length - 1]
-      const elapsedMinutes = first && last ? (last.at - first.at) / 60_000 : 0
-      const pendingRate = elapsedMinutes > 0 && first && last ? (first.pending - last.pending) / elapsedMinutes : 0
-      const pending = snapshot.repositories.pendingThisRun ?? 0
-      log({
-        level: 'info',
-        event: 'crawl.progress',
-        phase,
-        category: 'progress_snapshot',
-        runId,
-        message: `Crawl progress: ${phase}, ${snapshot.repositories.updatedThisRun ?? 0} updated, ${pending} pending`,
-        elapsedMs: Math.max(0, now().getTime() - startedAt.getTime()),
-        totalRepositories: snapshot.repositories.total,
-        updatedRepositories: snapshot.repositories.updatedThisRun,
-        pendingRepositories: pending,
-        publishableRepositories: snapshot.repositories.publishable,
-        incompleteRepositories: snapshot.repositories.incomplete,
-        missingMarketplace: snapshot.repositories.missingMarketplace,
-        errorCount: snapshot.errors?.count ?? 0,
-        ...(options.rateBuckets ? { rateBuckets: options.rateBuckets() } : {}),
-        ...(phase === 'enrichment' && pendingRate > 0 ? { etaMinutes: Math.ceil(pending / pendingRate) } : {}),
-      })
-    } catch {
-      log({
-        level: 'warn',
-        event: 'crawl.progress_unavailable',
-        phase,
-        category: 'progress_snapshot_failed',
-        runId,
-        message: 'Could not read crawl progress snapshot',
-      })
-    }
-  }
+  let phase: CrawlExecutionPhase = 'startup'
+  let discoveryStartTotal: number | null = null
+  const samples: ProgressSample[] = []
+  const emitProgress = () => emitProgressSnapshot(db, runId, phase, startedAt, now, log, options.rateBuckets, discoveryStartTotal, samples)
   log({ level: 'info', event: 'crawl.started', phase, category: 'started', runId, message: 'Crawl started' })
   const progressTimer = setInterval(emitProgress, 5 * 60_000)
   progressTimer.unref()
@@ -549,6 +656,14 @@ export async function executeCrawl(
         },
         (nextPhase) => {
           phase = nextPhase
+          samples.length = 0
+          if (nextPhase === 'discovery') {
+            try {
+              discoveryStartTotal = inspectProgress(db).repositories.total
+            } catch {
+              discoveryStartTotal = null
+            }
+          }
           log({
             level: 'info',
             event: 'crawl.phase_started',
