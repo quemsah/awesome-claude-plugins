@@ -555,10 +555,109 @@ it('defers retryable REST failures until the first repository pass is complete',
     'wait-until:30000',
     'retry:server_5xx:wait30000',
     'repo:first:max2',
-    'marketplace:first:max2',
+    'marketplace:first:max3',
   ])
   expect(listRunErrors(db, 'crawl-1')).toEqual([])
   expect(getRun(db, 'crawl-1')).toMatchObject({ phase: 'enrichment', phase_total: 2, phase_processed: 2 })
+})
+
+it('gives marketplace a fresh three-attempt budget after a deferred repository retry succeeds', async () => {
+  const db = database()
+  upsertDiscovery(db, 'https://github.com/team/repo', null)
+  let repositoryCalls = 0
+  let marketplaceAttempts = 0
+  const repositoryMaxAttempts: number[] = []
+  const marketplaceMaxAttempts: number[] = []
+  const client: GitHubReader = {
+    searchCode: async () => {
+      throw new Error('enrichment must not search')
+    },
+    getRepository: async (owner, name, _etag, options) => {
+      repositoryMaxAttempts.push(options?.maxAttempts ?? 3)
+      repositoryCalls++
+      if (repositoryCalls === 1) {
+        return {
+          kind: 'temporary-error',
+          status: 503,
+          reason: 'GitHub server error',
+          retryCount: 0,
+          failureReason: 'server_5xx',
+          retryable: true,
+        }
+      }
+      return { kind: 'found', data: githubRepo(owner, name) }
+    },
+    getMarketplace: async (_owner, _name, _etag, options) => {
+      const maxAttempts = options?.maxAttempts ?? 3
+      marketplaceMaxAttempts.push(maxAttempts)
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        marketplaceAttempts++
+        if (marketplaceAttempts === 3) return { kind: 'found', data: { plugins: [] } }
+      }
+      return {
+        kind: 'temporary-error',
+        status: 503,
+        reason: 'GitHub server error',
+        retryCount: maxAttempts - 1,
+        failureReason: 'server_5xx',
+        retryable: true,
+      }
+    },
+  }
+
+  const counts = await enrichRepositories(db, client, 'crawl-1')
+
+  expect(repositoryMaxAttempts).toEqual([1, 2])
+  expect(marketplaceMaxAttempts).toEqual([3])
+  expect(marketplaceAttempts).toBe(3)
+  expect(counts).toMatchObject({ newReady: 1, conclusive: 1, newIncomplete: 0, warnings: 0 })
+  expect(listRunErrors(db, 'crawl-1')).toEqual([])
+})
+
+it('does not inherit the repository retry offset when marketplace content is immediately invalid', async () => {
+  const db = database()
+  upsertDiscovery(db, 'https://github.com/team/repo', null)
+  let repositoryCalls = 0
+  const marketplaceMaxAttempts: number[] = []
+  const client: GitHubReader = {
+    searchCode: async () => {
+      throw new Error('enrichment must not search')
+    },
+    getRepository: async (owner, name) => {
+      repositoryCalls++
+      if (repositoryCalls === 1) {
+        return {
+          kind: 'temporary-error',
+          status: 503,
+          reason: 'GitHub server error',
+          retryCount: 0,
+          failureReason: 'server_5xx',
+          retryable: true,
+        }
+      }
+      return { kind: 'found', data: githubRepo(owner, name) }
+    },
+    getMarketplace: async (_owner, _name, _etag, options) => {
+      marketplaceMaxAttempts.push(options?.maxAttempts ?? 3)
+      return {
+        kind: 'invalid-content',
+        failure: 'invalid-manifest',
+        status: 200,
+        reason: 'Invalid marketplace manifest at plugins[0]',
+        retryCount: 0,
+        failureReason: 'invalid_manifest',
+        retryable: false,
+      }
+    },
+  }
+
+  const counts = await enrichRepositories(db, client, 'crawl-1')
+
+  expect(marketplaceMaxAttempts).toEqual([3])
+  expect(counts).toMatchObject({ newIncomplete: 1, conclusive: 0, warnings: 1 })
+  expect(listRunErrors(db, 'crawl-1').map(({ error_type, retry_count }) => ({ error_type, retry_count }))).toEqual([
+    { error_type: 'marketplace_invalid_manifest', retry_count: 0 },
+  ])
 })
 
 it('clears a stale REST ETag after accepting GraphQL marketplace content', async () => {
