@@ -14,6 +14,12 @@ const files = {
   markdownPathsJson: '["owner/repo.md"]\n',
 }
 
+function required<T>(values: readonly T[], index: number): T {
+  const value = values[index]
+  if (value === undefined) throw new Error(`Missing fixture at index ${index}`)
+  return value
+}
+
 function ref(sha: string): Response {
   return Response.json({ ref: 'refs/heads/main', object: { type: 'commit', sha, url: 'https://api.github.com/git/commits/x' } })
 }
@@ -77,13 +83,13 @@ describe('GitHubGitClient', () => {
       ['POST', 'https://api.github.com/repos/acme/catalog/git/commits'],
       ['PATCH', 'https://api.github.com/repos/acme/catalog/git/refs/heads/main'],
     ])
-    expect(requests[0].init?.headers).toMatchObject({
+    expect(required(requests, 0).init?.headers).toMatchObject({
       Authorization: 'Bearer private-publish-token',
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
     })
-    expect(requests[2].init?.headers).toMatchObject({ 'Content-Type': 'application/json' })
-    expect(payload(requests[2])).toEqual({
+    expect(required(requests, 2).init?.headers).toMatchObject({ 'Content-Type': 'application/json' })
+    expect(payload(required(requests, 2))).toEqual({
       base_tree: baseTree,
       tree: [
         { path: 'README.md', mode: '100644', type: 'blob', content: '# Catalog\n' },
@@ -92,8 +98,8 @@ describe('GitHubGitClient', () => {
         { path: 'ui/src/data/markdown-paths.json', mode: '100644', type: 'blob', content: '["owner/repo.md"]\n' },
       ],
     })
-    expect(payload(requests[3])).toEqual({ tree: treeSha, parents: [baseSha], message: 'Update catalog' })
-    expect(payload(requests[4])).toEqual({ sha: pendingSha, force: false })
+    expect(payload(required(requests, 3))).toEqual({ tree: treeSha, parents: [baseSha], message: 'Update catalog' })
+    expect(payload(required(requests, 4))).toEqual({ sha: pendingSha, force: false })
   })
 
   it('requires explicit publishing credentials and repository identity before any request', () => {
@@ -137,13 +143,13 @@ describe('GitHubGitClient', () => {
   it('accepts GitHub-safe repository and owner segments', async () => {
     const { client, requests } = mockClient([ref(baseSha), commit(baseSha, baseTree)], { owner: 'acme-co', repo: '.github_tools.v2' })
     await client.getBranchHead()
-    expect(requests[0].url).toBe('https://api.github.com/repos/acme-co/.github_tools.v2/git/ref/heads/main')
+    expect(required(requests, 0).url).toBe('https://api.github.com/repos/acme-co/.github_tools.v2/git/ref/heads/main')
   })
 
   it('encodes branch path components without dropping the slash', async () => {
     const { client, requests } = mockClient([ref(baseSha), commit(baseSha, baseTree)], { branch: 'release/v1+beta' })
     await client.getBranchHead()
-    expect(requests[0].url).toBe('https://api.github.com/repos/acme/catalog/git/ref/heads/release/v1%2Bbeta')
+    expect(required(requests, 0).url).toBe('https://api.github.com/repos/acme/catalog/git/ref/heads/release/v1%2Bbeta')
   })
 
   it('rejects invalid branch refs instead of allowing path traversal', () => {
@@ -182,14 +188,14 @@ describe('GitHubGitClient', () => {
   it('exposes PATCH 409 as a ref conflict and never forces the ref', async () => {
     const { client, requests } = mockClient([Response.json({ message: 'Conflict' }, { status: 409 })])
     await expect(client.updateBranch(pendingSha)).rejects.toBeInstanceOf(GitHubGitConflictError)
-    expect(payload(requests[0])).toEqual({ sha: pendingSha, force: false })
+    expect(payload(required(requests, 0))).toEqual({ sha: pendingSha, force: false })
     expect(requests).toHaveLength(1)
   })
 
   it('recognizes GitHub non-fast-forward PATCH 422 as a retryable ref conflict', async () => {
     const { client, requests } = mockClient([Response.json({ message: 'Update is not a fast forward' }, { status: 422 })])
     await expect(client.updateBranch(pendingSha)).rejects.toBeInstanceOf(GitHubGitConflictError)
-    expect(payload(requests[0])).toEqual({ sha: pendingSha, force: false })
+    expect(payload(required(requests, 0))).toEqual({ sha: pendingSha, force: false })
     expect(requests).toHaveLength(1)
   })
 
@@ -249,7 +255,7 @@ describe('GitHubGitClient', () => {
     try {
       const { client, requests } = mockClient([ref(pendingSha)])
       await client.updateBranch(pendingSha)
-      expect(requests[0].init?.signal).toBeInstanceOf(AbortSignal)
+      expect(required(requests, 0).init?.signal).toBeInstanceOf(AbortSignal)
       expect(timeout).toHaveBeenCalledWith(30_000)
     } finally {
       timeout.mockRestore()
@@ -293,7 +299,7 @@ describe('GitHubGitClient', () => {
   it('encodes a slash-containing branch as one compare head ref', async () => {
     const { client, requests } = mockClient([comparison('ahead')], { branch: 'release/v1+beta' })
     expect(await client.isCommitReachable(pendingSha)).toBe(true)
-    expect(requests[0].url).toBe(`https://api.github.com/repos/acme/catalog/compare/${pendingSha}...release%2Fv1%2Bbeta`)
+    expect(required(requests, 0).url).toBe(`https://api.github.com/repos/acme/catalog/compare/${pendingSha}...release%2Fv1%2Bbeta`)
   })
 
   it('rejects an unknown compare status rather than guessing publication state', async () => {
