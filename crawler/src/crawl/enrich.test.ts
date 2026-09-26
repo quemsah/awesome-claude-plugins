@@ -208,7 +208,7 @@ it('reparses an unchanged marketplace OID when the cached parser version is miss
   })
 })
 
-it('reads changed marketplace content and persists the GraphQL OID and REST ETag', async () => {
+it('does not cache a GraphQL OID for REST-fallback content', async () => {
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), 'MDEwOlJlcG9zaXRvcnkx')
   ready(db, id)
@@ -237,7 +237,7 @@ it('reads changed marketplace content and persists the GraphQL OID and REST ETag
   expect(getMarketplace).toHaveBeenCalledWith('team', 'repo')
   expect(db.prepare('SELECT plugins_count, marketplace_oid, marketplace_etag FROM repositories WHERE id = ?').get(id)).toEqual({
     plugins_count: 2,
-    marketplace_oid: 'b'.repeat(40),
+    marketplace_oid: null,
     marketplace_etag: '"new"',
   })
 })
@@ -335,6 +335,47 @@ it('batches changed marketplace content across legacy node-id migration and trea
   expect(db.prepare('SELECT plugins_count, marketplace_oid FROM repositories WHERE id = ?').get(id)).toEqual({
     plugins_count: validMarketplaceFixture.pluginsCount,
     marketplace_oid: contentOid,
+  })
+})
+
+it('clears a stale REST ETag after accepting GraphQL marketplace content', async () => {
+  const db = database()
+  const nodeId = 'node-clear-etag'
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), nodeId)
+  ready(db, id)
+  db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_etag = ?, marketplace_parser_version = 1 WHERE id = ?').run(
+    'old-oid',
+    '"stale-rest-etag"',
+    id,
+  )
+  const contentOid = 'content-oid'
+  const client = {
+    ...reader(),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [
+        {
+          ...githubRepo('team', 'repo'),
+          node_id: nodeId,
+          marketplace_oid: contentOid,
+          marketplace_byte_size: 100,
+          marketplace_is_binary: false,
+        },
+      ],
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+    getMarketplaceBlobsByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [graphQLMarketplaceBlob(nodeId, contentOid)],
+      rateLimit: { cost: 1, remaining: 4_998, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 2 },
+    }),
+  }
+
+  await enrichRepositories(db, client, 'crawl-1')
+
+  expect(db.prepare('SELECT marketplace_oid, marketplace_etag FROM repositories WHERE id = ?').get(id)).toEqual({
+    marketplace_oid: contentOid,
+    marketplace_etag: null,
   })
 })
 
@@ -505,7 +546,7 @@ it('falls back to REST when GraphQL blob text is invalid JSON', async () => {
   expect(getMarketplace).toHaveBeenCalledWith('team', 'repo')
   expect(db.prepare('SELECT plugins_count, marketplace_oid FROM repositories WHERE id = ?').get(id)).toEqual({
     plugins_count: 1,
-    marketplace_oid: 'content-oid',
+    marketplace_oid: null,
   })
 })
 
