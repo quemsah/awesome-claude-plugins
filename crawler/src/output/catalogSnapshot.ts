@@ -1,9 +1,9 @@
 import type Database from 'better-sqlite3'
-import { listPublishable } from '../storage/repositories.js'
+import type { PublishableRepository } from '../storage/repositories.js'
 import { assertValidStatsDraft, type StatsRecord } from './statsDraft.js'
 
-export function renderRepos(db: Database.Database): string {
-  const repositories = listPublishable(db).map((row) => ({
+export function renderRepos(rows: readonly PublishableRepository[]): string {
+  const repositories = rows.map((row) => ({
     html_url: row.html_url,
     stargazers_count: row.stargazers_count,
     forks_count: row.forks_count,
@@ -18,11 +18,11 @@ export function renderRepos(db: Database.Database): string {
   return `${JSON.stringify(repositories)}\n`
 }
 
-export function renderMarkdownPaths(db: Database.Database): string {
+export function renderMarkdownPaths(repositories: readonly PublishableRepository[]): string {
   const seen = new Set<string>()
   const paths: string[] = []
 
-  for (const row of listPublishable(db)) {
+  for (const row of repositories) {
     if (!(row.owner && row.repo_name && /\.md$/i.test(row.repo_name))) continue
     const path = `${row.owner}/${row.repo_name}`
     const key = path.toLowerCase()

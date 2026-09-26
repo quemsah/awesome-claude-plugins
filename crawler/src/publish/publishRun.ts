@@ -6,7 +6,7 @@ import { assertValidStatsDraft, createStatsDraft, type StatsRecord } from '../ou
 import { SnapshotValidationError, validateSnapshot } from '../output/validate.js'
 import { validateReadme } from '../output/validateReadme.js'
 import { ShutdownError } from '../shutdown.js'
-import { listPublishable } from '../storage/repositories.js'
+import { listPublishable, type PublishableRepository } from '../storage/repositories.js'
 import {
   claimPublicationLease,
   clearPendingCommit,
@@ -118,17 +118,20 @@ function snapshotHashMatches(savedHash: string, snapshot: { hash: string; legacy
   return savedHash === snapshot.hash || savedHash === snapshot.legacyHash
 }
 
-function renderFiles(db: Database.Database, draft: StatsRecord): { files: GitSnapshotFiles; hash: string; legacyHash: string } {
+function renderFiles(
+  db: Database.Database,
+  draft: StatsRecord,
+  repositories: readonly PublishableRepository[] = listPublishable(db),
+): { files: GitSnapshotFiles; hash: string; legacyHash: string } {
   checkHistory(historicalStats(db), draft)
   let files: GitSnapshotFiles
   try {
     const publicDraft = { id: draft.id, date: draft.date, size: draft.size }
-    const repositories = listPublishable(db)
     files = {
       readme: renderReadme(repositories, draft),
-      reposJson: renderRepos(db),
+      reposJson: renderRepos(repositories),
       statsJson: renderStats(db, publicDraft),
-      markdownPathsJson: renderMarkdownPaths(db),
+      markdownPathsJson: renderMarkdownPaths(repositories),
     }
     validateSnapshot(files.reposJson, files.statsJson, { expectedSize: draft.size, requireLatestSize: true })
     validateReadme(files.readme, repositories, draft)
@@ -156,17 +159,18 @@ export function prepareDraft(db: Database.Database, runId: string, now: Date): R
     db.transaction(() => {
       const run = getRun(db, runId)
       if (run?.status !== 'completed' || run.completed_at === null || run.last_error !== null) throw new PublicationError('invalid_run')
+      const repositories = listPublishable(db)
       let draft: RunDraft
       if (run.draft_id !== null || run.draft_date !== null || run.draft_size !== null || run.draft_hash !== null) {
         draft = savedDraft(run)
       } else {
         try {
-          draft = { ...createStatsDraft(historicalStats(db), listPublishable(db).length, now), hash: '' }
+          draft = { ...createStatsDraft(historicalStats(db), repositories.length, now), hash: '' }
         } catch {
           throw new PublicationError('draft_invalid')
         }
       }
-      const snapshot = renderFiles(db, draft)
+      const snapshot = renderFiles(db, draft, repositories)
       if (draft.hash) {
         if (!snapshotHashMatches(draft.hash, snapshot)) throw new PublicationError('snapshot_changed')
       } else {
