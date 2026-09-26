@@ -449,10 +449,10 @@ describe('GitHubClient', () => {
   })
 
   it.each(marketplaceFixtures.filter((fixture) => !fixture.valid))('rejects invalid shared marketplace fixture: $name', async (fixture) => {
-    const test = harness(Array.from({ length: 4 }, () => manifest(fixture.input)))
+    const test = harness([manifest(fixture.input)])
     const result = await test.client.getMarketplace('acme', 'catalog')
-    expect(result.kind).toBe('temporary-error')
-    expect(test.requests).toHaveLength(4)
+    expect(result).toMatchObject({ kind: 'invalid-content', failure: 'invalid-manifest', retryCount: 0 })
+    expect(test.requests).toHaveLength(1)
   })
 
   it('returns definitive 404 without a retry for both enrichment endpoints', async () => {
@@ -462,17 +462,35 @@ describe('GitHubClient', () => {
     expect(test.requests).toHaveLength(2)
   })
 
-  it.each([
-    () => new Response('%%%'),
-    () => new Response('not json'),
-    () => manifest({}),
-    () => new Response(new Uint8Array([0xff])),
-    () => new Response('', { status: 200 }),
-  ])('treats missing or malformed marketplace content as temporary rather than zero plugins', async (response) => {
-    const test = harness(Array.from({ length: 4 }, response))
+  it.each([() => new Response('%%%'), () => new Response('not json'), () => new Response(new Uint8Array([0xff])), () => new Response('')])(
+    'returns malformed marketplace JSON without retries',
+    async (response) => {
+      const test = harness([response()])
+      const result = await test.client.getMarketplace('acme', 'catalog')
+      expect(result).toMatchObject({ kind: 'invalid-content', failure: 'invalid-json', retryCount: 0 })
+      expect(test.requests).toHaveLength(1)
+    },
+  )
+
+  it('retries when reading a marketplace response body fails', async () => {
+    const brokenBody = new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.error(new Error('stream read failed'))
+        },
+      }),
+    )
+    const test = harness([brokenBody, manifest({ plugins: [] })])
+
+    expect(await test.client.getMarketplace('acme', 'catalog')).toMatchObject({ kind: 'found', data: { plugins: [] } })
+    expect(test.requests).toHaveLength(2)
+  })
+
+  it('retries transient requests at most twice', async () => {
+    const test = harness([new Error('test-secret'), new Response('', { status: 503 }), new Response('', { status: 502 })])
     const result = await test.client.getMarketplace('acme', 'catalog')
-    expect(result).toMatchObject({ kind: 'temporary-error', retryCount: 3 })
-    expect(test.requests).toHaveLength(4)
+    expect(result).toMatchObject({ kind: 'temporary-error', retryCount: 2 })
+    expect(test.requests).toHaveLength(3)
   })
 
   it('waits for primary reset from quota headers on the next core request', async () => {
@@ -515,6 +533,14 @@ describe('GitHubClient', () => {
     const test = harness([new Response('', { status: 429, headers: { 'retry-after': '30' } }), Response.json(repo)])
     expect(await test.client.getRepository('acme', 'catalog')).toEqual({ kind: 'found', data: repo })
     expect(test.requests[1].time).toBeGreaterThanOrEqual(30_000)
+  })
+
+  it('limits rate-limit retries to two and honors the required wait', async () => {
+    const test = harness(Array.from({ length: 3 }, () => new Response('', { status: 429, headers: { 'retry-after': '30' } })))
+
+    expect(await test.client.getRepository('acme', 'catalog')).toMatchObject({ kind: 'temporary-error', retryCount: 2 })
+    expect(test.requests).toHaveLength(3)
+    expect(test.requests[1].time).toBeGreaterThanOrEqual(60_000)
   })
 
   it('backs off for at least a minute and increases secondary delays', async () => {
@@ -590,16 +616,11 @@ describe('GitHubClient', () => {
   })
 
   it('returns temporary-error after bounded network and 5xx retries, without exposing exception text', async () => {
-    const test = harness([
-      new Error('test-secret'),
-      new Response('', { status: 503 }),
-      new Response('', { status: 502 }),
-      new Response('', { status: 500 }),
-    ])
+    const test = harness([new Error('test-secret'), new Response('', { status: 503 }), new Response('', { status: 502 })])
     const result = await test.client.getRepository('acme', 'catalog')
-    expect(result).toMatchObject({ kind: 'temporary-error', retryCount: 3 })
+    expect(result).toMatchObject({ kind: 'temporary-error', retryCount: 2 })
     expect(JSON.stringify(result)).not.toContain('test-secret')
-    expect(test.requests).toHaveLength(4)
+    expect(test.requests).toHaveLength(3)
     expect(test.requests[1].time).toBeGreaterThan(test.requests[0].time)
   })
 
@@ -672,13 +693,11 @@ it('lets an in-flight GitHub request finish but refuses to start another after s
   expect(requests).toHaveLength(1)
 })
 
-it('treats shutdown during the final transport failure as termination', async () => {
-  const shutdown = new AbortController()
+it('stops transient transport failures after three total requests', async () => {
   let time = 0
   let requests = 0
   const client = new GitHubClient({
     token: 'test-secret',
-    signal: shutdown.signal,
     clock: {
       now: () => time,
       sleep: async (milliseconds) => {
@@ -687,11 +706,10 @@ it('treats shutdown during the final transport failure as termination', async ()
     },
     fetch: (async () => {
       requests++
-      if (requests === 4) shutdown.abort()
       throw new Error('offline')
     }) as typeof fetch,
   })
 
-  await expect(client.getRepository('acme', 'catalog')).rejects.toMatchObject({ category: 'terminated' })
-  expect(requests).toBe(4)
+  expect(await client.getRepository('acme', 'catalog')).toMatchObject({ kind: 'temporary-error', retryCount: 2 })
+  expect(requests).toBe(3)
 })

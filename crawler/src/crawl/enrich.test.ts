@@ -338,6 +338,62 @@ it('batches changed marketplace content across legacy node-id migration and trea
   })
 })
 
+it('does not refetch an invalid GraphQL marketplace blob through REST and remembers its failed OID', async () => {
+  const db = database()
+  const nodeId = 'node-invalid-marketplace'
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), nodeId)
+  ready(db, id)
+  const oldOid = 'a'.repeat(40)
+  const currentOid = 'b'.repeat(40)
+  db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = 1 WHERE id = ?').run(oldOid, id)
+  const before = db.prepare('SELECT plugins_count FROM repositories WHERE id = ?').get(id)
+  const getMarketplace = vi.fn(async () => ({ kind: 'found' as const, data: { plugins: [] } }))
+  const getMarketplaceBlobsByNodeId = vi.fn(async () => ({
+    kind: 'found' as const,
+    data: [graphQLMarketplaceBlob(nodeId, currentOid, { text: '{"plugins":[' })],
+    rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+  }))
+  const client = {
+    ...reader(undefined, getMarketplace),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [
+        {
+          ...githubRepo('team', 'repo'),
+          node_id: nodeId,
+          marketplace_oid: currentOid,
+          marketplace_byte_size: 100,
+          marketplace_is_binary: false,
+        },
+      ],
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+    getMarketplaceBlobsByNodeId,
+  }
+
+  await enrichRepositories(db, client, 'crawl-1')
+  await enrichRepositories(db, client, 'crawl-1')
+
+  expect(getMarketplace).not.toHaveBeenCalled()
+  expect(getMarketplaceBlobsByNodeId).toHaveBeenCalledTimes(1)
+  expect(
+    db
+      .prepare(
+        'SELECT plugins_count, marketplace_oid, marketplace_failed_oid, marketplace_failed_parser_version FROM repositories WHERE id = ?',
+      )
+      .get(id),
+  ).toEqual({
+    plugins_count: (before as { plugins_count: number }).plugins_count,
+    marketplace_oid: oldOid,
+    marketplace_failed_oid: currentOid,
+    marketplace_failed_parser_version: 1,
+  })
+  expect(listRunErrors(db, 'crawl-1').map(({ error_type, retry_count }) => ({ error_type, retry_count }))).toEqual([
+    { error_type: 'marketplace_invalid_json', retry_count: 0 },
+    { error_type: 'marketplace_known_invalid_content', retry_count: 0 },
+  ])
+})
+
 it('clears a stale REST ETag after accepting GraphQL marketplace content', async () => {
   const db = database()
   const nodeId = 'node-clear-etag'
@@ -510,44 +566,6 @@ it('falls back to REST only for an unusable blob inside a successful content bat
     { repo_name: 'repo1', plugins_count: validMarketplaceFixture.pluginsCount },
     { repo_name: 'repo2', plugins_count: 2 },
   ])
-})
-
-it('falls back to REST when GraphQL blob text is invalid JSON', async () => {
-  const db = database()
-  const nodeId = 'node-invalid-json'
-  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), nodeId)
-  ready(db, id)
-  db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = 1 WHERE id = ?').run('old', id)
-  const getMarketplace = vi.fn(async () => ({ kind: 'found' as const, data: { plugins: [1] } }))
-  const client = {
-    ...reader(undefined, getMarketplace),
-    getRepositoriesByNodeId: async () => ({
-      kind: 'found' as const,
-      data: [
-        {
-          ...githubRepo('team', 'repo'),
-          node_id: nodeId,
-          marketplace_oid: 'metadata-oid',
-          marketplace_byte_size: 100,
-          marketplace_is_binary: false,
-        },
-      ],
-      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
-    }),
-    getMarketplaceBlobsByNodeId: async () => ({
-      kind: 'found' as const,
-      data: [graphQLMarketplaceBlob(nodeId, 'content-oid', { text: '{not-json' })],
-      rateLimit: { cost: 1, remaining: 4_998, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 2 },
-    }),
-  }
-
-  await enrichRepositories(db, client, 'crawl-1')
-
-  expect(getMarketplace).toHaveBeenCalledWith('team', 'repo')
-  expect(db.prepare('SELECT plugins_count, marketplace_oid FROM repositories WHERE id = ?').get(id)).toEqual({
-    plugins_count: 1,
-    marketplace_oid: 'old',
-  })
 })
 
 it('uses REST when GitHub cannot determine whether the marketplace blob is binary', async () => {
