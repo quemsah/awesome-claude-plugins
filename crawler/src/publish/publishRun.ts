@@ -108,7 +108,17 @@ function publishedCommit(db: Database.Database, runId: string): string {
   )
 }
 
-function renderFiles(db: Database.Database, draft: StatsRecord): { files: GitSnapshotFiles; hash: string } {
+function snapshotHash(files: GitSnapshotFiles, includeMarkdownPaths: boolean): string {
+  const contents = [files.readme, files.reposJson, files.statsJson]
+  if (includeMarkdownPaths) contents.push(files.markdownPathsJson)
+  return createHash('sha256').update(JSON.stringify(contents), 'utf8').digest('hex')
+}
+
+function snapshotHashMatches(savedHash: string, snapshot: { hash: string; legacyHash: string }): boolean {
+  return savedHash === snapshot.hash || savedHash === snapshot.legacyHash
+}
+
+function renderFiles(db: Database.Database, draft: StatsRecord): { files: GitSnapshotFiles; hash: string; legacyHash: string } {
   checkHistory(historicalStats(db), draft)
   let files: GitSnapshotFiles
   try {
@@ -128,10 +138,13 @@ function renderFiles(db: Database.Database, draft: StatsRecord): { files: GitSna
     }
     throw new PublicationError('snapshot_invalid')
   }
-  const hash = createHash('sha256')
-    .update(JSON.stringify([files.readme, files.reposJson, files.statsJson, files.markdownPathsJson]), 'utf8')
-    .digest('hex')
-  return { files, hash }
+  return {
+    files,
+    hash: snapshotHash(files, true),
+    // Drafts prepared before markdown-paths.json became part of the snapshot used this three-file hash.
+    // Accept it only for recovery; the sidecar is deterministic from reposJson, which the legacy hash already pins.
+    legacyHash: snapshotHash(files, false),
+  }
 }
 
 /**
@@ -155,7 +168,7 @@ export function prepareDraft(db: Database.Database, runId: string, now: Date): R
       }
       const snapshot = renderFiles(db, draft)
       if (draft.hash) {
-        if (draft.hash !== snapshot.hash) throw new PublicationError('snapshot_changed')
+        if (!snapshotHashMatches(draft.hash, snapshot)) throw new PublicationError('snapshot_changed')
       } else {
         draft.hash = snapshot.hash
         try {
@@ -175,9 +188,9 @@ function checkedSnapshot(db: Database.Database, runId: string): { draft: RunDraf
       const run = getRun(db, runId)
       if (run?.status !== 'completed' || run.completed_at === null || run.last_error !== null) throw new PublicationError('invalid_run')
       const draft = savedDraft(run)
-      const { files, hash } = renderFiles(db, draft)
-      if (draft.hash !== hash) throw new PublicationError('snapshot_changed')
-      return { draft, files, pending: run.pending_commit_sha }
+      const snapshot = renderFiles(db, draft)
+      if (!snapshotHashMatches(draft.hash, snapshot)) throw new PublicationError('snapshot_changed')
+      return { draft, files: snapshot.files, pending: run.pending_commit_sha }
     })(),
   )
 }

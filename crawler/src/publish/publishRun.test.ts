@@ -220,6 +220,40 @@ it('defaults to no writes; a prepared draft publishes exactly four files in one 
   expect(git.events).toHaveLength(5)
 })
 
+it('accepts a legacy three-file draft hash when recovering a draft prepared before the markdown sidecar existed', async () => {
+  const db = fixture()
+  const git = new Branch()
+  prepareDraft(db, 'r1', timestamp)
+  const files = readDraftSnapshot(db, 'r1')
+  const legacyHash = createHash('sha256')
+    .update(JSON.stringify([files.readme, files.reposJson, files.statsJson]), 'utf8')
+    .digest('hex')
+  db.prepare('UPDATE runs SET draft_hash = ? WHERE run_id = ?').run(legacyHash, 'r1')
+
+  expect(() => prepareDraft(db, 'r1', new Date('2027-01-01'))).not.toThrow()
+  expect(getRun(db, 'r1')?.draft_hash).toBe(legacyHash)
+
+  const commit = await publishRun(db, git, 'r1', { writeEnabled: true })
+  expect(commit).toBe(git.head)
+  expect(git.files).toHaveLength(1)
+  expect(git.files[0].markdownPathsJson).toBe(files.markdownPathsJson)
+})
+
+it('still rejects catalog changes when a persisted draft uses the legacy three-file hash', async () => {
+  const db = fixture()
+  const git = new Branch()
+  prepareDraft(db, 'r1', timestamp)
+  const files = readDraftSnapshot(db, 'r1')
+  const legacyHash = createHash('sha256')
+    .update(JSON.stringify([files.readme, files.reposJson, files.statsJson]), 'utf8')
+    .digest('hex')
+  db.prepare('UPDATE runs SET draft_hash = ? WHERE run_id = ?').run(legacyHash, 'r1')
+  db.prepare('UPDATE repositories SET description = ? WHERE id = 18').run('changed after legacy draft')
+
+  await expect(publishRun(db, git, 'r1', { writeEnabled: true })).rejects.toMatchObject({ category: 'snapshot_changed' })
+  expect(git.events).toEqual([])
+})
+
 it('does not touch Git for a missing draft, changed catalog, corrupted hash, or historical id/date collision', async () => {
   const db = fixture()
   const git = new Branch()
