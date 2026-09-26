@@ -277,6 +277,7 @@ function queueRetry(queue: RetryQueue | undefined, row: RepositoryRow, run: () =
 
 const FIRST_PASS_REST: RestAttemptPolicy = { maxAttempts: 1, retryCountOffset: 0, deferTransient: true }
 const RETRY_PASS_REST: RestAttemptPolicy = { maxAttempts: 2, retryCountOffset: 1, deferTransient: false }
+const FRESH_REST: RestAttemptPolicy = { maxAttempts: 3, retryCountOffset: 0, deferTransient: false }
 
 function totalRetryCount(result: { retryCount: number }, policy: RestAttemptPolicy): number {
   return result.retryCount + policy.retryCountOffset
@@ -1038,6 +1039,7 @@ async function enrichOne(
   retryQueue: RetryQueue | undefined,
   onProgress?: () => void,
   log?: Log,
+  marketplacePolicy?: RestAttemptPolicy,
 ): Promise<void> {
   if (removedIds.has(row.id)) return
   if (!row.html_url?.trim()) {
@@ -1072,13 +1074,24 @@ async function enrichOne(
     queueRetry(retryQueue, row, async () => {
       if (removedIds.has(row.id)) return
       await beginDeferredRetry(reader, loaded)
-      await enrichOne(db, reader, runId, row, counts, removedIds, now, RETRY_PASS_REST, undefined, onProgress, log)
+      await enrichOne(db, reader, runId, row, counts, removedIds, now, RETRY_PASS_REST, undefined, onProgress, log, FRESH_REST)
     })
     return
   }
   if (!loaded) return
   onProgress?.()
-  const marketplace = await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, policy, log)
+  const marketplace = await loadLegacyMarketplace(
+    db,
+    reader,
+    runId,
+    row,
+    loaded,
+    counts,
+    removedIds,
+    now,
+    marketplacePolicy ?? policy,
+    log,
+  )
   if (isRetryLater(marketplace)) {
     queueRetry(retryQueue, row, async () => {
       if (removedIds.has(row.id)) return
