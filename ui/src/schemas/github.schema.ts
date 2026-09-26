@@ -82,10 +82,13 @@ export const GitHubRepositorySchema = z
       return
     }
 
+    const [repositoryOwner, repositoryName] = repositoryPath
     if (
       repositoryPath.length !== 2 ||
-      repositoryPath[0].toLowerCase() !== repository.owner.login.toLowerCase() ||
-      repositoryPath[1].toLowerCase() !== repository.name.toLowerCase()
+      repositoryOwner === undefined ||
+      repositoryName === undefined ||
+      repositoryOwner.toLowerCase() !== repository.owner.login.toLowerCase() ||
+      repositoryName.toLowerCase() !== repository.name.toLowerCase()
     ) {
       context.addIssue({
         code: 'custom',
@@ -106,7 +109,8 @@ export const GitHubRepositorySchema = z
       return
     }
 
-    if (ownerPath.length !== 1 || ownerPath[0].toLowerCase() !== repository.owner.login.toLowerCase()) {
+    const [owner] = ownerPath
+    if (ownerPath.length !== 1 || owner === undefined || owner.toLowerCase() !== repository.owner.login.toLowerCase()) {
       context.addIssue({
         code: 'custom',
         message: 'Owner URL must match the owner login',
