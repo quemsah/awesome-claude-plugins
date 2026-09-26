@@ -43,6 +43,7 @@ class Branch implements GitHubGit {
   head = sha(1)
   next = 2
   events: string[] = []
+  messages: string[] = []
   commits = new Map<string, { parent: string | null; tree: string }>([[this.head, { parent: null, tree: sha(100) }]])
   files: GitSnapshotFiles[] = []
   failure:
@@ -74,8 +75,9 @@ class Branch implements GitHubGit {
     return sha(this.next++)
   }
 
-  async createCommit(treeSha: string, parentSha: string, _message: string) {
+  async createCommit(treeSha: string, parentSha: string, message: string) {
     this.events.push(`POST commit ${parentSha}`)
+    this.messages.push(message)
     if (this.failure === 'commit-before') throw new GitHubGitTimeoutError()
     const commit = sha(this.next++)
     this.commits.set(commit, { parent: parentSha, tree: treeSha })
@@ -192,6 +194,7 @@ it('defaults to no writes; a prepared draft publishes exactly three files in one
   expect(git.events).toEqual([])
   const commit = await publishRun(db, git, 'r1', { writeEnabled: true })
   expect(commit).toBe(git.head)
+  expect(git.messages).toEqual(['chore(data): refresh dataset 02.07.2025'])
   expect(git.events).toEqual(['GET ref', 'GET commit', `POST tree ${sha(100)}`, `POST commit ${sha(1)}`, `PATCH ${commit} force:false`])
   expect(git.files).toHaveLength(1)
   expect(Object.keys(git.files[0]).sort()).toEqual(['readme', 'reposJson', 'statsJson'])
