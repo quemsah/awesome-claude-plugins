@@ -48,7 +48,7 @@ describe('crawl progress inspection', () => {
         phaseProcessed: 2,
         phasePercent: 40,
         startedAt: '2026-09-24T08:34:58.000Z',
-        heartbeatAt: '2026-09-24T08:34:58.000Z',
+        heartbeatAt: '2026-09-24T09:05:02.000Z',
         completedAt: null,
         publishedAt: null,
         warningCount: 0,
