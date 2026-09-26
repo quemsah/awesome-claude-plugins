@@ -641,7 +641,10 @@ describe('CLI', () => {
     expect(reader.searchCode).toHaveBeenCalledOnce()
     expect(git.updateBranch).toHaveBeenCalledOnce()
     expect(notifier.notifySuccess).toHaveBeenCalledWith(expect.objectContaining({ confirmedGitSha: 'd'.repeat(40) }))
-    expect(JSON.parse(output.mock.calls[0]?.[0])).toMatchObject({
+    const publishedOutput = output.mock.calls
+      .map(([line]) => JSON.parse(line) as { status?: string })
+      .find((line) => line.status === 'published')
+    expect(publishedOutput).toMatchObject({
       status: 'published',
       runId: 'automatic',
       sha: 'd'.repeat(40),
