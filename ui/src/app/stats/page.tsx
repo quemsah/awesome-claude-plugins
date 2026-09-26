@@ -18,8 +18,8 @@ export default function StatsPageRoute() {
     console.error('Invalid stats data format:', validationResult.error)
   }
 
-  const startDate = stats.length > 0 ? stats[0].date : undefined
-  const endDate = stats.length > 0 ? stats[stats.length - 1].date : undefined
+  const startDate = stats[0]?.date
+  const endDate = stats.at(-1)?.date
 
   return (
     <main className="min-h-dvh bg-background" id="main-content" tabIndex={-1}>
