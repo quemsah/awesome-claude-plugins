@@ -90,7 +90,11 @@ export class RateBudget {
   private readonly blockedUntil: Record<RateResource, number> = { code_search: 0, core: 0, graphql: 0 }
   private readonly lastSent: Record<RateResource, number | null> = { code_search: null, core: null, graphql: null }
   private graphqlQuota: { limit: number; remaining: number; resetAt: number; lastCost: number } | null = null
-  private reservations: Promise<void> = Promise.resolve()
+  private readonly reservations: Record<RateResource, Promise<void>> = {
+    code_search: Promise.resolve(),
+    core: Promise.resolve(),
+    graphql: Promise.resolve(),
+  }
 
   constructor(
     private readonly clock: Clock = systemClock,
@@ -106,7 +110,7 @@ export class RateBudget {
   }
 
   acquire(bucket: RateResource, signal?: AbortSignal): Promise<void> {
-    const reservation = this.reservations.then(async () => {
+    const reservation = this.reservations[bucket].then(async () => {
       throwIfShutdown(signal)
       const rule = rules[bucket]
       while (true) {
@@ -133,7 +137,7 @@ export class RateBudget {
         await this.clock.sleep(waitMs, signal)
       }
     })
-    this.reservations = reservation.catch(() => {})
+    this.reservations[bucket] = reservation.catch(() => {})
     return reservation
   }
 
