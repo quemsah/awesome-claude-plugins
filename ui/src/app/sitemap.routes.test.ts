@@ -5,7 +5,7 @@ import { GET as getSitemapShard } from './sitemap/[id]/route.ts'
 import { GET as getSitemapIndex } from './sitemap.xml/route.ts'
 
 function locations(xml: string): string[] {
-  return [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1])
+  return [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].flatMap((match) => (match[1] === undefined ? [] : [match[1]]))
 }
 
 describe('sitemap routes', () => {
