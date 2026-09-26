@@ -136,7 +136,7 @@ async function crawlAndComplete(
   const errors = listRunErrors(db, runId)
   const errorCategories: Record<string, number> = {}
   for (const error of errors) {
-    errorCategories[error.error_type] = (Object.hasOwn(errorCategories, error.error_type) ? errorCategories[error.error_type] : 0) + 1
+    errorCategories[error.error_type] = (errorCategories[error.error_type] ?? 0) + 1
   }
   if (!completeRun(db, runId, now(), errors.length)) throw new CrawlError('run_not_active')
   return { runId, status: 'completed', discovery, enrichment, warningCount: errors.length, errorCategories }
