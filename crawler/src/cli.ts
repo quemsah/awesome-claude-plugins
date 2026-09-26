@@ -103,11 +103,7 @@ function parsePublishOptions(args: string[]): Pick<ParsedOptions, 'publishId' | 
 function parseRunId(args: string[], command: 'recover-crawl' | 'export'): string {
   const expectedLength = command === 'export' ? 4 : 3
   const [runIdOption, runId, commandOption, commandValue] = args
-  const valid =
-    args.length === expectedLength &&
-    runIdOption === '--run-id' &&
-    runId !== undefined &&
-    /^[A-Za-z0-9_-]{1,100}$/.test(runId)
+  const valid = args.length === expectedLength && runIdOption === '--run-id' && runId !== undefined && /^[A-Za-z0-9_-]{1,100}$/.test(runId)
   if (command === 'recover-crawl' && valid && commandOption === '--confirm-stopped') return runId
   if (command === 'export' && valid && commandOption === '--output-dir' && commandValue) return runId
   throw new Error(`${command} requires --run-id <id> ${command === 'export' ? '--output-dir <absolute-path>' : '--confirm-stopped'}`)
