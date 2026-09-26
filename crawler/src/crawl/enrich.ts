@@ -307,11 +307,7 @@ function isRetryLater(value: unknown): value is RetryLater {
   return typeof value === 'object' && value !== null && 'kind' in value && value.kind === RETRY_LATER
 }
 
-function graphQLRetryReason(result: {
-  status: number | null
-  reason: string
-  failureReason?: GitHubRetryReason
-}): GitHubRetryReason {
+function graphQLRetryReason(result: { status: number | null; reason: string; failureReason?: GitHubRetryReason }): GitHubRetryReason {
   if (result.failureReason) return result.failureReason
   if (/timeout/i.test(result.reason)) return 'graphql_timeout'
   if (/invalid graphql response/i.test(result.reason)) return 'graphql_invalid_response'
