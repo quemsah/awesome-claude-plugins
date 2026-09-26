@@ -380,7 +380,7 @@ export class GitHubClient implements GitHubReader {
   }
 
   getMarketplaceBlobsByNodeId(ids: readonly string[]): Promise<GraphQLMarketplaceBlobBatchResult> {
-    return this.enqueueGraphQL(ids, MARKETPLACE_BLOBS_QUERY, parseGraphQLMarketplaceBlob, true)
+    return this.enqueueGraphQL(ids, MARKETPLACE_BLOBS_QUERY, parseGraphQLMarketplaceBlob, true, false)
   }
 
   private enqueueGraphQL<T>(
@@ -388,10 +388,11 @@ export class GitHubClient implements GitHubReader {
     query: string,
     parseNode: (value: unknown) => T | null,
     isolateNodeErrors = false,
+    retryTimeouts = true,
   ): Promise<GraphQLResult<T>> {
     const run = this.pending.then(() => {
       throwIfShutdown(this.signal)
-      return this.performGraphQL(ids, query, parseNode, isolateNodeErrors)
+      return this.performGraphQL(ids, query, parseNode, isolateNodeErrors, retryTimeouts)
     })
     this.pending = run.then(
       () => undefined,
@@ -511,6 +512,8 @@ export class GitHubClient implements GitHubReader {
       if (root !== 'nodes' || typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= data.nodes.length) {
         return null
       }
+      const remainder = error.path.slice(2)
+      if (remainder.length === 2 && remainder[0] === 'object' && remainder[1] === 'text') continue
       indexes.add(index)
     }
     return indexes
@@ -567,7 +570,12 @@ export class GitHubClient implements GitHubReader {
     }
   }
 
-  private async sendGraphQLRequest<T>(ids: readonly string[], query: string, attempt: number): Promise<GraphQLRequestAction<T>> {
+  private async sendGraphQLRequest<T>(
+    ids: readonly string[],
+    query: string,
+    attempt: number,
+    retryTimeouts: boolean,
+  ): Promise<GraphQLRequestAction<T>> {
     await this.budget.acquire('graphql', this.signal)
     throwIfShutdown(this.signal)
     const requestStartedAt = this.clock.now()
@@ -592,13 +600,14 @@ export class GitHubClient implements GitHubReader {
       return { kind: 'response', response, requestStartedAt }
     } catch {
       throwIfShutdown(this.signal)
-      if (attempt === 3) {
+      const timedOut = timeoutSignal.aborted
+      if ((timedOut && !retryTimeouts) || attempt === 3) {
         return {
           kind: 'result',
           result: {
             kind: 'temporary-error',
             status: null,
-            reason: timeoutSignal.aborted ? 'GitHub GraphQL timeout' : 'GitHub network error',
+            reason: timedOut ? 'GitHub GraphQL timeout' : 'GitHub network error',
           },
         }
       }
@@ -629,13 +638,14 @@ export class GitHubClient implements GitHubReader {
     query: string,
     parseNode: (value: unknown) => T | null,
     isolateNodeErrors: boolean,
+    retryTimeouts: boolean,
   ): Promise<GraphQLResult<T>> {
     if (ids.length < 1 || ids.length > 50 || ids.some((id) => !nonempty(id))) {
       throw new GitHubFatalError('GraphQL batch must contain 1..50 node IDs', null)
     }
     let secondaryCount = 0
     for (let attempt = 0; attempt < 4; attempt++) {
-      const request = await this.sendGraphQLRequest<T>(ids, query, attempt)
+      const request = await this.sendGraphQLRequest<T>(ids, query, attempt, retryTimeouts)
       if (request.kind === 'result') return request.result
       if (request.kind === 'retry') continue
 
