@@ -69,6 +69,10 @@ export default async function RepoPage({ params }: RouteParams) {
   if (repo.length !== 2) {
     notFound()
   }
+  const [owner, repoName] = repo
+  if (owner === undefined || repoName === undefined) {
+    notFound()
+  }
 
   const repoPath = repo.join('/')
   const catalogRepo = findCatalogRepo(repoPath)
@@ -98,10 +102,10 @@ export default async function RepoPage({ params }: RouteParams) {
       <RepoStructuredData repo={repository} />
       <RepoPageClient
         apiBaseUrl={GITHUB_API_URL}
-        owner={repo[0]}
+        owner={owner}
         rawBaseUrl={GITHUB_RAW_URL}
         repo={repository}
-        repoName={repo[1]}
+        repoName={repoName}
         repoPath={repoPath}
       />
     </>
