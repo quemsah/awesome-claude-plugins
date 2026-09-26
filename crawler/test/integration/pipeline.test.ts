@@ -116,7 +116,15 @@ it('runs discovery, enrichment, snapshot generation and Git publication through 
 
   expect(treeBodies).toHaveLength(1)
   const tree = treeBodies[0] as { tree: Array<{ path: string; content: string }> }
-  expect(tree.tree.map(({ path }) => path)).toEqual(['README.md', 'ui/src/data/repos.json', 'ui/src/data/stats.json'])
+  expect(tree.tree.map(({ path }) => path)).toEqual([
+    'README.md',
+    'ui/src/data/repos.json',
+    'ui/src/data/stats.json',
+    'ui/src/data/markdown-paths.json',
+  ])
+  const markdownPaths = JSON.parse(tree.tree.find(({ path }) => path === 'ui/src/data/markdown-paths.json')?.content ?? 'null')
+  expect(markdownPaths).toEqual([])
+
   const repos = JSON.parse(tree.tree.find(({ path }) => path === 'ui/src/data/repos.json')?.content ?? 'null')
   expect(repos).toEqual([
     expect.objectContaining({

@@ -7,7 +7,12 @@ const treeSha = 'c'.repeat(40)
 const pendingSha = 'd'.repeat(40)
 const laterSha = 'e'.repeat(40)
 const rootSha = 'f'.repeat(40)
-const files = { readme: '# Catalog\n', reposJson: '[{"id":1}]\n', statsJson: '[{"id":1}]\n' }
+const files = {
+  readme: '# Catalog\n',
+  reposJson: '[{"id":1}]\n',
+  statsJson: '[{"id":1}]\n',
+  markdownPathsJson: '["owner/repo.md"]\n',
+}
 
 function ref(sha: string): Response {
   return Response.json({ ref: 'refs/heads/main', object: { type: 'commit', sha, url: 'https://api.github.com/git/commits/x' } })
@@ -49,7 +54,7 @@ function payload(request: { init: RequestInit | undefined }): unknown {
 }
 
 describe('GitHubGitClient', () => {
-  it('creates exactly three content blobs on the base tree and advances the ref without force', async () => {
+  it('creates exactly four content blobs on the base tree and advances the ref without force', async () => {
     const { client, requests } = mockClient([
       ref(baseSha),
       commit(baseSha, baseTree, [rootSha]),
@@ -84,6 +89,7 @@ describe('GitHubGitClient', () => {
         { path: 'README.md', mode: '100644', type: 'blob', content: '# Catalog\n' },
         { path: 'ui/src/data/repos.json', mode: '100644', type: 'blob', content: '[{"id":1}]\n' },
         { path: 'ui/src/data/stats.json', mode: '100644', type: 'blob', content: '[{"id":1}]\n' },
+        { path: 'ui/src/data/markdown-paths.json', mode: '100644', type: 'blob', content: '["owner/repo.md"]\n' },
       ],
     })
     expect(payload(requests[3])).toEqual({ tree: treeSha, parents: [baseSha], message: 'Update catalog' })
@@ -145,7 +151,7 @@ describe('GitHubGitClient', () => {
     expect(() => mockClient([], { branch: 'release//bad' })).toThrow('branch')
   })
 
-  it('rejects missing blob content before POST so every tree contains three string blobs', async () => {
+  it('rejects missing blob content before POST so every tree contains four string blobs', async () => {
     const { client, requests } = mockClient([])
     await expect(client.createTree(baseTree, { ...files, reposJson: undefined } as unknown as typeof files)).rejects.toThrow('snapshot')
     expect(requests).toHaveLength(0)

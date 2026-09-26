@@ -114,7 +114,7 @@ class Branch implements GitHubGit {
   }
 }
 
-it('prepares three deterministic files and a durable run-bound draft without adding stats or calling Git', () => {
+it('prepares four deterministic files and a durable run-bound draft without adding stats or calling Git', () => {
   const db = fixture()
   const first = prepareDraft(db, 'r1', timestamp)
   expect(first).toMatchObject({ id: 265, date: '2025-07-02T12:30:00.000Z', size: 1 })
@@ -185,7 +185,7 @@ it('refuses preparation after the catalog changes instead of replacing its date 
   expect(getRun(db, 'r1')?.draft_hash).toBe(original.hash)
 })
 
-it('defaults to no writes; a prepared draft publishes exactly three files in one commit and records stats once', async () => {
+it('defaults to no writes; a prepared draft publishes exactly four files in one commit and records stats once', async () => {
   const db = fixture()
   const git = new Branch()
   const draft = prepareDraft(db, 'r1', timestamp)
@@ -197,14 +197,15 @@ it('defaults to no writes; a prepared draft publishes exactly three files in one
   expect(git.messages).toEqual(['chore(data): refresh dataset 02.07.2025'])
   expect(git.events).toEqual(['GET ref', 'GET commit', `POST tree ${sha(100)}`, `POST commit ${sha(1)}`, `PATCH ${commit} force:false`])
   expect(git.files).toHaveLength(1)
-  expect(Object.keys(git.files[0]).sort()).toEqual(['readme', 'reposJson', 'statsJson'])
-  const { readme, reposJson, statsJson } = git.files[0]
+  expect(Object.keys(git.files[0]).sort()).toEqual(['markdownPathsJson', 'readme', 'reposJson', 'statsJson'])
+  const { readme, reposJson, statsJson, markdownPathsJson } = git.files[0]
   expect(draft.hash).toBe(
     createHash('sha256')
-      .update(JSON.stringify([readme, reposJson, statsJson]), 'utf8')
+      .update(JSON.stringify([readme, reposJson, statsJson, markdownPathsJson]), 'utf8')
       .digest('hex'),
   )
   expect(git.files[0].readme).toContain('Last updated: 02.07.2025 with 1 total repositories indexed.')
+  expect(JSON.parse(git.files[0].markdownPathsJson)).toEqual([])
   expect(JSON.parse(git.files[0].statsJson)).toEqual([
     { id: 264, date: '2024-01-01T00:00:00.000Z', size: 4 },
     { id: 265, date: draft.date, size: draft.size },
@@ -217,6 +218,40 @@ it('defaults to no writes; a prepared draft publishes exactly three files in one
   expect(await publishRun(db, git, 'r1', { writeEnabled: true })).toBe(commit)
   expect(await publishRun(db, git, 'r1')).toBe(commit)
   expect(git.events).toHaveLength(5)
+})
+
+it('accepts a legacy three-file draft hash when recovering a draft prepared before the markdown sidecar existed', async () => {
+  const db = fixture()
+  const git = new Branch()
+  prepareDraft(db, 'r1', timestamp)
+  const files = readDraftSnapshot(db, 'r1')
+  const legacyHash = createHash('sha256')
+    .update(JSON.stringify([files.readme, files.reposJson, files.statsJson]), 'utf8')
+    .digest('hex')
+  db.prepare('UPDATE runs SET draft_hash = ? WHERE run_id = ?').run(legacyHash, 'r1')
+
+  expect(() => prepareDraft(db, 'r1', new Date('2027-01-01'))).not.toThrow()
+  expect(getRun(db, 'r1')?.draft_hash).toBe(legacyHash)
+
+  const commit = await publishRun(db, git, 'r1', { writeEnabled: true })
+  expect(commit).toBe(git.head)
+  expect(git.files).toHaveLength(1)
+  expect(git.files[0].markdownPathsJson).toBe(files.markdownPathsJson)
+})
+
+it('still rejects catalog changes when a persisted draft uses the legacy three-file hash', async () => {
+  const db = fixture()
+  const git = new Branch()
+  prepareDraft(db, 'r1', timestamp)
+  const files = readDraftSnapshot(db, 'r1')
+  const legacyHash = createHash('sha256')
+    .update(JSON.stringify([files.readme, files.reposJson, files.statsJson]), 'utf8')
+    .digest('hex')
+  db.prepare('UPDATE runs SET draft_hash = ? WHERE run_id = ?').run(legacyHash, 'r1')
+  db.prepare('UPDATE repositories SET description = ? WHERE id = 18').run('changed after legacy draft')
+
+  await expect(publishRun(db, git, 'r1', { writeEnabled: true })).rejects.toMatchObject({ category: 'snapshot_changed' })
+  expect(git.events).toEqual([])
 })
 
 it('does not touch Git for a missing draft, changed catalog, corrupted hash, or historical id/date collision', async () => {
