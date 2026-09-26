@@ -3,6 +3,12 @@ import type { PublishableRepository } from '../storage/repositories.js'
 import { renderReadme } from './readme.js'
 import { validateReadme } from './validateReadme.js'
 
+function required<T>(values: readonly T[], index: number): T {
+  const value = values[index]
+  if (value === undefined) throw new Error(`Missing fixture at index ${index}`)
+  return value
+}
+
 const draft = { id: 265, date: '2026-09-23T12:00:00.000Z', size: 2 }
 const repos: PublishableRepository[] = [
   {
@@ -38,7 +44,7 @@ it('accepts escaped descriptions while checking the top ranked links', () => {
 it('rejects README links with invalid GitHub identity segments', () => {
   const invalidRepos: PublishableRepository[] = [
     {
-      ...repos[0],
+      ...required(repos, 0),
       html_url: 'https://github.com/../first',
       owner: '..',
       owner_url: 'https://github.com/..',
