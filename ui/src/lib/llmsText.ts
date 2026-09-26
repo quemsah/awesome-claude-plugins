@@ -54,7 +54,7 @@ export function getCatalogSummary(repos: readonly Repo[], stats: readonly StatsI
 }
 
 export function buildLlmsText(summary: CatalogSummary): string {
-  const updatedDate = summary.updatedAt ? new Date(summary.updatedAt).toISOString().split('T')[0] : 'unknown'
+  const updatedDate = summary.updatedAt ? new Date(summary.updatedAt).toISOString().slice(0, 10) : 'unknown'
 
   return `# Awesome Claude Plugins
 
