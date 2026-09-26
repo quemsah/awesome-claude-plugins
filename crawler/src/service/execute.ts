@@ -463,8 +463,7 @@ export async function executeCrawl(
       const elapsedMs = Math.max(0, now().getTime() - startedAt.getTime())
 
       if (phase === 'discovery') {
-        const newRepositories =
-          discoveryStartTotal === null ? null : Math.max(0, snapshot.repositories.total - discoveryStartTotal)
+        const newRepositories = discoveryStartTotal === null ? null : Math.max(0, snapshot.repositories.total - discoveryStartTotal)
         const codeSearchRequests = buckets?.code_search.requests ?? null
         log({
           level: 'info',
