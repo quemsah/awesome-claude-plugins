@@ -2,6 +2,21 @@ import { sleepWithShutdown, throwIfShutdown } from '../shutdown.js'
 
 export type RateResource = 'code_search' | 'core' | 'graphql'
 
+export type GitHubRetryReason =
+  | 'network'
+  | 'body_read'
+  | 'server_5xx'
+  | 'primary_rate_limit'
+  | 'secondary_rate_limit'
+  | 'invalid_json'
+  | 'invalid_manifest'
+  | 'parser_internal'
+  | 'invalid_response'
+  | 'http_error'
+  | 'unexpected_304'
+  | 'graphql_timeout'
+  | 'graphql_invalid_response'
+
 export type Clock = {
   now: () => number
   sleep: (milliseconds: number, signal?: AbortSignal) => Promise<void>
@@ -17,6 +32,8 @@ export type RateLog = (event: {
   used?: number
   resetAt?: string
   latencyMs?: number
+  retryReason?: GitHubRetryReason
+  retryWaitMs?: number
 }) => void
 type RateBucketSummary = { requests: number; waitMs: number; lastRemaining: number | null }
 export type GitHubRateBuckets = {
@@ -160,5 +177,13 @@ export class RateBudget {
 
   defer(bucket: RateResource, durationMs: number): void {
     this.blockedUntil[bucket] = Math.max(this.blockedUntil[bucket], this.clock.now() + durationMs)
+  }
+
+  pendingGlobalWaitMs(bucket: RateResource): number {
+    return Math.max(0, this.blockedUntil[bucket] - this.clock.now())
+  }
+
+  recordRetry(bucket: RateResource, retryReason: GitHubRetryReason, retryWaitMs: number): void {
+    this.log?.({ bucket, retryReason, retryWaitMs })
   }
 }

@@ -497,11 +497,24 @@ describe('GitHubClient', () => {
     expect(test.requests).toHaveLength(2)
   })
 
-  it('retries transient requests at most twice', async () => {
+  it('retries transient requests at most twice with typed retry reasons', async () => {
     const test = harness([new Error('test-secret'), new Response('', { status: 503 }), new Response('', { status: 502 })])
     const result = await test.client.getMarketplace('acme', 'catalog')
-    expect(result).toMatchObject({ kind: 'temporary-error', retryCount: 2 })
+    expect(result).toMatchObject({ kind: 'temporary-error', retryCount: 2, failureReason: 'server_5xx', retryable: true })
     expect(test.requests).toHaveLength(3)
+    expect(test.logs).toContainEqual(expect.objectContaining({ bucket: 'core', retryReason: 'network' }))
+    expect(test.logs).toContainEqual(expect.objectContaining({ bucket: 'core', retryReason: 'server_5xx' }))
+  })
+
+  it('supports one-attempt REST calls for the crawler first pass', async () => {
+    const test = harness([new Response('', { status: 503 })])
+    expect(await test.client.getRepository('acme', 'catalog', undefined, { maxAttempts: 1 })).toMatchObject({
+      kind: 'temporary-error',
+      retryCount: 0,
+      failureReason: 'server_5xx',
+      retryable: true,
+    })
+    expect(test.requests).toHaveLength(1)
   })
 
   it('waits for primary reset from quota headers on the next core request', async () => {

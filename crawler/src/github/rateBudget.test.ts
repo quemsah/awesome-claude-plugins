@@ -211,6 +211,15 @@ describe('RateBudget', () => {
     expect(clock.time).toBe(90_000)
   })
 
+  it('records retry-specific wait without globally blocking the bucket', () => {
+    const events: Parameters<NonNullable<ConstructorParameters<typeof RateBudget>[1]>>[0][] = []
+    const clock = virtualClock()
+    const budget = new RateBudget(clock, (event) => events.push(event))
+    budget.recordRetry('core', 'server_5xx', 1250)
+    expect(events).toContainEqual({ bucket: 'core', retryReason: 'server_5xx', retryWaitMs: 1250 })
+    expect(budget.pendingGlobalWaitMs('core')).toBe(0)
+  })
+
   it('accounts for each reservation and actual wait without exposing request headers', async () => {
     const clock = virtualClock()
     const events: Array<{ bucket: string; request?: boolean; waitMs?: number; remaining?: number }> = []

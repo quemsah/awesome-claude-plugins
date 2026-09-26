@@ -1,7 +1,14 @@
 import { MarketplaceValidationError, parseMarketplaceManifest } from '@awesome-claude-plugins/marketplace-contract'
 import type { components, operations } from '@octokit/openapi-types'
 import { throwIfShutdown } from '../shutdown.js'
-import { type Clock, RateBudget, type RateLog, type RateResource, systemClock } from './rateBudget.js'
+import {
+  type Clock,
+  type GitHubRetryReason,
+  RateBudget,
+  type RateLog,
+  type RateResource,
+  systemClock,
+} from './rateBudget.js'
 
 type SearchCodeResponse = operations['search/code']['responses'][200]['content']['application/json']
 type SearchCodeRepository = SearchCodeResponse['items'][number]['repository']
@@ -57,8 +64,23 @@ export type RepoResult<T> =
   | { kind: 'found'; data: T; etag?: string }
   | { kind: 'not-found'; retryCount?: number }
   | { kind: 'not-modified'; etag?: string; retryCount?: number }
-  | { kind: 'invalid-content'; failure: 'invalid-json' | 'invalid-manifest'; status: number; reason: string; retryCount: number }
-  | { kind: 'temporary-error'; status: number | null; reason: string; retryCount: number }
+  | {
+      kind: 'invalid-content'
+      failure: 'invalid-json' | 'invalid-manifest'
+      status: number
+      reason: string
+      retryCount: number
+      failureReason?: GitHubRetryReason
+      retryable?: boolean
+    }
+  | {
+      kind: 'temporary-error'
+      status: number | null
+      reason: string
+      retryCount: number
+      failureReason?: GitHubRetryReason
+      retryable?: boolean
+    }
 
 export type ConditionalRepoResult<T> = RepoResult<T> | { kind: 'not-modified'; retryCount: number }
 
@@ -69,10 +91,12 @@ type GraphQLRequestAction<T> =
   | { kind: 'retry' }
   | { kind: 'result'; result: GraphQLResult<T> }
 
+export type GitHubRequestOptions = { maxAttempts?: number }
+
 export interface GitHubReader {
   searchCode(query: string, page: number): Promise<SearchPage>
-  getRepository(owner: string, repo: string, etag?: string): Promise<RepoResult<GitHubRepo>>
-  getMarketplace(owner: string, repo: string, etag?: string): Promise<RepoResult<Marketplace>>
+  getRepository(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<GitHubRepo>>
+  getMarketplace(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<Marketplace>>
   getRepositoriesByNodeId?(ids: readonly string[]): Promise<GraphQLBatchResult>
   getMarketplaceBlobsByNodeId?(ids: readonly string[]): Promise<GraphQLMarketplaceBlobBatchResult>
 }
@@ -108,6 +132,14 @@ type Options = {
 }
 
 const MAX_REQUEST_ATTEMPTS = 3
+
+function requestAttempts(value: number | undefined): number {
+  if (value === undefined) return MAX_REQUEST_ATTEMPTS
+  if (!Number.isInteger(value) || value < 1 || value > MAX_REQUEST_ATTEMPTS) {
+    throw new GitHubFatalError(`GitHub maxAttempts must be 1..${MAX_REQUEST_ATTEMPTS}`, null)
+  }
+  return value
+}
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -347,19 +379,26 @@ export class GitHubClient implements GitHubReader {
     return result.data
   }
 
-  async getRepository(owner: string, repo: string, etag?: string): Promise<RepoResult<GitHubRepo>> {
+  async getRepository(
+    owner: string,
+    repo: string,
+    etag?: string,
+    options?: GitHubRequestOptions,
+  ): Promise<RepoResult<GitHubRepo>> {
     const result = await this.request(
       'core',
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
       parseRepository,
       'application/vnd.github+json',
       etag,
+      false,
+      requestAttempts(options?.maxAttempts),
     )
     if (result.kind === 'found' && result.data.private) return { kind: 'not-found' }
     return result
   }
 
-  getMarketplace(owner: string, repo: string, etag?: string): Promise<RepoResult<Marketplace>> {
+  getMarketplace(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<Marketplace>> {
     return this.request(
       'core',
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/.claude-plugin/marketplace.json`,
@@ -367,6 +406,7 @@ export class GitHubClient implements GitHubReader {
       'application/vnd.github.raw+json',
       etag,
       true,
+      requestAttempts(options?.maxAttempts),
     )
   }
 
@@ -377,11 +417,12 @@ export class GitHubClient implements GitHubReader {
     accept = 'application/vnd.github+json',
     etag?: string,
     permanentContentErrors = false,
+    attempts = MAX_REQUEST_ATTEMPTS,
   ): Promise<RepoResult<T>> {
     etag = safeEntityTag(etag ?? null) ?? undefined
     const run = this.pending.then(() => {
       throwIfShutdown(this.signal)
-      return this.perform(bucket, path, parse, accept, etag, permanentContentErrors)
+      return this.perform(bucket, path, parse, accept, etag, permanentContentErrors, attempts)
     })
     this.pending = run.then(
       () => undefined,
@@ -686,9 +727,10 @@ export class GitHubClient implements GitHubReader {
     accept: string,
     etag?: string,
     permanentContentErrors = false,
+    attempts = MAX_REQUEST_ATTEMPTS,
   ): Promise<RepoResult<T>> {
     let secondaryCount = 0
-    for (let attempt = 0; attempt < MAX_REQUEST_ATTEMPTS; attempt++) {
+    for (let attempt = 0; attempt < attempts; attempt++) {
       await this.budget.acquire(bucket, this.signal)
       throwIfShutdown(this.signal)
       let response: Response
@@ -704,17 +746,41 @@ export class GitHubClient implements GitHubReader {
         })
       } catch {
         throwIfShutdown(this.signal)
-        if (attempt === MAX_REQUEST_ATTEMPTS - 1)
-          return { kind: 'temporary-error', status: null, reason: 'GitHub network error', retryCount: attempt }
-        this.budget.defer(bucket, this.transientDelay(attempt))
+        if (attempt === attempts - 1) {
+          return {
+            kind: 'temporary-error',
+            status: null,
+            reason: 'GitHub network error',
+            retryCount: attempt,
+            failureReason: 'network',
+            retryable: true,
+          }
+        }
+        await this.waitForTransientRetry(bucket, 'network', this.transientDelay(attempt))
         continue
       }
-      const action = await this.handleResponse(bucket, response, parse, attempt, secondaryCount, etag !== undefined, permanentContentErrors)
+      const action = await this.handleResponse(
+        bucket,
+        response,
+        parse,
+        attempt,
+        secondaryCount,
+        etag !== undefined,
+        permanentContentErrors,
+        attempt === attempts - 1,
+      )
       throwIfShutdown(this.signal)
       if (action.kind === 'result') return action.result
       secondaryCount = action.secondaryCount
     }
-    return { kind: 'temporary-error', status: null, reason: 'GitHub retry limit exceeded', retryCount: MAX_REQUEST_ATTEMPTS - 1 }
+    return {
+      kind: 'temporary-error',
+      status: null,
+      reason: 'GitHub retry limit exceeded',
+      retryCount: attempts - 1,
+      failureReason: 'network',
+      retryable: true,
+    }
   }
 
   private async handleResponse<T>(
@@ -725,16 +791,24 @@ export class GitHubClient implements GitHubReader {
     secondaryCount: number,
     conditional: boolean,
     permanentContentErrors: boolean,
+    finalAttempt: boolean,
   ): Promise<ResponseAction<T>> {
     this.budget.observe(bucket, response.headers)
     const delay = retryAfter(response.headers, this.clock.now())
-    if (delay !== null) this.budget.defer(bucket, delay)
     const { status } = response
+    if (delay !== null && (status === 403 || status === 429 || response.ok)) this.budget.defer(bucket, delay)
     if (status === 401 || status === 422) throw new GitHubFatalError(`GitHub request rejected (${status})`, status)
     if (status === 304 && !conditional) {
       return {
         kind: 'result',
-        result: { kind: 'temporary-error', status, reason: 'Unexpected GitHub 304 response', retryCount: attempt },
+        result: {
+          kind: 'temporary-error',
+          status,
+          reason: 'Unexpected GitHub 304 response',
+          retryCount: attempt,
+          failureReason: 'unexpected_304',
+          retryable: false,
+        },
       }
     }
     if (status === 304) {
@@ -742,11 +816,22 @@ export class GitHubClient implements GitHubReader {
       return { kind: 'result', result: { kind: 'not-modified', ...(etag ? { etag } : {}), retryCount: attempt } }
     }
     if (status === 404) return { kind: 'result', result: { kind: 'not-found', retryCount: attempt } }
-    if (status === 403 || status === 429) return this.handleRateLimit(bucket, response, attempt, delay, secondaryCount)
-    if (status >= 500 && status <= 599) return this.handleServerError(bucket, status, attempt, delay, secondaryCount)
-    if (!response.ok)
-      return { kind: 'result', result: { kind: 'temporary-error', status, reason: 'GitHub HTTP error', retryCount: attempt } }
-    return this.parseResponse(bucket, response, parse, attempt, secondaryCount, permanentContentErrors)
+    if (status === 403 || status === 429) return this.handleRateLimit(bucket, response, attempt, delay, secondaryCount, finalAttempt)
+    if (status >= 500 && status <= 599) return this.handleServerError(bucket, status, attempt, delay, secondaryCount, finalAttempt)
+    if (!response.ok) {
+      return {
+        kind: 'result',
+        result: {
+          kind: 'temporary-error',
+          status,
+          reason: 'GitHub HTTP error',
+          retryCount: attempt,
+          failureReason: 'http_error',
+          retryable: false,
+        },
+      }
+    }
+    return this.parseResponse(bucket, response, parse, attempt, secondaryCount, permanentContentErrors, finalAttempt)
   }
 
   private async handleRateLimit<T>(
@@ -755,6 +840,7 @@ export class GitHubClient implements GitHubReader {
     attempt: number,
     delay: number | null,
     secondaryCount: number,
+    finalAttempt: boolean,
   ): Promise<ResponseAction<T>> {
     const { status } = response
     const remaining = response.headers.get('x-ratelimit-remaining')
@@ -766,8 +852,21 @@ export class GitHubClient implements GitHubReader {
     }
     if (secondary) secondaryCount++
     this.budget.defer(bucket, Math.max(delay ?? 0, secondary ? 60_000 * 2 ** (secondaryCount - 1) + Math.floor(this.random() * 1_000) : 0))
-    if (attempt === MAX_REQUEST_ATTEMPTS - 1)
-      return { kind: 'result', result: { kind: 'temporary-error', status, reason: 'GitHub rate limited', retryCount: attempt } }
+    const failureReason: GitHubRetryReason = secondary ? 'secondary_rate_limit' : 'primary_rate_limit'
+    if (finalAttempt) {
+      return {
+        kind: 'result',
+        result: {
+          kind: 'temporary-error',
+          status,
+          reason: 'GitHub rate limited',
+          retryCount: attempt,
+          failureReason,
+          retryable: true,
+        },
+      }
+    }
+    this.budget.recordRetry(bucket, failureReason, this.budget.pendingGlobalWaitMs(bucket))
     return { kind: 'retry', secondaryCount }
   }
 
@@ -777,10 +876,22 @@ export class GitHubClient implements GitHubReader {
     attempt: number,
     delay: number | null,
     secondaryCount: number,
+    finalAttempt: boolean,
   ): Promise<ResponseAction<T>> {
-    if (attempt === MAX_REQUEST_ATTEMPTS - 1)
-      return { kind: 'result', result: { kind: 'temporary-error', status, reason: 'GitHub server error', retryCount: attempt } }
-    this.budget.defer(bucket, Math.max(delay ?? 0, this.transientDelay(attempt)))
+    if (finalAttempt) {
+      return {
+        kind: 'result',
+        result: {
+          kind: 'temporary-error',
+          status,
+          reason: 'GitHub server error',
+          retryCount: attempt,
+          failureReason: 'server_5xx',
+          retryable: true,
+        },
+      }
+    }
+    await this.waitForTransientRetry(bucket, 'server_5xx', Math.max(delay ?? 0, this.transientDelay(attempt)))
     return { kind: 'retry', secondaryCount }
   }
 
@@ -791,12 +902,21 @@ export class GitHubClient implements GitHubReader {
     attempt: number,
     secondaryCount: number,
     permanentContentErrors: boolean,
+    finalAttempt: boolean,
   ): Promise<ResponseAction<T>> {
     let text: string
     try {
       text = await response.text()
     } catch {
-      return this.retryInvalidResponse(bucket, response, attempt, secondaryCount, 'GitHub response body read failed')
+      return this.retryInvalidResponse(
+        bucket,
+        response,
+        attempt,
+        secondaryCount,
+        'GitHub response body read failed',
+        'body_read',
+        finalAttempt,
+      )
     }
 
     let value: unknown
@@ -812,10 +932,20 @@ export class GitHubClient implements GitHubReader {
             status: response.status,
             reason: 'Invalid marketplace JSON',
             retryCount: attempt,
+            failureReason: 'invalid_json',
+            retryable: false,
           },
         }
       }
-      return this.retryInvalidResponse(bucket, response, attempt, secondaryCount, 'Invalid GitHub response')
+      return this.retryInvalidResponse(
+        bucket,
+        response,
+        attempt,
+        secondaryCount,
+        'Invalid GitHub response',
+        'invalid_response',
+        finalAttempt,
+      )
     }
 
     let data: T
@@ -831,37 +961,68 @@ export class GitHubClient implements GitHubReader {
             status: response.status,
             reason: marketplaceValidationReason(error),
             retryCount: attempt,
+            failureReason: 'invalid_manifest',
+            retryable: false,
           },
         }
       }
       if (permanentContentErrors) {
         return {
           kind: 'result',
-          result: { kind: 'temporary-error', status: response.status, reason: 'Marketplace parser failure', retryCount: attempt },
+          result: {
+            kind: 'temporary-error',
+            status: response.status,
+            reason: 'Marketplace parser failure',
+            retryCount: attempt,
+            failureReason: 'parser_internal',
+            retryable: false,
+          },
         }
       }
-      return this.retryInvalidResponse(bucket, response, attempt, secondaryCount, 'Invalid GitHub response')
+      return this.retryInvalidResponse(
+        bucket,
+        response,
+        attempt,
+        secondaryCount,
+        'Invalid GitHub response',
+        'invalid_response',
+        finalAttempt,
+      )
     }
 
     const etag = safeEntityTag(response.headers.get('etag'))
     return { kind: 'result', result: { kind: 'found', data, ...(etag ? { etag } : {}) } }
   }
 
-  private retryInvalidResponse<T>(
+  private async retryInvalidResponse<T>(
     bucket: RateResource,
     response: Response,
     attempt: number,
     secondaryCount: number,
     reason: string,
-  ): ResponseAction<T> {
-    if (attempt === MAX_REQUEST_ATTEMPTS - 1) {
+    failureReason: GitHubRetryReason,
+    finalAttempt: boolean,
+  ): Promise<ResponseAction<T>> {
+    if (finalAttempt) {
       return {
         kind: 'result',
-        result: { kind: 'temporary-error', status: response.status, reason, retryCount: attempt },
+        result: {
+          kind: 'temporary-error',
+          status: response.status,
+          reason,
+          retryCount: attempt,
+          failureReason,
+          retryable: true,
+        },
       }
     }
-    this.budget.defer(bucket, this.transientDelay(attempt))
+    await this.waitForTransientRetry(bucket, failureReason, this.transientDelay(attempt))
     return { kind: 'retry', secondaryCount }
+  }
+
+  private async waitForTransientRetry(bucket: RateResource, reason: GitHubRetryReason, waitMs: number): Promise<void> {
+    this.budget.recordRetry(bucket, reason, waitMs)
+    await this.clock.sleep(waitMs, this.signal)
   }
 
   private transientDelay(attempt: number): number {
