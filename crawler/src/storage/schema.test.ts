@@ -36,9 +36,7 @@ it('initializes all tables and remains idempotent on reopen', () => {
     expect.arrayContaining(['github_node_id', 'marketplace_oid', 'repository_etag', 'marketplace_etag', 'marketplace_parser_version']),
   )
   const runColumns = db.prepare('PRAGMA table_info(runs)').all() as Array<{ name: string }>
-  expect(runColumns.map((row) => row.name)).toEqual(
-    expect.arrayContaining(['phase', 'phase_started_at', 'phase_total', 'phase_processed']),
-  )
+  expect(runColumns.map((row) => row.name)).toEqual(expect.arrayContaining(['phase', 'phase_started_at', 'phase_total', 'phase_processed']))
   db.prepare("INSERT INTO repositories (id, html_url, createdAt, updatedAt) VALUES (400, NULL, '2024-01-01', '2024-01-02')").run()
   db.close()
 
