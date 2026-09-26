@@ -962,6 +962,7 @@ async function enrichOne(
   const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts, now, policy, log)
   if (isRetryLater(loaded)) {
     retryQueue?.push(() => {
+      if (removedIds.has(row.id)) return Promise.resolve()
       reader.noteRetry?.('core', loaded.reason)
       return enrichOne(db, reader, runId, row, counts, removedIds, now, RETRY_PASS_REST, undefined, onProgress, log)
     })
@@ -972,6 +973,7 @@ async function enrichOne(
   const marketplace = await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, policy, log)
   if (isRetryLater(marketplace)) {
     retryQueue?.push(async () => {
+      if (removedIds.has(row.id)) return
       reader.noteRetry?.('core', marketplace.reason)
       const retried = await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, RETRY_PASS_REST, log)
       if (!retried || isRetryLater(retried)) return
@@ -1094,6 +1096,7 @@ async function enrichGraphQLOne(
     : await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, policy, log)
   if (isRetryLater(marketplace)) {
     retryQueue?.push(() => {
+      if (removedIds.has(row.id)) return Promise.resolve()
       reader.noteRetry?.('core', marketplace.reason)
       return enrichGraphQLOne(
         db,
