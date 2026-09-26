@@ -117,12 +117,13 @@ export class RateBudget {
         throwIfShutdown(signal)
         const now = this.clock.now()
         const recent = this.sent[bucket]
-        while (recent.length && recent[0] <= now - rule.windowMs) recent.shift()
+        while (recent[0] !== undefined && recent[0] <= now - rule.windowMs) recent.shift()
+        const oldestRequest = recent[0]
 
         const deadline = Math.max(
           this.blockedUntil[bucket],
           this.lastSent[bucket] === null ? now : this.lastSent[bucket] + (this.pacingMs[bucket] ?? rule.spacingMs),
-          recent.length >= rule.limit ? recent[0] + rule.windowMs : now,
+          recent.length >= rule.limit && oldestRequest !== undefined ? oldestRequest + rule.windowMs : now,
           this.graphQLQuotaDeadline(bucket, now),
         )
         if (deadline <= now) {
