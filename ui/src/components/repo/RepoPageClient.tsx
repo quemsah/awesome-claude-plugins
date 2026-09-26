@@ -162,9 +162,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
                 <RetryButton onRetry={handleRetry} />
                 <a
                   className="text-sm underline underline-offset-4"
-                  href={`${rawBaseUrl}/${encodeURIComponent(repoPath.split('/')[0])}/${encodeURIComponent(
-                    repoPath.split('/')[1]
-                  )}/HEAD/.claude-plugin/marketplace.json`}
+                  href={`${rawBaseUrl}/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/HEAD/.claude-plugin/marketplace.json`}
                   rel="noreferrer"
                   target="_blank"
                 >
