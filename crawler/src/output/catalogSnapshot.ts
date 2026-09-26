@@ -18,6 +18,23 @@ export function renderRepos(db: Database.Database): string {
   return `${JSON.stringify(repositories)}\n`
 }
 
+export function renderMarkdownPaths(db: Database.Database): string {
+  const seen = new Set<string>()
+  const paths: string[] = []
+
+  for (const row of listPublishable(db)) {
+    if (!(row.owner && row.repo_name && /\.md$/i.test(row.repo_name))) continue
+    const path = `${row.owner}/${row.repo_name}`
+    const key = path.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    paths.push(path)
+  }
+
+  paths.sort((left, right) => left.localeCompare(right, 'en', { sensitivity: 'base' }))
+  return `${JSON.stringify(paths)}\n`
+}
+
 export function renderStats(db: Database.Database, draft?: StatsRecord): string {
   const history = db.prepare('SELECT id, date, size FROM stats ORDER BY id').all() as StatsRecord[]
   if (draft) {
