@@ -1031,6 +1031,7 @@ export async function enrichRepositories(
     for (const row of rows) {
       lastId = row.id
     }
+    const removedBefore = new Set(removedIds)
     const graphQLRows = rows.filter((row) => row.github_node_id && parseRepositoryUrl(row.html_url ?? ''))
     const legacyRows = rows.filter((row) => !row.github_node_id || !parseRepositoryUrl(row.html_url ?? ''))
     for (const row of legacyRows) {
@@ -1041,7 +1042,8 @@ export async function enrichRepositories(
       offset += batch.length
       await enrichGraphQLBatch(db, reader, runId, batch, counts, removedIds, batchState, now, onProgress, log)
     }
-    advanceRunPhase(db, runId, rows.length, now())
+    const removedFutureRows = [...removedIds].filter((id) => !removedBefore.has(id) && id > lastId).length
+    advanceRunPhase(db, runId, rows.length + removedFutureRows, now())
     onProgress?.()
   }
   return counts
