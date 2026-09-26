@@ -1,3 +1,5 @@
+export const MARKETPLACE_CONTRACT_VERSION = 1
+
 const CONTROL_CHARACTER_PATTERN = /[\r\n]/
 const GITHUB_REPO_PATH_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
 const PLUGIN_ID_PATTERN = /^[A-Za-z0-9._-]+$/

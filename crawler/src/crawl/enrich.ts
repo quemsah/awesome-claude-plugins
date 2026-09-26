@@ -1,4 +1,8 @@
-import { MarketplaceValidationError, parseMarketplaceManifest } from '@awesome-claude-plugins/marketplace-contract'
+import {
+  MARKETPLACE_CONTRACT_VERSION,
+  MarketplaceValidationError,
+  parseMarketplaceManifest,
+} from '@awesome-claude-plugins/marketplace-contract'
 import type Database from 'better-sqlite3'
 import type { GitHubGraphQLMarketplaceBlob } from '../github/client.js'
 import { GitHubFatalError, type GitHubGraphQLRepo, type GitHubReader, type GitHubRepo, type RepoResult } from '../github/client.js'
@@ -248,7 +252,7 @@ function completeEnrichment(counts: EnrichmentCounts, target: EnrichmentTarget, 
   else counts.newReady++
 }
 
-const MARKETPLACE_PARSER_VERSION = 1
+const MARKETPLACE_PARSER_VERSION = MARKETPLACE_CONTRACT_VERSION
 const MARKETPLACE_CONTENT_BATCH_SIZE = 25
 const MARKETPLACE_CONTENT_MAX_BYTES = 750_000
 const MARKETPLACE_UNKNOWN_BYTES = 32_768
