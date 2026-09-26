@@ -267,6 +267,8 @@ describe('GitHubClient', () => {
         kind: 'temporary-error',
         status: null,
         reason: 'GitHub GraphQL timeout',
+        failureReason: 'graphql_timeout',
+        retryable: true,
       })
       expect(test.requests).toHaveLength(1)
     } finally {
@@ -437,6 +439,8 @@ describe('GitHubClient', () => {
       status: 304,
       reason: 'Unexpected GitHub 304 response',
       retryCount: 0,
+      failureReason: 'unexpected_304',
+      retryable: false,
     })
     expect(test.requests).toHaveLength(1)
   })

@@ -286,7 +286,7 @@ function retryReason(result: Extract<RepoResult<unknown>, { kind: 'temporary-err
 }
 
 function deferTransient(result: Extract<RepoResult<unknown>, { kind: 'temporary-error' }>, policy: RestAttemptPolicy): RetryLater | null {
-  return policy.deferTransient && result.retryable !== false ? { kind: RETRY_LATER, reason: retryReason(result) } : null
+  return policy.deferTransient && result.retryable === true ? { kind: RETRY_LATER, reason: retryReason(result) } : null
 }
 
 function isRetryLater(value: unknown): value is RetryLater {

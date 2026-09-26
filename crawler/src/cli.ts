@@ -208,15 +208,12 @@ function rateTracker(checkpoint?: (buckets: GitHubRateBuckets) => void): {
   checkpoint: () => void
 } {
   const buckets: GitHubRateBuckets = {
-    code_search: { requests: 0, waitMs: 0, lastRemaining: null, retries: 0, retryWaitMs: 0, retryReasons: {} },
-    core: { requests: 0, waitMs: 0, lastRemaining: null, retries: 0, retryWaitMs: 0, retryReasons: {} },
+    code_search: { requests: 0, waitMs: 0, lastRemaining: null },
+    core: { requests: 0, waitMs: 0, lastRemaining: null },
     graphql: {
       requests: 0,
       waitMs: 0,
       lastRemaining: null,
-      retries: 0,
-      retryWaitMs: 0,
-      retryReasons: {},
       totalCost: 0,
       lastCost: null,
       lastLimit: null,
