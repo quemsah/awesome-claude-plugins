@@ -79,6 +79,49 @@ describe('GitHubClient', () => {
     expect(test.requests[0].url).toBe('https://api.github.com/repos/acme%20team/cool%2Frepo')
   })
 
+  it('does not serialize unrelated GitHub requests behind an in-flight request', async () => {
+    let resolveCore: ((response: Response) => void) | undefined
+    const coreResponse = new Promise<Response>((resolve) => {
+      resolveCore = resolve
+    })
+    let markCoreStarted: (() => void) | undefined
+    const coreStarted = new Promise<void>((resolve) => {
+      markCoreStarted = resolve
+    })
+    let markSearchStarted: (() => void) | undefined
+    const searchStarted = new Promise<void>((resolve) => {
+      markSearchStarted = resolve
+    })
+    let time = 0
+    const client = new GitHubClient({
+      token: 'test-secret',
+      clock: {
+        now: () => time,
+        sleep: async (milliseconds) => {
+          time += milliseconds
+        },
+      },
+      fetch: (async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.includes('/repos/')) {
+          markCoreStarted?.()
+          return coreResponse
+        }
+        markSearchStarted?.()
+        return Response.json(page)
+      }) as typeof fetch,
+    })
+
+    const core = client.getRepository('acme', 'catalog')
+    await coreStarted
+    const search = client.searchCode('filename:marketplace.json', 1)
+    await searchStarted
+    await expect(search).resolves.toEqual(page)
+
+    resolveCore?.(Response.json(repo))
+    await expect(core).resolves.toEqual({ kind: 'found', data: repo })
+  })
+
   it('sends If-None-Match and reports cached REST responses without parsing a 304 body', async () => {
     const test = harness([
       Response.json(repo, { headers: { etag: '"repo-v1"' } }),
