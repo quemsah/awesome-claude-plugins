@@ -14,7 +14,7 @@ import {
   rebindCanonicalUrl,
   updateEnriched,
 } from '../storage/repositories.js'
-import { advanceRunPhase, recordRunError, runWhileActive } from '../storage/runs.js'
+import { advanceRunPhase, getRun, recordRunError, runWhileActive, startRunPhase } from '../storage/runs.js'
 
 export type EnrichmentCounts = {
   updated: number
@@ -1008,6 +1008,10 @@ export async function enrichRepositories(
   now: () => string = () => new Date().toISOString(),
   log?: Log,
 ): Promise<EnrichmentCounts> {
+  if (getRun(db, runId)?.phase !== 'enrichment') {
+    const total = (db.prepare('SELECT COUNT(*) AS count FROM repositories').get() as { count: number }).count
+    startRunPhase(db, runId, 'enrichment', now(), total)
+  }
   const counts: EnrichmentCounts = {
     updated: 0,
     unchangedOnError: 0,
