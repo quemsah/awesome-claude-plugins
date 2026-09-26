@@ -1,5 +1,5 @@
 import { marketplaceFixtures } from '@awesome-claude-plugins/marketplace-contract/fixtures'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { GitHubClient, GitHubFatalError, GitHubTemporaryError } from './client.js'
 
 const repo = {
@@ -212,6 +212,66 @@ describe('GitHubClient', () => {
     expect(body).toMatchObject({ variables: { ids: [firstId, secondId] } })
     expect(body.query).toContain('query MarketplaceBlobs')
     expect(body.query).toContain('oid text isTruncated isBinary byteSize')
+  })
+
+  it('preserves marketplace blob metadata when only GraphQL Blob.text fails', async () => {
+    const nodeId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
+    const oid = 'c'.repeat(40)
+    const test = harness([
+      Response.json({
+        data: {
+          nodes: [
+            {
+              id: nodeId,
+              object: {
+                oid,
+                byteSize: 128,
+                isBinary: false,
+                isTruncated: false,
+                text: null,
+              },
+            },
+          ],
+          rateLimit: { cost: 2, remaining: 4_498, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 502 },
+        },
+        errors: [{ type: 'SOME_FIELD_ERROR', path: ['nodes', 0, 'object', 'text'], message: 'text unavailable' }],
+      }),
+    ])
+
+    const result = await test.client.getMarketplaceBlobsByNodeId([nodeId])
+
+    expect(result).toEqual({
+      kind: 'found',
+      data: [
+        {
+          repository_node_id: nodeId,
+          oid,
+          text: null,
+          byte_size: 128,
+          is_binary: false,
+          is_truncated: false,
+        },
+      ],
+      rateLimit: { cost: 2, remaining: 4_498, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 502 },
+    })
+  })
+
+  it('returns a marketplace GraphQL timeout after the first timed-out transport attempt', async () => {
+    const nodeId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
+    const timeoutSignal = AbortSignal.abort(new DOMException('Timed out', 'TimeoutError'))
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeoutSignal)
+    try {
+      const test = harness([new Error('timed out'), new Error('must not retry the same marketplace content batch')])
+
+      expect(await test.client.getMarketplaceBlobsByNodeId([nodeId])).toEqual({
+        kind: 'temporary-error',
+        status: null,
+        reason: 'GitHub GraphQL timeout',
+      })
+      expect(test.requests).toHaveLength(1)
+    } finally {
+      timeoutSpy.mockRestore()
+    }
   })
 
   it('keeps valid marketplace blobs when another node is malformed', async () => {
