@@ -2,6 +2,21 @@ import { sleepWithShutdown, throwIfShutdown } from '../shutdown.js'
 
 export type RateResource = 'code_search' | 'core' | 'graphql'
 
+export type GitHubRetryReason =
+  | 'network'
+  | 'body_read'
+  | 'server_5xx'
+  | 'primary_rate_limit'
+  | 'secondary_rate_limit'
+  | 'invalid_json'
+  | 'invalid_manifest'
+  | 'parser_internal'
+  | 'invalid_response'
+  | 'http_error'
+  | 'unexpected_304'
+  | 'graphql_timeout'
+  | 'graphql_invalid_response'
+
 export type Clock = {
   now: () => number
   sleep: (milliseconds: number, signal?: AbortSignal) => Promise<void>
@@ -17,8 +32,18 @@ export type RateLog = (event: {
   used?: number
   resetAt?: string
   latencyMs?: number
+  retryReason?: GitHubRetryReason
+  retryWaitMs?: number
 }) => void
-type RateBucketSummary = { requests: number; waitMs: number; lastRemaining: number | null }
+export type RetryReasonCounts = Partial<Record<GitHubRetryReason, number>>
+type RateBucketSummary = {
+  requests: number
+  waitMs: number
+  lastRemaining: number | null
+  retries?: number
+  retryWaitMs?: number
+  retryReasons?: RetryReasonCounts
+}
 export type GitHubRateBuckets = {
   code_search: RateBucketSummary
   core: RateBucketSummary
@@ -65,7 +90,11 @@ export class RateBudget {
   private readonly blockedUntil: Record<RateResource, number> = { code_search: 0, core: 0, graphql: 0 }
   private readonly lastSent: Record<RateResource, number | null> = { code_search: null, core: null, graphql: null }
   private graphqlQuota: { limit: number; remaining: number; resetAt: number; lastCost: number } | null = null
-  private reservations: Promise<void> = Promise.resolve()
+  private readonly reservations: Record<RateResource, Promise<void>> = {
+    code_search: Promise.resolve(),
+    core: Promise.resolve(),
+    graphql: Promise.resolve(),
+  }
 
   constructor(
     private readonly clock: Clock = systemClock,
@@ -81,7 +110,7 @@ export class RateBudget {
   }
 
   acquire(bucket: RateResource, signal?: AbortSignal): Promise<void> {
-    const reservation = this.reservations.then(async () => {
+    const reservation = this.reservations[bucket].then(async () => {
       throwIfShutdown(signal)
       const rule = rules[bucket]
       while (true) {
@@ -108,7 +137,7 @@ export class RateBudget {
         await this.clock.sleep(waitMs, signal)
       }
     })
-    this.reservations = reservation.catch(() => {})
+    this.reservations[bucket] = reservation.catch(() => {})
     return reservation
   }
 
@@ -160,5 +189,13 @@ export class RateBudget {
 
   defer(bucket: RateResource, durationMs: number): void {
     this.blockedUntil[bucket] = Math.max(this.blockedUntil[bucket], this.clock.now() + durationMs)
+  }
+
+  pendingGlobalWaitMs(bucket: RateResource): number {
+    return Math.max(0, this.blockedUntil[bucket] - this.clock.now())
+  }
+
+  recordRetry(bucket: RateResource, retryReason: GitHubRetryReason, retryWaitMs: number): void {
+    this.log?.({ bucket, retryReason, retryWaitMs })
   }
 }

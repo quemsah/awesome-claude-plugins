@@ -63,6 +63,7 @@ it('prunes old run diagnostics while preserving stats, recent runs and publicati
   const setting = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)')
   for (const runId of ['old-published', 'old-failed', 'leased', 'recent']) {
     setting.run(`run_report_${runId}`, '{}')
+    setting.run(`run_rate_metrics_${runId}`, '{}')
     setting.run(`schedule_alert_active_run_${runId}`, 'sent')
   }
   setting.run('last_published_at', old)
@@ -74,7 +75,7 @@ it('prunes old run diagnostics while preserving stats, recent runs and publicati
     retentionDays: 90,
     runsDeleted: 2,
     errorsDeleted: 2,
-    settingsDeleted: 4,
+    settingsDeleted: 6,
     statsDetached: 1,
     walCheckpoint: {
       busy: expect.any(Number),
@@ -95,6 +96,10 @@ it('prunes old run diagnostics while preserving stats, recent runs and publicati
   expect(db.prepare("SELECT key FROM settings WHERE key LIKE 'run_report_%' ORDER BY key").all()).toEqual([
     { key: 'run_report_leased' },
     { key: 'run_report_recent' },
+  ])
+  expect(db.prepare("SELECT key FROM settings WHERE key LIKE 'run_rate_metrics_%' ORDER BY key").all()).toEqual([
+    { key: 'run_rate_metrics_leased' },
+    { key: 'run_rate_metrics_recent' },
   ])
   expect(db.prepare("SELECT key FROM settings WHERE key LIKE 'schedule_alert_%' ORDER BY key").all()).toEqual([
     { key: 'schedule_alert_active_run_leased' },

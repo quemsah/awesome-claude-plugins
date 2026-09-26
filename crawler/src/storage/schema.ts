@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 9
+const schemaVersion = 10
 
 function createSchema(db: Database.Database): void {
   db.exec(`
@@ -241,6 +241,29 @@ function migrateTo9(db: Database.Database): void {
   `)
 }
 
+function migrateTo10(db: Database.Database): void {
+  if (!hasRunColumn(db, 'phase')) {
+    db.exec(`
+      ALTER TABLE runs ADD COLUMN phase TEXT NOT NULL DEFAULT 'startup'
+        CHECK(phase IN ('startup', 'discovery', 'enrichment', 'finalize'))
+    `)
+  }
+  if (!hasRunColumn(db, 'phase_started_at')) db.exec('ALTER TABLE runs ADD COLUMN phase_started_at TEXT')
+  if (!hasRunColumn(db, 'phase_total')) {
+    db.exec('ALTER TABLE runs ADD COLUMN phase_total INTEGER CHECK(phase_total IS NULL OR phase_total >= 0)')
+  }
+  if (!hasRunColumn(db, 'phase_processed')) {
+    db.exec('ALTER TABLE runs ADD COLUMN phase_processed INTEGER NOT NULL DEFAULT 0 CHECK(phase_processed >= 0)')
+  }
+  db.exec("UPDATE runs SET phase = 'finalize' WHERE status != 'running'")
+
+  if (!hasColumn(db, 'marketplace_failed_oid')) db.exec('ALTER TABLE repositories ADD COLUMN marketplace_failed_oid TEXT')
+  if (!hasColumn(db, 'marketplace_failed_parser_version')) {
+    db.exec('ALTER TABLE repositories ADD COLUMN marketplace_failed_parser_version INTEGER CHECK(marketplace_failed_parser_version >= 1)')
+  }
+  db.pragma('user_version = 10')
+}
+
 function migrateSchema(db: Database.Database, version: number): void {
   if (version === 0) createSchema(db)
   if (version < 2) migrateTo2(db)
@@ -251,6 +274,7 @@ function migrateSchema(db: Database.Database, version: number): void {
   if (version < 7) migrateTo7(db)
   if (version < 8) migrateTo8(db)
   if (version < 9) migrateTo9(db)
+  if (version < 10) migrateTo10(db)
 }
 
 export function initializeSchema(db: Database.Database): void {

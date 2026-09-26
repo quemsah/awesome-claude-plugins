@@ -1,8 +1,13 @@
-import { parseMarketplaceManifest } from '@awesome-claude-plugins/marketplace-contract'
+import {
+  MARKETPLACE_CONTRACT_VERSION,
+  MarketplaceValidationError,
+  parseMarketplaceManifest,
+} from '@awesome-claude-plugins/marketplace-contract'
 import type Database from 'better-sqlite3'
 import type { GitHubGraphQLMarketplaceBlob } from '../github/client.js'
 import { GitHubFatalError, type GitHubGraphQLRepo, type GitHubReader, type GitHubRepo, type RepoResult } from '../github/client.js'
 import { isValidGitHubPathSegment, parseGitHubOwnerUrl } from '../github/identifiers.js'
+import type { GitHubRetryReason } from '../github/rateBudget.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import type { Log } from '../logging.js'
 import {
@@ -25,6 +30,7 @@ export type EnrichmentCounts = {
   deletedBlankUrl: number
   conclusive: number
   warnings: number
+  knownInvalidSkipped?: number
 }
 
 function wasReady(row: RepositoryRow): boolean {
@@ -75,9 +81,27 @@ function temporaryCategory(
   endpoint: 'repository' | 'marketplace',
   result: Extract<RepoResult<unknown>, { kind: 'temporary-error' }>,
 ): string {
-  if (result.status === 429) return `${endpoint}_rate_limited`
-  if (result.reason === 'Invalid GitHub response') return `${endpoint}_invalid_response`
+  if (result.failureReason === 'primary_rate_limit' || result.failureReason === 'secondary_rate_limit' || result.status === 429) {
+    return `${endpoint}_rate_limited`
+  }
+  if (result.failureReason === 'invalid_response' || result.failureReason === 'body_read' || result.reason === 'Invalid GitHub response') {
+    return `${endpoint}_invalid_response`
+  }
+  if (result.failureReason === 'parser_internal') return `${endpoint}_parser_internal`
   return `${endpoint}_temporary_error`
+}
+
+function invalidContentCategory(failure: 'invalid-json' | 'invalid-manifest'): string {
+  return failure === 'invalid-json' ? 'marketplace_invalid_json' : 'marketplace_invalid_manifest'
+}
+
+function marketplaceValidationReason(error: MarketplaceValidationError): string {
+  const issue = error.issues[0]
+  const path = issue?.path.reduce<string>(
+    (prefix, part) => (typeof part === 'number' ? `${prefix}[${part}]` : prefix ? `${prefix}.${part}` : part),
+    '',
+  )
+  return `Invalid marketplace manifest${path ? ` at ${path}` : ''}: ${issue?.message ?? error.message}`
 }
 
 function recordProblem(
@@ -180,6 +204,9 @@ function persistEnrichment(
       },
       at,
     )
+    db.prepare('UPDATE repositories SET marketplace_failed_oid = NULL, marketplace_failed_parser_version = NULL WHERE id = ?').run(
+      rebound.id,
+    )
     if (clearMarketplaceEtag) {
       db.prepare('UPDATE repositories SET marketplace_etag = NULL WHERE id = ?').run(rebound.id)
     }
@@ -227,10 +254,68 @@ function completeEnrichment(counts: EnrichmentCounts, target: EnrichmentTarget, 
   else counts.newReady++
 }
 
-const MARKETPLACE_PARSER_VERSION = 1
+const MARKETPLACE_PARSER_VERSION = MARKETPLACE_CONTRACT_VERSION
 const MARKETPLACE_CONTENT_BATCH_SIZE = 25
 const MARKETPLACE_CONTENT_MAX_BYTES = 750_000
 const MARKETPLACE_UNKNOWN_BYTES = 32_768
+
+const RETRY_LATER = Symbol('retry-later')
+type RetryLater = { kind: typeof RETRY_LATER; reason: GitHubRetryReason; retryAt?: number }
+type RestAttemptPolicy = {
+  maxAttempts: number
+  retryCountOffset: number
+  deferTransient: boolean
+}
+type RetryTask = { row: RepositoryRow; run: () => Promise<void> }
+type RetryQueue = { tasks: RetryTask[]; deferredIds: Set<number> }
+
+function queueRetry(queue: RetryQueue | undefined, row: RepositoryRow, run: () => Promise<void>): void {
+  if (!queue) return
+  queue.deferredIds.add(row.id)
+  queue.tasks.push({ row, run })
+}
+
+const FIRST_PASS_REST: RestAttemptPolicy = { maxAttempts: 1, retryCountOffset: 0, deferTransient: true }
+const RETRY_PASS_REST: RestAttemptPolicy = { maxAttempts: 2, retryCountOffset: 1, deferTransient: false }
+const FRESH_REST: RestAttemptPolicy = { maxAttempts: 3, retryCountOffset: 0, deferTransient: false }
+
+function totalRetryCount(result: { retryCount: number }, policy: RestAttemptPolicy): number {
+  return result.retryCount + policy.retryCountOffset
+}
+
+function retryReason(result: Extract<RepoResult<unknown>, { kind: 'temporary-error' }>): GitHubRetryReason {
+  if (result.failureReason) return result.failureReason
+  if (result.status === null) return 'network'
+  if (result.status >= 500) return 'server_5xx'
+  if (result.status === 429) return 'secondary_rate_limit'
+  if (result.reason === 'GitHub response body read failed') return 'body_read'
+  if (result.reason === 'Marketplace parser failure') return 'parser_internal'
+  return 'invalid_response'
+}
+
+function deferTransient(result: Extract<RepoResult<unknown>, { kind: 'temporary-error' }>, policy: RestAttemptPolicy): RetryLater | null {
+  return policy.deferTransient && result.retryable === true
+    ? { kind: RETRY_LATER, reason: retryReason(result), ...(result.retryAt === undefined ? {} : { retryAt: result.retryAt }) }
+    : null
+}
+
+async function beginDeferredRetry(reader: GitHubReader, retry: RetryLater): Promise<void> {
+  const waitMs = retry.retryAt === undefined ? 0 : ((await reader.waitUntil?.(retry.retryAt)) ?? 0)
+  reader.noteRetry?.('core', retry.reason, waitMs)
+}
+
+function isRetryLater(value: unknown): value is RetryLater {
+  return typeof value === 'object' && value !== null && 'kind' in value && value.kind === RETRY_LATER
+}
+
+function graphQLRetryReason(result: { status: number | null; reason: string; failureReason?: GitHubRetryReason }): GitHubRetryReason {
+  if (result.failureReason) return result.failureReason
+  if (/timeout/i.test(result.reason)) return 'graphql_timeout'
+  if (/invalid graphql response/i.test(result.reason)) return 'graphql_invalid_response'
+  if (result.status === null) return 'network'
+  if (result.status >= 500) return 'server_5xx'
+  return 'invalid_response'
+}
 
 type MarketplaceState = {
   pluginsCount: number
@@ -241,6 +326,9 @@ type MarketplaceState = {
 }
 
 function needsMarketplaceContent(row: RepositoryRow, currentMarketplaceOid: string): boolean {
+  if (row.marketplace_failed_oid === currentMarketplaceOid && row.marketplace_failed_parser_version === MARKETPLACE_PARSER_VERSION) {
+    return false
+  }
   return (
     row.marketplace_oid !== currentMarketplaceOid ||
     row.plugins_count === null ||
@@ -248,14 +336,170 @@ function needsMarketplaceContent(row: RepositoryRow, currentMarketplaceOid: stri
   )
 }
 
-function decodeGraphQLMarketplaceBlob(blob: GitHubGraphQLMarketplaceBlob): { pluginsCount: number; marketplaceOid: string } | null {
-  if (blob.is_truncated || blob.is_binary !== false || blob.text === null) return null
+type MarketplaceBlobDecode =
+  | { kind: 'found'; pluginsCount: number; marketplaceOid: string }
+  | { kind: 'unsupported' }
+  | { kind: 'invalid-content'; failure: 'invalid-json' | 'invalid-manifest'; reason: string }
+
+function decodeGraphQLMarketplaceBlob(blob: GitHubGraphQLMarketplaceBlob): MarketplaceBlobDecode {
+  if (blob.is_truncated || blob.is_binary !== false || blob.text === null) return { kind: 'unsupported' }
+  let value: unknown
   try {
-    const marketplace = parseMarketplaceManifest(JSON.parse(blob.text))
-    return { pluginsCount: marketplace.plugins.length, marketplaceOid: blob.oid }
+    value = JSON.parse(blob.text) as unknown
   } catch {
-    return null
+    return { kind: 'invalid-content', failure: 'invalid-json', reason: 'Invalid marketplace JSON' }
   }
+  try {
+    const marketplace = parseMarketplaceManifest(value)
+    return { kind: 'found', pluginsCount: marketplace.plugins.length, marketplaceOid: blob.oid }
+  } catch (error) {
+    if (!(error instanceof MarketplaceValidationError)) throw error
+    return {
+      kind: 'invalid-content',
+      failure: 'invalid-manifest',
+      reason: marketplaceValidationReason(error),
+    }
+  }
+}
+
+type InvalidMarketplaceIdentity = {
+  cacheOid: string | null
+  marketplaceOid: string | null
+  contentOid: string | null
+}
+
+function marketplaceStateScore(row: RepositoryRow): number {
+  let score = 0
+  if (row.marketplace_parser_version === MARKETPLACE_PARSER_VERSION) score += 16
+  else if (row.marketplace_parser_version !== null) score += 8
+  if (row.marketplace_oid !== null) score += 4
+  if (row.marketplace_etag !== null) score += 2
+  if (row.plugins_count !== null) score += 1
+  return score
+}
+
+function persistRepositoryMetadataOnMarketplaceError(
+  db: Database.Database,
+  runId: string,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  removedIds: Set<number>,
+  at: string,
+): EnrichmentTarget {
+  return runWhileActive(db, runId, () => {
+    const duplicate = loaded.moved
+      ? (db
+          .prepare('SELECT * FROM repositories WHERE html_url = ? COLLATE NOCASE AND id != ? ORDER BY id LIMIT 1')
+          .get(loaded.canonical.htmlUrl, row.id) as RepositoryRow | undefined)
+      : undefined
+    const preserved = duplicate && marketplaceStateScore(duplicate) > marketplaceStateScore(row) ? duplicate : row
+    const rebound = loaded.moved ? rebindCanonicalUrl(db, row.id, loaded.canonical.htmlUrl, at) : { id: row.id, removedId: null }
+    if (!getRepositoryById(db, rebound.id)) throw new Error('Canonical repository disappeared during metadata update')
+    if (!loaded.ready) {
+      db.prepare(`
+        UPDATE repositories SET
+          owner = NULL,
+          owner_url = NULL,
+          repo_name = NULL,
+          github_node_id = COALESCE(?, github_node_id),
+          repository_etag = COALESCE(?, repository_etag),
+          updatedAt = ?
+        WHERE id = ?
+      `).run(loaded.githubNodeId, loaded.repositoryEtag, at, rebound.id)
+      if (rebound.removedId !== null) removedIds.add(rebound.removedId)
+      return { id: rebound.id, removedId: rebound.removedId, ready: false }
+    }
+    updateEnriched(
+      db,
+      rebound.id,
+      {
+        stargazers_count: loaded.data.stargazers_count,
+        forks_count: loaded.data.forks_count,
+        subscribers_count: loaded.data.subscribers_count,
+        description: loaded.data.description,
+        owner: loaded.owner,
+        owner_url: loaded.ownerUrl,
+        repo_name: loaded.repo,
+        repo_updated: loaded.data.pushed_at,
+        plugins_count: preserved.plugins_count,
+        github_node_id: loaded.githubNodeId,
+        marketplace_oid: preserved.marketplace_oid,
+        repository_etag: loaded.repositoryEtag,
+        marketplace_etag: preserved.marketplace_etag,
+        marketplace_parser_version: preserved.marketplace_parser_version,
+      },
+      at,
+    )
+    if (rebound.removedId !== null) removedIds.add(rebound.removedId)
+    return { id: rebound.id, removedId: rebound.removedId, ready: loaded.ready }
+  })
+}
+
+function recordInvalidMarketplace(
+  db: Database.Database,
+  runId: string,
+  counts: EnrichmentCounts,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  removedIds: Set<number>,
+  failure: 'invalid-json' | 'invalid-manifest',
+  reason: string,
+  status: number,
+  retryCount: number,
+  identity: InvalidMarketplaceIdentity,
+  request: string | null,
+  now: () => string,
+  log?: Log,
+): null {
+  const target = persistRepositoryMetadataOnMarketplaceError(db, runId, row, loaded, removedIds, now())
+  if (identity.cacheOid) {
+    runWhileActive(db, runId, () => {
+      db.prepare('UPDATE repositories SET marketplace_failed_oid = ?, marketplace_failed_parser_version = ? WHERE id = ?').run(
+        identity.cacheOid,
+        MARKETPLACE_PARSER_VERSION,
+        target.id,
+      )
+    })
+  }
+  recordProblem(db, runId, counts, row, invalidContentCategory(failure), loaded.ready, true, now, retryCount, log, {
+    request,
+    status,
+    reason,
+    ...(identity.marketplaceOid ? { marketplaceOid: identity.marketplaceOid } : {}),
+    ...(identity.contentOid && identity.contentOid !== identity.marketplaceOid ? { contentOid: identity.contentOid } : {}),
+  })
+  return null
+}
+
+function recordKnownInvalidMarketplace(
+  db: Database.Database,
+  runId: string,
+  counts: EnrichmentCounts,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  removedIds: Set<number>,
+  now: () => string,
+  log?: Log,
+): null {
+  const failedOid = row.marketplace_failed_oid
+  const target = persistRepositoryMetadataOnMarketplaceError(db, runId, row, loaded, removedIds, now())
+  if (failedOid) {
+    runWhileActive(db, runId, () => {
+      db.prepare('UPDATE repositories SET marketplace_failed_oid = ?, marketplace_failed_parser_version = ? WHERE id = ?').run(
+        failedOid,
+        MARKETPLACE_PARSER_VERSION,
+        target.id,
+      )
+    })
+  }
+  counts.knownInvalidSkipped = (counts.knownInvalidSkipped ?? 0) + 1
+  recordProblem(db, runId, counts, row, 'marketplace_known_invalid_content', loaded.ready, true, now, 0, log, {
+    request: null,
+    marketplaceOid: row.marketplace_failed_oid,
+    reason: `Skipped unchanged marketplace OID rejected by parser version ${MARKETPLACE_PARSER_VERSION}`,
+    skippedDownload: true,
+  })
+  return null
 }
 
 async function loadLegacyMarketplace(
@@ -267,15 +511,14 @@ async function loadLegacyMarketplace(
   counts: EnrichmentCounts,
   removedIds: Set<number>,
   now: () => string,
+  policy: RestAttemptPolicy,
   log?: Log,
-): Promise<MarketplaceState | null> {
+): Promise<MarketplaceState | null | RetryLater> {
   const parserVersionChanged = row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION
+  const etag = row.marketplace_etag && !parserVersionChanged ? row.marketplace_etag : undefined
   let result: RepoResult<{ plugins: unknown[] }>
   try {
-    result =
-      row.marketplace_etag && !parserVersionChanged
-        ? await reader.getMarketplace(loaded.owner, loaded.repo, row.marketplace_etag)
-        : await reader.getMarketplace(loaded.owner, loaded.repo)
+    result = await reader.getMarketplace(loaded.owner, loaded.repo, etag, { maxAttempts: policy.maxAttempts })
   } catch (error) {
     if (error instanceof GitHubFatalError) {
       log?.({
@@ -300,12 +543,46 @@ async function loadLegacyMarketplace(
     return null
   }
   if (result.kind === 'temporary-error') {
-    recordProblem(db, runId, counts, row, temporaryCategory('marketplace', result), loaded.ready, false, now, result.retryCount, log, {
-      request: `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/marketplace.json`,
-      status: result.status,
-      reason: result.reason,
-    })
+    const deferred = deferTransient(result, policy)
+    if (deferred) return deferred
+    recordProblem(
+      db,
+      runId,
+      counts,
+      row,
+      temporaryCategory('marketplace', result),
+      loaded.ready,
+      false,
+      now,
+      totalRetryCount(result, policy),
+      log,
+      {
+        request: `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/marketplace.json`,
+        status: result.status,
+        reason: result.reason,
+        failureReason: result.failureReason,
+        retryable: result.retryable,
+      },
+    )
     return null
+  }
+  if (result.kind === 'invalid-content') {
+    return recordInvalidMarketplace(
+      db,
+      runId,
+      counts,
+      row,
+      loaded,
+      removedIds,
+      result.failure,
+      result.reason,
+      result.status,
+      totalRetryCount(result, policy),
+      { cacheOid: null, marketplaceOid: null, contentOid: null },
+      `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/marketplace.json`,
+      now,
+      log,
+    )
   }
   const pluginsCount = result.kind === 'not-modified' ? row.plugins_count : result.data.plugins.length
   if (pluginsCount === null) {
@@ -344,7 +621,83 @@ function acceptGraphQLNotModified(
   return true
 }
 
-async function loadGraphQLMarketplace(
+function resolveGraphQLMarketplaceBlob(
+  db: Database.Database,
+  runId: string,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  currentMarketplaceOid: string,
+  blob: GitHubGraphQLMarketplaceBlob,
+  counts: EnrichmentCounts,
+  removedIds: Set<number>,
+  now: () => string,
+  log?: Log,
+): MarketplaceState | null | undefined {
+  let decoded: MarketplaceBlobDecode
+  try {
+    decoded = decodeGraphQLMarketplaceBlob(blob)
+  } catch {
+    recordProblem(db, runId, counts, row, 'marketplace_parser_error', loaded.ready, true, now, 0, log, {
+      request: 'POST /graphql',
+      status: 200,
+      reason: 'Marketplace parser failure',
+      contentOid: blob.oid,
+    })
+    return null
+  }
+  if (decoded.kind === 'found') {
+    return {
+      pluginsCount: decoded.pluginsCount,
+      marketplaceOid: decoded.marketplaceOid,
+      marketplaceEtag: null,
+      clearMarketplaceEtag: true,
+      parserVersion: MARKETPLACE_PARSER_VERSION,
+    }
+  }
+  if (decoded.kind === 'unsupported') return undefined
+  if (blob.oid !== currentMarketplaceOid) {
+    log?.({
+      level: 'warn',
+      event: 'crawl.marketplace_oid_changed_during_read',
+      phase: 'enrichment',
+      category: 'marketplace_oid_mismatch',
+      runId,
+      message: `Marketplace OID changed while reading ${loaded.owner}/${loaded.repo}; falling back to REST`,
+      repository: `${loaded.owner}/${loaded.repo}`,
+      repositoryId: row.id,
+      repositoryUrl: row.html_url,
+      request: 'POST /graphql',
+      status: 200,
+      marketplaceOid: currentMarketplaceOid,
+      contentOid: blob.oid,
+      fallback: 'REST',
+    })
+    return undefined
+  }
+  return recordInvalidMarketplace(
+    db,
+    runId,
+    counts,
+    row,
+    loaded,
+    removedIds,
+    decoded.failure,
+    decoded.reason,
+    200,
+    0,
+    { cacheOid: blob.oid, marketplaceOid: currentMarketplaceOid, contentOid: blob.oid },
+    'POST /graphql',
+    now,
+    log,
+  )
+}
+
+function marketplaceRequestEtag(row: RepositoryRow, changedOid: boolean): string | undefined {
+  if (row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION || changedOid || row.plugins_count === null) return undefined
+  return row.marketplace_etag ?? undefined
+}
+
+async function loadGraphQLMarketplaceViaRest(
   db: Database.Database,
   reader: GitHubReader,
   runId: string,
@@ -355,39 +708,15 @@ async function loadGraphQLMarketplace(
   counts: EnrichmentCounts,
   removedIds: Set<number>,
   now: () => string,
+  policy: RestAttemptPolicy,
   log?: Log,
-): Promise<MarketplaceState | null> {
-  const parserVersionChanged = row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION
-  if (!needsMarketplaceContent(row, currentMarketplaceOid)) {
-    return {
-      pluginsCount: row.plugins_count as number,
-      marketplaceOid: currentMarketplaceOid,
-      marketplaceEtag: row.marketplace_etag,
-      parserVersion: MARKETPLACE_PARSER_VERSION,
-    }
-  }
-
-  if (blob) {
-    const decoded = decodeGraphQLMarketplaceBlob(blob)
-    if (decoded) {
-      return {
-        pluginsCount: decoded.pluginsCount,
-        marketplaceOid: decoded.marketplaceOid,
-        marketplaceEtag: null,
-        clearMarketplaceEtag: true,
-        parserVersion: MARKETPLACE_PARSER_VERSION,
-      }
-    }
-  }
-
+): Promise<MarketplaceState | null | RetryLater> {
   const authoritativeMarketplaceOid = blob?.oid ?? currentMarketplaceOid
   const changedOid = row.marketplace_oid !== authoritativeMarketplaceOid
+  const etag = marketplaceRequestEtag(row, changedOid)
   let result: RepoResult<{ plugins: unknown[] }>
   try {
-    result =
-      row.marketplace_etag && !changedOid && row.plugins_count !== null && !parserVersionChanged
-        ? await reader.getMarketplace(loaded.owner, loaded.repo, row.marketplace_etag)
-        : await reader.getMarketplace(loaded.owner, loaded.repo)
+    result = await reader.getMarketplace(loaded.owner, loaded.repo, etag, { maxAttempts: policy.maxAttempts })
   } catch (error) {
     if (error instanceof GitHubFatalError) {
       log?.({
@@ -413,13 +742,47 @@ async function loadGraphQLMarketplace(
     return null
   }
   if (result.kind === 'temporary-error') {
-    recordProblem(db, runId, counts, row, temporaryCategory('marketplace', result), loaded.ready, false, now, result.retryCount, log, {
-      request: `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/marketplace.json`,
-      status: result.status,
-      reason: result.reason,
-      marketplaceOid: currentMarketplaceOid,
-    })
+    const deferred = deferTransient(result, policy)
+    if (deferred) return deferred
+    recordProblem(
+      db,
+      runId,
+      counts,
+      row,
+      temporaryCategory('marketplace', result),
+      loaded.ready,
+      false,
+      now,
+      totalRetryCount(result, policy),
+      log,
+      {
+        request: `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/marketplace.json`,
+        status: result.status,
+        reason: result.reason,
+        failureReason: result.failureReason,
+        retryable: result.retryable,
+        marketplaceOid: currentMarketplaceOid,
+      },
+    )
     return null
+  }
+  if (result.kind === 'invalid-content') {
+    return recordInvalidMarketplace(
+      db,
+      runId,
+      counts,
+      row,
+      loaded,
+      removedIds,
+      result.failure,
+      result.reason,
+      result.status,
+      totalRetryCount(result, policy),
+      { cacheOid: null, marketplaceOid: currentMarketplaceOid, contentOid: blob?.oid ?? null },
+      `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/marketplace.json`,
+      now,
+      log,
+    )
   }
 
   const marketplaceEtag = result.etag ?? row.marketplace_etag
@@ -438,6 +801,38 @@ async function loadGraphQLMarketplace(
     marketplaceEtag,
     parserVersion: MARKETPLACE_PARSER_VERSION,
   }
+}
+
+async function loadGraphQLMarketplace(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  currentMarketplaceOid: string,
+  blob: GitHubGraphQLMarketplaceBlob | null,
+  counts: EnrichmentCounts,
+  removedIds: Set<number>,
+  now: () => string,
+  policy: RestAttemptPolicy,
+  log?: Log,
+): Promise<MarketplaceState | null | RetryLater> {
+  if (row.marketplace_failed_oid === currentMarketplaceOid && row.marketplace_failed_parser_version === MARKETPLACE_PARSER_VERSION) {
+    return recordKnownInvalidMarketplace(db, runId, counts, row, loaded, removedIds, now, log)
+  }
+  if (!needsMarketplaceContent(row, currentMarketplaceOid)) {
+    return {
+      pluginsCount: row.plugins_count as number,
+      marketplaceOid: currentMarketplaceOid,
+      marketplaceEtag: row.marketplace_etag,
+      parserVersion: MARKETPLACE_PARSER_VERSION,
+    }
+  }
+  if (blob) {
+    const resolved = resolveGraphQLMarketplaceBlob(db, runId, row, loaded, currentMarketplaceOid, blob, counts, removedIds, now, log)
+    if (resolved !== undefined) return resolved
+  }
+  return loadGraphQLMarketplaceViaRest(db, reader, runId, row, loaded, currentMarketplaceOid, blob, counts, removedIds, now, policy, log)
 }
 
 function loadCachedRepository(
@@ -574,23 +969,50 @@ async function loadRepository(
   previouslyReady: boolean,
   counts: EnrichmentCounts,
   now: () => string,
+  policy: RestAttemptPolicy,
   log?: Log,
-): Promise<LoadedRepository | null> {
+): Promise<LoadedRepository | null | RetryLater> {
   let result: RepoResult<GitHubRepo>
   try {
-    result = row.repository_etag
-      ? await reader.getRepository(identity.owner, identity.repo, row.repository_etag)
-      : await reader.getRepository(identity.owner, identity.repo)
+    result = await reader.getRepository(identity.owner, identity.repo, row.repository_etag ?? undefined, {
+      maxAttempts: policy.maxAttempts,
+    })
   } catch (error) {
     if (error instanceof GitHubFatalError) logRepositoryFatalError(error, runId, row, identity, log)
     throw error
   }
   if (result.kind === 'not-found') return removeMissingRepository(db, runId, row, identity, counts, log)
   if (result.kind === 'temporary-error') {
-    recordProblem(db, runId, counts, row, temporaryCategory('repository', result), previouslyReady, false, now, result.retryCount, log, {
+    const deferred = deferTransient(result, policy)
+    if (deferred) return deferred
+    recordProblem(
+      db,
+      runId,
+      counts,
+      row,
+      temporaryCategory('repository', result),
+      previouslyReady,
+      false,
+      now,
+      totalRetryCount(result, policy),
+      log,
+      {
+        request: `GET /repos/${identity.owner}/${identity.repo}`,
+        status: result.status,
+        reason: result.reason,
+        failureReason: result.failureReason,
+        retryable: result.retryable,
+      },
+    )
+    return null
+  }
+  if (result.kind === 'invalid-content') {
+    recordProblem(db, runId, counts, row, 'repository_invalid_content', previouslyReady, true, now, totalRetryCount(result, policy), log, {
       request: `GET /repos/${identity.owner}/${identity.repo}`,
       status: result.status,
       reason: result.reason,
+      failureReason: result.failureReason,
+      retryable: result.retryable,
     })
     return null
   }
@@ -613,9 +1035,13 @@ async function enrichOne(
   counts: EnrichmentCounts,
   removedIds: Set<number>,
   now: () => string,
+  policy: RestAttemptPolicy,
+  retryQueue: RetryQueue | undefined,
   onProgress?: () => void,
   log?: Log,
+  marketplacePolicy?: RestAttemptPolicy,
 ): Promise<void> {
+  if (removedIds.has(row.id)) return
   if (!row.html_url?.trim()) {
     if (row.owner && row.repo_name) {
       log?.({
@@ -643,10 +1069,39 @@ async function enrichOne(
     return
   }
   onProgress?.()
-  const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts, now, log)
+  const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts, now, policy, log)
+  if (isRetryLater(loaded)) {
+    queueRetry(retryQueue, row, async () => {
+      if (removedIds.has(row.id)) return
+      await beginDeferredRetry(reader, loaded)
+      await enrichOne(db, reader, runId, row, counts, removedIds, now, RETRY_PASS_REST, undefined, onProgress, log, FRESH_REST)
+    })
+    return
+  }
   if (!loaded) return
   onProgress?.()
-  const marketplace = await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, log)
+  const marketplace = await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, marketplacePolicy ?? policy, log)
+  if (isRetryLater(marketplace)) {
+    queueRetry(retryQueue, row, async () => {
+      if (removedIds.has(row.id)) return
+      await beginDeferredRetry(reader, marketplace)
+      const retried = await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, RETRY_PASS_REST, log)
+      if (!retried || isRetryLater(retried)) return
+      const target = persistEnrichment(
+        db,
+        runId,
+        row,
+        loaded,
+        retried.pluginsCount,
+        retried.marketplaceOid,
+        retried.marketplaceEtag,
+        retried.parserVersion,
+        now(),
+      )
+      completeEnrichment(counts, target, removedIds)
+    })
+    return
+  }
   if (!marketplace) return
   const target = persistEnrichment(
     db,
@@ -695,12 +1150,14 @@ async function enrichGraphQLOne(
   counts: EnrichmentCounts,
   removedIds: Set<number>,
   now: () => string,
+  policy: RestAttemptPolicy,
+  retryQueue: RetryQueue | undefined,
   onProgress?: () => void,
   log?: Log,
 ): Promise<void> {
   if (removedIds.has(row.id)) return
   if (data === null) {
-    await enrichOne(db, reader, runId, row, counts, removedIds, now, onProgress, log)
+    await enrichOne(db, reader, runId, row, counts, removedIds, now, policy, retryQueue, onProgress, log)
     return
   }
   if (data.private) {
@@ -732,8 +1189,43 @@ async function enrichGraphQLOne(
   }
   onProgress?.()
   const marketplace = loaded.marketplaceOid
-    ? await loadGraphQLMarketplace(db, reader, runId, row, loaded, loaded.marketplaceOid, marketplaceBlob, counts, removedIds, now, log)
-    : await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, log)
+    ? await loadGraphQLMarketplace(
+        db,
+        reader,
+        runId,
+        row,
+        loaded,
+        loaded.marketplaceOid,
+        marketplaceBlob,
+        counts,
+        removedIds,
+        now,
+        policy,
+        log,
+      )
+    : await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, policy, log)
+  if (isRetryLater(marketplace)) {
+    queueRetry(retryQueue, row, async () => {
+      if (removedIds.has(row.id)) return
+      await beginDeferredRetry(reader, marketplace)
+      return enrichGraphQLOne(
+        db,
+        reader,
+        runId,
+        row,
+        data,
+        marketplaceBlob,
+        counts,
+        removedIds,
+        now,
+        RETRY_PASS_REST,
+        undefined,
+        onProgress,
+        log,
+      )
+    })
+    return
+  }
   if (!marketplace) return
   const target = persistEnrichment(
     db,
@@ -761,13 +1253,15 @@ async function enrichLegacyBatch(
   counts: EnrichmentCounts,
   removedIds: Set<number>,
   now: () => string,
+  policy: RestAttemptPolicy,
+  retryQueue: RetryQueue | undefined,
   onProgress?: () => void,
   log?: Log,
   onRepositoryProcessed?: RepositoryProcessed,
 ): Promise<void> {
   for (const row of rows) {
-    await enrichOne(db, reader, runId, row, counts, removedIds, now, onProgress, log)
-    onRepositoryProcessed?.(row)
+    await enrichOne(db, reader, runId, row, counts, removedIds, now, policy, retryQueue, onProgress, log)
+    if (!retryQueue?.deferredIds.has(row.id)) onRepositoryProcessed?.(row)
   }
 }
 
@@ -780,13 +1274,15 @@ async function recoverGraphQLBatch(
   removedIds: Set<number>,
   state: GraphQLBatchState,
   now: () => string,
+  policy: RestAttemptPolicy,
+  retryQueue: RetryQueue | undefined,
   onProgress?: () => void,
   log?: Log,
   onRepositoryProcessed?: RepositoryProcessed,
 ): Promise<void> {
   state.stableBatches = 0
   if (rows.length <= 10) {
-    await enrichLegacyBatch(db, reader, runId, rows, counts, removedIds, now, onProgress, log, onRepositoryProcessed)
+    await enrichLegacyBatch(db, reader, runId, rows, counts, removedIds, now, policy, retryQueue, onProgress, log, onRepositoryProcessed)
     return
   }
 
@@ -802,6 +1298,8 @@ async function recoverGraphQLBatch(
       removedIds,
       state,
       now,
+      policy,
+      retryQueue,
       onProgress,
       log,
       onRepositoryProcessed,
@@ -912,6 +1410,7 @@ async function loadGraphQLMarketplaceBlobs(
         fallback: canSplit ? 'split' : 'REST',
       })
       if (canSplit) {
+        reader.noteRetry?.('graphql', graphQLRetryReason(result))
         const midpoint = Math.ceil(batch.length / 2)
         await fetchBatch(batch.slice(0, midpoint))
         await fetchBatch(batch.slice(midpoint))
@@ -960,12 +1459,16 @@ async function enrichGraphQLBatch(
   removedIds: Set<number>,
   state: GraphQLBatchState,
   now: () => string,
+  policy: RestAttemptPolicy,
+  retryQueue: RetryQueue | undefined,
   onProgress?: () => void,
   log?: Log,
   onRepositoryProcessed?: RepositoryProcessed,
 ): Promise<void> {
   const getBatch = reader.getRepositoriesByNodeId
-  if (!getBatch) return enrichLegacyBatch(db, reader, runId, rows, counts, removedIds, now, onProgress, log, onRepositoryProcessed)
+  if (!getBatch) {
+    return enrichLegacyBatch(db, reader, runId, rows, counts, removedIds, now, policy, retryQueue, onProgress, log, onRepositoryProcessed)
+  }
 
   const ids = rows.map((row) => row.github_node_id as string)
   onProgress?.()
@@ -993,6 +1496,7 @@ async function enrichGraphQLBatch(
   }
   const latency = Date.now() - startedAt
   if (result.kind === 'temporary-error') {
+    if (rows.length > 10) reader.noteRetry?.('graphql', graphQLRetryReason(result))
     log?.({
       level: 'warn',
       event: 'crawl.graphql_batch_fallback',
@@ -1003,11 +1507,27 @@ async function enrichGraphQLBatch(
       request: 'POST /graphql',
       status: result.status,
       reason: result.reason,
+      failureReason: result.failureReason,
+      retryable: result.retryable,
       batchSize: rows.length,
       repositoryUrls: rows.map((row) => row.html_url).filter((url): url is string => Boolean(url)),
       fallback: 'REST',
     })
-    await recoverGraphQLBatch(db, reader, runId, rows, counts, removedIds, state, now, onProgress, log, onRepositoryProcessed)
+    await recoverGraphQLBatch(
+      db,
+      reader,
+      runId,
+      rows,
+      counts,
+      removedIds,
+      state,
+      now,
+      policy,
+      retryQueue,
+      onProgress,
+      log,
+      onRepositoryProcessed,
+    )
     return
   }
 
@@ -1015,8 +1535,22 @@ async function enrichGraphQLBatch(
   const marketplaceBlobs = await loadGraphQLMarketplaceBlobs(runId, reader, rows, result.data, onProgress, log)
   for (const [index, row] of rows.entries()) {
     const marketplaceBlob = row.github_node_id ? (marketplaceBlobs.get(row.github_node_id) ?? null) : null
-    await enrichGraphQLOne(db, reader, runId, row, result.data[index] ?? null, marketplaceBlob, counts, removedIds, now, onProgress, log)
-    onRepositoryProcessed?.(row)
+    await enrichGraphQLOne(
+      db,
+      reader,
+      runId,
+      row,
+      result.data[index] ?? null,
+      marketplaceBlob,
+      counts,
+      removedIds,
+      now,
+      policy,
+      retryQueue,
+      onProgress,
+      log,
+    )
+    if (!retryQueue?.deferredIds.has(row.id)) onRepositoryProcessed?.(row)
   }
 }
 
@@ -1041,9 +1575,11 @@ export async function enrichRepositories(
     deletedBlankUrl: 0,
     conclusive: 0,
     warnings: 0,
+    knownInvalidSkipped: 0,
   }
   let lastId = 0
   const removedIds = new Set<number>()
+  const retryQueue: RetryQueue = { tasks: [], deferredIds: new Set<number>() }
   const processedIds = new Set<number>()
   const accountedRemovedIds = new Set<number>()
   const markRepositoryProcessed = (row: RepositoryRow) => {
@@ -1067,21 +1603,63 @@ export async function enrichRepositories(
   while (true) {
     const rows = listForEnrichment(db, lastId, 50)
     if (rows.length === 0) break
-    for (const row of rows) {
-      lastId = row.id
-    }
+    for (const row of rows) lastId = row.id
     const graphQLRows = rows.filter((row) => row.github_node_id && parseRepositoryUrl(row.html_url ?? ''))
     const legacyRows = rows.filter((row) => !row.github_node_id || !parseRepositoryUrl(row.html_url ?? ''))
     for (const row of legacyRows) {
-      if (!removedIds.has(row.id)) await enrichOne(db, reader, runId, row, counts, removedIds, now, onProgress, log)
-      markRepositoryProcessed(row)
+      if (!removedIds.has(row.id)) {
+        await enrichOne(db, reader, runId, row, counts, removedIds, now, FIRST_PASS_REST, retryQueue, onProgress, log)
+      }
+      if (!retryQueue.deferredIds.has(row.id)) markRepositoryProcessed(row)
     }
     for (let offset = 0; offset < graphQLRows.length; ) {
       const batch = graphQLRows.slice(offset, offset + batchState.size)
       offset += batch.length
-      await enrichGraphQLBatch(db, reader, runId, batch, counts, removedIds, batchState, now, onProgress, log, markRepositoryProcessed)
+      await enrichGraphQLBatch(
+        db,
+        reader,
+        runId,
+        batch,
+        counts,
+        removedIds,
+        batchState,
+        now,
+        FIRST_PASS_REST,
+        retryQueue,
+        onProgress,
+        log,
+        markRepositoryProcessed,
+      )
     }
     onProgress?.()
+  }
+
+  if (retryQueue.tasks.length > 0) {
+    log?.({
+      level: 'info',
+      event: 'crawl.retry_queue_started',
+      phase: 'enrichment',
+      category: 'retry_queue',
+      runId,
+      message: `Retrying ${retryQueue.tasks.length} repositories after the first enrichment pass`,
+      queued: retryQueue.tasks.length,
+    })
+  }
+  for (const retry of retryQueue.tasks) {
+    await retry.run()
+    markRepositoryProcessed(retry.row)
+    onProgress?.()
+  }
+  if (retryQueue.tasks.length > 0) {
+    log?.({
+      level: 'info',
+      event: 'crawl.retry_queue_completed',
+      phase: 'enrichment',
+      category: 'retry_queue',
+      runId,
+      message: `Completed retry queue for ${retryQueue.tasks.length} repositories`,
+      queued: retryQueue.tasks.length,
+    })
   }
   return counts
 }

@@ -142,11 +142,26 @@ describe('TelegramNotifier', () => {
         deletedBlankUrl: 5,
         conclusive: 30,
         warnings: 2,
+        knownInvalidSkipped: 318,
       },
       errorCategories: { marketplace_rate_limited: 2, repository_identity_mismatch: 1 },
       rateBuckets: {
-        code_search: { requests: 221, waitMs: 6000, lastRemaining: 7 },
-        core: { requests: 81000, waitMs: 180000, lastRemaining: 200 },
+        code_search: {
+          requests: 221,
+          waitMs: 6000,
+          lastRemaining: 7,
+          retries: 2,
+          retryWaitMs: 3000,
+          retryReasons: { network: 1, server_5xx: 1 },
+        },
+        core: {
+          requests: 81000,
+          waitMs: 180000,
+          lastRemaining: 200,
+          retries: 5,
+          retryWaitMs: 9000,
+          retryReasons: { server_5xx: 3, body_read: 2 },
+        },
       },
       progress: {
         repositories: {
@@ -173,6 +188,10 @@ describe('TelegramNotifier', () => {
     expect(message).toContain('marketplace_rate_limited: 2')
     expect(message).toContain('code_search requests: 221')
     expect(message).toContain('core requests: 81000')
+    expect(message).toContain('retries: 5')
+    expect(message).toContain('retry wait ms: 9000')
+    expect(message).toContain('server_5xx: 3')
+    expect(message).toContain('known invalid skipped: 318')
     expect(message).toContain('repositories total: 51748')
     expect(message).toContain('publishable: 41026')
     expect(message).toContain('incomplete: 7813')

@@ -46,7 +46,7 @@ export function runMaintenance(
   `)
   const detachStats = db.prepare('UPDATE stats SET run_id = NULL WHERE run_id = ?')
   const deleteErrors = db.prepare('DELETE FROM run_errors WHERE run_id = ?')
-  const deleteSettings = db.prepare('DELETE FROM settings WHERE key IN (?, ?, ?)')
+  const deleteSettings = db.prepare('DELETE FROM settings WHERE key IN (?, ?, ?, ?)')
   const deleteRun = db.prepare('DELETE FROM runs WHERE run_id = ?')
 
   const counts = db
@@ -62,6 +62,7 @@ export function runMaintenance(
         errorsDeleted += deleteErrors.run(runId).changes
         settingsDeleted += deleteSettings.run(
           `run_report_${runId}`,
+          `run_rate_metrics_${runId}`,
           `schedule_alert_active_run_${runId}`,
           `schedule_alert_publication_locked_${runId}`,
         ).changes

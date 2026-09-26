@@ -6,7 +6,7 @@ import { openDatabase } from '../src/storage/db.js'
 import { populateFixture } from '../src/storage/fixtureDb.js'
 import { inspectProgress } from '../src/storage/progress.js'
 import { upsertDiscovery } from '../src/storage/repositories.js'
-import { advanceRunPhase, beginRun, recordRunError, startRunPhase } from '../src/storage/runs.js'
+import { advanceRunPhase, beginRun, recordRunError, setSetting, startRunPhase } from '../src/storage/runs.js'
 
 const scratch: string[] = []
 
@@ -76,6 +76,50 @@ describe('crawl progress inspection', () => {
       errors: {
         count: 1,
         latestAt: '2026-09-24T09:05:01.000Z',
+      },
+      github: {
+        rateBuckets: null,
+        knownInvalidSkipped: 0,
+      },
+    })
+    db.close()
+  })
+
+  it('exposes persisted retry cost and known-invalid skips for the active run', () => {
+    const db = openDatabase(databasePath())
+    populateFixture(db)
+    beginRun(db, 'current-run', '2026-09-24T08:34:58.000Z')
+    setSetting(
+      db,
+      'run_rate_metrics_current-run',
+      JSON.stringify({
+        code_search: { requests: 12, waitMs: 500, lastRemaining: 8, retries: 1, retryWaitMs: 1000, retryReasons: { network: 1 } },
+        core: {
+          requests: 300,
+          waitMs: 2000,
+          lastRemaining: 4700,
+          retries: 3,
+          retryWaitMs: 7000,
+          retryReasons: { server_5xx: 2, body_read: 1 },
+        },
+      }),
+    )
+    recordRunError(db, {
+      run_id: 'current-run',
+      phase: 'enrich',
+      repository_id: 1,
+      error_type: 'marketplace_known_invalid_content',
+      retry_count: 0,
+      occurred_at: '2026-09-24T09:00:00.000Z',
+    })
+
+    expect(inspectProgress(db)).toMatchObject({
+      github: {
+        knownInvalidSkipped: 1,
+        rateBuckets: {
+          code_search: { requests: 12, retries: 1, retryWaitMs: 1000, retryReasons: { network: 1 } },
+          core: { requests: 300, retries: 3, retryWaitMs: 7000, retryReasons: { server_5xx: 2, body_read: 1 } },
+        },
       },
     })
     db.close()

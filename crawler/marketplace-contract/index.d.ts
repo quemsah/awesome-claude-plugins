@@ -1,3 +1,5 @@
+export const MARKETPLACE_CONTRACT_VERSION: number
+
 export type PluginAuthor = {
   name?: string
   email?: string

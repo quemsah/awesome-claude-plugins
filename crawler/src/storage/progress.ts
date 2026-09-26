@@ -1,5 +1,7 @@
 import type Database from 'better-sqlite3'
+import type { GitHubRateBuckets } from '../github/rateBudget.js'
 import { hasCanonicalIdentity, isPublishableRepository, listCoreComplete } from './repositories.js'
+import { getSetting } from './runs.js'
 
 export type CrawlProgressInspection = {
   run: {
@@ -40,6 +42,10 @@ export type CrawlProgressInspection = {
     count: number
     latestAt: string | null
   } | null
+  github: {
+    rateBuckets: GitHubRateBuckets | null
+    knownInvalidSkipped: number
+  } | null
 }
 
 type LatestRun = NonNullable<CrawlProgressInspection['run']>
@@ -51,6 +57,18 @@ type RepositoryBreakdown = {
 
 function repositoryBreakdown(db: Database.Database): RepositoryBreakdown {
   return db.prepare('SELECT COUNT(*) AS total, MAX(updatedAt) AS latestUpdatedAt FROM repositories').get() as RepositoryBreakdown
+}
+
+function storedRateBuckets(db: Database.Database, runId: string): GitHubRateBuckets | null {
+  const raw = getSetting(db, `run_rate_metrics_${runId}`)
+  if (raw === null) return null
+  try {
+    const value: unknown = JSON.parse(raw)
+    if (typeof value !== 'object' || value === null || !('code_search' in value) || !('core' in value)) return null
+    return value as GitHubRateBuckets
+  } catch {
+    return null
+  }
 }
 
 function publicationState(db: Database.Database, currentPublishableSize: number): CrawlProgressInspection['publication'] {
@@ -118,6 +136,7 @@ function inspectProgressSnapshot(db: Database.Database): CrawlProgressInspection
       },
       publication,
       errors: null,
+      github: null,
     }
   }
 
@@ -164,6 +183,11 @@ function inspectProgressSnapshot(db: Database.Database): CrawlProgressInspection
         : Math.min(100, Math.round((updatedThisRun / run.phaseTotal) * 10_000) / 100)
       : null
   const pendingThisRun = run.phase === 'enrichment' && run.phaseTotal !== null ? Math.max(0, run.phaseTotal - run.phaseProcessed) : null
+  const knownInvalidSkipped = (
+    db
+      .prepare("SELECT COUNT(*) AS count FROM run_errors WHERE run_id = ? AND error_type = 'marketplace_known_invalid_content'")
+      .get(run.runId) as { count: number }
+  ).count
 
   return {
     run: { ...run, phasePercent },
@@ -176,5 +200,9 @@ function inspectProgressSnapshot(db: Database.Database): CrawlProgressInspection
     },
     publication,
     errors,
+    github: {
+      rateBuckets: storedRateBuckets(db, run.runId),
+      knownInvalidSkipped,
+    },
   }
 }

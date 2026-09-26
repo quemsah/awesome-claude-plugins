@@ -18,6 +18,8 @@ export interface RepositoryRow {
   repository_etag: string | null
   marketplace_etag: string | null
   marketplace_parser_version: number | null
+  marketplace_failed_oid: string | null
+  marketplace_failed_parser_version: number | null
   createdAt: string
   updatedAt: string
 }

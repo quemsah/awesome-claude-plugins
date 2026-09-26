@@ -201,7 +201,12 @@ function updateGraphQLRateBucket(bucket: NonNullable<GitHubRateBuckets['graphql'
   }
 }
 
-function rateTracker(): { buckets: GitHubRateBuckets; log: RateLog; observed: () => boolean } {
+function rateTracker(checkpoint?: (buckets: GitHubRateBuckets) => void): {
+  buckets: GitHubRateBuckets
+  log: RateLog
+  observed: () => boolean
+  checkpoint: () => void
+} {
   const buckets: GitHubRateBuckets = {
     code_search: { requests: 0, waitMs: 0, lastRemaining: null },
     core: { requests: 0, waitMs: 0, lastRemaining: null },
@@ -220,16 +225,36 @@ function rateTracker(): { buckets: GitHubRateBuckets; log: RateLog; observed: ()
     },
   }
   let hasObserved = false
+  let requestsSinceCheckpoint = 0
+  const persist = (force = false) => {
+    if (!checkpoint || (!force && requestsSinceCheckpoint < 100)) return
+    checkpoint(buckets)
+    requestsSinceCheckpoint = 0
+  }
   const rateLog: RateLog = (event) => {
     hasObserved = true
     const bucket = event.bucket === 'graphql' ? buckets.graphql : buckets[event.bucket]
     if (!bucket) return
-    if (event.request) bucket.requests++
+    if (event.request) {
+      bucket.requests++
+      requestsSinceCheckpoint++
+    }
     if (event.waitMs !== undefined) bucket.waitMs += event.waitMs
     if (event.remaining !== undefined) bucket.lastRemaining = event.remaining
+    if (event.retryReason) {
+      bucket.retries = (bucket.retries ?? 0) + 1
+      bucket.retryWaitMs = (bucket.retryWaitMs ?? 0) + (event.retryWaitMs ?? 0)
+      let reasons = bucket.retryReasons
+      if (!reasons) {
+        reasons = {}
+        bucket.retryReasons = reasons
+      }
+      reasons[event.retryReason] = (reasons[event.retryReason] ?? 0) + 1
+    }
     if (event.bucket === 'graphql' && buckets.graphql) updateGraphQLRateBucket(buckets.graphql, event)
+    persist(event.retryReason !== undefined)
   }
-  return { buckets, log: rateLog, observed: () => hasObserved }
+  return { buckets, log: rateLog, observed: () => hasObserved, checkpoint: () => checkpoint?.(buckets) }
 }
 
 async function runCrawl(
@@ -270,6 +295,7 @@ async function runCrawl(
     })
     output(JSON.stringify(result))
   } finally {
+    rates.checkpoint()
     if (rates.observed())
       log({
         level: 'info',
@@ -316,8 +342,16 @@ async function runCrawlCommand(
     throw error
   }
 
+  const rates = rateTracker((buckets) => {
+    try {
+      setSetting(db, `run_rate_metrics_${runId}`, JSON.stringify(buckets))
+    } catch {
+      console.error(JSON.stringify({ level: 'error', phase: 'github_rate', category: 'rate_checkpoint_failed', runId }))
+    }
+  })
   try {
-    await runCrawl(db, config, dependencies, options, runId, now, output, rateTracker())
+    rates.checkpoint()
+    await runCrawl(db, config, dependencies, options, runId, now, output, rates)
   } catch (error) {
     try {
       failRun(db, runId, now().toISOString(), 'startup_failed')
