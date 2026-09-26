@@ -17,10 +17,12 @@ export function isValidGitHubRepositoryName(value: string): boolean {
 
 export function parseGitHubRepository(value: string | undefined): [string, string] | undefined {
   const parts = value?.split('/')
-  if (parts?.length !== 2 || !isValidGitHubOwner(parts[0]) || !isValidGitHubRepositoryName(parts[1])) {
+  if (parts?.length !== 2) return undefined
+  const [owner, repo] = parts
+  if (owner === undefined || repo === undefined || !isValidGitHubOwner(owner) || !isValidGitHubRepositoryName(repo)) {
     return undefined
   }
-  return [parts[0], parts[1]]
+  return [owner, repo]
 }
 
 export function parseGitHubOwnerUrl(value: string): string | undefined {
@@ -34,10 +36,12 @@ export function parseGitHubRepositoryUrl(value: string): { owner: string; repo: 
   const prefix = 'https://github.com/'
   if (!value.startsWith(prefix)) return undefined
   const parts = value.slice(prefix.length).split('/')
-  if (parts.length !== 2 || !isValidGitHubPathSegment(parts[0]) || !isValidGitHubPathSegment(parts[1])) {
+  if (parts.length !== 2) return undefined
+  const [owner, repo] = parts
+  if (owner === undefined || repo === undefined || !isValidGitHubPathSegment(owner) || !isValidGitHubPathSegment(repo)) {
     return undefined
   }
-  return { owner: parts[0], repo: parts[1] }
+  return { owner, repo }
 }
 
 export function isValidGitBranch(branch: string): boolean {
