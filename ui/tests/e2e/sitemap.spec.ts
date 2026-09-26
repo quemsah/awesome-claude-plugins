@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 const sitemapShardPathPattern = /^\/sitemap-\d+\.xml$/
 
 function locations(xml: string): string[] {
-  return [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1])
+  return [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].flatMap((match) => (match[1] === undefined ? [] : [match[1]]))
 }
 
 test('sitemap index exposes reachable root-scoped XML shards', async ({ request }) => {
@@ -20,7 +20,9 @@ test('sitemap index exposes reachable root-scoped XML shards', async ({ request 
     expect(url.pathname).toMatch(sitemapShardPathPattern)
   }
 
-  const firstShard = await request.get(new URL(shardLocations[0]).pathname)
+  const firstShardLocation = shardLocations[0]
+  if (firstShardLocation === undefined) throw new Error('Expected at least one sitemap shard')
+  const firstShard = await request.get(new URL(firstShardLocation).pathname)
   const firstShardXml = await firstShard.text()
 
   expect(firstShard.status()).toBe(200)
