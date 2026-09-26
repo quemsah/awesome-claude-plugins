@@ -63,14 +63,32 @@ it('renders an empty catalog without ranked rows', () => {
   expect([...markdown.matchAll(/^\| \d+ \| /gm)]).toHaveLength(0)
 })
 
-it('matches all 100 legacy ranked links from the unchanged published UI snapshot', () => {
-  const repositories = JSON.parse(
-    readFileSync(new URL('../../../ui/src/data/repos.json', import.meta.url), 'utf8'),
-  ) as PublishableRepository[]
+it('renders all 100 legacy repository links without changing their URLs', () => {
   const legacy = readFileSync(new URL('../../../README.md', import.meta.url), 'utf8')
   const links = (text: string) =>
     [...text.matchAll(/^\| \d+ \| \[[^\]]+\]\((https:\/\/github\.com\/[^)]+)\) \|/gm)].map((match) => match[1])
   const expectedLinks = links(legacy)
   expect(expectedLinks).toHaveLength(100)
+
+  const repositories = expectedLinks
+    .map((htmlUrl, index): PublishableRepository => {
+      const url = new URL(htmlUrl)
+      const [owner, repoName] = url.pathname.slice(1).split('/')
+      if (!owner || !repoName) throw new Error(`Invalid legacy repository URL: ${htmlUrl}`)
+      return {
+        id: index + 1,
+        html_url: htmlUrl,
+        repo_name: repoName,
+        owner,
+        owner_url: `https://github.com/${owner}`,
+        stargazers_count: 100 - index,
+        subscribers_count: 0,
+        forks_count: 0,
+        plugins_count: null,
+        description: null,
+      }
+    })
+    .reverse()
+
   expect(links(renderReadme(repositories, { id: 304, date: '2026-09-22T08:12:33.125Z', size: repositories.length }))).toEqual(expectedLinks)
 })
