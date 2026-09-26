@@ -157,8 +157,7 @@ function inspectProgressSnapshot(db: Database.Database): CrawlProgressInspection
         : Math.round((run.phaseProcessed / run.phaseTotal) * 10_000) / 100
       : null
   const updatedThisRun = repositories.enrichedSinceRunStart
-  const pendingThisRun =
-    run.phase === 'enrichment' && run.phaseTotal !== null ? Math.max(0, run.phaseTotal - run.phaseProcessed) : null
+  const pendingThisRun = run.phase === 'enrichment' && run.phaseTotal !== null ? Math.max(0, run.phaseTotal - run.phaseProcessed) : null
 
   return {
     run: { ...run, phasePercent },
