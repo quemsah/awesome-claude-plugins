@@ -6,6 +6,12 @@ import { GET as llmsTxt } from '../app/llms.txt/route.ts'
 import { getCanonicalCatalogRepos, searchCatalogRepos } from './catalog.ts'
 import { getCatalogSummary } from './llmsText.ts'
 
+function required<T>(values: readonly T[], index: number): T {
+  const value = values[index]
+  if (value === undefined) throw new Error(`Missing fixture at index ${index}`)
+  return value
+}
+
 describe('catalog totals the machine surfaces publish', () => {
   it('deduplicates repository paths case-insensitively even when given raw-style records', () => {
     const repo = getCanonicalCatalogRepos()[0]
@@ -29,7 +35,7 @@ describe('catalog totals the machine surfaces publish', () => {
 
     expect(llms).toContain(`- Repositories indexed: ${home.total}`)
     expect(llms).toContain(`- Plugin entries reported by catalog data: ${home.pluginsCount}`)
-    expect(feed.items[0].content_text).toContain(`The catalog contains ${home.total} repositories`)
-    expect(feed.items[0].content_text).toContain(`and ${home.pluginsCount} reported plugin entries`)
+    expect(required(feed.items, 0).content_text).toContain(`The catalog contains ${home.total} repositories`)
+    expect(required(feed.items, 0).content_text).toContain(`and ${home.pluginsCount} reported plugin entries`)
   })
 })
