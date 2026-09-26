@@ -269,6 +269,15 @@ function parseMarketplace(value: unknown): Marketplace {
   return parseMarketplaceManifest(value)
 }
 
+function marketplaceValidationReason(error: MarketplaceValidationError): string {
+  const issue = error.issues[0]
+  const path = issue?.path.reduce<string>(
+    (prefix, part) => (typeof part === 'number' ? `${prefix}[${part}]` : prefix ? `${prefix}.${part}` : part),
+    '',
+  )
+  return `Invalid marketplace manifest${path ? ` at ${path}` : ''}: ${issue?.message ?? error.message}`
+}
+
 function safeEntityTag(value: string | null): string | null {
   if (value === null) return null
   const trimmed = value.trim()
@@ -813,21 +822,22 @@ export class GitHubClient implements GitHubReader {
     try {
       data = parse(value)
     } catch (error) {
-      if (permanentContentErrors) {
-        const issue = error instanceof MarketplaceValidationError ? error.issues[0] : undefined
-        const path = issue?.path.reduce<string>(
-          (prefix, part) => (typeof part === 'number' ? `${prefix}[${part}]` : prefix ? `${prefix}.${part}` : part),
-          '',
-        )
+      if (permanentContentErrors && error instanceof MarketplaceValidationError) {
         return {
           kind: 'result',
           result: {
             kind: 'invalid-content',
             failure: 'invalid-manifest',
             status: response.status,
-            reason: `Invalid marketplace manifest${path ? ` at ${path}` : ''}: ${issue?.message ?? 'unsupported structure'}`,
+            reason: marketplaceValidationReason(error),
             retryCount: attempt,
           },
+        }
+      }
+      if (permanentContentErrors) {
+        return {
+          kind: 'result',
+          result: { kind: 'temporary-error', status: response.status, reason: 'Marketplace parser failure', retryCount: attempt },
         }
       }
       return this.retryInvalidResponse(bucket, response, attempt, secondaryCount, 'Invalid GitHub response')

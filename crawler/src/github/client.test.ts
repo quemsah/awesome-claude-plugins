@@ -455,6 +455,17 @@ describe('GitHubClient', () => {
     expect(test.requests).toHaveLength(1)
   })
 
+  it('reports the failing manifest path without retrying invalid content', async () => {
+    const test = harness([manifest({ plugins: [{}] })])
+    expect(await test.client.getMarketplace('acme', 'catalog')).toMatchObject({
+      kind: 'invalid-content',
+      failure: 'invalid-manifest',
+      reason: 'Invalid marketplace manifest at plugins[0]: Manifest entry does not contain plugin metadata',
+      retryCount: 0,
+    })
+    expect(test.requests).toHaveLength(1)
+  })
+
   it('returns definitive 404 without a retry for both enrichment endpoints', async () => {
     const test = harness([new Response('', { status: 404 }), new Response('', { status: 404 })])
     expect(await test.client.getRepository('acme', 'catalog')).toEqual({ kind: 'not-found', retryCount: 0 })
