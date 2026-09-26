@@ -75,7 +75,7 @@ function migrateTo3(db: Database.Database): void {
     run_id: string
     status: string
   }[]
-  if (pending.length > 1 || (pending.length === 1 && pending[0].status !== 'completed')) {
+  if (pending.length > 1 || (pending.length === 1 && pending[0]?.status !== 'completed')) {
     throw new Error('Cannot migrate ambiguous pending Git publication; reconcile the runs before upgrading')
   }
   db.exec(`
