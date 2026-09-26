@@ -19,6 +19,12 @@ const page = {
   items: [{ repository: { html_url: repo.html_url, description: null } }],
 }
 
+function required<T>(values: readonly T[], index: number): T {
+  const value = values[index]
+  if (value === undefined) throw new Error(`Missing fixture at index ${index}`)
+  return value
+}
+
 function harness(responses: Array<Response | Error>, random: () => number = () => 0) {
   let time = 0
   const requests: Array<{ url: string; init: RequestInit | undefined; time: number }> = []
@@ -60,7 +66,7 @@ describe('GitHubClient', () => {
     const test = harness([Response.json(page)])
     expect(await test.client.searchCode('filename:marketplace.json path:.claude-plugin size:0..150', 2)).toEqual(page)
 
-    const request = test.requests[0]
+    const request = required(test.requests, 0)
     const url = new URL(request.url)
     expect(url.origin + url.pathname).toBe('https://api.github.com/search/code')
     expect(url.searchParams.getAll('q')).toEqual(['filename:marketplace.json path:.claude-plugin size:0..150'])
@@ -76,7 +82,7 @@ describe('GitHubClient', () => {
   it('returns typed repository data and encodes owner and repo as path segments', async () => {
     const test = harness([Response.json(repo)])
     expect(await test.client.getRepository('acme team', 'cool/repo')).toEqual({ kind: 'found', data: repo })
-    expect(test.requests[0].url).toBe('https://api.github.com/repos/acme%20team/cool%2Frepo')
+    expect(required(test.requests, 0).url).toBe('https://api.github.com/repos/acme%20team/cool%2Frepo')
   })
 
   it('does not serialize unrelated GitHub requests behind an in-flight request', async () => {
@@ -138,7 +144,7 @@ describe('GitHubClient', () => {
       etag: '"repo-v1"',
       retryCount: 0,
     })
-    expect(new Headers(test.requests[0].init?.headers).get('if-none-match')).toBe('"repo-v0"')
+    expect(new Headers(required(test.requests, 0).init?.headers).get('if-none-match')).toBe('"repo-v0"')
   })
 
   it('loads repository metadata and marketplace blob OIDs by GraphQL node ID', async () => {
@@ -201,10 +207,10 @@ describe('GitHubClient', () => {
       rateLimit: { cost: 2, remaining: 4_500, resetAt, limit: 5_000, used: 500 },
     })
     expect(test.logs).toContainEqual(expect.objectContaining({ bucket: 'graphql', latencyMs: 0, cost: 2 }))
-    expect(test.requests[0].url).toBe('https://api.github.com/graphql')
-    expect(test.requests[0].init?.method).toBe('POST')
-    expect(new Headers(test.requests[0].init?.headers).get('x-github-next-global-id')).toBe('1')
-    const body = JSON.parse(String(test.requests[0].init?.body))
+    expect(required(test.requests, 0).url).toBe('https://api.github.com/graphql')
+    expect(required(test.requests, 0).init?.method).toBe('POST')
+    expect(new Headers(required(test.requests, 0).init?.headers).get('x-github-next-global-id')).toBe('1')
+    const body = JSON.parse(String(required(test.requests, 0).init?.body))
     expect(body).toMatchObject({ variables: { ids: [nodeId] } })
     expect(body.query).toContain('oid byteSize isBinary')
   })
@@ -251,7 +257,7 @@ describe('GitHubClient', () => {
       ],
       rateLimit: { cost: 3, remaining: 4_497, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 503 },
     })
-    const body = JSON.parse(String(test.requests[0].init?.body))
+    const body = JSON.parse(String(required(test.requests, 0).init?.body))
     expect(body).toMatchObject({ variables: { ids: [firstId, secondId] } })
     expect(body.query).toContain('query MarketplaceBlobs')
     expect(body.query).toContain('oid text isTruncated isBinary byteSize')
@@ -455,8 +461,8 @@ describe('GitHubClient', () => {
       data: { plugins: [] },
       etag: 'W/"marketplace-v1"',
     })
-    expect(test.requests[0].url).toBe('https://api.github.com/repos/acme/catalog/contents/.claude-plugin/marketplace.json')
-    expect(test.requests[0].init?.headers).toMatchObject({ Accept: 'application/vnd.github.raw+json' })
+    expect(required(test.requests, 0).url).toBe('https://api.github.com/repos/acme/catalog/contents/.claude-plugin/marketplace.json')
+    expect(required(test.requests, 0).init?.headers).toMatchObject({ Accept: 'application/vnd.github.raw+json' })
   })
 
   it('parses marketplace files larger than the Contents API base64 limit', async () => {
@@ -472,7 +478,7 @@ describe('GitHubClient', () => {
       kind: 'not-modified',
       retryCount: 0,
     })
-    expect(test.requests[0].init?.headers).toMatchObject({ 'If-None-Match': 'W/"marketplace-v1"' })
+    expect(required(test.requests, 0).init?.headers).toMatchObject({ 'If-None-Match': 'W/"marketplace-v1"' })
   })
 
   it('treats an unexpected 304 without a conditional request as a temporary error', async () => {
@@ -594,13 +600,13 @@ describe('GitHubClient', () => {
     const test = harness([Response.json(repo, { headers: { 'retry-after': '20' } }), Response.json(repo)])
     await test.client.getRepository('acme', 'catalog')
     await test.client.getRepository('acme', 'catalog')
-    expect(test.requests[1].time).toBeGreaterThanOrEqual(20_000)
+    expect(required(test.requests, 1).time).toBeGreaterThanOrEqual(20_000)
   })
 
   it('passes an abort signal to fetch so stalled requests have a deadline', async () => {
     const test = harness([Response.json(repo)])
     await test.client.getRepository('acme', 'catalog')
-    expect(test.requests[0].init?.signal).toBeInstanceOf(AbortSignal)
+    expect(required(test.requests, 0).init?.signal).toBeInstanceOf(AbortSignal)
   })
 
   it('retries a primary-limited 403 only after reset rather than marking the repo absent', async () => {
@@ -612,13 +618,13 @@ describe('GitHubClient', () => {
       Response.json(repo),
     ])
     expect(await test.client.getRepository('acme', 'catalog')).toEqual({ kind: 'found', data: repo })
-    expect(test.requests[1].time).toBeGreaterThan(120_000)
+    expect(required(test.requests, 1).time).toBeGreaterThan(120_000)
   })
 
   it('respects Retry-After and the local budget on 429', async () => {
     const test = harness([new Response('', { status: 429, headers: { 'retry-after': '30' } }), Response.json(repo)])
     expect(await test.client.getRepository('acme', 'catalog')).toEqual({ kind: 'found', data: repo })
-    expect(test.requests[1].time).toBeGreaterThanOrEqual(30_000)
+    expect(required(test.requests, 1).time).toBeGreaterThanOrEqual(30_000)
   })
 
   it('limits rate-limit retries to two and honors the required wait', async () => {
@@ -626,7 +632,7 @@ describe('GitHubClient', () => {
 
     expect(await test.client.getRepository('acme', 'catalog')).toMatchObject({ kind: 'temporary-error', retryCount: 2 })
     expect(test.requests).toHaveLength(3)
-    expect(test.requests[1].time).toBeGreaterThanOrEqual(60_000)
+    expect(required(test.requests, 1).time).toBeGreaterThanOrEqual(60_000)
   })
 
   it('backs off for at least a minute and increases secondary delays', async () => {
@@ -636,14 +642,14 @@ describe('GitHubClient', () => {
       Response.json(repo),
     ])
     expect(await test.client.getRepository('acme', 'catalog')).toEqual({ kind: 'found', data: repo })
-    expect(test.requests[1].time - test.requests[0].time).toBeGreaterThanOrEqual(60_000)
-    expect(test.requests[2].time - test.requests[1].time).toBeGreaterThanOrEqual(120_000)
+    expect(required(test.requests, 1).time - required(test.requests, 0).time).toBeGreaterThanOrEqual(60_000)
+    expect(required(test.requests, 2).time - required(test.requests, 1).time).toBeGreaterThanOrEqual(120_000)
   })
 
   it('adds jitter to secondary backoff while preserving its one-minute minimum', async () => {
     const test = harness([Response.json({ message: 'secondary rate limit' }, { status: 403 }), Response.json(repo)], () => 0.5)
     expect((await test.client.getRepository('acme', 'catalog')).kind).toBe('found')
-    expect(test.requests[1].time - test.requests[0].time).toBeGreaterThan(60_000)
+    expect(required(test.requests, 1).time - required(test.requests, 0).time).toBeGreaterThan(60_000)
   })
 
   it('stops global authentication and permission failures without leaking token or body', async () => {
@@ -707,7 +713,7 @@ describe('GitHubClient', () => {
     expect(result).toMatchObject({ kind: 'temporary-error', retryCount: 2 })
     expect(JSON.stringify(result)).not.toContain('test-secret')
     expect(test.requests).toHaveLength(3)
-    expect(test.requests[1].time).toBeGreaterThan(test.requests[0].time)
+    expect(required(test.requests, 1).time).toBeGreaterThan(required(test.requests, 0).time)
   })
 
   it('does not classify an HTTP 200 with invalid repo fields as found', async () => {
