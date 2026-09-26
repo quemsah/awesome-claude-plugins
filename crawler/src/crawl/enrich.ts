@@ -375,8 +375,7 @@ function persistRepositoryMetadataOnMarketplaceError(
           .prepare('SELECT * FROM repositories WHERE html_url = ? COLLATE NOCASE AND id != ? ORDER BY id LIMIT 1')
           .get(loaded.canonical.htmlUrl, row.id) as RepositoryRow | undefined)
       : undefined
-    const preserved =
-      duplicate && marketplaceStateScore(duplicate) > marketplaceStateScore(row) ? duplicate : row
+    const preserved = duplicate && marketplaceStateScore(duplicate) > marketplaceStateScore(row) ? duplicate : row
     const rebound = loaded.moved ? rebindCanonicalUrl(db, row.id, loaded.canonical.htmlUrl, at) : { id: row.id, removedId: null }
     if (!getRepositoryById(db, rebound.id)) throw new Error('Canonical repository disappeared during metadata update')
     updateEnriched(
