@@ -298,7 +298,7 @@ async function loadGraphQLMarketplace(
       return {
         pluginsCount: decoded.pluginsCount,
         marketplaceOid: decoded.marketplaceOid,
-        marketplaceEtag: row.marketplace_etag,
+        marketplaceEtag: null,
         parserVersion: MARKETPLACE_PARSER_VERSION,
       }
     }
@@ -331,7 +331,7 @@ async function loadGraphQLMarketplace(
   }
   return {
     pluginsCount: result.data.plugins.length,
-    marketplaceOid: authoritativeMarketplaceOid,
+    marketplaceOid: null,
     marketplaceEtag,
     parserVersion: MARKETPLACE_PARSER_VERSION,
   }
