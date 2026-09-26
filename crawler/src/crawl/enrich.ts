@@ -1080,18 +1080,7 @@ async function enrichOne(
   }
   if (!loaded) return
   onProgress?.()
-  const marketplace = await loadLegacyMarketplace(
-    db,
-    reader,
-    runId,
-    row,
-    loaded,
-    counts,
-    removedIds,
-    now,
-    marketplacePolicy ?? policy,
-    log,
-  )
+  const marketplace = await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, marketplacePolicy ?? policy, log)
   if (isRetryLater(marketplace)) {
     queueRetry(retryQueue, row, async () => {
       if (removedIds.has(row.id)) return
