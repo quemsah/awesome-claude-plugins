@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 8
+const schemaVersion = 9
 
 function createSchema(db: Database.Database): void {
   db.exec(`
@@ -217,6 +217,18 @@ function migrateTo8(db: Database.Database): void {
   `)
 }
 
+function migrateTo9(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE runs ADD COLUMN phase TEXT NOT NULL DEFAULT 'startup'
+      CHECK(phase IN ('startup', 'discovery', 'enrichment', 'finalize'));
+    ALTER TABLE runs ADD COLUMN phase_started_at TEXT;
+    ALTER TABLE runs ADD COLUMN phase_total INTEGER CHECK(phase_total IS NULL OR phase_total >= 0);
+    ALTER TABLE runs ADD COLUMN phase_processed INTEGER NOT NULL DEFAULT 0 CHECK(phase_processed >= 0);
+    UPDATE runs SET phase = 'finalize' WHERE status != 'running';
+    PRAGMA user_version = 9;
+  `)
+}
+
 function migrateSchema(db: Database.Database, version: number): void {
   if (version === 0) createSchema(db)
   if (version < 2) migrateTo2(db)
@@ -226,6 +238,7 @@ function migrateSchema(db: Database.Database, version: number): void {
   if (version < 6) migrateTo6(db)
   if (version < 7) migrateTo7(db)
   if (version < 8) migrateTo8(db)
+  if (version < 9) migrateTo9(db)
 }
 
 export function initializeSchema(db: Database.Database): void {
