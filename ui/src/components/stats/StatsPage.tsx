@@ -35,11 +35,17 @@ export function calculateTrend(filteredStats: StatsItem[]): {
     return { growth: 0, percentage: 0, periodDays: 0, averageDailyIncrease: 0 }
   }
 
-  const firstSize = filteredStats[0].size
-  const lastSize = filteredStats[filteredStats.length - 1].size
+  const firstStat = filteredStats[0]
+  const lastStat = filteredStats.at(-1)
+  if (firstStat === undefined || lastStat === undefined) {
+    return { growth: 0, percentage: 0, periodDays: 0, averageDailyIncrease: 0 }
+  }
+
+  const firstSize = firstStat.size
+  const lastSize = lastStat.size
   const totalGrowth = lastSize - firstSize
-  const firstDate = new Date(filteredStats[0].date)
-  const lastDate = new Date(filteredStats[filteredStats.length - 1].date)
+  const firstDate = new Date(firstStat.date)
+  const lastDate = new Date(lastStat.date)
   const periodDays = Math.max(1, Math.round((lastDate.getTime() - firstDate.getTime()) / MILLISECONDS_IN_DAY))
 
   const percentage = firstSize > 0 ? Math.round((totalGrowth / firstSize) * 10000) / 100 : 0
@@ -68,10 +74,12 @@ export function fillMissingDates(stats: StatsItem[]): ChartStatsItem[] {
 
   for (let i = 0; i < sortedStats.length; i++) {
     const currentItem = sortedStats[i]
+    if (currentItem === undefined) continue
     filledStats.push({ id: currentItem.id, date: currentItem.date, interpolated: false, size: currentItem.size })
 
     if (i < sortedStats.length - 1) {
       const nextItem = sortedStats[i + 1]
+      if (nextItem === undefined) continue
       const currentDate = currentItem.dateObj
       const nextDate = nextItem.dateObj
 
@@ -131,7 +139,9 @@ export function StatsPage({ stats }: StatsPageProps) {
   const trendData = useMemo(() => calculateTrend(displayStats), [displayStats])
 
   const activeRangeLabel = isEmptyRange ? timeRangeLabels.all : timeRangeLabels[timeRange]
-  const latestSnapshotLabel = chartData.length > 0 ? chartData[chartData.length - 1].formattedDate : ''
+  const firstChartItem = chartData[0]
+  const latestChartItem = chartData.at(-1)
+  const latestSnapshotLabel = latestChartItem?.formattedDate ?? ''
 
   useEffect(() => {
     if (!chartRef.current) return
@@ -180,7 +190,7 @@ export function StatsPage({ stats }: StatsPageProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="font-bold text-2xl">{chartData.length > 0 ? chartData[chartData.length - 1].size : 0}</div>
+            <div className="font-bold text-2xl">{latestChartItem?.size ?? 0}</div>
           </CardContent>
         </Card>
         <Card>
@@ -204,8 +214,8 @@ export function StatsPage({ stats }: StatsPageProps) {
             <h2>Repository Count Over Time</h2>
           </CardTitle>
           <CardDescription>
-            {activeRangeLabel} - Daily repository count from {chartData.length > 0 ? chartData[0].formattedDate : ''} to{' '}
-            {chartData.length > 0 ? chartData[chartData.length - 1].formattedDate : ''}
+            {activeRangeLabel} - Daily repository count from {firstChartItem?.formattedDate ?? ''} to{' '}
+            {latestChartItem?.formattedDate ?? ''}
           </CardDescription>
         </CardHeader>
         <CardContent>
