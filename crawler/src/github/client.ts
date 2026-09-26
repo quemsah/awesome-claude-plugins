@@ -29,7 +29,12 @@ export type GitHubRepo = Pick<
 
 export type Marketplace = { plugins: unknown[] }
 
-export type GitHubGraphQLRepo = GitHubRepo & { node_id: string; marketplace_oid: string | null }
+export type GitHubGraphQLRepo = GitHubRepo & {
+  node_id: string
+  marketplace_oid: string | null
+  marketplace_byte_size: number | null
+  marketplace_is_binary: boolean | null
+}
 export type GraphQLRateLimit = { cost: number; remaining: number; resetAt: string; limit: number; used: number }
 type GraphQLResult<T> =
   | { kind: 'found'; data: Array<T | null>; rateLimit: GraphQLRateLimit }
@@ -170,12 +175,17 @@ type GraphQLRepoPayload = {
   isPrivate: boolean
   owner: { login: string; url: string }
   watchers: { totalCount: number }
-  object: { oid: string } | null
+  object: { oid: string; byteSize?: number; isBinary?: boolean | null } | null
 }
 
 function isGraphQLRepoPayload(value: unknown): value is GraphQLRepoPayload {
   if (!record(value) || !record(value.owner) || !record(value.watchers)) return false
-  const validObject = value.object === null || (record(value.object) && nonempty(value.object.oid))
+  const validObject =
+    value.object === null ||
+    (record(value.object) &&
+      nonempty(value.object.oid) &&
+      (value.object.byteSize === undefined || count(value.object.byteSize)) &&
+      (value.object.isBinary === undefined || value.object.isBinary === null || typeof value.object.isBinary === 'boolean'))
   return [
     nonempty(value.id),
     nonempty(value.url),
@@ -207,6 +217,8 @@ function parseGraphQLRepo(value: unknown): GitHubGraphQLRepo | null {
     private: value.isPrivate,
     owner: { login: value.owner.login, html_url: value.owner.url },
     marketplace_oid: value.object?.oid ?? null,
+    marketplace_byte_size: value.object?.byteSize ?? null,
+    marketplace_is_binary: value.object?.isBinary ?? null,
   }
 }
 
@@ -275,7 +287,7 @@ const REPOSITORY_METADATA_QUERY = `query RepositoryMetadata($ids: [ID!]!) {
       id url name description stargazerCount forkCount pushedAt isPrivate
       owner { login url }
       watchers(first: 1) { totalCount }
-      object(expression: "HEAD:.claude-plugin/marketplace.json") { ... on Blob { oid } }
+      object(expression: "HEAD:.claude-plugin/marketplace.json") { ... on Blob { oid byteSize isBinary } }
     }
   }
   rateLimit { cost remaining resetAt limit used }
@@ -368,13 +380,18 @@ export class GitHubClient implements GitHubReader {
   }
 
   getMarketplaceBlobsByNodeId(ids: readonly string[]): Promise<GraphQLMarketplaceBlobBatchResult> {
-    return this.enqueueGraphQL(ids, MARKETPLACE_BLOBS_QUERY, parseGraphQLMarketplaceBlob)
+    return this.enqueueGraphQL(ids, MARKETPLACE_BLOBS_QUERY, parseGraphQLMarketplaceBlob, true)
   }
 
-  private enqueueGraphQL<T>(ids: readonly string[], query: string, parseNode: (value: unknown) => T | null): Promise<GraphQLResult<T>> {
+  private enqueueGraphQL<T>(
+    ids: readonly string[],
+    query: string,
+    parseNode: (value: unknown) => T | null,
+    isolateNodeErrors = false,
+  ): Promise<GraphQLResult<T>> {
     const run = this.pending.then(() => {
       throwIfShutdown(this.signal)
-      return this.performGraphQL(ids, query, parseNode)
+      return this.performGraphQL(ids, query, parseNode, isolateNodeErrors)
     })
     this.pending = run.then(
       () => undefined,
@@ -482,6 +499,23 @@ export class GitHubClient implements GitHubReader {
     })
   }
 
+  private graphQLNodeErrorIndexes(payload: Record<string, unknown>, idsLength: number): Set<number> | null {
+    const data = payload.data
+    if (!record(data) || !Array.isArray(data.nodes) || data.nodes.length !== idsLength) return null
+    if (!Array.isArray(payload.errors) || payload.errors.length === 0) return new Set<number>()
+
+    const indexes = new Set<number>()
+    for (const error of payload.errors) {
+      if (!record(error) || !Array.isArray(error.path) || error.path.length < 2) return null
+      const [root, index] = error.path
+      if (root !== 'nodes' || typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= data.nodes.length) {
+        return null
+      }
+      indexes.add(index)
+    }
+    return indexes
+  }
+
   private async parseGraphQLPayload<T>(
     response: Response,
     ids: readonly string[],
@@ -490,28 +524,41 @@ export class GitHubClient implements GitHubReader {
     attempt: number,
     secondaryCount: number,
     parseNode: (value: unknown) => T | null,
+    isolateNodeErrors: boolean,
   ): Promise<GraphQLAction<T>> {
     try {
       const payload: unknown = await response.json()
-      if (
-        record(payload) &&
-        Array.isArray(payload.errors) &&
-        payload.errors.length > 0 &&
-        !this.isExpectedNodeNotFoundErrors(payload, ids.length)
-      ) {
+      let isolatedErrorIndexes = new Set<number>()
+      if (record(payload) && Array.isArray(payload.errors) && payload.errors.length > 0) {
         const message = payload.errors
           .map((error: unknown) => (record(error) && typeof error.message === 'string' ? error.message : ''))
           .join(' ')
         const errorAction = this.handleGraphQLErrorMessage<T>(message, response, attempt, delay, secondaryCount)
         if (errorAction) return errorAction
-        throw new Error('GraphQL returned errors')
+
+        if (isolateNodeErrors) {
+          const indexes = this.graphQLNodeErrorIndexes(payload, ids.length)
+          if (indexes === null) throw new Error('GraphQL returned non-node errors')
+          isolatedErrorIndexes = indexes
+        } else if (!this.isExpectedNodeNotFoundErrors(payload, ids.length)) {
+          throw new Error('GraphQL returned errors')
+        }
       }
       if (!record(payload) || !record(payload.data) || !Array.isArray(payload.data.nodes) || payload.data.nodes.length !== ids.length) {
         throw new Error('Invalid GraphQL response')
       }
       const rateLimit = parseGraphQLRateLimit(payload.data.rateLimit)
       this.budget.observeGraphQL({ ...rateLimit, latencyMs: Math.max(0, this.clock.now() - requestStartedAt) }, response.headers)
-      return { kind: 'result', result: { kind: 'found', data: payload.data.nodes.map(parseNode), rateLimit } }
+      const data = payload.data.nodes.map((node, index) => {
+        if (isolatedErrorIndexes.has(index)) return null
+        if (!isolateNodeErrors) return parseNode(node)
+        try {
+          return parseNode(node)
+        } catch {
+          return null
+        }
+      })
+      return { kind: 'result', result: { kind: 'found', data, rateLimit } }
     } catch {
       return {
         kind: 'result',
@@ -524,8 +571,8 @@ export class GitHubClient implements GitHubReader {
     await this.budget.acquire('graphql', this.signal)
     throwIfShutdown(this.signal)
     const requestStartedAt = this.clock.now()
+    const timeoutSignal = AbortSignal.timeout(10_000)
     try {
-      const timeoutSignal = AbortSignal.timeout(10_000)
       const signal = this.signal ? AbortSignal.any([this.signal, timeoutSignal]) : timeoutSignal
       const response = await this.transport('https://api.github.com/graphql', {
         method: 'POST',
@@ -545,7 +592,16 @@ export class GitHubClient implements GitHubReader {
       return { kind: 'response', response, requestStartedAt }
     } catch {
       throwIfShutdown(this.signal)
-      if (attempt === 3) return { kind: 'result', result: { kind: 'temporary-error', status: null, reason: 'GitHub network error' } }
+      if (attempt === 3) {
+        return {
+          kind: 'result',
+          result: {
+            kind: 'temporary-error',
+            status: null,
+            reason: timeoutSignal.aborted ? 'GitHub GraphQL timeout' : 'GitHub network error',
+          },
+        }
+      }
       await this.clock.sleep(this.transientDelay(attempt), this.signal)
       return { kind: 'retry' }
     }
@@ -558,19 +614,21 @@ export class GitHubClient implements GitHubReader {
     attempt: number,
     secondaryCount: number,
     parseNode: (value: unknown) => T | null,
+    isolateNodeErrors: boolean,
   ): Promise<GraphQLAction<T>> {
     this.budget.observe('graphql', response.headers)
     const delay = retryAfter(response.headers, this.clock.now())
     if (delay !== null) this.budget.defer('graphql', delay)
     const statusAction = await this.handleGraphQLStatus<T>(response, attempt, delay, secondaryCount)
     if (statusAction) return statusAction
-    return this.parseGraphQLPayload(response, ids, requestStartedAt, delay, attempt, secondaryCount, parseNode)
+    return this.parseGraphQLPayload(response, ids, requestStartedAt, delay, attempt, secondaryCount, parseNode, isolateNodeErrors)
   }
 
   private async performGraphQL<T>(
     ids: readonly string[],
     query: string,
     parseNode: (value: unknown) => T | null,
+    isolateNodeErrors: boolean,
   ): Promise<GraphQLResult<T>> {
     if (ids.length < 1 || ids.length > 50 || ids.some((id) => !nonempty(id))) {
       throw new GitHubFatalError('GraphQL batch must contain 1..50 node IDs', null)
@@ -588,6 +646,7 @@ export class GitHubClient implements GitHubReader {
         attempt,
         secondaryCount,
         parseNode,
+        isolateNodeErrors,
       )
       if (action.kind === 'result') return action.result
       secondaryCount = action.secondaryCount
