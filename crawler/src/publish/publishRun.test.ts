@@ -13,6 +13,12 @@ const directories: string[] = []
 const timestamp = new Date('2025-07-02T12:30:00.000Z')
 const sha = (id: number) => id.toString(16).padStart(40, '0')
 
+function required<T>(values: readonly T[], index: number): T {
+  const value = values[index]
+  if (value === undefined) throw new Error(`Missing fixture at index ${index}`)
+  return value
+}
+
 function fixture(): Database.Database {
   const directory = mkdtempSync(join(import.meta.dirname, '.publication-'))
   directories.push(directory)
@@ -197,16 +203,16 @@ it('defaults to no writes; a prepared draft publishes exactly four files in one 
   expect(git.messages).toEqual(['chore(data): refresh dataset 02.07.2025'])
   expect(git.events).toEqual(['GET ref', 'GET commit', `POST tree ${sha(100)}`, `POST commit ${sha(1)}`, `PATCH ${commit} force:false`])
   expect(git.files).toHaveLength(1)
-  expect(Object.keys(git.files[0]).sort()).toEqual(['markdownPathsJson', 'readme', 'reposJson', 'statsJson'])
-  const { readme, reposJson, statsJson, markdownPathsJson } = git.files[0]
+  expect(Object.keys(required(git.files, 0)).sort()).toEqual(['markdownPathsJson', 'readme', 'reposJson', 'statsJson'])
+  const { readme, reposJson, statsJson, markdownPathsJson } = required(git.files, 0)
   expect(draft.hash).toBe(
     createHash('sha256')
       .update(JSON.stringify([readme, reposJson, statsJson, markdownPathsJson]), 'utf8')
       .digest('hex'),
   )
-  expect(git.files[0].readme).toContain('Last updated: 02.07.2025 with 1 total repositories indexed.')
-  expect(JSON.parse(git.files[0].markdownPathsJson)).toEqual([])
-  expect(JSON.parse(git.files[0].statsJson)).toEqual([
+  expect(required(git.files, 0).readme).toContain('Last updated: 02.07.2025 with 1 total repositories indexed.')
+  expect(JSON.parse(required(git.files, 0).markdownPathsJson)).toEqual([])
+  expect(JSON.parse(required(git.files, 0).statsJson)).toEqual([
     { id: 264, date: '2024-01-01T00:00:00.000Z', size: 4 },
     { id: 265, date: draft.date, size: draft.size },
   ])
@@ -236,7 +242,7 @@ it('accepts a legacy three-file draft hash when recovering a draft prepared befo
   const commit = await publishRun(db, git, 'r1', { writeEnabled: true })
   expect(commit).toBe(git.head)
   expect(git.files).toHaveLength(1)
-  expect(git.files[0].markdownPathsJson).toBe(files.markdownPathsJson)
+  expect(required(git.files, 0).markdownPathsJson).toBe(files.markdownPathsJson)
 })
 
 it('still rejects catalog changes when a persisted draft uses the legacy three-file hash', async () => {
