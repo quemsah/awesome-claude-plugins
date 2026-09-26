@@ -4,6 +4,12 @@ import { filterStatsByTimeRange, resolveStatsDisplay } from './statsView.ts'
 
 const DAY = 1000 * 60 * 60 * 24
 
+function required<T>(values: readonly T[], index: number): T {
+  const value = values[index]
+  if (value === undefined) throw new Error(`Missing fixture at index ${index}`)
+  return value
+}
+
 function snapshots(entries: Array<{ daysAgo: number; size: number }>): StatsItem[] {
   return entries.map((entry, index) => ({
     id: index + 1,
@@ -24,7 +30,7 @@ describe('resolveStatsDisplay', () => {
     expect(view.isEmptyRange).toBe(true)
     // The counter must never collapse to 0 while historical data exists.
     expect(view.displayStats).toHaveLength(2)
-    expect(view.displayStats[view.displayStats.length - 1].size).toBe(38120)
+    expect(required(view.displayStats, view.displayStats.length - 1).size).toBe(38120)
   })
 
   it('keeps a window that contains at least one snapshot', () => {
@@ -37,7 +43,7 @@ describe('resolveStatsDisplay', () => {
 
     expect(view.isEmptyRange).toBe(false)
     expect(view.displayStats).toHaveLength(1)
-    expect(view.displayStats[0].size).toBe(40210)
+    expect(required(view.displayStats, 0).size).toBe(40210)
   })
 
   it('returns the full series untouched for the all-time range', () => {
