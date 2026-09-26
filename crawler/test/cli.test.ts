@@ -439,6 +439,93 @@ describe('CLI', () => {
     await expect(runCli(['publish', '--run-id', 'prepared', '--recover'], { env })).rejects.toThrow()
   })
 
+  it('keeps crawling when rate-metric checkpoints cannot be persisted', async () => {
+    const path = databasePath()
+    populateTestDatabase(path)
+    const setup = openDatabase(path)
+    setup.exec(`
+      CREATE TRIGGER fail_rate_metric_checkpoint
+      BEFORE INSERT ON settings
+      WHEN NEW.key LIKE 'run_rate_metrics_%'
+      BEGIN
+        SELECT RAISE(ABORT, 'rate checkpoint failed');
+      END;
+    `)
+    setup.close()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      await runCli(['crawl', '--dry-run'], {
+        env: { DB_PATH: path, GITHUB_READ_TOKEN: 'read-token', PUBLISH_ENABLED: 'false' },
+        runId: () => 'rate-checkpoint-failure',
+        now: () => new Date('2026-09-23T12:00:00.000Z'),
+        ranges: [[0, 150]],
+        reader: (_config, log) => {
+          log?.({ bucket: 'core', request: true })
+          return readerFixture()
+        },
+        output: vi.fn(),
+      })
+
+      const verified = openDatabase(path)
+      expect(getRun(verified, 'rate-checkpoint-failure')).toMatchObject({ status: 'completed' })
+      expect(getSetting(verified, 'run_rate_metrics_rate-checkpoint-failure')).toBeNull()
+      verified.close()
+      expect(error).toHaveBeenCalledWith(
+        JSON.stringify({
+          level: 'error',
+          phase: 'github_rate',
+          category: 'rate_checkpoint_failed',
+          runId: 'rate-checkpoint-failure',
+        }),
+      )
+    } finally {
+      error.mockRestore()
+    }
+  })
+
+  it('preserves the original crawl error when the final rate checkpoint also fails', async () => {
+    const path = databasePath()
+    populateTestDatabase(path)
+    const setup = openDatabase(path)
+    setup.exec(`
+      CREATE TRIGGER fail_rate_metric_checkpoint
+      BEFORE INSERT ON settings
+      WHEN NEW.key LIKE 'run_rate_metrics_%'
+      BEGIN
+        SELECT RAISE(ABORT, 'rate checkpoint failed');
+      END;
+    `)
+    setup.close()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      await expect(
+        runCli(['crawl', '--dry-run'], {
+          env: { DB_PATH: path, GITHUB_READ_TOKEN: 'read-token', PUBLISH_ENABLED: 'false' },
+          runId: () => 'crawl-error-with-rate-failure',
+          now: () => new Date('2026-09-23T12:00:00.000Z'),
+          reader: () => {
+            throw new Error('reader setup failed')
+          },
+          output: vi.fn(),
+        }),
+      ).rejects.toThrow('reader setup failed')
+
+      const verified = openDatabase(path)
+      expect(getRun(verified, 'crawl-error-with-rate-failure')).toMatchObject({ status: 'failed', last_error: 'startup_failed' })
+      verified.close()
+      expect(error).toHaveBeenCalledWith(
+        JSON.stringify({
+          level: 'error',
+          phase: 'github_rate',
+          category: 'rate_checkpoint_failed',
+          runId: 'crawl-error-with-rate-failure',
+        }),
+      )
+    } finally {
+      error.mockRestore()
+    }
+  })
+
   it('emits safe per-bucket GitHub request and wait totals for the pilot', async () => {
     const path = databasePath()
     populateTestDatabase(path)
