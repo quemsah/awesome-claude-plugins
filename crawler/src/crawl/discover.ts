@@ -1,7 +1,8 @@
 import type Database from 'better-sqlite3'
-import { type GitHubReader, GitHubTemporaryError } from '../github/client.js'
+import { GitHubFatalError, type GitHubReader, GitHubTemporaryError } from '../github/client.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import type { SizeRange } from '../github/sizeRanges.js'
+import type { Log } from '../logging.js'
 import { listCachedDiscoveryRanges, replaceCachedDiscoveryRanges } from '../storage/discoveryRanges.js'
 import { upsertDiscovery } from '../storage/repositories.js'
 import { recordRunError, runWhileActive } from '../storage/runs.js'
@@ -28,14 +29,26 @@ type RangeState = {
   countedUrls: Set<string>
   summary: DiscoverySummary
   now: () => string
+  query: string
+  page: number | null
+  found: number
+  totalCount: number | null
+  log?: Log
 }
 
 type CoverageState = {
   complete: boolean
   leaves: SizeRange[]
+  log?: Log
 }
 
-function warn(db: Database.Database, state: RangeState, category: DiscoveryWarningCategory, retryCount = 0): void {
+function warn(
+  db: Database.Database,
+  state: RangeState,
+  category: DiscoveryWarningCategory,
+  retryCount = 0,
+  details: Record<string, unknown> = {},
+): void {
   if (state.warned.has(category)) return
   const [min, max] = state.range
   runWhileActive(db, state.runId, () => {
@@ -52,6 +65,22 @@ function warn(db: Database.Database, state: RangeState, category: DiscoveryWarni
   state.warned.add(category)
   state.summary.warnings.push({ range: state.range, category })
   state.summary.warningCount++
+  state.log?.({
+    level: 'warn',
+    event: 'crawl.warning',
+    phase: 'discovery',
+    category,
+    runId: state.runId,
+    message: `Code Search ${category} for size:${min}..${max}`,
+    request: 'GET /search/code',
+    query: state.query,
+    page: state.page,
+    range: state.range,
+    found: state.found,
+    totalCount: state.totalCount,
+    retryCount,
+    ...details,
+  })
 }
 
 async function searchPage(
@@ -64,8 +93,25 @@ async function searchPage(
   try {
     return await reader.searchCode(query, page)
   } catch (error) {
+    if (error instanceof GitHubFatalError) {
+      state.log?.({
+        level: 'error',
+        event: 'crawl.request_failed',
+        phase: 'discovery',
+        category: 'github_fatal_error',
+        runId: state.runId,
+        message: `Code Search request failed for size:${state.range[0]}..${state.range[1]}`,
+        request: 'GET /search/code',
+        query,
+        page,
+        range: state.range,
+        status: error.status,
+        reason: error.message,
+      })
+      throw error
+    }
     if (!(error instanceof GitHubTemporaryError) || error.status === 401 || error.status === 422) throw error
-    warn(db, state, 'temporary-error', error.retryCount)
+    warn(db, state, 'temporary-error', error.retryCount, { status: error.status, reason: error.message })
     return null
   }
 }
@@ -80,7 +126,7 @@ function processItems(
     if (repository.private === true) continue
     const url = repository.html_url
     if (!parseRepositoryUrl(url)) {
-      warn(db, state, 'invalid-url')
+      warn(db, state, 'invalid-url', 0, { repositoryUrl: url })
       continue
     }
     const existing = Boolean(lookup.get(url))
@@ -231,12 +277,25 @@ async function searchRange(
 ): Promise<void> {
   const [min, max] = range
   const query = `filename:marketplace.json path:.claude-plugin size:${min}..${max}`
-  const state: RangeState = { runId, range, warned: new Set(), countedUrls, summary, now }
+  const state: RangeState = {
+    runId,
+    range,
+    warned: new Set(),
+    countedUrls,
+    summary,
+    now,
+    query,
+    page: null,
+    found: 0,
+    totalCount: null,
+    log: coverage.log,
+  }
   let found = 0
   let lastTotalCount = 0
   let sawShortPage = false
   let rangeComplete = true
   for (let page = 1; page <= 10; page++) {
+    state.page = page
     onProgress?.()
     let result = await searchCompletePage(reader, query, page, db, state, onProgress)
     if (!result) {
@@ -251,6 +310,8 @@ async function searchRange(
     if (await splitSaturatedRange(db, reader, runId, lookup, range, summary, now, onProgress, page, result, state, countedUrls, coverage))
       return
     if (page === 1) summary.successfulRanges++
+    state.totalCount = result.total_count
+    state.found = found + result.items.length
     recordPageWarnings(db, result, page, state)
     processItems(db, lookup, result, state)
     lastTotalCount = result.total_count
@@ -280,6 +341,7 @@ export async function discover(
   ranges: readonly SizeRange[] = [[0, 400_000]],
   onProgress?: () => void,
   now: () => string = () => new Date().toISOString(),
+  log?: Log,
 ): Promise<DiscoverySummary> {
   const summary: DiscoverySummary = { newUrls: 0, existingUrls: 0, successfulRanges: 0, warningCount: 0, warnings: [] }
   const lookup = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE LIMIT 1')
@@ -287,7 +349,7 @@ export async function discover(
 
   for (const rootRange of ranges) {
     const cachedRanges = listCachedDiscoveryRanges(db, rootRange) ?? [rootRange]
-    const coverage: CoverageState = { complete: true, leaves: [] }
+    const coverage: CoverageState = { complete: true, leaves: [], log }
     for (const range of cachedRanges) {
       await searchRange(db, reader, runId, lookup, range, summary, now, coverage, onProgress, countedUrls)
     }

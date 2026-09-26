@@ -4,6 +4,7 @@ import { CrawlError, type CrawlSummary, runCrawl } from '../crawl/runCrawl.js'
 import type { GitHubReader } from '../github/client.js'
 import type { GitHubRateBuckets } from '../github/rateBudget.js'
 import type { SizeRange } from '../github/sizeRanges.js'
+import type { LogEvent } from '../logging.js'
 import type { TelegramSummary } from '../notify/telegram.js'
 import { TelegramNotificationError, type TelegramNotifier } from '../notify/telegram.js'
 import type { GitHubGit } from '../publish/githubGit.js'
@@ -23,7 +24,6 @@ export class ActiveRunError extends Error {
 }
 
 export type Notifier = Pick<TelegramNotifier, 'notifyStart' | 'notifyFailure' | 'notifyDryRun' | 'notifySuccess'>
-export type LogEvent = { level: 'error' | 'info'; phase: string; category: string; runId?: string }
 export type ExecuteOptions = {
   now?: () => Date
   signal?: AbortSignal
@@ -374,6 +374,7 @@ async function crawlAndPrepare(
   options: CrawlOptions,
   now: () => Date,
   onCrawlComplete: (counts: CrawlSummary) => void,
+  onPhase: (phase: 'discovery' | 'enrichment') => void,
 ): Promise<{ counts: CrawlSummary; size: number; report: RunReport }> {
   const crawlStartedAt = performance.now()
   const counts = await runCrawl(db, reader, runId, {
@@ -381,6 +382,8 @@ async function crawlAndPrepare(
     now,
     signal: options.signal,
     started: options.started,
+    log: options.log,
+    onPhase,
   })
   onCrawlComplete(counts)
   const size = prepareDraft(db, runId, now()).size
@@ -448,40 +451,128 @@ export async function executeCrawl(
   | { status: 'published'; runId: string; sha: string; report: RunReport }
 > {
   const now = options.now ?? (() => new Date())
-  const log = options.log ?? ((event: LogEvent) => console.error(JSON.stringify(event)))
-  const startError = await notifyCrawlStart(db, runId, options.notifier)
-  let counts: CrawlSummary | undefined
-  let startRecorded = false
-  let prepared: { counts: CrawlSummary; size: number; report: RunReport }
+  const log = options.log ?? ((event: LogEvent) => console.log(JSON.stringify(event)))
+  const startedAt = now()
+  let phase = 'startup'
+  const samples: Array<{ at: number; pending: number }> = []
+  const emitProgress = () => {
+    try {
+      const snapshot = inspectProgress(db)
+      const at = Date.now()
+      samples.push({ at, pending: snapshot.repositories.pendingThisRun ?? 0 })
+      while (samples.length > 4) samples.shift()
+      const first = samples[0]
+      const last = samples[samples.length - 1]
+      const elapsedMinutes = first && last ? (last.at - first.at) / 60_000 : 0
+      const pendingRate = elapsedMinutes > 0 && first && last ? (first.pending - last.pending) / elapsedMinutes : 0
+      const pending = snapshot.repositories.pendingThisRun ?? 0
+      log({
+        level: 'info',
+        event: 'crawl.progress',
+        phase,
+        category: 'progress_snapshot',
+        runId,
+        message: `Crawl progress: ${phase}, ${snapshot.repositories.updatedThisRun ?? 0} updated, ${pending} pending`,
+        elapsedMs: Math.max(0, now().getTime() - startedAt.getTime()),
+        totalRepositories: snapshot.repositories.total,
+        updatedRepositories: snapshot.repositories.updatedThisRun,
+        pendingRepositories: pending,
+        publishableRepositories: snapshot.repositories.publishable,
+        incompleteRepositories: snapshot.repositories.incomplete,
+        missingMarketplace: snapshot.repositories.missingMarketplace,
+        errorCount: snapshot.errors?.count ?? 0,
+        ...(options.rateBuckets ? { rateBuckets: options.rateBuckets() } : {}),
+        ...(phase === 'enrichment' && pendingRate > 0 ? { etaMinutes: Math.ceil(pending / pendingRate) } : {}),
+      })
+    } catch {
+      log({
+        level: 'warn',
+        event: 'crawl.progress_unavailable',
+        phase,
+        category: 'progress_snapshot_failed',
+        runId,
+        message: 'Could not read crawl progress snapshot',
+      })
+    }
+  }
+  log({ level: 'info', event: 'crawl.started', phase, category: 'started', runId, message: 'Crawl started' })
+  const progressTimer = setInterval(emitProgress, 5 * 60_000)
+  progressTimer.unref()
   try {
-    prepared = await crawlAndPrepare(db, reader, runId, options, now, (completedCounts) => {
-      counts = completedCounts
-      if (startError) {
-        logDelivery(db, runId, now, log, startError)
-        startRecorded = true
-      }
+    const startError = await notifyCrawlStart(db, runId, options.notifier)
+    let counts: CrawlSummary | undefined
+    let startRecorded = false
+    let prepared: { counts: CrawlSummary; size: number; report: RunReport }
+    try {
+      prepared = await crawlAndPrepare(
+        db,
+        reader,
+        runId,
+        { ...options, log },
+        now,
+        (completedCounts) => {
+          counts = completedCounts
+          if (startError) {
+            logDelivery(db, runId, now, log, startError)
+            startRecorded = true
+          }
+        },
+        (nextPhase) => {
+          phase = nextPhase
+          log({
+            level: 'info',
+            event: 'crawl.phase_started',
+            phase,
+            category: 'phase_started',
+            runId,
+            message: `Started ${phase} phase`,
+          })
+        },
+      )
+      counts = prepared.counts
+    } catch (error) {
+      if (startError && !startRecorded) logDelivery(db, runId, now, log, startError)
+      const failureCategory = category(error)
+      log({
+        level: 'error',
+        event: 'crawl.failed',
+        phase,
+        category: failureCategory,
+        runId,
+        message: `Crawl failed during ${phase}: ${failureCategory}`,
+      })
+      await handleCrawlFailure(db, runId, error, counts, options, now, log)
+      throw error
+    }
+    phase = 'finalize'
+    log({
+      level: 'info',
+      event: 'crawl.completed',
+      phase,
+      category: 'completed',
+      runId,
+      message: `Crawl completed with ${prepared.size} repositories and ${prepared.report.warningCount} warnings`,
+      size: prepared.size,
+      report: prepared.report,
     })
-    counts = prepared.counts
-  } catch (error) {
-    if (startError && !startRecorded) logDelivery(db, runId, now, log, startError)
-    await handleCrawlFailure(db, runId, error, counts, options, now, log)
-    throw error
+    if (options.signal?.aborted) throw new PublicationError('terminated')
+    if (options.dryRun) {
+      await notifyDryRun(db, runId, prepared.counts, options, now, log)
+      return { status: 'draft', runId, size: prepared.size, report: prepared.report }
+    }
+    if (!options.git) {
+      await notifyFailure(db, runId, 'write_disabled', options.notifier, now, log, prepared.counts)
+      throw new PublicationError('write_disabled')
+    }
+    const published = await executePublish(db, options.git, runId, {
+      now,
+      notifier: options.notifier,
+      log,
+      signal: options.signal,
+      writeEnabled: true,
+    })
+    return { status: 'published', runId, sha: published.sha, report: prepared.report }
+  } finally {
+    clearInterval(progressTimer)
   }
-  if (options.signal?.aborted) throw new PublicationError('terminated')
-  if (options.dryRun) {
-    await notifyDryRun(db, runId, prepared.counts, options, now, log)
-    return { status: 'draft', runId, size: prepared.size, report: prepared.report }
-  }
-  if (!options.git) {
-    await notifyFailure(db, runId, 'write_disabled', options.notifier, now, log, prepared.counts)
-    throw new PublicationError('write_disabled')
-  }
-  const published = await executePublish(db, options.git, runId, {
-    now,
-    notifier: options.notifier,
-    log,
-    signal: options.signal,
-    writeEnabled: true,
-  })
-  return { status: 'published', runId, sha: published.sha, report: prepared.report }
 }

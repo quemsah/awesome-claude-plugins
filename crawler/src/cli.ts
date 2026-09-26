@@ -7,6 +7,7 @@ import { CrawlError } from './crawl/runCrawl.js'
 import { GitHubClient, type GitHubReader } from './github/client.js'
 import type { GitHubRateBuckets, RateLog } from './github/rateBudget.js'
 import type { SizeRange } from './github/sizeRanges.js'
+import type { LogEvent } from './logging.js'
 import { TelegramNotificationError, TelegramNotifier } from './notify/telegram.js'
 import { DraftExportError, exportDraftSnapshot } from './output/exportDraft.js'
 import { type GitHubGit, GitHubGitClient } from './publish/githubGit.js'
@@ -246,6 +247,14 @@ async function runCrawl(
     new GitHubClient({ token: config.readToken ?? '', log: rates.log, signal: dependencies.signal })
   const git = !options.dryRun && config.publishEnabled ? gitFor(config, dependencies) : undefined
   const notifier = notifierFor(config, dependencies)
+  const log = (event: LogEvent) =>
+    output(
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        message: event.message ?? `${event.phase}: ${event.category}`,
+        ...event,
+      }),
+    )
   if (!notifier) output(JSON.stringify({ status: 'notifier-disabled' }))
   try {
     const result = await executeCrawl(db, reader, runId, {
@@ -257,10 +266,20 @@ async function runCrawl(
       rateBuckets: () => rates.buckets,
       signal: dependencies.signal,
       started: true,
+      log,
     })
     output(JSON.stringify(result))
   } finally {
-    if (rates.observed()) output(JSON.stringify({ phase: 'github_rate', runId, buckets: rates.buckets }))
+    if (rates.observed())
+      log({
+        level: 'info',
+        event: 'github.rate_summary',
+        phase: 'github_rate',
+        category: 'rate_summary',
+        runId,
+        message: 'GitHub API rate-limit summary',
+        buckets: rates.buckets,
+      })
   }
 }
 
@@ -414,6 +433,9 @@ export function formatCliError(error: unknown): string {
               ? 'input_or_storage_error'
               : 'unexpected_error'
   return JSON.stringify({
+    timestamp: new Date().toISOString(),
+    message: `Crawler command failed: ${category}`,
+    event: 'cli.failed',
     level: 'error',
     phase: 'cli',
     category,
