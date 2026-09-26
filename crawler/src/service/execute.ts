@@ -589,8 +589,7 @@ export async function executeCrawl(
   let phase: CrawlExecutionPhase = 'startup'
   let discoveryStartTotal: number | null = null
   const samples: ProgressSample[] = []
-  const emitProgress = () =>
-    emitProgressSnapshot(db, runId, phase, startedAt, now, log, options.rateBuckets, discoveryStartTotal, samples)
+  const emitProgress = () => emitProgressSnapshot(db, runId, phase, startedAt, now, log, options.rateBuckets, discoveryStartTotal, samples)
   log({ level: 'info', event: 'crawl.started', phase, category: 'started', runId, message: 'Crawl started' })
   const progressTimer = setInterval(emitProgress, 5 * 60_000)
   progressTimer.unref()
