@@ -576,9 +576,7 @@ it('splits marketplace GraphQL batches before their estimated blob payload excee
   ]
   const getMarketplaceBlobsByNodeId = vi.fn(async (nodeIds: readonly string[]) => ({
     kind: 'found' as const,
-    data: nodeIds.map((nodeId) =>
-      graphQLMarketplaceBlob(nodeId, nodeId === 'node-1' ? 'b'.repeat(40) : 'c'.repeat(40)),
-    ),
+    data: nodeIds.map((nodeId) => graphQLMarketplaceBlob(nodeId, nodeId === 'node-1' ? 'b'.repeat(40) : 'c'.repeat(40))),
     rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
   }))
   const client = {
@@ -651,11 +649,7 @@ it('splits a timed-out marketplace GraphQL batch before falling back to REST', a
   const counts = await enrichRepositories(db, client, 'crawl-1')
 
   expect(counts).toMatchObject({ updated: 2, conclusive: 2, warnings: 0 })
-  expect(getMarketplaceBlobsByNodeId.mock.calls.map(([nodeIds]) => nodeIds)).toEqual([
-    ['node-one', 'node-two'],
-    ['node-one'],
-    ['node-two'],
-  ])
+  expect(getMarketplaceBlobsByNodeId.mock.calls.map(([nodeIds]) => nodeIds)).toEqual([['node-one', 'node-two'], ['node-one'], ['node-two']])
   expect(getMarketplace).not.toHaveBeenCalled()
 })
 
