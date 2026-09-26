@@ -52,7 +52,6 @@ it('renders only canonical, fully enriched repositories in original id and publi
   }
 })
 
-
 it('renders the markdown repository path sidecar from the publishable catalog', () => {
   const db = openDatabase(':memory:')
   try {
