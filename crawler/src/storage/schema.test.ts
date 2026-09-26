@@ -248,17 +248,30 @@ it('deduplicates case-variant repository URLs without mixing identity or revivin
   migrated.close()
 })
 
-it('upgrades either v9 lineage to the combined v10 schema', () => {
+it.each([
+  [
+    'marketplace-retry branch',
+    `
+      ALTER TABLE runs DROP COLUMN phase_processed;
+      ALTER TABLE runs DROP COLUMN phase_total;
+      ALTER TABLE runs DROP COLUMN phase_started_at;
+      ALTER TABLE runs DROP COLUMN phase;
+    `,
+  ],
+  [
+    'main branch',
+    `
+      ALTER TABLE repositories DROP COLUMN marketplace_failed_parser_version;
+      ALTER TABLE repositories DROP COLUMN marketplace_failed_oid;
+    `,
+  ],
+])('upgrades the v9 schema from the %s to v10', (_lineage, schemaChanges) => {
   const db = database()
   const path = db.name
   db.close()
-
   const legacy = new Database(path)
   legacy.exec(`
-    ALTER TABLE runs DROP COLUMN phase_processed;
-    ALTER TABLE runs DROP COLUMN phase_total;
-    ALTER TABLE runs DROP COLUMN phase_started_at;
-    ALTER TABLE runs DROP COLUMN phase;
+    ${schemaChanges}
     PRAGMA user_version = 9;
   `)
   legacy.close()
