@@ -345,12 +345,13 @@ it('does not refetch an invalid GraphQL marketplace blob through REST and rememb
   ready(db, id)
   const oldOid = 'a'.repeat(40)
   const currentOid = 'b'.repeat(40)
+  const contentOid = 'c'.repeat(40)
   db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = 1 WHERE id = ?').run(oldOid, id)
   const before = db.prepare('SELECT plugins_count FROM repositories WHERE id = ?').get(id)
   const getMarketplace = vi.fn(async () => ({ kind: 'found' as const, data: { plugins: [] } }))
   const getMarketplaceBlobsByNodeId = vi.fn(async () => ({
     kind: 'found' as const,
-    data: [graphQLMarketplaceBlob(nodeId, currentOid, { text: '{"plugins":[' })],
+    data: [graphQLMarketplaceBlob(nodeId, contentOid, { text: '{"plugins":[' })],
     rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
   }))
   const client = {

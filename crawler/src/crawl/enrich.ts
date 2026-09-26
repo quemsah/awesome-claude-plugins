@@ -293,15 +293,16 @@ function recordInvalidMarketplace(
   reason: string,
   status: number,
   retryCount: number,
-  marketplaceOid: string | null,
+  failedLookupOid: string | null,
+  contentOid: string | null,
   request: string | null,
   now: () => string,
   log?: Log,
 ): null {
-  if (marketplaceOid) {
+  if (failedLookupOid) {
     runWhileActive(db, runId, () => {
       db.prepare('UPDATE repositories SET marketplace_failed_oid = ?, marketplace_failed_parser_version = ? WHERE id = ?').run(
-        marketplaceOid,
+        failedLookupOid,
         MARKETPLACE_PARSER_VERSION,
         row.id,
       )
@@ -311,7 +312,8 @@ function recordInvalidMarketplace(
     request,
     status,
     reason,
-    ...(marketplaceOid ? { marketplaceOid } : {}),
+    ...(failedLookupOid ? { marketplaceOid: failedLookupOid } : {}),
+    ...(contentOid && contentOid !== failedLookupOid ? { contentOid } : {}),
   })
   return null
 }
@@ -394,6 +396,7 @@ async function loadLegacyMarketplace(
       result.reason,
       result.status,
       result.retryCount,
+      null,
       null,
       `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/marketplace.json`,
       now,
@@ -485,6 +488,7 @@ async function loadGraphQLMarketplace(
         decoded.reason,
         200,
         0,
+        currentMarketplaceOid,
         blob.oid,
         'POST /graphql',
         now,
@@ -545,6 +549,7 @@ async function loadGraphQLMarketplace(
       result.reason,
       result.status,
       result.retryCount,
+      currentMarketplaceOid,
       authoritativeMarketplaceOid,
       `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/marketplace.json`,
       now,
