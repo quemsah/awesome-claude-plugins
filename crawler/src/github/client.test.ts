@@ -117,7 +117,7 @@ describe('GitHubClient', () => {
                 isPrivate: false,
                 owner: { login: repo.owner.login, url: repo.owner.html_url },
                 watchers: { totalCount: repo.subscribers_count },
-                object: { oid: 'a'.repeat(40) },
+                object: { oid: 'a'.repeat(40), byteSize: 123, isBinary: false },
               },
             ],
             rateLimit: { cost: 2, remaining: 4_500, resetAt, limit: 5_000, used: 500 },
@@ -150,6 +150,8 @@ describe('GitHubClient', () => {
           pushed_at: repo.pushed_at,
           owner: repo.owner,
           marketplace_oid: 'a'.repeat(40),
+          marketplace_byte_size: 123,
+          marketplace_is_binary: false,
           private: false,
         },
       ],
@@ -159,7 +161,9 @@ describe('GitHubClient', () => {
     expect(test.requests[0].url).toBe('https://api.github.com/graphql')
     expect(test.requests[0].init?.method).toBe('POST')
     expect(new Headers(test.requests[0].init?.headers).get('x-github-next-global-id')).toBe('1')
-    expect(JSON.parse(String(test.requests[0].init?.body))).toMatchObject({ variables: { ids: [nodeId] } })
+    const body = JSON.parse(String(test.requests[0].init?.body))
+    expect(body).toMatchObject({ variables: { ids: [nodeId] } })
+    expect(body.query).toContain('oid byteSize isBinary')
   })
 
   it('loads marketplace blob text in a separate GraphQL batch and preserves per-node alignment', async () => {
@@ -208,6 +212,81 @@ describe('GitHubClient', () => {
     expect(body).toMatchObject({ variables: { ids: [firstId, secondId] } })
     expect(body.query).toContain('query MarketplaceBlobs')
     expect(body.query).toContain('oid text isTruncated isBinary byteSize')
+  })
+
+  it('keeps valid marketplace blobs when another node is malformed', async () => {
+    const firstId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
+    const secondId = 'MDEwOlJlcG9zaXRvcnkxMjk2Mjcw'
+    const text = JSON.stringify({ plugins: [{ name: 'first' }] })
+    const test = harness([
+      Response.json({
+        data: {
+          nodes: [
+            {
+              id: firstId,
+              object: {
+                oid: 'b'.repeat(40),
+                byteSize: text.length,
+                isBinary: false,
+                isTruncated: false,
+                text,
+              },
+            },
+            {
+              id: secondId,
+              object: {
+                byteSize: 10,
+                isBinary: false,
+                isTruncated: false,
+                text: '{}',
+              },
+            },
+          ],
+          rateLimit: { cost: 2, remaining: 4_498, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 502 },
+        },
+      }),
+    ])
+
+    const result = await test.client.getMarketplaceBlobsByNodeId([firstId, secondId])
+
+    expect(result.kind).toBe('found')
+    if (result.kind !== 'found') throw new Error('Expected a successful GraphQL batch')
+    expect(result.data[0]).toMatchObject({ repository_node_id: firstId, oid: 'b'.repeat(40), text })
+    expect(result.data[1]).toBeNull()
+  })
+
+  it('isolates marketplace node-scoped GraphQL errors instead of failing the whole batch', async () => {
+    const firstId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
+    const secondId = 'MDEwOlJlcG9zaXRvcnkxMjk2Mjcw'
+    const text = JSON.stringify({ plugins: [{ name: 'first' }] })
+    const test = harness([
+      Response.json({
+        data: {
+          nodes: [
+            {
+              id: firstId,
+              object: {
+                oid: 'b'.repeat(40),
+                byteSize: text.length,
+                isBinary: false,
+                isTruncated: false,
+                text,
+              },
+            },
+            null,
+          ],
+          rateLimit: { cost: 2, remaining: 4_498, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 502 },
+        },
+        errors: [{ type: 'SOME_NODE_ERROR', path: ['nodes', 1, 'object', 'text'], message: 'blob unavailable' }],
+      }),
+    ])
+
+    const result = await test.client.getMarketplaceBlobsByNodeId([firstId, secondId])
+
+    expect(result.kind).toBe('found')
+    if (result.kind !== 'found') throw new Error('Expected a successful GraphQL batch')
+    expect(result.data[0]).toMatchObject({ repository_node_id: firstId, oid: 'b'.repeat(40), text })
+    expect(result.data[1]).toBeNull()
   })
 
   it('accepts per-node NOT_FOUND errors when the matching GraphQL node is null', async () => {
