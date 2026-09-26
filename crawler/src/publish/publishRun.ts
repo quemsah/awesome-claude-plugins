@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
-import { renderRepos, renderStats } from '../output/catalogSnapshot.js'
+import { renderMarkdownPaths, renderRepos, renderStats } from '../output/catalogSnapshot.js'
 import { renderReadme } from '../output/readme.js'
 import { assertValidStatsDraft, createStatsDraft, type StatsRecord } from '../output/statsDraft.js'
 import { SnapshotValidationError, validateSnapshot } from '../output/validate.js'
@@ -118,6 +118,7 @@ function renderFiles(db: Database.Database, draft: StatsRecord): { files: GitSna
       readme: renderReadme(repositories, draft),
       reposJson: renderRepos(db),
       statsJson: renderStats(db, publicDraft),
+      markdownPathsJson: renderMarkdownPaths(db),
     }
     validateSnapshot(files.reposJson, files.statsJson, { expectedSize: draft.size, requireLatestSize: true })
     validateReadme(files.readme, repositories, draft)
@@ -128,13 +129,13 @@ function renderFiles(db: Database.Database, draft: StatsRecord): { files: GitSna
     throw new PublicationError('snapshot_invalid')
   }
   const hash = createHash('sha256')
-    .update(JSON.stringify([files.readme, files.reposJson, files.statsJson]), 'utf8')
+    .update(JSON.stringify([files.readme, files.reposJson, files.statsJson, files.markdownPathsJson]), 'utf8')
     .digest('hex')
   return { files, hash }
 }
 
 /**
- * Pin the date and all three rendered file contents to this completed crawl.
+ * Pin the date and all four rendered file contents to this completed crawl.
  * Re-entering with another clock value checks the existing draft rather than replacing it.
  */
 export function prepareDraft(db: Database.Database, runId: string, now: Date): RunDraft {
