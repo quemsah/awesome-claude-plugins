@@ -343,8 +343,8 @@ async function runCrawlCommand(
   }
 
   const rates = rateTracker((buckets) => setSetting(db, `run_rate_metrics_${runId}`, JSON.stringify(buckets)))
-  rates.checkpoint()
   try {
+    rates.checkpoint()
     await runCrawl(db, config, dependencies, options, runId, now, output, rates)
   } catch (error) {
     try {
