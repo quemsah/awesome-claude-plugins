@@ -1,3 +1,5 @@
+import markdownPathsData from '../data/markdown-paths.json' with { type: 'json' }
+
 /**
  * Catalogued repositories whose name ends with the markdown extension, so their HTML page
  * (`/sstklen/yes.md`) is spelled exactly the way the proxy normally spells a repository's
@@ -8,37 +10,12 @@
  * invariant and fails CI if such a collision appears; the proxy deliberately does not invent an
  * alternate HTML URL for an unsupported collision.
  *
- * Checked in rather than read from the catalog because the proxy is its own bundle and
- * `lib/catalog.ts` validates all 40,314 records while it is imported: 1.1s and 52MB of heap,
- * duplicated per server process, to settle 24 of them. `markdownPaths.test.ts` regenerates this
- * list from the catalog so a dataset refresh that changes it fails CI.
+ * Loaded from a generated sidecar rather than the full catalog because the proxy is its own bundle.
+ * The crawler snapshot publisher regenerates that sidecar atomically with `repos.json`, so this
+ * exception set stays in sync without paying the cost of importing and validating the full catalog
+ * in every server process. `markdownPaths.test.ts` still verifies the generated data against the catalog.
  */
-export const REPO_PAGES_ENDING_IN_MD: readonly string[] = [
-  'akarelin/AGENTS.md',
-  'alexeimoisseev/ocpp.md',
-  'amajorai/ship.md',
-  'aslobodnik/stash.md',
-  'Atanu2k4/ayanokoji.md',
-  'BartSoj/SKILL.md',
-  'bikemeardsley/GlideGrail.md',
-  'caiopizzol/brand.md',
-  'evisoft/scio.md',
-  'harry-da/agent.md',
-  'Herklos/CLAUDEs.md',
-  'human-md/human.md',
-  'jordantplows/STARTUP-OS.MD',
-  'jskladan/claude.md',
-  'kevinbarfleur/suivre.md',
-  'rosenjcb/spec.md',
-  'saadshahd/moo.md',
-  'schubergphilis/agents.md',
-  'sho-ai-magic/slide.md',
-  'sstklen/yes.md',
-  'theislampill/IMPLEMENTAUDIT.md',
-  'tiramisulabs/SKILL.md',
-  'tpiperatgod/hi.md',
-  'wevm/curl.md',
-]
+export const REPO_PAGES_ENDING_IN_MD: readonly string[] = markdownPathsData
 
 const repoPagePaths = new Set(REPO_PAGES_ENDING_IN_MD.map((repoPath) => repoPath.toLowerCase()))
 

@@ -35,6 +35,7 @@ it('exports exactly the verified README and JSON files to a new directory withou
     expect(readFileSync(join(out, 'README.md'), 'utf8')).toContain('with 2 total repositories indexed.')
     expect(JSON.parse(readFileSync(join(out, 'ui/src/data/repos.json'), 'utf8'))).toHaveLength(2)
     expect(JSON.parse(readFileSync(join(out, 'ui/src/data/stats.json'), 'utf8'))).toHaveLength(3)
+    expect(JSON.parse(readFileSync(join(out, 'ui/src/data/markdown-paths.json'), 'utf8'))).toEqual([])
     expect(db.serialize()).toEqual(before)
     expect(() => exportDraftSnapshot(db, 'prepared', out)).toThrow()
   } finally {

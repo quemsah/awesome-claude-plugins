@@ -8,6 +8,7 @@ export type GitSnapshotFiles = {
   readme: string
   reposJson: string
   statsJson: string
+  markdownPathsJson: string
 }
 
 export interface GitHubGit {
@@ -152,8 +153,14 @@ export class GitHubGitClient implements GitHubGit {
 
   async createTree(baseTreeSha: string, files: GitSnapshotFiles): Promise<string> {
     inputSha(baseTreeSha)
-    if (!record(files) || typeof files.readme !== 'string' || typeof files.reposJson !== 'string' || typeof files.statsJson !== 'string') {
-      throw new GitHubGitError('All three snapshot contents must be strings')
+    if (
+      !record(files) ||
+      typeof files.readme !== 'string' ||
+      typeof files.reposJson !== 'string' ||
+      typeof files.statsJson !== 'string' ||
+      typeof files.markdownPathsJson !== 'string'
+    ) {
+      throw new GitHubGitError('All four snapshot contents must be strings')
     }
     const response = await this.request('/trees', 'POST', {
       base_tree: baseTreeSha,
@@ -161,6 +168,7 @@ export class GitHubGitClient implements GitHubGit {
         { path: 'README.md', mode: '100644', type: 'blob', content: files.readme },
         { path: 'ui/src/data/repos.json', mode: '100644', type: 'blob', content: files.reposJson },
         { path: 'ui/src/data/stats.json', mode: '100644', type: 'blob', content: files.statsJson },
+        { path: 'ui/src/data/markdown-paths.json', mode: '100644', type: 'blob', content: files.markdownPathsJson },
       ],
     })
     if (!record(response)) throw new GitHubGitResponseError()

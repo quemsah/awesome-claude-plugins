@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { openDatabase } from '../storage/db.js'
 import { listPublishable } from '../storage/repositories.js'
-import { renderRepos, renderStats } from './catalogSnapshot.js'
+import { renderMarkdownPaths, renderRepos, renderStats } from './catalogSnapshot.js'
 import { createStatsDraft } from './statsDraft.js'
 import { validateSnapshot } from './validate.js'
 
@@ -41,12 +41,48 @@ it('renders only canonical, fully enriched repositories in original id and publi
     insert.run({ ...row, id: 4, html_url: 'https://github.com/Owner/Repo?secret=1' })
     insert.run({ ...row, id: 6, html_url: 'https://github.com/Owner/negative', repo_name: 'negative', forks_count: -1 })
 
-    const result = renderRepos(db)
+    const result = renderRepos(listPublishable(db))
     expect(result.endsWith('\n')).toBe(true)
     expect(result).toBe(
       '[{"html_url":"https://github.com/owner/Repo-two","stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":null,"owner":"owner","owner_url":"https://github.com/owner","repo_name":"Repo-two","plugins_count":null,"id":5},{"html_url":"https://github.com/Owner/Repo","stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":"🍃 Привет","owner":"Owner","owner_url":"https://github.com/Owner","repo_name":"Repo","plugins_count":null,"id":39}]\n',
     )
     expect(JSON.parse(result)).toHaveLength(listPublishable(db).length)
+  } finally {
+    db.close()
+  }
+})
+
+it('renders the markdown repository path sidecar from the publishable catalog', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const insert = db.prepare(`
+      INSERT INTO repositories (id, html_url, stargazers_count, forks_count, subscribers_count,
+        description, owner, owner_url, repo_name, plugins_count, createdAt, updatedAt)
+      VALUES (@id, @html_url, 1, 0, 0, NULL, @owner, @owner_url, @repo_name, NULL, 'created', 'updated')
+    `)
+    insert.run({
+      id: 1,
+      html_url: 'https://github.com/zeta/spec.md',
+      owner: 'zeta',
+      owner_url: 'https://github.com/zeta',
+      repo_name: 'spec.md',
+    })
+    insert.run({
+      id: 2,
+      html_url: 'https://github.com/Alpha/AGENTS.MD',
+      owner: 'Alpha',
+      owner_url: 'https://github.com/Alpha',
+      repo_name: 'AGENTS.MD',
+    })
+    insert.run({
+      id: 3,
+      html_url: 'https://github.com/alpha/ordinary',
+      owner: 'alpha',
+      owner_url: 'https://github.com/alpha',
+      repo_name: 'ordinary',
+    })
+
+    expect(renderMarkdownPaths(listPublishable(db))).toBe('["Alpha/AGENTS.MD","zeta/spec.md"]\n')
   } finally {
     db.close()
   }
@@ -93,8 +129,8 @@ it('renders exactly one draft after historical records without persisting it on 
     expect(renderStats(db, draft)).toBe(rendered)
     expect(renderStats(db)).toBe(original)
     expect(db.prepare('SELECT COUNT(*) AS total FROM stats').get()).toEqual({ total: 1 })
-    expect(() => validateSnapshot(renderRepos(db), rendered, { expectedSize: 1, requireLatestSize: true })).not.toThrow()
-    expect(() => validateSnapshot(renderRepos(db), renderStats(db), { expectedSize: 1, requireLatestSize: true })).toThrow(
+    expect(() => validateSnapshot(renderRepos(listPublishable(db)), rendered, { expectedSize: 1, requireLatestSize: true })).not.toThrow()
+    expect(() => validateSnapshot(renderRepos(listPublishable(db)), renderStats(db), { expectedSize: 1, requireLatestSize: true })).toThrow(
       /stats\[0\]\.size/,
     )
   } finally {

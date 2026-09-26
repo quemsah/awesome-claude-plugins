@@ -1,12 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
-import { renderRepos, renderStats } from '../output/catalogSnapshot.js'
+import { renderMarkdownPaths, renderRepos, renderStats } from '../output/catalogSnapshot.js'
 import { renderReadme } from '../output/readme.js'
 import { assertValidStatsDraft, createStatsDraft, type StatsRecord } from '../output/statsDraft.js'
 import { SnapshotValidationError, validateSnapshot } from '../output/validate.js'
 import { validateReadme } from '../output/validateReadme.js'
 import { ShutdownError } from '../shutdown.js'
-import { listPublishable } from '../storage/repositories.js'
+import { listPublishable, type PublishableRepository } from '../storage/repositories.js'
 import {
   claimPublicationLease,
   clearPendingCommit,
@@ -108,16 +108,30 @@ function publishedCommit(db: Database.Database, runId: string): string {
   )
 }
 
-function renderFiles(db: Database.Database, draft: StatsRecord): { files: GitSnapshotFiles; hash: string } {
+function snapshotHash(files: GitSnapshotFiles, includeMarkdownPaths: boolean): string {
+  const contents = [files.readme, files.reposJson, files.statsJson]
+  if (includeMarkdownPaths) contents.push(files.markdownPathsJson)
+  return createHash('sha256').update(JSON.stringify(contents), 'utf8').digest('hex')
+}
+
+function snapshotHashMatches(savedHash: string, snapshot: { hash: string; legacyHash: string }): boolean {
+  return savedHash === snapshot.hash || savedHash === snapshot.legacyHash
+}
+
+function renderFiles(
+  db: Database.Database,
+  draft: StatsRecord,
+  repositories: readonly PublishableRepository[] = listPublishable(db),
+): { files: GitSnapshotFiles; hash: string; legacyHash: string } {
   checkHistory(historicalStats(db), draft)
   let files: GitSnapshotFiles
   try {
     const publicDraft = { id: draft.id, date: draft.date, size: draft.size }
-    const repositories = listPublishable(db)
     files = {
       readme: renderReadme(repositories, draft),
-      reposJson: renderRepos(db),
+      reposJson: renderRepos(repositories),
       statsJson: renderStats(db, publicDraft),
+      markdownPathsJson: renderMarkdownPaths(repositories),
     }
     validateSnapshot(files.reposJson, files.statsJson, { expectedSize: draft.size, requireLatestSize: true })
     validateReadme(files.readme, repositories, draft)
@@ -127,14 +141,17 @@ function renderFiles(db: Database.Database, draft: StatsRecord): { files: GitSna
     }
     throw new PublicationError('snapshot_invalid')
   }
-  const hash = createHash('sha256')
-    .update(JSON.stringify([files.readme, files.reposJson, files.statsJson]), 'utf8')
-    .digest('hex')
-  return { files, hash }
+  return {
+    files,
+    hash: snapshotHash(files, true),
+    // Drafts prepared before markdown-paths.json became part of the snapshot used this three-file hash.
+    // Accept it only for recovery; the sidecar is deterministic from reposJson, which the legacy hash already pins.
+    legacyHash: snapshotHash(files, false),
+  }
 }
 
 /**
- * Pin the date and all three rendered file contents to this completed crawl.
+ * Pin the date and all four rendered file contents to this completed crawl.
  * Re-entering with another clock value checks the existing draft rather than replacing it.
  */
 export function prepareDraft(db: Database.Database, runId: string, now: Date): RunDraft {
@@ -142,19 +159,20 @@ export function prepareDraft(db: Database.Database, runId: string, now: Date): R
     db.transaction(() => {
       const run = getRun(db, runId)
       if (run?.status !== 'completed' || run.completed_at === null || run.last_error !== null) throw new PublicationError('invalid_run')
+      const repositories = listPublishable(db)
       let draft: RunDraft
       if (run.draft_id !== null || run.draft_date !== null || run.draft_size !== null || run.draft_hash !== null) {
         draft = savedDraft(run)
       } else {
         try {
-          draft = { ...createStatsDraft(historicalStats(db), listPublishable(db).length, now), hash: '' }
+          draft = { ...createStatsDraft(historicalStats(db), repositories.length, now), hash: '' }
         } catch {
           throw new PublicationError('draft_invalid')
         }
       }
-      const snapshot = renderFiles(db, draft)
+      const snapshot = renderFiles(db, draft, repositories)
       if (draft.hash) {
-        if (draft.hash !== snapshot.hash) throw new PublicationError('snapshot_changed')
+        if (!snapshotHashMatches(draft.hash, snapshot)) throw new PublicationError('snapshot_changed')
       } else {
         draft.hash = snapshot.hash
         try {
@@ -174,9 +192,9 @@ function checkedSnapshot(db: Database.Database, runId: string): { draft: RunDraf
       const run = getRun(db, runId)
       if (run?.status !== 'completed' || run.completed_at === null || run.last_error !== null) throw new PublicationError('invalid_run')
       const draft = savedDraft(run)
-      const { files, hash } = renderFiles(db, draft)
-      if (draft.hash !== hash) throw new PublicationError('snapshot_changed')
-      return { draft, files, pending: run.pending_commit_sha }
+      const snapshot = renderFiles(db, draft)
+      if (!snapshotHashMatches(draft.hash, snapshot)) throw new PublicationError('snapshot_changed')
+      return { draft, files: snapshot.files, pending: run.pending_commit_sha }
     })(),
   )
 }

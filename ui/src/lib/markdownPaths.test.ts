@@ -41,8 +41,8 @@ function byPath(repoPaths: readonly string[]): string[] {
 
 describe('REPO_PAGES_ENDING_IN_MD', () => {
   it('is exactly what the catalog says it should be', () => {
-    // A dataset refresh that adds or removes a `.md`-named repository lands here. Regenerate the
-    // list from the expected side of that diff; until then the proxy 404s that repository's page.
+    // Snapshot publication regenerates the sidecar from this catalog. A mismatch means publication
+    // stopped updating both atomically, or generated data was edited independently.
     expect(byPath(REPO_PAGES_ENDING_IN_MD)).toEqual(byPath(selectRepoPagesEndingInMd(catalogPaths())))
   })
 
