@@ -208,7 +208,7 @@ it('reparses an unchanged marketplace OID when the cached parser version is miss
   })
 })
 
-it('does not cache a GraphQL OID for REST-fallback content', async () => {
+it('retains the previous OID when REST fallback cannot prove it matches GraphQL metadata', async () => {
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), 'MDEwOlJlcG9zaXRvcnkx')
   ready(db, id)
@@ -237,7 +237,7 @@ it('does not cache a GraphQL OID for REST-fallback content', async () => {
   expect(getMarketplace).toHaveBeenCalledWith('team', 'repo')
   expect(db.prepare('SELECT plugins_count, marketplace_oid, marketplace_etag FROM repositories WHERE id = ?').get(id)).toEqual({
     plugins_count: 2,
-    marketplace_oid: null,
+    marketplace_oid: 'a'.repeat(40),
     marketplace_etag: '"new"',
   })
 })
@@ -546,7 +546,7 @@ it('falls back to REST when GraphQL blob text is invalid JSON', async () => {
   expect(getMarketplace).toHaveBeenCalledWith('team', 'repo')
   expect(db.prepare('SELECT plugins_count, marketplace_oid FROM repositories WHERE id = ?').get(id)).toEqual({
     plugins_count: 1,
-    marketplace_oid: null,
+    marketplace_oid: 'old',
   })
 })
 
