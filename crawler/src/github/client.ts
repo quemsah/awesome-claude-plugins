@@ -356,7 +356,6 @@ export class GitHubClient implements GitHubReader {
   private readonly random: () => number
   private readonly token: string
   private readonly signal?: AbortSignal
-  private pending: Promise<void> = Promise.resolve()
 
   constructor(options: Options) {
     if (!options.token.trim()) throw new GitHubFatalError('GitHub token is required', null)
@@ -419,15 +418,8 @@ export class GitHubClient implements GitHubReader {
     attempts = MAX_REQUEST_ATTEMPTS,
   ): Promise<RepoResult<T>> {
     etag = safeEntityTag(etag ?? null) ?? undefined
-    const run = this.pending.then(() => {
-      throwIfShutdown(this.signal)
-      return this.perform(bucket, path, parse, accept, etag, permanentContentErrors, attempts)
-    })
-    this.pending = run.then(
-      () => undefined,
-      () => undefined,
-    )
-    return run
+    throwIfShutdown(this.signal)
+    return this.perform(bucket, path, parse, accept, etag, permanentContentErrors, attempts)
   }
 
   getRepositoriesByNodeId(ids: readonly string[]): Promise<GraphQLBatchResult> {
@@ -445,15 +437,8 @@ export class GitHubClient implements GitHubReader {
     isolateNodeErrors = false,
     retryTimeouts = true,
   ): Promise<GraphQLResult<T>> {
-    const run = this.pending.then(() => {
-      throwIfShutdown(this.signal)
-      return this.performGraphQL(ids, query, parseNode, isolateNodeErrors, retryTimeouts)
-    })
-    this.pending = run.then(
-      () => undefined,
-      () => undefined,
-    )
-    return run
+    throwIfShutdown(this.signal)
+    return this.performGraphQL(ids, query, parseNode, isolateNodeErrors, retryTimeouts)
   }
 
   private async handleGraphQLRateLimit<T>(
