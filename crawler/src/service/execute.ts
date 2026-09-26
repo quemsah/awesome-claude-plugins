@@ -480,12 +480,12 @@ function logEnrichmentProgress(
   runId: string,
   elapsedMs: number,
   samples: ProgressSample[],
+  sampledAt: number,
 ): void {
   const processed = snapshot.run?.phaseProcessed ?? 0
   const total = snapshot.run?.phaseTotal ?? snapshot.repositories.total
   const pending = Math.max(0, total - processed)
-  const at = Date.now()
-  samples.push({ at, processed })
+  samples.push({ at: sampledAt, processed })
   while (samples.length > 4) samples.shift()
   const first = samples[0]
   const last = samples[samples.length - 1]
@@ -551,14 +551,26 @@ function emitProgressSnapshot(
 ): void {
   try {
     const snapshot = inspectProgress(db)
+    if (snapshot.run?.runId !== runId) {
+      log({
+        level: 'warn',
+        event: 'crawl.progress_unavailable',
+        phase,
+        category: 'progress_snapshot_mismatch',
+        runId,
+        message: 'Progress snapshot belongs to a different crawl run',
+      })
+      return
+    }
     const buckets = rateBuckets?.()
-    const elapsedMs = Math.max(0, now().getTime() - startedAt.getTime())
+    const sampledAt = now().getTime()
+    const elapsedMs = Math.max(0, sampledAt - startedAt.getTime())
     if (phase === 'discovery') {
       logDiscoveryProgress(log, snapshot, buckets, runId, elapsedMs, discoveryStartTotal)
       return
     }
     if (phase === 'enrichment') {
-      logEnrichmentProgress(log, snapshot, buckets, runId, elapsedMs, samples)
+      logEnrichmentProgress(log, snapshot, buckets, runId, elapsedMs, samples, sampledAt)
       return
     }
     logGenericProgress(log, snapshot, buckets, phase, runId, elapsedMs)
