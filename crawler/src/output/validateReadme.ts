@@ -52,7 +52,7 @@ export function validateReadme(text: string, repositories: readonly PublishableR
       return (
         repo === undefined ||
         line !==
-        `| ${index + 1} | [${repo.repo_name}](${repo.html_url}) | ${tableCell(repo.description)} | ${repo.stargazers_count} | ${repo.subscribers_count ?? 0} | ${repo.plugins_count ?? 0} |`
+          `| ${index + 1} | [${repo.repo_name}](${repo.html_url}) | ${tableCell(repo.description)} | ${repo.stargazers_count} | ${repo.subscribers_count ?? 0} | ${repo.plugins_count ?? 0} |`
       )
     })
   ) {
