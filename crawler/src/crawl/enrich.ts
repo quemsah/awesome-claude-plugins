@@ -128,6 +128,7 @@ function persistEnrichment(
   marketplaceEtag: string | null,
   marketplaceParserVersion: number,
   at: string,
+  clearMarketplaceEtag = false,
 ): EnrichmentTarget {
   return runWhileActive(db, runId, () => {
     const rebound = loaded.moved ? rebindCanonicalUrl(db, row.id, loaded.canonical.htmlUrl, at) : { id: row.id, removedId: null }
@@ -155,6 +156,9 @@ function persistEnrichment(
       },
       at,
     )
+    if (clearMarketplaceEtag) {
+      db.prepare('UPDATE repositories SET marketplace_etag = NULL WHERE id = ?').run(rebound.id)
+    }
     return { id: rebound.id, removedId: rebound.removedId, ready }
   })
 }
@@ -193,6 +197,7 @@ type MarketplaceState = {
   pluginsCount: number
   marketplaceOid: string | null
   marketplaceEtag: string | null
+  clearMarketplaceEtag?: boolean
   parserVersion: number
 }
 
@@ -299,6 +304,7 @@ async function loadGraphQLMarketplace(
         pluginsCount: decoded.pluginsCount,
         marketplaceOid: decoded.marketplaceOid,
         marketplaceEtag: null,
+        clearMarketplaceEtag: true,
         parserVersion: MARKETPLACE_PARSER_VERSION,
       }
     }
@@ -547,6 +553,7 @@ async function enrichGraphQLOne(
     marketplace.marketplaceEtag,
     marketplace.parserVersion,
     now(),
+    marketplace.clearMarketplaceEtag ?? false,
   )
   completeEnrichment(counts, target, removedIds)
 }
