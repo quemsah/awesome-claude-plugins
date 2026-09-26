@@ -2,10 +2,15 @@ import type Database from 'better-sqlite3'
 import { assertValidStatsDraft, type StatsRecord } from '../output/statsDraft.js'
 
 export type RunStatus = 'running' | 'completed' | 'failed' | 'published'
+export type RunPhase = 'startup' | 'discovery' | 'enrichment' | 'finalize'
 
 export interface RunRow {
   run_id: string
   status: RunStatus
+  phase: RunPhase
+  phase_started_at: string | null
+  phase_total: number | null
+  phase_processed: number
   started_at: string
   heartbeat_at: string
   completed_at: string | null
@@ -116,6 +121,41 @@ export function heartbeatRun(db: Database.Database, runId: string, at: string): 
   return db.prepare("UPDATE runs SET heartbeat_at = ? WHERE run_id = ? AND status = 'running'").run(at, runId).changes !== 0
 }
 
+export function startRunPhase(
+  db: Database.Database,
+  runId: string,
+  phase: RunPhase,
+  at: string,
+  total: number | null = null,
+): void {
+  if (total !== null && (!Number.isSafeInteger(total) || total < 0)) throw new Error('phase total must be nonnegative or null')
+  const result = db
+    .prepare(`
+      UPDATE runs
+      SET phase = ?, phase_started_at = ?, phase_total = ?, phase_processed = 0, heartbeat_at = ?
+      WHERE run_id = ? AND status = 'running'
+    `)
+    .run(phase, at, total, at, runId)
+  if (result.changes !== 1) throw new RunNotActiveError(runId)
+}
+
+export function advanceRunPhase(db: Database.Database, runId: string, processed: number, at: string): void {
+  if (!Number.isSafeInteger(processed) || processed < 0) throw new Error('processed progress must be nonnegative')
+  if (processed === 0) return
+  const result = db
+    .prepare(`
+      UPDATE runs
+      SET phase_processed = CASE
+            WHEN phase_total IS NULL THEN phase_processed + @processed
+            ELSE MIN(phase_total, phase_processed + @processed)
+          END,
+          heartbeat_at = @at
+      WHERE run_id = @runId AND status = 'running' AND phase = 'enrichment'
+    `)
+    .run({ processed, at, runId })
+  if (result.changes !== 1) throw new RunNotActiveError(runId)
+}
+
 export function runWhileActive<T>(db: Database.Database, runId: string, operation: () => T): T {
   return db
     .transaction(() => {
@@ -130,8 +170,10 @@ export function completeRun(db: Database.Database, runId: string, at: string, wa
   if (!Number.isSafeInteger(warningCount) || warningCount < 0) throw new Error('warningCount must be nonnegative')
   return (
     db
-      .prepare("UPDATE runs SET status = 'completed', completed_at = ?, warning_count = ? WHERE run_id = ? AND status = 'running'")
-      .run(at, warningCount, runId).changes !== 0
+      .prepare(
+        "UPDATE runs SET status = 'completed', phase = 'finalize', phase_started_at = ?, completed_at = ?, warning_count = ? WHERE run_id = ? AND status = 'running'",
+      )
+      .run(at, at, warningCount, runId).changes !== 0
   )
 }
 
