@@ -8,6 +8,7 @@ import type { GitHubGraphQLMarketplaceBlob } from '../github/client.js'
 import { GitHubFatalError, type GitHubGraphQLRepo, type GitHubReader, type GitHubRepo, type RepoResult } from '../github/client.js'
 import { isValidGitHubPathSegment, parseGitHubOwnerUrl } from '../github/identifiers.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
+import type { GitHubRetryReason } from '../github/rateBudget.js'
 import type { Log } from '../logging.js'
 import {
   deleteById,
@@ -29,6 +30,7 @@ export type EnrichmentCounts = {
   deletedBlankUrl: number
   conclusive: number
   warnings: number
+  knownInvalidSkipped?: number
 }
 
 function wasReady(row: RepositoryRow): boolean {
@@ -258,7 +260,7 @@ const MARKETPLACE_CONTENT_MAX_BYTES = 750_000
 const MARKETPLACE_UNKNOWN_BYTES = 32_768
 
 const RETRY_LATER = Symbol('retry-later')
-type RetryLater = typeof RETRY_LATER
+type RetryLater = { kind: typeof RETRY_LATER; reason: GitHubRetryReason }
 type RestAttemptPolicy = {
   maxAttempts: number
   retryCountOffset: number
@@ -273,8 +275,25 @@ function totalRetryCount(result: { retryCount: number }, policy: RestAttemptPoli
   return result.retryCount + policy.retryCountOffset
 }
 
-function deferTransient(result: Extract<RepoResult<unknown>, { kind: 'temporary-error' }>, policy: RestAttemptPolicy): boolean {
-  return policy.deferTransient && result.retryable !== false
+function retryReason(result: Extract<RepoResult<unknown>, { kind: 'temporary-error' }>): GitHubRetryReason {
+  if (result.failureReason) return result.failureReason
+  if (result.status === null) return 'network'
+  if (result.status >= 500) return 'server_5xx'
+  if (result.status === 429) return 'secondary_rate_limit'
+  if (result.reason === 'GitHub response body read failed') return 'body_read'
+  if (result.reason === 'Marketplace parser failure') return 'parser_internal'
+  return 'invalid_response'
+}
+
+function deferTransient(
+  result: Extract<RepoResult<unknown>, { kind: 'temporary-error' }>,
+  policy: RestAttemptPolicy,
+): RetryLater | null {
+  return policy.deferTransient && result.retryable !== false ? { kind: RETRY_LATER, reason: retryReason(result) } : null
+}
+
+function isRetryLater(value: unknown): value is RetryLater {
+  return typeof value === 'object' && value !== null && 'kind' in value && value.kind === RETRY_LATER
 }
 
 type MarketplaceState = {
@@ -371,6 +390,7 @@ function recordKnownInvalidMarketplace(
   now: () => string,
   log?: Log,
 ): null {
+  counts.knownInvalidSkipped = (counts.knownInvalidSkipped ?? 0) + 1
   recordProblem(db, runId, counts, row, 'marketplace_known_invalid_content', loaded.ready, true, now, 0, log, {
     request: null,
     marketplaceOid: row.marketplace_failed_oid,
@@ -421,7 +441,8 @@ async function loadLegacyMarketplace(
     return null
   }
   if (result.kind === 'temporary-error') {
-    if (deferTransient(result, policy)) return RETRY_LATER
+    const deferred = deferTransient(result, policy)
+    if (deferred) return deferred
     recordProblem(
       db,
       runId,
@@ -616,7 +637,8 @@ async function loadGraphQLMarketplaceViaRest(
     return null
   }
   if (result.kind === 'temporary-error') {
-    if (deferTransient(result, policy)) return RETRY_LATER
+    const deferred = deferTransient(result, policy)
+    if (deferred) return deferred
     recordProblem(
       db,
       runId,
@@ -868,7 +890,8 @@ async function loadRepository(
   }
   if (result.kind === 'not-found') return removeMissingRepository(db, runId, row, identity, counts, log)
   if (result.kind === 'temporary-error') {
-    if (deferTransient(result, policy)) return RETRY_LATER
+    const deferred = deferTransient(result, policy)
+    if (deferred) return deferred
     recordProblem(
       db,
       runId,
@@ -953,19 +976,45 @@ async function enrichOne(
   }
   onProgress?.()
   const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts, now, policy, log)
-  if (loaded === RETRY_LATER) {
-    retryQueue?.push(() =>
-      enrichOne(db, reader, runId, row, counts, removedIds, now, RETRY_PASS_REST, undefined, onProgress, log),
-    )
+  if (isRetryLater(loaded)) {
+    retryQueue?.push(() => {
+      reader.noteRetry?.('core', loaded.reason)
+      return enrichOne(db, reader, runId, row, counts, removedIds, now, RETRY_PASS_REST, undefined, onProgress, log)
+    })
     return
   }
   if (!loaded) return
   onProgress?.()
   const marketplace = await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, policy, log)
-  if (marketplace === RETRY_LATER) {
-    retryQueue?.push(() =>
-      enrichOne(db, reader, runId, row, counts, removedIds, now, RETRY_PASS_REST, undefined, onProgress, log),
-    )
+  if (isRetryLater(marketplace)) {
+    retryQueue?.push(async () => {
+      reader.noteRetry?.('core', marketplace.reason)
+      const retried = await loadLegacyMarketplace(
+        db,
+        reader,
+        runId,
+        row,
+        loaded,
+        counts,
+        removedIds,
+        now,
+        RETRY_PASS_REST,
+        log,
+      )
+      if (!retried || isRetryLater(retried)) return
+      const target = persistEnrichment(
+        db,
+        runId,
+        row,
+        loaded,
+        retried.pluginsCount,
+        retried.marketplaceOid,
+        retried.marketplaceEtag,
+        retried.parserVersion,
+        now(),
+      )
+      completeEnrichment(counts, target, removedIds)
+    })
     return
   }
   if (!marketplace) return
@@ -1070,9 +1119,10 @@ async function enrichGraphQLOne(
         log,
       )
     : await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, policy, log)
-  if (marketplace === RETRY_LATER) {
-    retryQueue?.push(() =>
-      enrichGraphQLOne(
+  if (isRetryLater(marketplace)) {
+    retryQueue?.push(() => {
+      reader.noteRetry?.('core', marketplace.reason)
+      return enrichGraphQLOne(
         db,
         reader,
         runId,
@@ -1086,8 +1136,8 @@ async function enrichGraphQLOne(
         undefined,
         onProgress,
         log,
-      ),
-    )
+      )
+    })
     return
   }
   if (!marketplace) return
@@ -1412,6 +1462,7 @@ export async function enrichRepositories(
     deletedBlankUrl: 0,
     conclusive: 0,
     warnings: 0,
+    knownInvalidSkipped: 0,
   }
   let lastId = 0
   const removedIds = new Set<number>()
