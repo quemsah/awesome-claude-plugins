@@ -34,6 +34,7 @@ export function validateReadme(text: string, repositories: readonly PublishableR
       const repo = ranked[index]
       const url = match[3]
       return (
+        repo === undefined ||
         url === undefined ||
         parseGitHubRepositoryUrl(url) === undefined ||
         match[1] !== String(index + 1) ||
@@ -49,6 +50,7 @@ export function validateReadme(text: string, repositories: readonly PublishableR
     rows.some((line, index) => {
       const repo = ranked[index]
       return (
+        repo === undefined ||
         line !==
         `| ${index + 1} | [${repo.repo_name}](${repo.html_url}) | ${tableCell(repo.description)} | ${repo.stargazers_count} | ${repo.subscribers_count ?? 0} | ${repo.plugins_count ?? 0} |`
       )
