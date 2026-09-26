@@ -446,6 +446,49 @@ it('falls back to REST without negative-caching a stale metadata OID when the Gr
   expect(listRunErrors(db, 'crawl-1')).toEqual([])
 })
 
+it('defers retryable REST failures until the first repository pass is complete', async () => {
+  const db = database()
+  upsertDiscovery(db, 'https://github.com/team/first', null)
+  upsertDiscovery(db, 'https://github.com/team/second', null)
+  const calls: string[] = []
+  let firstAttempts = 0
+  const client: GitHubReader = {
+    searchCode: async () => {
+      throw new Error('enrichment must not search')
+    },
+    getRepository: async (owner, name, _etag, options) => {
+      calls.push(`repo:${name}:max${options?.maxAttempts ?? 3}`)
+      if (name === 'first' && firstAttempts++ === 0) {
+        return {
+          kind: 'temporary-error',
+          status: 503,
+          reason: 'GitHub server error',
+          retryCount: 0,
+          failureReason: 'server_5xx',
+          retryable: true,
+        }
+      }
+      return { kind: 'found', data: githubRepo(owner, name) }
+    },
+    getMarketplace: async (_owner, name, _etag, options) => {
+      calls.push(`marketplace:${name}:max${options?.maxAttempts ?? 3}`)
+      return { kind: 'found', data: { plugins: [] } }
+    },
+  }
+
+  const counts = await enrichRepositories(db, client, 'crawl-1')
+
+  expect(counts).toMatchObject({ newReady: 2, conclusive: 2, unchangedOnError: 0, newIncomplete: 0 })
+  expect(calls).toEqual([
+    'repo:first:max1',
+    'repo:second:max1',
+    'marketplace:second:max1',
+    'repo:first:max2',
+    'marketplace:first:max2',
+  ])
+  expect(listRunErrors(db, 'crawl-1')).toEqual([])
+})
+
 it('clears a stale REST ETag after accepting GraphQL marketplace content', async () => {
   const db = database()
   const nodeId = 'node-clear-etag'
