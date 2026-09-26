@@ -564,6 +564,21 @@ describe('GitHubClient', () => {
     expect(test.requests).toHaveLength(1)
   })
 
+  it('preserves Retry-After as a deferred retry deadline for one-attempt 5xx calls', async () => {
+    const test = harness([new Response('', { status: 503, headers: { 'retry-after': '30' } })])
+
+    expect(await test.client.getRepository('acme', 'catalog', undefined, { maxAttempts: 1 })).toMatchObject({
+      kind: 'temporary-error',
+      retryCount: 0,
+      failureReason: 'server_5xx',
+      retryable: true,
+      retryAt: 30_000,
+    })
+    expect(test.time).toBe(0)
+    await expect(test.client.waitUntil(30_000)).resolves.toBe(30_000)
+    expect(test.time).toBe(30_000)
+  })
+
   it('waits for primary reset from quota headers on the next core request', async () => {
     const test = harness([
       Response.json(repo, { headers: { 'x-ratelimit-resource': 'core', 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '100' } }),

@@ -260,7 +260,7 @@ const MARKETPLACE_CONTENT_MAX_BYTES = 750_000
 const MARKETPLACE_UNKNOWN_BYTES = 32_768
 
 const RETRY_LATER = Symbol('retry-later')
-type RetryLater = { kind: typeof RETRY_LATER; reason: GitHubRetryReason }
+type RetryLater = { kind: typeof RETRY_LATER; reason: GitHubRetryReason; retryAt?: number }
 type RestAttemptPolicy = {
   maxAttempts: number
   retryCountOffset: number
@@ -293,7 +293,14 @@ function retryReason(result: Extract<RepoResult<unknown>, { kind: 'temporary-err
 }
 
 function deferTransient(result: Extract<RepoResult<unknown>, { kind: 'temporary-error' }>, policy: RestAttemptPolicy): RetryLater | null {
-  return policy.deferTransient && result.retryable === true ? { kind: RETRY_LATER, reason: retryReason(result) } : null
+  return policy.deferTransient && result.retryable === true
+    ? { kind: RETRY_LATER, reason: retryReason(result), ...(result.retryAt === undefined ? {} : { retryAt: result.retryAt }) }
+    : null
+}
+
+async function beginDeferredRetry(reader: GitHubReader, retry: RetryLater): Promise<void> {
+  const waitMs = retry.retryAt === undefined ? 0 : ((await reader.waitUntil?.(retry.retryAt)) ?? 0)
+  reader.noteRetry?.('core', retry.reason, waitMs)
 }
 
 function isRetryLater(value: unknown): value is RetryLater {
@@ -1053,10 +1060,10 @@ async function enrichOne(
   onProgress?.()
   const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts, now, policy, log)
   if (isRetryLater(loaded)) {
-    queueRetry(retryQueue, row, () => {
-      if (removedIds.has(row.id)) return Promise.resolve()
-      reader.noteRetry?.('core', loaded.reason)
-      return enrichOne(db, reader, runId, row, counts, removedIds, now, RETRY_PASS_REST, undefined, onProgress, log)
+    queueRetry(retryQueue, row, async () => {
+      if (removedIds.has(row.id)) return
+      await beginDeferredRetry(reader, loaded)
+      await enrichOne(db, reader, runId, row, counts, removedIds, now, RETRY_PASS_REST, undefined, onProgress, log)
     })
     return
   }
@@ -1066,7 +1073,7 @@ async function enrichOne(
   if (isRetryLater(marketplace)) {
     queueRetry(retryQueue, row, async () => {
       if (removedIds.has(row.id)) return
-      reader.noteRetry?.('core', marketplace.reason)
+      await beginDeferredRetry(reader, marketplace)
       const retried = await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, RETRY_PASS_REST, log)
       if (!retried || isRetryLater(retried)) return
       const target = persistEnrichment(
@@ -1189,7 +1196,7 @@ async function enrichGraphQLOne(
   if (isRetryLater(marketplace)) {
     queueRetry(retryQueue, row, () => {
       if (removedIds.has(row.id)) return Promise.resolve()
-      reader.noteRetry?.('core', marketplace.reason)
+      await beginDeferredRetry(reader, marketplace)
       return enrichGraphQLOne(
         db,
         reader,

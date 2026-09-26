@@ -79,6 +79,7 @@ export type RepoResult<T> =
       retryCount: number
       failureReason?: GitHubRetryReason
       retryable?: boolean
+      retryAt?: number
     }
 
 export type ConditionalRepoResult<T> = RepoResult<T> | { kind: 'not-modified'; retryCount: number }
@@ -97,6 +98,7 @@ export interface GitHubReader {
   getRepository(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<GitHubRepo>>
   getMarketplace(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<Marketplace>>
   noteRetry?(bucket: RateResource, reason: GitHubRetryReason, waitMs?: number): void
+  waitUntil?(timestampMs: number): Promise<number>
   getRepositoriesByNodeId?(ids: readonly string[]): Promise<GraphQLBatchResult>
   getMarketplaceBlobsByNodeId?(ids: readonly string[]): Promise<GraphQLMarketplaceBlobBatchResult>
 }
@@ -369,6 +371,12 @@ export class GitHubClient implements GitHubReader {
 
   noteRetry(bucket: RateResource, reason: GitHubRetryReason, waitMs = 0): void {
     this.budget.recordRetry(bucket, reason, waitMs)
+  }
+
+  async waitUntil(timestampMs: number): Promise<number> {
+    const waitMs = Math.max(0, timestampMs - this.clock.now())
+    if (waitMs > 0) await this.clock.sleep(waitMs, this.signal)
+    return waitMs
   }
 
   async searchCode(query: string, page: number): Promise<SearchPage> {
@@ -947,6 +955,7 @@ export class GitHubClient implements GitHubReader {
           retryCount: attempt,
           failureReason: 'server_5xx',
           retryable: true,
+          ...(delay === null ? {} : { retryAt: this.clock.now() + delay }),
         },
       }
     }

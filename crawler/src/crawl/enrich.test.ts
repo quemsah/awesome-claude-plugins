@@ -527,6 +527,7 @@ it('defers retryable REST failures until the first repository pass is complete',
           retryCount: 0,
           failureReason: 'server_5xx',
           retryable: true,
+          retryAt: 30_000,
         }
       }
       return { kind: 'found', data: githubRepo(owner, name) }
@@ -535,12 +536,27 @@ it('defers retryable REST failures until the first repository pass is complete',
       calls.push(`marketplace:${name}:max${options?.maxAttempts ?? 3}`)
       return { kind: 'found', data: { plugins: [] } }
     },
+    waitUntil: async (timestampMs) => {
+      calls.push(`wait-until:${timestampMs}`)
+      return timestampMs
+    },
+    noteRetry: (_bucket, reason, waitMs) => {
+      calls.push(`retry:${reason}:wait${waitMs ?? 0}`)
+    },
   }
 
   const counts = await enrichRepositories(db, client, 'crawl-1')
 
   expect(counts).toMatchObject({ newReady: 2, conclusive: 2, unchangedOnError: 0, newIncomplete: 0 })
-  expect(calls).toEqual(['repo:first:max1', 'repo:second:max1', 'marketplace:second:max1', 'repo:first:max2', 'marketplace:first:max2'])
+  expect(calls).toEqual([
+    'repo:first:max1',
+    'repo:second:max1',
+    'marketplace:second:max1',
+    'wait-until:30000',
+    'retry:server_5xx:wait30000',
+    'repo:first:max2',
+    'marketplace:first:max2',
+  ])
   expect(listRunErrors(db, 'crawl-1')).toEqual([])
   expect(getRun(db, 'crawl-1')).toMatchObject({ phase: 'enrichment', phase_total: 2, phase_processed: 2 })
 })
