@@ -186,6 +186,8 @@ function completeEnrichment(counts: EnrichmentCounts, target: EnrichmentTarget, 
 
 const MARKETPLACE_PARSER_VERSION = 1
 const MARKETPLACE_CONTENT_BATCH_SIZE = 25
+const MARKETPLACE_CONTENT_MAX_BYTES = 750_000
+const MARKETPLACE_UNKNOWN_BYTES = 32_768
 
 type MarketplaceState = {
   pluginsCount: number
@@ -203,7 +205,7 @@ function needsMarketplaceContent(row: RepositoryRow, currentMarketplaceOid: stri
 }
 
 function decodeGraphQLMarketplaceBlob(blob: GitHubGraphQLMarketplaceBlob): { pluginsCount: number; marketplaceOid: string } | null {
-  if (blob.is_truncated || blob.is_binary || blob.text === null) return null
+  if (blob.is_truncated || blob.is_binary !== false || blob.text === null) return null
   try {
     const marketplace = parseMarketplaceManifest(JSON.parse(blob.text))
     return { pluginsCount: marketplace.plugins.length, marketplaceOid: blob.oid }
@@ -302,7 +304,8 @@ async function loadGraphQLMarketplace(
     }
   }
 
-  const changedOid = row.marketplace_oid !== currentMarketplaceOid
+  const authoritativeMarketplaceOid = blob?.oid ?? currentMarketplaceOid
+  const changedOid = row.marketplace_oid !== authoritativeMarketplaceOid
   const result =
     row.marketplace_etag && !changedOid && row.plugins_count !== null && !parserVersionChanged
       ? await reader.getMarketplace(loaded.owner, loaded.repo, row.marketplace_etag)
@@ -321,14 +324,14 @@ async function loadGraphQLMarketplace(
     if (!acceptGraphQLNotModified(db, runId, row, loaded, changedOid, counts, now)) return null
     return {
       pluginsCount: row.plugins_count,
-      marketplaceOid: currentMarketplaceOid,
+      marketplaceOid: authoritativeMarketplaceOid,
       marketplaceEtag,
       parserVersion: MARKETPLACE_PARSER_VERSION,
     }
   }
   return {
     pluginsCount: result.data.plugins.length,
-    marketplaceOid: currentMarketplaceOid,
+    marketplaceOid: authoritativeMarketplaceOid,
     marketplaceEtag,
     parserVersion: MARKETPLACE_PARSER_VERSION,
   }
@@ -597,6 +600,14 @@ function tuneGraphQLBatch(state: GraphQLBatchState, rowCount: number, latency: n
   if (state.stableBatches >= 5) state.size = 50
 }
 
+function marketplaceEstimatedBytes(repository: GitHubGraphQLRepo): number {
+  return repository.marketplace_byte_size ?? MARKETPLACE_UNKNOWN_BYTES
+}
+
+function canFetchMarketplaceByGraphQL(repository: GitHubGraphQLRepo): boolean {
+  return repository.marketplace_is_binary === false && marketplaceEstimatedBytes(repository) <= MARKETPLACE_CONTENT_MAX_BYTES
+}
+
 async function loadGraphQLMarketplaceBlobs(
   reader: GitHubReader,
   rows: RepositoryRow[],
@@ -607,7 +618,7 @@ async function loadGraphQLMarketplaceBlobs(
   const blobs = new Map<string, GitHubGraphQLMarketplaceBlob>()
   if (!getBlobs) return blobs
 
-  const targetIds: string[] = []
+  const candidates: Array<{ nodeId: string; estimatedBytes: number }> = []
   const seen = new Set<string>()
   for (const [index, row] of rows.entries()) {
     const repository = repositories[index] ?? null
@@ -619,27 +630,60 @@ async function loadGraphQLMarketplaceBlobs(
       repository.private ||
       repository.marketplace_oid === null ||
       canonicalIdentity(repository) === null ||
-      !needsMarketplaceContent(row, repository.marketplace_oid)
+      !needsMarketplaceContent(row, repository.marketplace_oid) ||
+      !canFetchMarketplaceByGraphQL(repository)
     ) {
       continue
     }
     seen.add(nodeId)
-    targetIds.push(nodeId)
+    candidates.push({ nodeId, estimatedBytes: marketplaceEstimatedBytes(repository) })
   }
 
-  for (let offset = 0; offset < targetIds.length; offset += MARKETPLACE_CONTENT_BATCH_SIZE) {
-    const batch = targetIds.slice(offset, offset + MARKETPLACE_CONTENT_BATCH_SIZE)
+  const fetchBatch = async (batch: Array<{ nodeId: string; estimatedBytes: number }>): Promise<void> => {
+    if (batch.length === 0) return
     onProgress?.()
-    const result = await getBlobs.call(reader, batch)
-    if (result.kind === 'temporary-error') continue
-    for (const [index, requestedNodeId] of batch.entries()) {
+    const result = await getBlobs.call(
+      reader,
+      batch.map(({ nodeId }) => nodeId),
+    )
+    if (result.kind === 'temporary-error') {
+      if (batch.length > 1 && /timeout|invalid graphql response/i.test(result.reason)) {
+        const midpoint = Math.ceil(batch.length / 2)
+        await fetchBatch(batch.slice(0, midpoint))
+        await fetchBatch(batch.slice(midpoint))
+      }
+      return
+    }
+
+    for (const [index, candidate] of batch.entries()) {
       const blob = result.data[index] ?? null
-      // GitHub may return a migrated global node ID when X-Github-Next-Global-ID is enabled,
-      // even if the request used a legacy ID. nodes(ids:) preserves positional alignment,
-      // so correlate by the requested ID instead of comparing the returned ID string.
-      if (blob) blobs.set(requestedNodeId, blob)
+      // GitHub may return a migrated global node ID when X-Github-Next-Global-ID is enabled.
+      // nodes(ids:) preserves positional alignment, so correlate by the requested ID.
+      if (blob) blobs.set(candidate.nodeId, blob)
     }
   }
+
+  let offset = 0
+  while (offset < candidates.length) {
+    const batch: Array<{ nodeId: string; estimatedBytes: number }> = []
+    let estimatedBytes = 0
+    while (offset < candidates.length && batch.length < MARKETPLACE_CONTENT_BATCH_SIZE) {
+      const candidate = candidates[offset]
+      if (!candidate) break
+      if (batch.length > 0 && estimatedBytes + candidate.estimatedBytes > MARKETPLACE_CONTENT_MAX_BYTES) break
+      batch.push(candidate)
+      estimatedBytes += candidate.estimatedBytes
+      offset++
+    }
+    if (batch.length === 0) {
+      const candidate = candidates[offset]
+      if (!candidate) break
+      batch.push(candidate)
+      offset++
+    }
+    await fetchBatch(batch)
+  }
+
   return blobs
 }
 
