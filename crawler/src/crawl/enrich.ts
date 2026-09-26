@@ -751,6 +751,7 @@ async function enrichGraphQLOne(
 }
 
 type GraphQLBatchState = { size: number; stableBatches: number }
+type RepositoryProcessed = (row: RepositoryRow) => void
 
 async function enrichLegacyBatch(
   db: Database.Database,
@@ -762,8 +763,12 @@ async function enrichLegacyBatch(
   now: () => string,
   onProgress?: () => void,
   log?: Log,
+  onRepositoryProcessed?: RepositoryProcessed,
 ): Promise<void> {
-  for (const row of rows) await enrichOne(db, reader, runId, row, counts, removedIds, now, onProgress, log)
+  for (const row of rows) {
+    await enrichOne(db, reader, runId, row, counts, removedIds, now, onProgress, log)
+    onRepositoryProcessed?.(row)
+  }
 }
 
 async function recoverGraphQLBatch(
@@ -777,17 +782,30 @@ async function recoverGraphQLBatch(
   now: () => string,
   onProgress?: () => void,
   log?: Log,
+  onRepositoryProcessed?: RepositoryProcessed,
 ): Promise<void> {
   state.stableBatches = 0
   if (rows.length <= 10) {
-    await enrichLegacyBatch(db, reader, runId, rows, counts, removedIds, now, onProgress, log)
+    await enrichLegacyBatch(db, reader, runId, rows, counts, removedIds, now, onProgress, log, onRepositoryProcessed)
     return
   }
 
   const smallerSize = rows.length > 25 ? 25 : 10
   state.size = smallerSize
   for (let offset = 0; offset < rows.length; offset += smallerSize) {
-    await enrichGraphQLBatch(db, reader, runId, rows.slice(offset, offset + smallerSize), counts, removedIds, state, now, onProgress, log)
+    await enrichGraphQLBatch(
+      db,
+      reader,
+      runId,
+      rows.slice(offset, offset + smallerSize),
+      counts,
+      removedIds,
+      state,
+      now,
+      onProgress,
+      log,
+      onRepositoryProcessed,
+    )
   }
 }
 
@@ -944,9 +962,10 @@ async function enrichGraphQLBatch(
   now: () => string,
   onProgress?: () => void,
   log?: Log,
+  onRepositoryProcessed?: RepositoryProcessed,
 ): Promise<void> {
   const getBatch = reader.getRepositoriesByNodeId
-  if (!getBatch) return enrichLegacyBatch(db, reader, runId, rows, counts, removedIds, now, onProgress, log)
+  if (!getBatch) return enrichLegacyBatch(db, reader, runId, rows, counts, removedIds, now, onProgress, log, onRepositoryProcessed)
 
   const ids = rows.map((row) => row.github_node_id as string)
   onProgress?.()
@@ -988,7 +1007,7 @@ async function enrichGraphQLBatch(
       repositoryUrls: rows.map((row) => row.html_url).filter((url): url is string => Boolean(url)),
       fallback: 'REST',
     })
-    await recoverGraphQLBatch(db, reader, runId, rows, counts, removedIds, state, now, onProgress, log)
+    await recoverGraphQLBatch(db, reader, runId, rows, counts, removedIds, state, now, onProgress, log, onRepositoryProcessed)
     return
   }
 
@@ -997,6 +1016,7 @@ async function enrichGraphQLBatch(
   for (const [index, row] of rows.entries()) {
     const marketplaceBlob = row.github_node_id ? (marketplaceBlobs.get(row.github_node_id) ?? null) : null
     await enrichGraphQLOne(db, reader, runId, row, result.data[index] ?? null, marketplaceBlob, counts, removedIds, now, onProgress, log)
+    onRepositoryProcessed?.(row)
   }
 }
 
@@ -1024,6 +1044,25 @@ export async function enrichRepositories(
   }
   let lastId = 0
   const removedIds = new Set<number>()
+  const processedIds = new Set<number>()
+  const accountedRemovedIds = new Set<number>()
+  const markRepositoryProcessed = (row: RepositoryRow) => {
+    let processed = 0
+    if (!processedIds.has(row.id)) {
+      processedIds.add(row.id)
+      processed++
+    }
+    if (removedIds.size !== accountedRemovedIds.size) {
+      for (const removedId of removedIds) {
+        if (accountedRemovedIds.has(removedId)) continue
+        accountedRemovedIds.add(removedId)
+        if (processedIds.has(removedId)) continue
+        processedIds.add(removedId)
+        processed++
+      }
+    }
+    if (processed > 0) advanceRunPhase(db, runId, processed, now())
+  }
   const batchState = { size: 25, stableBatches: 0 }
   while (true) {
     const rows = listForEnrichment(db, lastId, 50)
@@ -1031,19 +1070,29 @@ export async function enrichRepositories(
     for (const row of rows) {
       lastId = row.id
     }
-    const removedBefore = new Set(removedIds)
     const graphQLRows = rows.filter((row) => row.github_node_id && parseRepositoryUrl(row.html_url ?? ''))
     const legacyRows = rows.filter((row) => !row.github_node_id || !parseRepositoryUrl(row.html_url ?? ''))
     for (const row of legacyRows) {
       if (!removedIds.has(row.id)) await enrichOne(db, reader, runId, row, counts, removedIds, now, onProgress, log)
+      markRepositoryProcessed(row)
     }
     for (let offset = 0; offset < graphQLRows.length; ) {
       const batch = graphQLRows.slice(offset, offset + batchState.size)
       offset += batch.length
-      await enrichGraphQLBatch(db, reader, runId, batch, counts, removedIds, batchState, now, onProgress, log)
+      await enrichGraphQLBatch(
+        db,
+        reader,
+        runId,
+        batch,
+        counts,
+        removedIds,
+        batchState,
+        now,
+        onProgress,
+        log,
+        markRepositoryProcessed,
+      )
     }
-    const removedFutureRows = [...removedIds].filter((id) => !removedBefore.has(id) && id > lastId).length
-    advanceRunPhase(db, runId, rows.length + removedFutureRows, now())
     onProgress?.()
   }
   return counts
