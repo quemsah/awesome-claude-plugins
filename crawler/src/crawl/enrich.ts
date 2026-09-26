@@ -485,82 +485,66 @@ function loadCachedRepository(
   }
 }
 
-async function loadRepository(
-  db: Database.Database,
-  reader: GitHubReader,
+function logRepositoryFatalError(
+  error: GitHubFatalError,
   runId: string,
   row: RepositoryRow,
   identity: NonNullable<ReturnType<typeof parseRepositoryUrl>>,
-  previouslyReady: boolean,
-  counts: EnrichmentCounts,
-  now: () => string,
   log?: Log,
-): Promise<LoadedRepository | null> {
-  let result: RepoResult<GitHubRepo>
-  try {
-    result = row.repository_etag
-      ? await reader.getRepository(identity.owner, identity.repo, row.repository_etag)
-      : await reader.getRepository(identity.owner, identity.repo)
-  } catch (error) {
-    if (error instanceof GitHubFatalError) {
-      log?.({
-        level: 'error',
-        event: 'crawl.request_failed',
-        phase: 'enrichment',
-        category: 'github_fatal_error',
-        runId,
-        message: `Repository metadata request failed for ${identity.owner}/${identity.repo}`,
-        repository: `${identity.owner}/${identity.repo}`,
-        repositoryId: row.id,
-        repositoryUrl: row.html_url,
-        request: `GET /repos/${identity.owner}/${identity.repo}`,
-        status: error.status,
-        reason: error.message,
-      })
-    }
-    throw error
-  }
-  if (result.kind === 'not-found') {
-    log?.({
-      level: 'warn',
-      event: 'crawl.repository_removed',
-      phase: 'enrichment',
-      category: 'repository_not_found',
-      runId,
-      message: `GitHub repository not found: ${identity.owner}/${identity.repo}; removing repository`,
-      repository: `${identity.owner}/${identity.repo}`,
-      repositoryId: row.id,
-      repositoryUrl: row.html_url,
-      request: `GET /repos/${identity.owner}/${identity.repo}`,
-      status: 404,
-      outcome: 'repository_removed',
-    })
-    runWhileActive(db, runId, () => {
-      deleteById(db, row.id)
-    })
-    counts.deleted404++
-    counts.conclusive++
-    return null
-  }
-  if (result.kind === 'temporary-error') {
-    recordProblem(db, runId, counts, row, temporaryCategory('repository', result), previouslyReady, false, now, result.retryCount, log, {
-      request: `GET /repos/${identity.owner}/${identity.repo}`,
-      status: result.status,
-      reason: result.reason,
-    })
-    return null
-  }
-  if (result.kind === 'not-modified') {
-    const cached = loadCachedRepository(row, identity, previouslyReady)
-    if (cached) return cached
-    recordProblem(db, runId, counts, row, 'repository_not_modified_without_data', previouslyReady, false, now)
-    return null
-  }
+): void {
+  log?.({
+    level: 'error',
+    event: 'crawl.request_failed',
+    phase: 'enrichment',
+    category: 'github_fatal_error',
+    runId,
+    message: `Repository metadata request failed for ${identity.owner}/${identity.repo}`,
+    repository: `${identity.owner}/${identity.repo}`,
+    repositoryId: row.id,
+    repositoryUrl: row.html_url,
+    request: `GET /repos/${identity.owner}/${identity.repo}`,
+    status: error.status,
+    reason: error.message,
+  })
+}
+
+function removeMissingRepository(
+  db: Database.Database,
+  runId: string,
+  row: RepositoryRow,
+  identity: NonNullable<ReturnType<typeof parseRepositoryUrl>>,
+  counts: EnrichmentCounts,
+  log?: Log,
+): null {
+  log?.({
+    level: 'warn',
+    event: 'crawl.repository_removed',
+    phase: 'enrichment',
+    category: 'repository_not_found',
+    runId,
+    message: `GitHub repository not found: ${identity.owner}/${identity.repo}; removing repository`,
+    repository: `${identity.owner}/${identity.repo}`,
+    repositoryId: row.id,
+    repositoryUrl: row.html_url,
+    request: `GET /repos/${identity.owner}/${identity.repo}`,
+    status: 404,
+    outcome: 'repository_removed',
+  })
+  runWhileActive(db, runId, () => deleteById(db, row.id))
+  counts.deleted404++
+  counts.conclusive++
+  return null
+}
+
+function buildLoadedRepository(
+  db: Database.Database,
+  row: RepositoryRow,
+  identity: NonNullable<ReturnType<typeof parseRepositoryUrl>>,
+  previouslyReady: boolean,
+  result: Extract<RepoResult<GitHubRepo>, { kind: 'ok' }>,
+): LoadedRepository | null {
   const canonical = canonicalIdentity(result.data)
-  if (!canonical) {
-    recordProblem(db, runId, counts, row, 'repository_identity_mismatch', previouslyReady, true, now)
-    return null
-  }
+  if (!canonical) return null
   const moved = canonical.htmlUrl !== row.html_url
   const duplicate = moved
     ? (db
@@ -579,6 +563,46 @@ async function loadRepository(
     marketplaceOid: row.marketplace_oid,
     repositoryEtag: result.etag ?? row.repository_etag,
   }
+}
+
+async function loadRepository(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  row: RepositoryRow,
+  identity: NonNullable<ReturnType<typeof parseRepositoryUrl>>,
+  previouslyReady: boolean,
+  counts: EnrichmentCounts,
+  now: () => string,
+  log?: Log,
+): Promise<LoadedRepository | null> {
+  let result: RepoResult<GitHubRepo>
+  try {
+    result = row.repository_etag
+      ? await reader.getRepository(identity.owner, identity.repo, row.repository_etag)
+      : await reader.getRepository(identity.owner, identity.repo)
+  } catch (error) {
+    if (error instanceof GitHubFatalError) logRepositoryFatalError(error, runId, row, identity, log)
+    throw error
+  }
+  if (result.kind === 'not-found') return removeMissingRepository(db, runId, row, identity, counts, log)
+  if (result.kind === 'temporary-error') {
+    recordProblem(db, runId, counts, row, temporaryCategory('repository', result), previouslyReady, false, now, result.retryCount, log, {
+      request: `GET /repos/${identity.owner}/${identity.repo}`,
+      status: result.status,
+      reason: result.reason,
+    })
+    return null
+  }
+  if (result.kind === 'not-modified') {
+    const cached = loadCachedRepository(row, identity, previouslyReady)
+    if (cached) return cached
+    recordProblem(db, runId, counts, row, 'repository_not_modified_without_data', previouslyReady, false, now)
+    return null
+  }
+  const loaded = buildLoadedRepository(db, row, identity, previouslyReady, result)
+  if (!loaded) recordProblem(db, runId, counts, row, 'repository_identity_mismatch', previouslyReady, true, now)
+  return loaded
 }
 
 async function enrichOne(
