@@ -378,6 +378,20 @@ function persistRepositoryMetadataOnMarketplaceError(
     const preserved = duplicate && marketplaceStateScore(duplicate) > marketplaceStateScore(row) ? duplicate : row
     const rebound = loaded.moved ? rebindCanonicalUrl(db, row.id, loaded.canonical.htmlUrl, at) : { id: row.id, removedId: null }
     if (!getRepositoryById(db, rebound.id)) throw new Error('Canonical repository disappeared during metadata update')
+    if (!loaded.ready) {
+      db.prepare(`
+        UPDATE repositories SET
+          owner = NULL,
+          owner_url = NULL,
+          repo_name = NULL,
+          github_node_id = COALESCE(?, github_node_id),
+          repository_etag = COALESCE(?, repository_etag),
+          updatedAt = ?
+        WHERE id = ?
+      `).run(loaded.githubNodeId, loaded.repositoryEtag, at, rebound.id)
+      if (rebound.removedId !== null) removedIds.add(rebound.removedId)
+      return { id: rebound.id, removedId: rebound.removedId, ready: false }
+    }
     updateEnriched(
       db,
       rebound.id,

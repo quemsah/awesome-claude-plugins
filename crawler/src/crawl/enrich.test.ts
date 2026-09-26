@@ -399,6 +399,62 @@ it('does not refetch an invalid GraphQL marketplace blob through REST and rememb
   ])
 })
 
+it('keeps a newly discovered repository with invalid marketplace content out of publication across cached retries', async () => {
+  const db = database()
+  const nodeId = 'node-new-invalid-marketplace'
+  const id = upsertDiscovery(db, 'https://github.com/team/new-invalid', 'discovered', new Date().toISOString(), nodeId)
+  const currentOid = 'd'.repeat(40)
+  const getMarketplace = vi.fn(async () => ({ kind: 'found' as const, data: { plugins: [] } }))
+  const getMarketplaceBlobsByNodeId = vi.fn(async () => ({
+    kind: 'found' as const,
+    data: [graphQLMarketplaceBlob(nodeId, currentOid, { text: '{"plugins":[' })],
+    rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+  }))
+  const client = {
+    ...reader(undefined, getMarketplace),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [
+        {
+          ...githubRepo('team', 'new-invalid'),
+          node_id: nodeId,
+          marketplace_oid: currentOid,
+          marketplace_byte_size: 100,
+          marketplace_is_binary: false,
+        },
+      ],
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+    getMarketplaceBlobsByNodeId,
+  }
+
+  const first = await enrichRepositories(db, client, 'crawl-1')
+
+  expect(first).toMatchObject({ newIncomplete: 1, newReady: 0, conclusive: 0 })
+  expect(getMarketplace).not.toHaveBeenCalled()
+  expect(listPublishable(db)).toEqual([])
+  expect(
+    db
+      .prepare(
+        'SELECT owner, owner_url, repo_name, marketplace_failed_oid, marketplace_failed_parser_version FROM repositories WHERE id = ?',
+      )
+      .get(id),
+  ).toEqual({
+    owner: null,
+    owner_url: null,
+    repo_name: null,
+    marketplace_failed_oid: currentOid,
+    marketplace_failed_parser_version: 1,
+  })
+
+  const second = await enrichRepositories(db, client, 'crawl-1')
+
+  expect(second).toMatchObject({ newIncomplete: 1, newReady: 0, conclusive: 0, knownInvalidSkipped: 1 })
+  expect(getMarketplaceBlobsByNodeId).toHaveBeenCalledTimes(1)
+  expect(getMarketplace).not.toHaveBeenCalled()
+  expect(listPublishable(db)).toEqual([])
+})
+
 it('falls back to REST without negative-caching a stale metadata OID when the GraphQL blob OID changed', async () => {
   const db = database()
   const nodeId = 'node-marketplace-race'
