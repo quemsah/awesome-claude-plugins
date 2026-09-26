@@ -18,6 +18,49 @@ function virtualClock() {
 }
 
 describe('RateBudget', () => {
+  it('ignores an out-of-range GraphQL reset header and uses the payload reset time', () => {
+    const events: Parameters<NonNullable<ConstructorParameters<typeof RateBudget>[1]>>[0][] = []
+    const clock = virtualClock()
+    const budget = new RateBudget(clock, (event) => events.push(event))
+    const payloadResetAt = '2030-01-01T00:00:00Z'
+    const headers = new Headers({
+      'x-ratelimit-resource': 'graphql',
+      'x-ratelimit-limit': '5000',
+      'x-ratelimit-remaining': '100',
+      'x-ratelimit-used': '4900',
+      'x-ratelimit-reset': '9999999999999',
+    })
+
+    expect(() =>
+      budget.observeGraphQL({ cost: 1, remaining: 100, resetAt: payloadResetAt, limit: 5000, used: 4900 }, headers),
+    ).not.toThrow()
+
+    expect(events.at(-1)).toMatchObject({
+      bucket: 'graphql',
+      resetAt: new Date(payloadResetAt).toISOString(),
+    })
+  })
+
+  it('logs the effective GraphQL reset time used by the budget', () => {
+    const events: Parameters<NonNullable<ConstructorParameters<typeof RateBudget>[1]>>[0][] = []
+    const clock = virtualClock()
+    const budget = new RateBudget(clock, (event) => events.push(event))
+    const headers = new Headers({
+      'x-ratelimit-resource': 'graphql',
+      'x-ratelimit-limit': '5000',
+      'x-ratelimit-remaining': '100',
+      'x-ratelimit-used': '4900',
+      'x-ratelimit-reset': '2000000000',
+    })
+
+    budget.observeGraphQL({ cost: 1, remaining: 100, resetAt: '2030-01-01T00:00:00Z', limit: 5000, used: 4900 }, headers)
+
+    expect(events.at(-1)).toMatchObject({
+      bucket: 'graphql',
+      resetAt: new Date(2_000_000_000_000).toISOString(),
+    })
+  })
+
   it('keeps eleven code searches within the sliding ten-per-minute quota', async () => {
     const clock = virtualClock()
     const budget = new RateBudget(clock)
@@ -102,6 +145,48 @@ describe('RateBudget', () => {
     )
     await budget.acquire('code_search')
     expect(clock.time).toBeGreaterThan(90_000)
+  })
+
+  it('uses one fixed fallback reset when GraphQL headers omit x-ratelimit-reset', async () => {
+    let time = 0
+    let sleeps = 0
+    const budget = new RateBudget({
+      now: () => time,
+      sleep: async (milliseconds: number) => {
+        sleeps++
+        if (sleeps > 1) throw new Error('GraphQL fallback reset moved while waiting')
+        time += milliseconds
+      },
+    })
+    budget.observe(
+      'graphql',
+      new Headers({
+        'x-ratelimit-resource': 'graphql',
+        'x-ratelimit-limit': '5000',
+        'x-ratelimit-remaining': '500',
+      }),
+    )
+
+    await budget.acquire('graphql')
+
+    expect(sleeps).toBe(1)
+    expect(time).toBe(3_601_000)
+  })
+
+  it('holds GraphQL batches before they can consume the 10 percent primary quota reserve', async () => {
+    const clock = virtualClock()
+    const budget = new RateBudget(clock)
+    await budget.acquire('graphql')
+    budget.observeGraphQL({
+      cost: 100,
+      remaining: 550,
+      resetAt: new Date(120_000).toISOString(),
+      limit: 5_000,
+      used: 4_450,
+    })
+
+    await budget.acquire('graphql')
+    expect(clock.time).toBeGreaterThanOrEqual(121_000)
   })
 
   it('serializes simultaneous reservations rather than sending a burst', async () => {

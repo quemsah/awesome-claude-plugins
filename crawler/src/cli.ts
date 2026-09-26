@@ -7,6 +7,7 @@ import { CrawlError } from './crawl/runCrawl.js'
 import { GitHubClient, type GitHubReader } from './github/client.js'
 import type { GitHubRateBuckets, RateLog } from './github/rateBudget.js'
 import type { SizeRange } from './github/sizeRanges.js'
+import type { LogEvent } from './logging.js'
 import { TelegramNotificationError, TelegramNotifier } from './notify/telegram.js'
 import { DraftExportError, exportDraftSnapshot } from './output/exportDraft.js'
 import { type GitHubGit, GitHubGitClient } from './publish/githubGit.js'
@@ -185,18 +186,48 @@ async function ensureCrawlAvailable(
   return active.run_id
 }
 
+function updateGraphQLRateBucket(bucket: NonNullable<GitHubRateBuckets['graphql']>, event: Parameters<RateLog>[0]): void {
+  if (event.cost !== undefined) {
+    bucket.totalCost += event.cost
+    bucket.lastCost = event.cost
+  }
+  if (event.limit !== undefined) bucket.lastLimit = event.limit
+  if (event.used !== undefined) bucket.lastUsed = event.used
+  if (event.resetAt !== undefined) bucket.resetAt = event.resetAt
+  if (event.latencyMs !== undefined) {
+    bucket.totalLatencyMs = (bucket.totalLatencyMs ?? 0) + event.latencyMs
+    bucket.latencySamples = (bucket.latencySamples ?? 0) + 1
+    bucket.lastLatencyMs = event.latencyMs
+  }
+}
+
 function rateTracker(): { buckets: GitHubRateBuckets; log: RateLog; observed: () => boolean } {
   const buckets: GitHubRateBuckets = {
     code_search: { requests: 0, waitMs: 0, lastRemaining: null },
     core: { requests: 0, waitMs: 0, lastRemaining: null },
+    graphql: {
+      requests: 0,
+      waitMs: 0,
+      lastRemaining: null,
+      totalCost: 0,
+      lastCost: null,
+      lastLimit: null,
+      lastUsed: null,
+      resetAt: null,
+      totalLatencyMs: 0,
+      latencySamples: 0,
+      lastLatencyMs: null,
+    },
   }
   let hasObserved = false
   const rateLog: RateLog = (event) => {
     hasObserved = true
-    const bucket = buckets[event.bucket]
+    const bucket = event.bucket === 'graphql' ? buckets.graphql : buckets[event.bucket]
+    if (!bucket) return
     if (event.request) bucket.requests++
     if (event.waitMs !== undefined) bucket.waitMs += event.waitMs
     if (event.remaining !== undefined) bucket.lastRemaining = event.remaining
+    if (event.bucket === 'graphql' && buckets.graphql) updateGraphQLRateBucket(buckets.graphql, event)
   }
   return { buckets, log: rateLog, observed: () => hasObserved }
 }
@@ -216,6 +247,14 @@ async function runCrawl(
     new GitHubClient({ token: config.readToken ?? '', log: rates.log, signal: dependencies.signal })
   const git = !options.dryRun && config.publishEnabled ? gitFor(config, dependencies) : undefined
   const notifier = notifierFor(config, dependencies)
+  const log = (event: LogEvent) =>
+    output(
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        message: event.message ?? `${event.phase}: ${event.category}`,
+        ...event,
+      }),
+    )
   if (!notifier) output(JSON.stringify({ status: 'notifier-disabled' }))
   try {
     const result = await executeCrawl(db, reader, runId, {
@@ -227,10 +266,20 @@ async function runCrawl(
       rateBuckets: () => rates.buckets,
       signal: dependencies.signal,
       started: true,
+      log,
     })
     output(JSON.stringify(result))
   } finally {
-    if (rates.observed()) output(JSON.stringify({ phase: 'github_rate', runId, buckets: rates.buckets }))
+    if (rates.observed())
+      log({
+        level: 'info',
+        event: 'github.rate_summary',
+        phase: 'github_rate',
+        category: 'rate_summary',
+        runId,
+        message: 'GitHub API rate-limit summary',
+        buckets: rates.buckets,
+      })
   }
 }
 
@@ -384,6 +433,9 @@ export function formatCliError(error: unknown): string {
               ? 'input_or_storage_error'
               : 'unexpected_error'
   return JSON.stringify({
+    timestamp: new Date().toISOString(),
+    message: `Crawler command failed: ${category}`,
+    event: 'cli.failed',
     level: 'error',
     phase: 'cli',
     category,

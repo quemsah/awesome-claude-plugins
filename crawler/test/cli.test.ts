@@ -453,6 +453,8 @@ describe('CLI', () => {
         log?.({ bucket: 'code_search', remaining: 9 })
         log?.({ bucket: 'core', request: true })
         log?.({ bucket: 'core', waitMs: 750 })
+        log?.({ bucket: 'graphql', request: true })
+        log?.({ bucket: 'graphql', cost: 3, limit: 5_000, used: 12, remaining: 4_988, resetAt: '2026-09-23T13:00:00Z', latencyMs: 87 })
         return readerFixture()
       },
       output,
@@ -461,6 +463,19 @@ describe('CLI', () => {
     expect(report.buckets).toEqual({
       code_search: { requests: 1, waitMs: 0, lastRemaining: 9 },
       core: { requests: 1, waitMs: 750, lastRemaining: null },
+      graphql: {
+        requests: 1,
+        waitMs: 0,
+        lastRemaining: 4_988,
+        totalCost: 3,
+        lastCost: 3,
+        lastLimit: 5_000,
+        lastUsed: 12,
+        resetAt: '2026-09-23T13:00:00Z',
+        totalLatencyMs: 87,
+        latencySamples: 1,
+        lastLatencyMs: 87,
+      },
     })
     const draft = output.mock.calls.map(([line]) => JSON.parse(line)).find((line) => line.status === 'draft')
     expect(draft.report).toMatchObject({
@@ -626,7 +641,10 @@ describe('CLI', () => {
     expect(reader.searchCode).toHaveBeenCalledOnce()
     expect(git.updateBranch).toHaveBeenCalledOnce()
     expect(notifier.notifySuccess).toHaveBeenCalledWith(expect.objectContaining({ confirmedGitSha: 'd'.repeat(40) }))
-    expect(JSON.parse(output.mock.calls[0]?.[0])).toMatchObject({
+    const publishedOutput = output.mock.calls
+      .map(([line]) => JSON.parse(line) as { status?: string })
+      .find((line) => line.status === 'published')
+    expect(publishedOutput).toMatchObject({
       status: 'published',
       runId: 'automatic',
       sha: 'd'.repeat(40),

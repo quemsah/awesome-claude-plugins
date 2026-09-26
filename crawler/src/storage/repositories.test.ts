@@ -26,6 +26,11 @@ const enriched = {
   repo_name: 'repo',
   repo_updated: '2025-03-01T09:00:00Z',
   plugins_count: 3,
+  github_node_id: null,
+  marketplace_oid: null,
+  repository_etag: null,
+  marketplace_etag: null,
+  marketplace_parser_version: null,
 }
 
 afterEach(() => {
@@ -64,6 +69,34 @@ it('refreshes the description of an unenriched discovered row without changing i
     id,
     description: 'new description',
     ...(createdAt as { createdAt: string }),
+  })
+})
+
+it('stores the GraphQL node ID from discovery and caches enrichment OIDs and ETags', () => {
+  const { upsertDiscovery, updateEnriched } = repositoryStorage
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/example/repo', 'found', new Date().toISOString(), 'MDEwOlJlcG9zaXRvcnkx')
+  updateEnriched(db, id, {
+    ...enriched,
+    github_node_id: 'MDEwOlJlcG9zaXRvcnkx',
+    marketplace_oid: 'a'.repeat(40),
+    repository_etag: '"repo-tag"',
+    marketplace_etag: '"marketplace-tag"',
+    marketplace_parser_version: 1,
+  })
+
+  expect(
+    db
+      .prepare(
+        'SELECT github_node_id, marketplace_oid, repository_etag, marketplace_etag, marketplace_parser_version FROM repositories WHERE id = ?',
+      )
+      .get(id),
+  ).toEqual({
+    github_node_id: 'MDEwOlJlcG9zaXRvcnkx',
+    marketplace_oid: 'a'.repeat(40),
+    repository_etag: '"repo-tag"',
+    marketplace_etag: '"marketplace-tag"',
+    marketplace_parser_version: 1,
   })
 })
 

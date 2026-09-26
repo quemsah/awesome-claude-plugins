@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import { GitHubFatalError, type GitHubReader, GitHubTemporaryError } from '../github/client.js'
-import { SIZE_RANGES, type SizeRange } from '../github/sizeRanges.js'
+import type { SizeRange } from '../github/sizeRanges.js'
+import type { Log } from '../logging.js'
 import { ShutdownError, throwIfShutdown } from '../shutdown.js'
 import {
   beginRun,
@@ -22,6 +23,8 @@ export type RunCrawlOptions = {
   now?: () => Date
   signal?: AbortSignal
   started?: boolean
+  log?: Log
+  onPhase?: (phase: 'discovery' | 'enrichment') => void
 }
 
 export type CrawlSummary = {
@@ -96,9 +99,32 @@ async function crawlAndComplete(
     if (!heartbeatRun(db, runId, now())) throw new CrawlError('run_not_active')
   }
   throwIfShutdown(options.signal)
-  const discovery = await discover(db, reader, runId, options.ranges ?? SIZE_RANGES, heartbeat, now)
+  options.onPhase?.('discovery')
+  const discovery = await discover(db, reader, runId, options.ranges ?? [[0, 400_000]], heartbeat, now, options.log)
+  options.log?.({
+    level: 'info',
+    event: 'crawl.phase_completed',
+    phase: 'discovery',
+    category: 'phase_completed',
+    runId,
+    message: `Code Search completed: ${discovery.newUrls} new, ${discovery.existingUrls} existing, ${discovery.warningCount} warnings`,
+    newRepositories: discovery.newUrls,
+    existingRepositories: discovery.existingUrls,
+    successfulRanges: discovery.successfulRanges,
+    warningCount: discovery.warningCount,
+  })
   heartbeat()
-  const enrichment = await enrichRepositories(db, reader, runId, heartbeat, now)
+  options.onPhase?.('enrichment')
+  const enrichment = await enrichRepositories(db, reader, runId, heartbeat, now, options.log)
+  options.log?.({
+    level: 'info',
+    event: 'crawl.phase_completed',
+    phase: 'enrichment',
+    category: 'phase_completed',
+    runId,
+    message: `Enrichment completed: ${enrichment.conclusive} conclusive, ${enrichment.unchangedOnError} kept unchanged after errors, ${enrichment.newIncomplete} incomplete`,
+    ...enrichment,
+  })
   heartbeat()
   if (discovery.successfulRanges === 0) throw new CrawlError('no_successful_ranges')
   if (enrichment.conclusive === 0) throw new CrawlError('no_conclusive_enrichment')

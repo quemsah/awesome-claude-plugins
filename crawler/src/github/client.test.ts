@@ -1,5 +1,5 @@
 import { marketplaceFixtures } from '@awesome-claude-plugins/marketplace-contract/fixtures'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { GitHubClient, GitHubFatalError, GitHubTemporaryError } from './client.js'
 
 const repo = {
@@ -79,6 +79,324 @@ describe('GitHubClient', () => {
     expect(test.requests[0].url).toBe('https://api.github.com/repos/acme%20team/cool%2Frepo')
   })
 
+  it('sends If-None-Match and reports cached REST responses without parsing a 304 body', async () => {
+    const test = harness([
+      Response.json(repo, { headers: { etag: '"repo-v1"' } }),
+      new Response(null, { status: 304, headers: { etag: '"repo-v1"' } }),
+    ])
+
+    expect(await test.client.getRepository('acme', 'catalog', '"repo-v0"')).toEqual({
+      kind: 'found',
+      data: repo,
+      etag: '"repo-v1"',
+    })
+    expect(await test.client.getRepository('acme', 'catalog', '"repo-v1"')).toEqual({
+      kind: 'not-modified',
+      etag: '"repo-v1"',
+      retryCount: 0,
+    })
+    expect(new Headers(test.requests[0].init?.headers).get('if-none-match')).toBe('"repo-v0"')
+  })
+
+  it('loads repository metadata and marketplace blob OIDs by GraphQL node ID', async () => {
+    const nodeId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
+    const resetAt = '2026-09-23T22:00:00Z'
+    const test = harness([
+      Response.json(
+        {
+          data: {
+            nodes: [
+              {
+                id: nodeId,
+                url: repo.html_url,
+                name: repo.name,
+                description: repo.description,
+                stargazerCount: repo.stargazers_count,
+                forkCount: repo.forks_count,
+                pushedAt: repo.pushed_at,
+                isPrivate: false,
+                owner: { login: repo.owner.login, url: repo.owner.html_url },
+                watchers: { totalCount: repo.subscribers_count },
+                object: { oid: 'a'.repeat(40), byteSize: 123, isBinary: false },
+              },
+            ],
+            rateLimit: { cost: 2, remaining: 4_500, resetAt, limit: 5_000, used: 500 },
+          },
+        },
+        {
+          headers: {
+            'x-ratelimit-limit': '5000',
+            'x-ratelimit-remaining': '4500',
+            'x-ratelimit-used': '500',
+            'x-ratelimit-reset': '1790200800',
+          },
+        },
+      ),
+    ])
+
+    const result = await test.client.getRepositoriesByNodeId([nodeId])
+
+    expect(result).toEqual({
+      kind: 'found',
+      data: [
+        {
+          node_id: nodeId,
+          html_url: repo.html_url,
+          name: repo.name,
+          description: repo.description,
+          stargazers_count: repo.stargazers_count,
+          forks_count: repo.forks_count,
+          subscribers_count: repo.subscribers_count,
+          pushed_at: repo.pushed_at,
+          owner: repo.owner,
+          marketplace_oid: 'a'.repeat(40),
+          marketplace_byte_size: 123,
+          marketplace_is_binary: false,
+          private: false,
+        },
+      ],
+      rateLimit: { cost: 2, remaining: 4_500, resetAt, limit: 5_000, used: 500 },
+    })
+    expect(test.logs).toContainEqual(expect.objectContaining({ bucket: 'graphql', latencyMs: 0, cost: 2 }))
+    expect(test.requests[0].url).toBe('https://api.github.com/graphql')
+    expect(test.requests[0].init?.method).toBe('POST')
+    expect(new Headers(test.requests[0].init?.headers).get('x-github-next-global-id')).toBe('1')
+    const body = JSON.parse(String(test.requests[0].init?.body))
+    expect(body).toMatchObject({ variables: { ids: [nodeId] } })
+    expect(body.query).toContain('oid byteSize isBinary')
+  })
+
+  it('loads marketplace blob text in a separate GraphQL batch and preserves per-node alignment', async () => {
+    const firstId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
+    const secondId = 'MDEwOlJlcG9zaXRvcnkxMjk2Mjcw'
+    const text = JSON.stringify({ plugins: [] })
+    const test = harness([
+      Response.json({
+        data: {
+          nodes: [
+            {
+              id: firstId,
+              object: {
+                oid: 'b'.repeat(40),
+                text,
+                isTruncated: false,
+                isBinary: false,
+                byteSize: text.length,
+              },
+            },
+            { id: secondId, object: null },
+          ],
+          rateLimit: { cost: 3, remaining: 4_497, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 503 },
+        },
+      }),
+    ])
+
+    const result = await test.client.getMarketplaceBlobsByNodeId([firstId, secondId])
+
+    expect(result).toEqual({
+      kind: 'found',
+      data: [
+        {
+          repository_node_id: firstId,
+          oid: 'b'.repeat(40),
+          text,
+          byte_size: text.length,
+          is_binary: false,
+          is_truncated: false,
+        },
+        null,
+      ],
+      rateLimit: { cost: 3, remaining: 4_497, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 503 },
+    })
+    const body = JSON.parse(String(test.requests[0].init?.body))
+    expect(body).toMatchObject({ variables: { ids: [firstId, secondId] } })
+    expect(body.query).toContain('query MarketplaceBlobs')
+    expect(body.query).toContain('oid text isTruncated isBinary byteSize')
+  })
+
+  it('preserves marketplace blob metadata when only GraphQL Blob.text fails', async () => {
+    const nodeId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
+    const oid = 'c'.repeat(40)
+    const test = harness([
+      Response.json({
+        data: {
+          nodes: [
+            {
+              id: nodeId,
+              object: {
+                oid,
+                byteSize: 128,
+                isBinary: false,
+                isTruncated: false,
+                text: null,
+              },
+            },
+          ],
+          rateLimit: { cost: 2, remaining: 4_498, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 502 },
+        },
+        errors: [{ type: 'SOME_FIELD_ERROR', path: ['nodes', 0, 'object', 'text'], message: 'text unavailable' }],
+      }),
+    ])
+
+    const result = await test.client.getMarketplaceBlobsByNodeId([nodeId])
+
+    expect(result).toEqual({
+      kind: 'found',
+      data: [
+        {
+          repository_node_id: nodeId,
+          oid,
+          text: null,
+          byte_size: 128,
+          is_binary: false,
+          is_truncated: false,
+        },
+      ],
+      rateLimit: { cost: 2, remaining: 4_498, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 502 },
+    })
+  })
+
+  it('returns a marketplace GraphQL timeout after the first timed-out transport attempt', async () => {
+    const nodeId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
+    const timeoutSignal = AbortSignal.abort(new DOMException('Timed out', 'TimeoutError'))
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeoutSignal)
+    try {
+      const test = harness([new Error('timed out'), new Error('must not retry the same marketplace content batch')])
+
+      expect(await test.client.getMarketplaceBlobsByNodeId([nodeId])).toEqual({
+        kind: 'temporary-error',
+        status: null,
+        reason: 'GitHub GraphQL timeout',
+      })
+      expect(test.requests).toHaveLength(1)
+    } finally {
+      timeoutSpy.mockRestore()
+    }
+  })
+
+  it('keeps valid marketplace blobs when another node is malformed', async () => {
+    const firstId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
+    const secondId = 'MDEwOlJlcG9zaXRvcnkxMjk2Mjcw'
+    const text = JSON.stringify({ plugins: [{ name: 'first' }] })
+    const test = harness([
+      Response.json({
+        data: {
+          nodes: [
+            {
+              id: firstId,
+              object: {
+                oid: 'b'.repeat(40),
+                byteSize: text.length,
+                isBinary: false,
+                isTruncated: false,
+                text,
+              },
+            },
+            {
+              id: secondId,
+              object: {
+                byteSize: 10,
+                isBinary: false,
+                isTruncated: false,
+                text: '{}',
+              },
+            },
+          ],
+          rateLimit: { cost: 2, remaining: 4_498, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 502 },
+        },
+      }),
+    ])
+
+    const result = await test.client.getMarketplaceBlobsByNodeId([firstId, secondId])
+
+    expect(result.kind).toBe('found')
+    if (result.kind !== 'found') throw new Error('Expected a successful GraphQL batch')
+    expect(result.data[0]).toMatchObject({ repository_node_id: firstId, oid: 'b'.repeat(40), text })
+    expect(result.data[1]).toBeNull()
+  })
+
+  it('isolates marketplace node-scoped GraphQL errors instead of failing the whole batch', async () => {
+    const firstId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
+    const secondId = 'MDEwOlJlcG9zaXRvcnkxMjk2Mjcw'
+    const text = JSON.stringify({ plugins: [{ name: 'first' }] })
+    const test = harness([
+      Response.json({
+        data: {
+          nodes: [
+            {
+              id: firstId,
+              object: {
+                oid: 'b'.repeat(40),
+                byteSize: text.length,
+                isBinary: false,
+                isTruncated: false,
+                text,
+              },
+            },
+            null,
+          ],
+          rateLimit: { cost: 2, remaining: 4_498, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 502 },
+        },
+        errors: [{ type: 'SOME_NODE_ERROR', path: ['nodes', 1, 'object', 'text'], message: 'blob unavailable' }],
+      }),
+    ])
+
+    const result = await test.client.getMarketplaceBlobsByNodeId([firstId, secondId])
+
+    expect(result.kind).toBe('found')
+    if (result.kind !== 'found') throw new Error('Expected a successful GraphQL batch')
+    expect(result.data[0]).toMatchObject({ repository_node_id: firstId, oid: 'b'.repeat(40), text })
+    expect(result.data[1]).toBeNull()
+  })
+
+  it('accepts per-node NOT_FOUND errors when the matching GraphQL node is null', async () => {
+    const firstId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
+    const missingId = 'MDEwOlJlcG9zaXRvcnkxMjk2Mjcw'
+    const test = harness([
+      Response.json({
+        data: {
+          nodes: [
+            {
+              id: firstId,
+              url: repo.html_url,
+              name: repo.name,
+              description: repo.description,
+              stargazerCount: repo.stargazers_count,
+              forkCount: repo.forks_count,
+              pushedAt: repo.pushed_at,
+              isPrivate: false,
+              owner: { login: repo.owner.login, url: repo.owner.html_url },
+              watchers: { totalCount: repo.subscribers_count },
+              object: { oid: 'a'.repeat(40) },
+            },
+            null,
+          ],
+          rateLimit: { cost: 2, remaining: 4_500, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 500 },
+        },
+        errors: [{ type: 'NOT_FOUND', path: ['nodes', 1], message: 'Could not resolve to a node with the global id' }],
+      }),
+    ])
+
+    const result = await test.client.getRepositoriesByNodeId([firstId, missingId])
+
+    expect(result.kind).toBe('found')
+    if (result.kind !== 'found') throw new Error('Expected a successful GraphQL batch')
+    expect(result.data[0]).toMatchObject({ node_id: firstId, html_url: repo.html_url })
+    expect(result.data[1]).toBeNull()
+  })
+
+  it('backs off exponentially for GraphQL secondary limits and does not retry permission failures', async () => {
+    const secondary = harness(
+      Array.from({ length: 4 }, () => Response.json({ message: 'You have exceeded a secondary rate limit' }, { status: 403 })),
+    )
+    expect(await secondary.client.getRepositoriesByNodeId(['MDEwOlJlcG9zaXRvcnkx'])).toMatchObject({ kind: 'temporary-error' })
+    expect(secondary.requests.map(({ time }) => time)).toEqual([0, 60_000, 180_000, 420_000])
+
+    const forbidden = harness([Response.json({ message: 'Resource not accessible by integration' }, { status: 403 })])
+    await expect(forbidden.client.getRepositoriesByNodeId(['MDEwOlJlcG9zaXRvcnkx'])).rejects.toBeInstanceOf(GitHubFatalError)
+    expect(forbidden.requests).toHaveLength(1)
+  })
+
   it('treats a private repository as absent from the public catalog without retrying', async () => {
     const test = harness([Response.json({ ...repo, private: true })])
     expect(await test.client.getRepository('acme', 'catalog')).toEqual({ kind: 'not-found' })
@@ -89,7 +407,8 @@ describe('GitHubClient', () => {
     const test = harness([Response.json({ plugins: [] }, { headers: { etag: 'W/"marketplace-v1"' } })])
     expect(await test.client.getMarketplace('acme', 'catalog')).toEqual({
       kind: 'found',
-      data: { plugins: [], etag: 'W/"marketplace-v1"' },
+      data: { plugins: [] },
+      etag: 'W/"marketplace-v1"',
     })
     expect(test.requests[0].url).toBe('https://api.github.com/repos/acme/catalog/contents/.claude-plugin/marketplace.json')
     expect(test.requests[0].init?.headers).toMatchObject({ Accept: 'application/vnd.github.raw+json' })
@@ -98,7 +417,7 @@ describe('GitHubClient', () => {
   it('parses marketplace files larger than the Contents API base64 limit', async () => {
     const largeManifest = { plugins: [], padding: 'x'.repeat(1_100_000) }
     const test = harness([manifest(largeManifest)])
-    expect(await test.client.getMarketplace('acme', 'catalog')).toEqual({ kind: 'found', data: { plugins: [], etag: null } })
+    expect(await test.client.getMarketplace('acme', 'catalog')).toEqual({ kind: 'found', data: { plugins: [] } })
     expect(test.requests).toHaveLength(1)
   })
 
@@ -289,6 +608,29 @@ describe('GitHubClient', () => {
     expect((await test.client.getRepository('acme', 'catalog')).kind).toBe('temporary-error')
   })
 })
+it('aborts an in-flight GraphQL request when shutdown is requested', async () => {
+  const shutdown = new AbortController()
+  const requestSignals: AbortSignal[] = []
+  const client = new GitHubClient({
+    token: 'test-secret',
+    signal: shutdown.signal,
+    clock: { now: () => 0, sleep: async () => {} },
+    fetch: (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const signal = init?.signal
+      if (!(signal instanceof AbortSignal)) throw new Error('Expected request abort signal')
+      requestSignals.push(signal)
+      return await new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason ?? new Error('aborted')), { once: true })
+        queueMicrotask(() => shutdown.abort())
+      })
+    }) as typeof fetch,
+  })
+
+  await expect(client.getRepositoriesByNodeId(['MDEwOlJlcG9zaXRvcnkx'])).rejects.toMatchObject({ category: 'terminated' })
+  expect(requestSignals).toHaveLength(1)
+  expect(requestSignals[0]?.aborted).toBe(true)
+})
+
 it('cancels a production rate-limit wait when shutdown is requested', async () => {
   const shutdown = new AbortController()
   let requests = 0
