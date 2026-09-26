@@ -11,6 +11,12 @@ const summary: TelegramSummary = {
   problematicRanges: ['size:0..100', 'size:101..200'],
 }
 
+function required<T>(values: readonly T[], index: number): T {
+  const value = values[index]
+  if (value === undefined) throw new Error(`Missing fixture at index ${index}`)
+  return value
+}
+
 function harness(responses: Array<Response | Error>) {
   let time = 0
   const requests: Array<{ url: string; init: RequestInit | undefined; time: number }> = []
@@ -43,13 +49,13 @@ describe('TelegramNotifier', () => {
     const test = harness([Response.json({ ok: true })])
     const unconfirmed = { ...summary, confirmedGitSha: 'unconfirmed-sha' }
     await test.notifier.notifyDryRun(unconfirmed)
-    expect(body(test.requests[0]).text).toContain('Dry run completed')
-    expect(body(test.requests[0]).text).not.toMatch(/SHA|unconfirmed-sha|Publication succeeded/)
+    expect(body(required(test.requests, 0)).text).toContain('Dry run completed')
+    expect(body(required(test.requests, 0)).text).not.toMatch(/SHA|unconfirmed-sha|Publication succeeded/)
   })
   it('includes total crawl duration in the completion report', async () => {
     const test = harness([Response.json({ ok: true })])
     await test.notifier.notifyDryRun({ ...summary, durationMs: 3_661_000 })
-    expect(body(test.requests[0]).text).toContain('duration: 1h 1m 1s')
+    expect(body(required(test.requests, 0)).text).toContain('duration: 1h 1m 1s')
   })
   it('sends a start summary as plain text over POST with a deadline and no published SHA', async () => {
     const test = harness([Response.json({ ok: true, result: { message_id: 1 } })])
@@ -57,7 +63,7 @@ describe('TelegramNotifier', () => {
     await test.notifier.notifyStart(accidentalSha)
 
     expect(test.requests).toHaveLength(1)
-    const [request] = test.requests
+    const request = required(test.requests, 0)
     expect(request.url).toBe('https://api.telegram.org/bot[REDACTED]/sendMessage')
     expect(request.init?.method).toBe('POST')
     expect(request.init?.headers).toEqual({ 'Content-Type': 'application/json' })
@@ -74,10 +80,10 @@ describe('TelegramNotifier', () => {
     const pendingSha = { ...summary, reason: 'no_successful_ranges', confirmedGitSha: 'pending-sha' }
     await test.notifier.notifyFailure(pendingSha)
 
-    expect(body(test.requests[0]).text).toBe(
+    expect(body(required(test.requests, 0)).text).toBe(
       'Crawl failed\nrun_id: run-17\ncatalog size: 40959\nnew: 3\ndeleted: 1\nskipped: 2\nproblematic size ranges: size:0..100, size:101..200\nreason: no_successful_ranges',
     )
-    expect(test.requests[0].init?.body).not.toContain('pending-sha')
+    expect(required(test.requests, 0).init?.body).not.toContain('pending-sha')
   })
 
   it('rejects a failure reason containing credentials before contacting Telegram', async () => {
@@ -93,7 +99,7 @@ describe('TelegramNotifier', () => {
   it('accepts a short GitHub failure category unchanged', async () => {
     const test = harness([Response.json({ ok: true })])
     await test.notifier.notifyFailure({ ...summary, reason: 'github_fatal_error' })
-    expect(body(test.requests[0]).text).toContain('\nreason: github_fatal_error')
+    expect(body(required(test.requests, 0)).text).toContain('\nreason: github_fatal_error')
   })
 
   it.each(['', 'UPPERCASE', 'invalid reason', 'a'.repeat(65)])('rejects invalid failure category %j before fetch', async (reason) => {
@@ -106,7 +112,7 @@ describe('TelegramNotifier', () => {
     const test = harness([Response.json({ ok: true })])
     await test.notifier.notifySuccess({ ...summary, confirmedGitSha: 'a'.repeat(40) })
 
-    expect(body(test.requests[0]).text).toBe(
+    expect(body(required(test.requests, 0)).text).toBe(
       `Publication succeeded\nrun_id: run-17\ncatalog size: 40959\nnew: 3\ndeleted: 1\nskipped: 2\nproblematic size ranges: size:0..100, size:101..200\nconfirmed Git SHA: ${'a'.repeat(40)}`,
     )
   })
@@ -120,7 +126,7 @@ describe('TelegramNotifier', () => {
       confirmedGitSha: 'a'.repeat(40),
     })
 
-    const message = body(test.requests[0]).text
+    const message = body(required(test.requests, 0)).text
     expect(message.length).toBeLessThanOrEqual(4096)
     expect(message).toContain('220 problematic size ranges')
     expect(message).toContain('size:0..9999')
@@ -181,7 +187,7 @@ describe('TelegramNotifier', () => {
         },
       },
     })
-    const message = body(test.requests[0]).text
+    const message = body(required(test.requests, 0)).text
     expect(message).toContain('updated: 23')
     expect(message).toContain('new incomplete: 1')
     expect(message).toContain('deleted 404: 4')
@@ -364,7 +370,7 @@ it('treats shutdown during the final Telegram 429 JSON parse as termination', as
     Response.json({ ok: false, parameters: { retry_after: 1 } }, { status: 429 }),
     Response.json({ ok: false, parameters: { retry_after: 1 } }, { status: 429 }),
   ]
-  responses[2].json = async () => {
+  required(responses, 2).json = async () => {
     shutdown.abort()
     return { ok: false, parameters: { retry_after: 1 } }
   }
