@@ -20,6 +20,12 @@ function pluginSignal(repo: CatalogRepo) {
   return (repo.plugins_count ?? 0) * Math.log10((repo.stargazers_count ?? 0) + 10)
 }
 
+function required<T>(values: readonly T[], index: number): T {
+  const value = values[index]
+  if (value === undefined) throw new Error(`Missing fixture at index ${index}`)
+  return value
+}
+
 describe('searchCatalogRepos', () => {
   it('keeps review-needed canonical records discoverable', () => {
     const results = searchCatalogRepos('lean-playground', 'stars-desc')
@@ -45,13 +51,13 @@ describe('searchCatalogRepos', () => {
     const plugins = searchCatalogRepos(query, 'plugins-desc', 0, pageSize).repos
 
     for (let index = 1; index < stars.length; index += 1) {
-      expect(stars[index - 1].stargazers_count ?? 0).toBeGreaterThanOrEqual(stars[index].stargazers_count ?? 0)
+      expect(required(stars, index - 1).stargazers_count ?? 0).toBeGreaterThanOrEqual(required(stars, index).stargazers_count ?? 0)
     }
     for (let index = 1; index < forks.length; index += 1) {
-      expect(forks[index - 1].forks_count ?? 0).toBeGreaterThanOrEqual(forks[index].forks_count ?? 0)
+      expect(required(forks, index - 1).forks_count ?? 0).toBeGreaterThanOrEqual(required(forks, index).forks_count ?? 0)
     }
     for (let index = 1; index < plugins.length; index += 1) {
-      expect(pluginSignal(plugins[index - 1])).toBeGreaterThanOrEqual(pluginSignal(plugins[index]))
+      expect(pluginSignal(required(plugins, index - 1))).toBeGreaterThanOrEqual(pluginSignal(required(plugins, index)))
     }
   })
 
@@ -78,8 +84,8 @@ describe('searchCatalogRepos', () => {
     for (const { repos, keys } of cases) {
       let sawTie = false
       for (let index = 1; index < repos.length; index += 1) {
-        const left = repos[index - 1]
-        const right = repos[index]
+        const left = required(repos, index - 1)
+        const right = required(repos, index)
         if (JSON.stringify(keys(left)) !== JSON.stringify(keys(right))) continue
 
         sawTie = true
