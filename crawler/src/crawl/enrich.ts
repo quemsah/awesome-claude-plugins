@@ -1207,8 +1207,8 @@ async function enrichGraphQLOne(
       )
     : await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, policy, log)
   if (isRetryLater(marketplace)) {
-    queueRetry(retryQueue, row, () => {
-      if (removedIds.has(row.id)) return Promise.resolve()
+    queueRetry(retryQueue, row, async () => {
+      if (removedIds.has(row.id)) return
       await beginDeferredRetry(reader, marketplace)
       return enrichGraphQLOne(
         db,
