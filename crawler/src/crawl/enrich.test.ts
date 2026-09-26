@@ -1400,4 +1400,5 @@ it('aborts on fatal reader errors while retaining earlier per-row updates', asyn
   await expect(enrichRepositories(db, client, 'crawl-1')).rejects.toBeInstanceOf(GitHubFatalError)
   expect(db.prepare('SELECT owner FROM repositories WHERE id = ?').get(first)).toEqual({ owner: 'team' })
   expect(db.prepare('SELECT owner FROM repositories WHERE id = ?').get(second)).toEqual({ owner: null })
+  expect(getRun(db, 'crawl-1')).toMatchObject({ phase: 'enrichment', phase_total: 2, phase_processed: 1 })
 })
