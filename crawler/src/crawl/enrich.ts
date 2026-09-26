@@ -1079,19 +1079,7 @@ export async function enrichRepositories(
     for (let offset = 0; offset < graphQLRows.length; ) {
       const batch = graphQLRows.slice(offset, offset + batchState.size)
       offset += batch.length
-      await enrichGraphQLBatch(
-        db,
-        reader,
-        runId,
-        batch,
-        counts,
-        removedIds,
-        batchState,
-        now,
-        onProgress,
-        log,
-        markRepositoryProcessed,
-      )
+      await enrichGraphQLBatch(db, reader, runId, batch, counts, removedIds, batchState, now, onProgress, log, markRepositoryProcessed)
     }
     onProgress?.()
   }
