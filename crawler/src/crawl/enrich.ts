@@ -14,7 +14,7 @@ import {
   rebindCanonicalUrl,
   updateEnriched,
 } from '../storage/repositories.js'
-import { recordRunError, runWhileActive } from '../storage/runs.js'
+import { advanceRunPhase, recordRunError, runWhileActive } from '../storage/runs.js'
 
 export type EnrichmentCounts = {
   updated: number
@@ -1037,6 +1037,7 @@ export async function enrichRepositories(
       offset += batch.length
       await enrichGraphQLBatch(db, reader, runId, batch, counts, removedIds, batchState, now, onProgress, log)
     }
+    advanceRunPhase(db, runId, rows.length, now())
     onProgress?.()
   }
   return counts
