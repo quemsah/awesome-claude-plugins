@@ -45,7 +45,13 @@ export type GitHubGraphQLRepo = GitHubRepo & {
 export type GraphQLRateLimit = { cost: number; remaining: number; resetAt: string; limit: number; used: number }
 type GraphQLResult<T> =
   | { kind: 'found'; data: Array<T | null>; rateLimit: GraphQLRateLimit }
-  | { kind: 'temporary-error'; status: number | null; reason: string }
+  | {
+      kind: 'temporary-error'
+      status: number | null
+      reason: string
+      failureReason?: GitHubRetryReason
+      retryable?: boolean
+    }
 
 export type GraphQLBatchResult = GraphQLResult<GitHubGraphQLRepo>
 
@@ -97,6 +103,7 @@ export interface GitHubReader {
   searchCode(query: string, page: number): Promise<SearchPage>
   getRepository(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<GitHubRepo>>
   getMarketplace(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<Marketplace>>
+  noteRetry?(bucket: RateResource, reason: GitHubRetryReason, waitMs?: number): void
   getRepositoriesByNodeId?(ids: readonly string[]): Promise<GraphQLBatchResult>
   getMarketplaceBlobsByNodeId?(ids: readonly string[]): Promise<GraphQLMarketplaceBlobBatchResult>
 }
@@ -368,6 +375,10 @@ export class GitHubClient implements GitHubReader {
     this.budget = new RateBudget(this.clock, options.log)
   }
 
+  noteRetry(bucket: RateResource, reason: GitHubRetryReason, waitMs = 0): void {
+    this.budget.recordRetry(bucket, reason, waitMs)
+  }
+
   async searchCode(query: string, page: number): Promise<SearchPage> {
     if (!Number.isInteger(page) || page < 1 || page > 10) throw new GitHubFatalError('Code search page must be 1..10', null)
     const params = new URLSearchParams({ q: query, per_page: '100', page: String(page) })
@@ -466,8 +477,18 @@ export class GitHubClient implements GitHubReader {
     const remaining = response.headers.get('x-ratelimit-remaining')
     if (remaining === '0') {
       if (attempt === 3) {
-        return { kind: 'result', result: { kind: 'temporary-error', status: response.status, reason: 'GitHub GraphQL rate limited' } }
+        return {
+          kind: 'result',
+          result: {
+            kind: 'temporary-error',
+            status: response.status,
+            reason: 'GitHub GraphQL rate limited',
+            failureReason: 'primary_rate_limit',
+            retryable: true,
+          },
+        }
       }
+      this.budget.recordRetry('graphql', 'primary_rate_limit', this.budget.pendingGlobalWaitMs('graphql'))
       return { kind: 'retry', secondaryCount }
     }
     if (response.status === 403 && delay === null) {
@@ -482,9 +503,16 @@ export class GitHubClient implements GitHubReader {
     if (attempt === 3) {
       return {
         kind: 'result',
-        result: { kind: 'temporary-error', status: response.status, reason: 'GitHub GraphQL secondary rate limit' },
+        result: {
+          kind: 'temporary-error',
+          status: response.status,
+          reason: 'GitHub GraphQL secondary rate limit',
+          failureReason: 'secondary_rate_limit',
+          retryable: true,
+        },
       }
     }
+    this.budget.recordRetry('graphql', 'secondary_rate_limit', this.budget.pendingGlobalWaitMs('graphql'))
     return { kind: 'retry', secondaryCount: nextSecondaryCount }
   }
 
@@ -502,13 +530,33 @@ export class GitHubClient implements GitHubReader {
     }
     if (response.status >= 500 && response.status <= 599) {
       if (attempt === 3) {
-        return { kind: 'result', result: { kind: 'temporary-error', status: response.status, reason: 'GitHub GraphQL server error' } }
+        return {
+          kind: 'result',
+          result: {
+            kind: 'temporary-error',
+            status: response.status,
+            reason: 'GitHub GraphQL server error',
+            failureReason: 'server_5xx',
+            retryable: true,
+          },
+        }
       }
-      this.budget.defer('graphql', Math.max(delay ?? 0, this.transientDelay(attempt)))
+      const waitMs = Math.max(delay ?? 0, this.transientDelay(attempt))
+      this.budget.recordRetry('graphql', 'server_5xx', waitMs)
+      await this.clock.sleep(waitMs, this.signal)
       return { kind: 'retry', secondaryCount }
     }
     if (!response.ok) {
-      return { kind: 'result', result: { kind: 'temporary-error', status: response.status, reason: 'GitHub GraphQL HTTP error' } }
+      return {
+        kind: 'result',
+        result: {
+          kind: 'temporary-error',
+          status: response.status,
+          reason: 'GitHub GraphQL HTTP error',
+          failureReason: 'http_error',
+          retryable: false,
+        },
+      }
     }
     return null
   }
@@ -523,15 +571,36 @@ export class GitHubClient implements GitHubReader {
     if (/secondary rate limit|abuse detection/i.test(message)) {
       const nextSecondaryCount = secondaryCount + 1
       this.budget.defer('graphql', delay ?? 60_000 * 2 ** (nextSecondaryCount - 1) + Math.floor(this.random() * 1_000))
-      if (attempt < 3) return { kind: 'retry', secondaryCount: nextSecondaryCount }
+      if (attempt < 3) {
+        this.budget.recordRetry('graphql', 'secondary_rate_limit', this.budget.pendingGlobalWaitMs('graphql'))
+        return { kind: 'retry', secondaryCount: nextSecondaryCount }
+      }
       return {
         kind: 'result',
-        result: { kind: 'temporary-error', status: response.status, reason: 'GitHub GraphQL secondary rate limit' },
+        result: {
+          kind: 'temporary-error',
+          status: response.status,
+          reason: 'GitHub GraphQL secondary rate limit',
+          failureReason: 'secondary_rate_limit',
+          retryable: true,
+        },
       }
     }
     if (/rate limit exceeded|primary rate limit/i.test(message)) {
-      if (attempt < 3) return { kind: 'retry', secondaryCount }
-      return { kind: 'result', result: { kind: 'temporary-error', status: response.status, reason: 'GitHub GraphQL rate limited' } }
+      if (attempt < 3) {
+        this.budget.recordRetry('graphql', 'primary_rate_limit', this.budget.pendingGlobalWaitMs('graphql'))
+        return { kind: 'retry', secondaryCount }
+      }
+      return {
+        kind: 'result',
+        result: {
+          kind: 'temporary-error',
+          status: response.status,
+          reason: 'GitHub GraphQL rate limited',
+          failureReason: 'primary_rate_limit',
+          retryable: true,
+        },
+      }
     }
     return null
   }
@@ -621,7 +690,13 @@ export class GitHubClient implements GitHubReader {
     } catch {
       return {
         kind: 'result',
-        result: { kind: 'temporary-error', status: response.status, reason: 'Invalid GraphQL response' },
+        result: {
+          kind: 'temporary-error',
+          status: response.status,
+          reason: 'Invalid GraphQL response',
+          failureReason: 'graphql_invalid_response',
+          retryable: true,
+        },
       }
     }
   }
@@ -657,6 +732,7 @@ export class GitHubClient implements GitHubReader {
     } catch {
       throwIfShutdown(this.signal)
       const timedOut = timeoutSignal.aborted
+      const failureReason: GitHubRetryReason = timedOut ? 'graphql_timeout' : 'network'
       if ((timedOut && !retryTimeouts) || attempt === 3) {
         return {
           kind: 'result',
@@ -664,10 +740,14 @@ export class GitHubClient implements GitHubReader {
             kind: 'temporary-error',
             status: null,
             reason: timedOut ? 'GitHub GraphQL timeout' : 'GitHub network error',
+            failureReason,
+            retryable: true,
           },
         }
       }
-      await this.clock.sleep(this.transientDelay(attempt), this.signal)
+      const waitMs = this.transientDelay(attempt)
+      this.budget.recordRetry('graphql', failureReason, waitMs)
+      await this.clock.sleep(waitMs, this.signal)
       return { kind: 'retry' }
     }
   }
@@ -683,7 +763,7 @@ export class GitHubClient implements GitHubReader {
   ): Promise<GraphQLAction<T>> {
     this.budget.observe('graphql', response.headers)
     const delay = retryAfter(response.headers, this.clock.now())
-    if (delay !== null) this.budget.defer('graphql', delay)
+    if (delay !== null && (response.status === 403 || response.status === 429 || response.ok)) this.budget.defer('graphql', delay)
     const statusAction = await this.handleGraphQLStatus<T>(response, attempt, delay, secondaryCount)
     if (statusAction) return statusAction
     return this.parseGraphQLPayload(response, ids, requestStartedAt, delay, attempt, secondaryCount, parseNode, isolateNodeErrors)
@@ -717,7 +797,13 @@ export class GitHubClient implements GitHubReader {
       if (action.kind === 'result') return action.result
       secondaryCount = action.secondaryCount
     }
-    return { kind: 'temporary-error', status: null, reason: 'GitHub GraphQL retry limit exceeded' }
+    return {
+      kind: 'temporary-error',
+      status: null,
+      reason: 'GitHub GraphQL retry limit exceeded',
+      failureReason: 'network',
+      retryable: true,
+    }
   }
 
   private async perform<T>(

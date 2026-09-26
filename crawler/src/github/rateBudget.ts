@@ -35,7 +35,15 @@ export type RateLog = (event: {
   retryReason?: GitHubRetryReason
   retryWaitMs?: number
 }) => void
-type RateBucketSummary = { requests: number; waitMs: number; lastRemaining: number | null }
+export type RetryReasonCounts = Partial<Record<GitHubRetryReason, number>>
+type RateBucketSummary = {
+  requests: number
+  waitMs: number
+  lastRemaining: number | null
+  retries?: number
+  retryWaitMs?: number
+  retryReasons?: RetryReasonCounts
+}
 export type GitHubRateBuckets = {
   code_search: RateBucketSummary
   core: RateBucketSummary
