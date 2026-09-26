@@ -7,8 +7,8 @@ import type Database from 'better-sqlite3'
 import type { GitHubGraphQLMarketplaceBlob } from '../github/client.js'
 import { GitHubFatalError, type GitHubGraphQLRepo, type GitHubReader, type GitHubRepo, type RepoResult } from '../github/client.js'
 import { isValidGitHubPathSegment, parseGitHubOwnerUrl } from '../github/identifiers.js'
-import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import type { GitHubRetryReason } from '../github/rateBudget.js'
+import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import type { Log } from '../logging.js'
 import {
   deleteById,
@@ -285,10 +285,7 @@ function retryReason(result: Extract<RepoResult<unknown>, { kind: 'temporary-err
   return 'invalid_response'
 }
 
-function deferTransient(
-  result: Extract<RepoResult<unknown>, { kind: 'temporary-error' }>,
-  policy: RestAttemptPolicy,
-): RetryLater | null {
+function deferTransient(result: Extract<RepoResult<unknown>, { kind: 'temporary-error' }>, policy: RestAttemptPolicy): RetryLater | null {
   return policy.deferTransient && result.retryable !== false ? { kind: RETRY_LATER, reason: retryReason(result) } : null
 }
 
@@ -726,20 +723,7 @@ async function loadGraphQLMarketplace(
     const resolved = resolveGraphQLMarketplaceBlob(db, runId, row, loaded, currentMarketplaceOid, blob, counts, now, log)
     if (resolved !== undefined) return resolved
   }
-  return loadGraphQLMarketplaceViaRest(
-    db,
-    reader,
-    runId,
-    row,
-    loaded,
-    currentMarketplaceOid,
-    blob,
-    counts,
-    removedIds,
-    now,
-    policy,
-    log,
-  )
+  return loadGraphQLMarketplaceViaRest(db, reader, runId, row, loaded, currentMarketplaceOid, blob, counts, removedIds, now, policy, log)
 }
 
 function loadCachedRepository(
@@ -989,18 +973,7 @@ async function enrichOne(
   if (isRetryLater(marketplace)) {
     retryQueue?.push(async () => {
       reader.noteRetry?.('core', marketplace.reason)
-      const retried = await loadLegacyMarketplace(
-        db,
-        reader,
-        runId,
-        row,
-        loaded,
-        counts,
-        removedIds,
-        now,
-        RETRY_PASS_REST,
-        log,
-      )
+      const retried = await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, RETRY_PASS_REST, log)
       if (!retried || isRetryLater(retried)) return
       const target = persistEnrichment(
         db,
@@ -1482,20 +1455,7 @@ export async function enrichRepositories(
     for (let offset = 0; offset < graphQLRows.length; ) {
       const batch = graphQLRows.slice(offset, offset + batchState.size)
       offset += batch.length
-      await enrichGraphQLBatch(
-        db,
-        reader,
-        runId,
-        batch,
-        counts,
-        removedIds,
-        batchState,
-        now,
-        FIRST_PASS_REST,
-        retryQueue,
-        onProgress,
-        log,
-      )
+      await enrichGraphQLBatch(db, reader, runId, batch, counts, removedIds, batchState, now, FIRST_PASS_REST, retryQueue, onProgress, log)
     }
     onProgress?.()
   }

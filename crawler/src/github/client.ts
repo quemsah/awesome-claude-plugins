@@ -1,14 +1,7 @@
 import { MarketplaceValidationError, parseMarketplaceManifest } from '@awesome-claude-plugins/marketplace-contract'
 import type { components, operations } from '@octokit/openapi-types'
 import { throwIfShutdown } from '../shutdown.js'
-import {
-  type Clock,
-  type GitHubRetryReason,
-  RateBudget,
-  type RateLog,
-  type RateResource,
-  systemClock,
-} from './rateBudget.js'
+import { type Clock, type GitHubRetryReason, RateBudget, type RateLog, type RateResource, systemClock } from './rateBudget.js'
 
 type SearchCodeResponse = operations['search/code']['responses'][200]['content']['application/json']
 type SearchCodeRepository = SearchCodeResponse['items'][number]['repository']
@@ -390,12 +383,7 @@ export class GitHubClient implements GitHubReader {
     return result.data
   }
 
-  async getRepository(
-    owner: string,
-    repo: string,
-    etag?: string,
-    options?: GitHubRequestOptions,
-  ): Promise<RepoResult<GitHubRepo>> {
+  async getRepository(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<GitHubRepo>> {
     const result = await this.request(
       'core',
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,

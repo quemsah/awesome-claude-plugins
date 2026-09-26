@@ -8,10 +8,7 @@ const CONTRACT_BLOB_SHA_BY_VERSION: Readonly<Record<number, string>> = {
 }
 
 function gitBlobSha(content: Buffer): string {
-  return createHash('sha1')
-    .update(`blob ${content.byteLength}\0`)
-    .update(content)
-    .digest('hex')
+  return createHash('sha1').update(`blob ${content.byteLength}\0`).update(content).digest('hex')
 }
 
 it('requires a marketplace parser version bump when the contract implementation changes', () => {

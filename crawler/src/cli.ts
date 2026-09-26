@@ -201,9 +201,12 @@ function updateGraphQLRateBucket(bucket: NonNullable<GitHubRateBuckets['graphql'
   }
 }
 
-function rateTracker(
-  checkpoint?: (buckets: GitHubRateBuckets) => void,
-): { buckets: GitHubRateBuckets; log: RateLog; observed: () => boolean; checkpoint: () => void } {
+function rateTracker(checkpoint?: (buckets: GitHubRateBuckets) => void): {
+  buckets: GitHubRateBuckets
+  log: RateLog
+  observed: () => boolean
+  checkpoint: () => void
+} {
   const buckets: GitHubRateBuckets = {
     code_search: { requests: 0, waitMs: 0, lastRemaining: null, retries: 0, retryWaitMs: 0, retryReasons: {} },
     core: { requests: 0, waitMs: 0, lastRemaining: null, retries: 0, retryWaitMs: 0, retryReasons: {} },
@@ -244,7 +247,11 @@ function rateTracker(
     if (event.retryReason) {
       bucket.retries = (bucket.retries ?? 0) + 1
       bucket.retryWaitMs = (bucket.retryWaitMs ?? 0) + (event.retryWaitMs ?? 0)
-      const reasons = (bucket.retryReasons ??= {})
+      let reasons = bucket.retryReasons
+      if (!reasons) {
+        reasons = {}
+        bucket.retryReasons = reasons
+      }
       reasons[event.retryReason] = (reasons[event.retryReason] ?? 0) + 1
     }
     if (event.bucket === 'graphql' && buckets.graphql) updateGraphQLRateBucket(buckets.graphql, event)

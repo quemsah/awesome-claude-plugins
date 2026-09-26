@@ -479,13 +479,7 @@ it('defers retryable REST failures until the first repository pass is complete',
   const counts = await enrichRepositories(db, client, 'crawl-1')
 
   expect(counts).toMatchObject({ newReady: 2, conclusive: 2, unchangedOnError: 0, newIncomplete: 0 })
-  expect(calls).toEqual([
-    'repo:first:max1',
-    'repo:second:max1',
-    'marketplace:second:max1',
-    'repo:first:max2',
-    'marketplace:first:max2',
-  ])
+  expect(calls).toEqual(['repo:first:max1', 'repo:second:max1', 'marketplace:second:max1', 'repo:first:max2', 'marketplace:first:max2'])
   expect(listRunErrors(db, 'crawl-1')).toEqual([])
 })
 

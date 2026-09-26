@@ -108,9 +108,7 @@ function retryDetails(name: string, bucket: GitHubRateBuckets['core']): string[]
   const reasons = Object.entries(bucket.retryReasons ?? {}).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
   return [
     `${name} requests: ${bucket.requests}; wait ms: ${bucket.waitMs}; retries: ${retries}; retry wait ms: ${retryWaitMs}`,
-    ...(reasons.length
-      ? [`${name} retry reasons: ${reasons.map(([reason, count]) => `${reason}: ${count}`).join(', ')}`]
-      : []),
+    ...(reasons.length ? [`${name} retry reasons: ${reasons.map(([reason, count]) => `${reason}: ${count}`).join(', ')}`] : []),
   ]
 }
 
