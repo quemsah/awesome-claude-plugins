@@ -17,6 +17,12 @@ function virtualClock() {
   }
 }
 
+function required<T>(values: readonly T[], index: number): T {
+  const value = values[index]
+  if (value === undefined) throw new Error(`Missing fixture at index ${index}`)
+  return value
+}
+
 describe('RateBudget', () => {
   it('ignores an out-of-range GraphQL reset header and uses the payload reset time', () => {
     const events: Parameters<NonNullable<ConstructorParameters<typeof RateBudget>[1]>>[0][] = []
@@ -71,9 +77,9 @@ describe('RateBudget', () => {
       sent.push(clock.time)
     }
 
-    expect(sent[0]).toBe(0)
-    expect(sent[10]).toBeGreaterThanOrEqual(60_000)
-    for (let i = 10; i < sent.length; i++) expect(sent[i] - sent[i - 10]).toBeGreaterThanOrEqual(60_000)
+    expect(required(sent, 0)).toBe(0)
+    expect(required(sent, 10)).toBeGreaterThanOrEqual(60_000)
+    for (let i = 10; i < sent.length; i++) expect(required(sent, i) - required(sent, i - 10)).toBeGreaterThanOrEqual(60_000)
   })
 
   it('never sends more than 5000 core requests in a sliding hour', async () => {
@@ -86,8 +92,8 @@ describe('RateBudget', () => {
       sent.push(clock.time)
     }
 
-    expect(sent[5000] - sent[0]).toBeGreaterThanOrEqual(3_600_000)
-    for (let i = 5000; i < sent.length; i++) expect(sent[i] - sent[i - 5000]).toBeGreaterThanOrEqual(3_600_000)
+    expect(required(sent, 5000) - required(sent, 0)).toBeGreaterThanOrEqual(3_600_000)
+    for (let i = 5000; i < sent.length; i++) expect(required(sent, i) - required(sent, i - 5000)).toBeGreaterThanOrEqual(3_600_000)
   })
 
   it('enforces the search sliding window even without conservative pacing', async () => {
@@ -199,7 +205,7 @@ describe('RateBudget', () => {
       }),
     )
 
-    expect(sent[10] - sent[0]).toBeGreaterThanOrEqual(60_000)
+    expect(required(sent, 10) - required(sent, 0)).toBeGreaterThanOrEqual(60_000)
   })
 
   it('holds retries until the deferred deadline and never shortens an existing reset', async () => {
