@@ -1,4 +1,6 @@
+import { parseMarketplaceManifest } from '@awesome-claude-plugins/marketplace-contract'
 import type Database from 'better-sqlite3'
+import type { GitHubGraphQLMarketplaceBlob } from '../github/client.js'
 import { GitHubFatalError, type GitHubGraphQLRepo, type GitHubReader, type GitHubRepo, type RepoResult } from '../github/client.js'
 import { isValidGitHubPathSegment, parseGitHubOwnerUrl } from '../github/identifiers.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
@@ -150,6 +152,7 @@ function persistEnrichment(
   marketplaceEtag: string | null,
   marketplaceParserVersion: number,
   at: string,
+  clearMarketplaceEtag = false,
 ): EnrichmentTarget {
   return runWhileActive(db, runId, () => {
     const rebound = loaded.moved ? rebindCanonicalUrl(db, row.id, loaded.canonical.htmlUrl, at) : { id: row.id, removedId: null }
@@ -177,6 +180,9 @@ function persistEnrichment(
       },
       at,
     )
+    if (clearMarketplaceEtag) {
+      db.prepare('UPDATE repositories SET marketplace_etag = NULL WHERE id = ?').run(rebound.id)
+    }
     return { id: rebound.id, removedId: rebound.removedId, ready }
   })
 }
@@ -222,12 +228,34 @@ function completeEnrichment(counts: EnrichmentCounts, target: EnrichmentTarget, 
 }
 
 const MARKETPLACE_PARSER_VERSION = 1
+const MARKETPLACE_CONTENT_BATCH_SIZE = 25
+const MARKETPLACE_CONTENT_MAX_BYTES = 750_000
+const MARKETPLACE_UNKNOWN_BYTES = 32_768
 
 type MarketplaceState = {
   pluginsCount: number
   marketplaceOid: string | null
   marketplaceEtag: string | null
+  clearMarketplaceEtag?: boolean
   parserVersion: number
+}
+
+function needsMarketplaceContent(row: RepositoryRow, currentMarketplaceOid: string): boolean {
+  return (
+    row.marketplace_oid !== currentMarketplaceOid ||
+    row.plugins_count === null ||
+    row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION
+  )
+}
+
+function decodeGraphQLMarketplaceBlob(blob: GitHubGraphQLMarketplaceBlob): { pluginsCount: number; marketplaceOid: string } | null {
+  if (blob.is_truncated || blob.is_binary !== false || blob.text === null) return null
+  try {
+    const marketplace = parseMarketplaceManifest(JSON.parse(blob.text))
+    return { pluginsCount: marketplace.plugins.length, marketplaceOid: blob.oid }
+  } catch {
+    return null
+  }
 }
 
 async function loadLegacyMarketplace(
@@ -323,22 +351,37 @@ async function loadGraphQLMarketplace(
   row: RepositoryRow,
   loaded: LoadedRepository,
   currentMarketplaceOid: string,
+  blob: GitHubGraphQLMarketplaceBlob | null,
   counts: EnrichmentCounts,
   removedIds: Set<number>,
   now: () => string,
   log?: Log,
 ): Promise<MarketplaceState | null> {
   const parserVersionChanged = row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION
-  if (row.marketplace_oid === currentMarketplaceOid && row.plugins_count !== null && !parserVersionChanged) {
+  if (!needsMarketplaceContent(row, currentMarketplaceOid)) {
     return {
-      pluginsCount: row.plugins_count,
+      pluginsCount: row.plugins_count as number,
       marketplaceOid: currentMarketplaceOid,
       marketplaceEtag: row.marketplace_etag,
       parserVersion: MARKETPLACE_PARSER_VERSION,
     }
   }
 
-  const changedOid = row.marketplace_oid !== currentMarketplaceOid
+  if (blob) {
+    const decoded = decodeGraphQLMarketplaceBlob(blob)
+    if (decoded) {
+      return {
+        pluginsCount: decoded.pluginsCount,
+        marketplaceOid: decoded.marketplaceOid,
+        marketplaceEtag: null,
+        clearMarketplaceEtag: true,
+        parserVersion: MARKETPLACE_PARSER_VERSION,
+      }
+    }
+  }
+
+  const authoritativeMarketplaceOid = blob?.oid ?? currentMarketplaceOid
+  const changedOid = row.marketplace_oid !== authoritativeMarketplaceOid
   let result: RepoResult<{ plugins: unknown[] }>
   try {
     result =
@@ -360,7 +403,7 @@ async function loadGraphQLMarketplace(
         request: `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/marketplace.json`,
         status: error.status,
         reason: error.message,
-        marketplaceOid: currentMarketplaceOid,
+        marketplaceOid: authoritativeMarketplaceOid,
       })
     }
     throw error
@@ -384,14 +427,14 @@ async function loadGraphQLMarketplace(
     if (!acceptGraphQLNotModified(db, runId, row, loaded, changedOid, counts, now, log)) return null
     return {
       pluginsCount: row.plugins_count,
-      marketplaceOid: currentMarketplaceOid,
+      marketplaceOid: authoritativeMarketplaceOid,
       marketplaceEtag,
       parserVersion: MARKETPLACE_PARSER_VERSION,
     }
   }
   return {
     pluginsCount: result.data.plugins.length,
-    marketplaceOid: currentMarketplaceOid,
+    marketplaceOid: null,
     marketplaceEtag,
     parserVersion: MARKETPLACE_PARSER_VERSION,
   }
@@ -624,6 +667,7 @@ async function enrichGraphQLOne(
   runId: string,
   row: RepositoryRow,
   data: GitHubGraphQLRepo | null,
+  marketplaceBlob: GitHubGraphQLMarketplaceBlob | null,
   counts: EnrichmentCounts,
   removedIds: Set<number>,
   now: () => string,
@@ -664,7 +708,7 @@ async function enrichGraphQLOne(
   }
   onProgress?.()
   const marketplace = loaded.marketplaceOid
-    ? await loadGraphQLMarketplace(db, reader, runId, row, loaded, loaded.marketplaceOid, counts, removedIds, now, log)
+    ? await loadGraphQLMarketplace(db, reader, runId, row, loaded, loaded.marketplaceOid, marketplaceBlob, counts, removedIds, now, log)
     : await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, log)
   if (!marketplace) return
   const target = persistEnrichment(
@@ -677,6 +721,7 @@ async function enrichGraphQLOne(
     marketplace.marketplaceEtag,
     marketplace.parserVersion,
     now(),
+    marketplace.clearMarketplaceEtag ?? false,
   )
   completeEnrichment(counts, target, removedIds)
 }
@@ -730,6 +775,138 @@ function tuneGraphQLBatch(state: GraphQLBatchState, rowCount: number, latency: n
   }
   state.stableBatches++
   if (state.stableBatches >= 5) state.size = 50
+}
+
+function marketplaceEstimatedBytes(repository: GitHubGraphQLRepo): number {
+  return repository.marketplace_byte_size ?? MARKETPLACE_UNKNOWN_BYTES
+}
+
+function canFetchMarketplaceByGraphQL(repository: GitHubGraphQLRepo): boolean {
+  return repository.marketplace_is_binary === false && marketplaceEstimatedBytes(repository) <= MARKETPLACE_CONTENT_MAX_BYTES
+}
+
+async function loadGraphQLMarketplaceBlobs(
+  runId: string,
+  reader: GitHubReader,
+  rows: RepositoryRow[],
+  repositories: Array<GitHubGraphQLRepo | null>,
+  onProgress?: () => void,
+  log?: Log,
+): Promise<Map<string, GitHubGraphQLMarketplaceBlob>> {
+  const getBlobs = reader.getMarketplaceBlobsByNodeId
+  const blobs = new Map<string, GitHubGraphQLMarketplaceBlob>()
+  if (!getBlobs) return blobs
+
+  const candidates: Array<{ nodeId: string; estimatedBytes: number }> = []
+  const seen = new Set<string>()
+  for (const [index, row] of rows.entries()) {
+    const repository = repositories[index] ?? null
+    const nodeId = row.github_node_id
+    if (
+      !nodeId ||
+      seen.has(nodeId) ||
+      !repository ||
+      repository.private ||
+      repository.marketplace_oid === null ||
+      canonicalIdentity(repository) === null ||
+      !needsMarketplaceContent(row, repository.marketplace_oid) ||
+      !canFetchMarketplaceByGraphQL(repository)
+    ) {
+      continue
+    }
+    seen.add(nodeId)
+    candidates.push({ nodeId, estimatedBytes: marketplaceEstimatedBytes(repository) })
+  }
+
+  const fetchBatch = async (batch: Array<{ nodeId: string; estimatedBytes: number }>): Promise<void> => {
+    if (batch.length === 0) return
+    onProgress?.()
+    let result: Awaited<ReturnType<typeof getBlobs>>
+    try {
+      result = await getBlobs.call(
+        reader,
+        batch.map(({ nodeId }) => nodeId),
+      )
+    } catch (error) {
+      if (error instanceof GitHubFatalError) {
+        log?.({
+          level: 'error',
+          event: 'crawl.request_failed',
+          phase: 'enrichment',
+          category: 'github_fatal_error',
+          runId,
+          message: `GraphQL marketplace content request failed for ${batch.length} repositories`,
+          request: 'POST /graphql',
+          status: error.status,
+          reason: error.message,
+          batchSize: batch.length,
+          repositoryUrls: rows
+            .filter((row) => batch.some((candidate) => candidate.nodeId === row.github_node_id))
+            .map((row) => row.html_url)
+            .filter((url): url is string => Boolean(url)),
+        })
+      }
+      throw error
+    }
+    if (result.kind === 'temporary-error') {
+      const canSplit = batch.length > 1 && /timeout|invalid graphql response/i.test(result.reason)
+      log?.({
+        level: 'warn',
+        event: 'crawl.graphql_marketplace_batch_fallback',
+        phase: 'enrichment',
+        category: 'graphql_marketplace_temporary_error',
+        runId,
+        message: canSplit
+          ? `GraphQL marketplace content batch failed; splitting ${batch.length} repositories`
+          : `GraphQL marketplace content unavailable; falling back to REST for ${batch.length} repositories`,
+        request: 'POST /graphql',
+        status: result.status,
+        reason: result.reason,
+        batchSize: batch.length,
+        repositoryUrls: rows
+          .filter((row) => batch.some((candidate) => candidate.nodeId === row.github_node_id))
+          .map((row) => row.html_url)
+          .filter((url): url is string => Boolean(url)),
+        fallback: canSplit ? 'split' : 'REST',
+      })
+      if (canSplit) {
+        const midpoint = Math.ceil(batch.length / 2)
+        await fetchBatch(batch.slice(0, midpoint))
+        await fetchBatch(batch.slice(midpoint))
+      }
+      return
+    }
+
+    for (const [index, candidate] of batch.entries()) {
+      const blob = result.data[index] ?? null
+      // GitHub may return a migrated global node ID when X-Github-Next-Global-ID is enabled.
+      // nodes(ids:) preserves positional alignment, so correlate by the requested ID.
+      if (blob) blobs.set(candidate.nodeId, blob)
+    }
+  }
+
+  let offset = 0
+  while (offset < candidates.length) {
+    const batch: Array<{ nodeId: string; estimatedBytes: number }> = []
+    let estimatedBytes = 0
+    while (offset < candidates.length && batch.length < MARKETPLACE_CONTENT_BATCH_SIZE) {
+      const candidate = candidates[offset]
+      if (!candidate) break
+      if (batch.length > 0 && estimatedBytes + candidate.estimatedBytes > MARKETPLACE_CONTENT_MAX_BYTES) break
+      batch.push(candidate)
+      estimatedBytes += candidate.estimatedBytes
+      offset++
+    }
+    if (batch.length === 0) {
+      const candidate = candidates[offset]
+      if (!candidate) break
+      batch.push(candidate)
+      offset++
+    }
+    await fetchBatch(batch)
+  }
+
+  return blobs
 }
 
 async function enrichGraphQLBatch(
@@ -792,8 +969,10 @@ async function enrichGraphQLBatch(
   }
 
   tuneGraphQLBatch(state, rows.length, latency, result.rateLimit.cost)
+  const marketplaceBlobs = await loadGraphQLMarketplaceBlobs(runId, reader, rows, result.data, onProgress, log)
   for (const [index, row] of rows.entries()) {
-    await enrichGraphQLOne(db, reader, runId, row, result.data[index] ?? null, counts, removedIds, now, onProgress, log)
+    const marketplaceBlob = row.github_node_id ? (marketplaceBlobs.get(row.github_node_id) ?? null) : null
+    await enrichGraphQLOne(db, reader, runId, row, result.data[index] ?? null, marketplaceBlob, counts, removedIds, now, onProgress, log)
   }
 }
 
