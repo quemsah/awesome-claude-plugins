@@ -87,18 +87,29 @@ function parseCrawlOptions(args: string[]): Pick<ParsedOptions, 'dryRun'> {
 }
 
 function parsePublishOptions(args: string[]): Pick<ParsedOptions, 'publishId' | 'recoverPublication'> {
-  const recoverPublication = args.length === 4 && args[2] === '--recover' && args[3] === '--confirm-stopped'
-  if ((args.length !== 2 && !recoverPublication) || args[0] !== '--run-id' || !/^[A-Za-z0-9_-]{1,100}$/.test(args[1] ?? '')) {
+  const [runIdOption, publishId, recoverOption, confirmStoppedOption] = args
+  const recoverPublication = args.length === 4 && recoverOption === '--recover' && confirmStoppedOption === '--confirm-stopped'
+  if (
+    (args.length !== 2 && !recoverPublication) ||
+    runIdOption !== '--run-id' ||
+    publishId === undefined ||
+    !/^[A-Za-z0-9_-]{1,100}$/.test(publishId)
+  ) {
     throw new Error('publish requires --run-id <id> [--recover --confirm-stopped]')
   }
-  return { publishId: args[1], recoverPublication }
+  return { publishId, recoverPublication }
 }
 
 function parseRunId(args: string[], command: 'recover-crawl' | 'export'): string {
   const expectedLength = command === 'export' ? 4 : 3
-  const valid = args.length === expectedLength && args[0] === '--run-id' && /^[A-Za-z0-9_-]{1,100}$/.test(args[1] ?? '')
-  if (command === 'recover-crawl' && valid && args[2] === '--confirm-stopped') return args[1]
-  if (command === 'export' && valid && args[2] === '--output-dir' && args[3]) return args[1]
+  const [runIdOption, runId, commandOption, commandValue] = args
+  const valid =
+    args.length === expectedLength &&
+    runIdOption === '--run-id' &&
+    runId !== undefined &&
+    /^[A-Za-z0-9_-]{1,100}$/.test(runId)
+  if (command === 'recover-crawl' && valid && commandOption === '--confirm-stopped') return runId
+  if (command === 'export' && valid && commandOption === '--output-dir' && commandValue) return runId
   throw new Error(`${command} requires --run-id <id> ${command === 'export' ? '--output-dir <absolute-path>' : '--confirm-stopped'}`)
 }
 
