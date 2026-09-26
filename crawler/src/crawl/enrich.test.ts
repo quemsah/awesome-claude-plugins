@@ -360,7 +360,7 @@ it('does not refetch an invalid GraphQL marketplace blob through REST and rememb
       kind: 'found' as const,
       data: [
         {
-          ...githubRepo('team', 'repo'),
+          ...githubRepo('renamed-team', 'repo'),
           node_id: nodeId,
           marketplace_oid: currentOid,
           marketplace_byte_size: 100,
@@ -380,10 +380,14 @@ it('does not refetch an invalid GraphQL marketplace blob through REST and rememb
   expect(
     db
       .prepare(
-        'SELECT plugins_count, marketplace_oid, marketplace_failed_oid, marketplace_failed_parser_version FROM repositories WHERE id = ?',
+        'SELECT html_url, owner, description, stargazers_count, plugins_count, marketplace_oid, marketplace_failed_oid, marketplace_failed_parser_version FROM repositories WHERE id = ?',
       )
       .get(id),
   ).toEqual({
+    html_url: 'https://github.com/renamed-team/repo',
+    owner: 'renamed-team',
+    description: 'fresh',
+    stargazers_count: 10,
     plugins_count: (before as { plugins_count: number }).plugins_count,
     marketplace_oid: oldOid,
     marketplace_failed_oid: currentOid,
