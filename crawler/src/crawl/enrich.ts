@@ -344,12 +344,67 @@ type InvalidMarketplaceIdentity = {
   contentOid: string | null
 }
 
+function marketplaceStateScore(row: RepositoryRow): number {
+  let score = 0
+  if (row.marketplace_parser_version === MARKETPLACE_PARSER_VERSION) score += 16
+  else if (row.marketplace_parser_version !== null) score += 8
+  if (row.marketplace_oid !== null) score += 4
+  if (row.marketplace_etag !== null) score += 2
+  if (row.plugins_count !== null) score += 1
+  return score
+}
+
+function persistRepositoryMetadataOnMarketplaceError(
+  db: Database.Database,
+  runId: string,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  removedIds: Set<number>,
+  at: string,
+): EnrichmentTarget {
+  return runWhileActive(db, runId, () => {
+    const duplicate = loaded.moved
+      ? (db
+          .prepare('SELECT * FROM repositories WHERE html_url = ? COLLATE NOCASE AND id != ? ORDER BY id LIMIT 1')
+          .get(loaded.canonical.htmlUrl, row.id) as RepositoryRow | undefined)
+      : undefined
+    const preserved =
+      duplicate && marketplaceStateScore(duplicate) > marketplaceStateScore(row) ? duplicate : row
+    const rebound = loaded.moved ? rebindCanonicalUrl(db, row.id, loaded.canonical.htmlUrl, at) : { id: row.id, removedId: null }
+    if (!getRepositoryById(db, rebound.id)) throw new Error('Canonical repository disappeared during metadata update')
+    updateEnriched(
+      db,
+      rebound.id,
+      {
+        stargazers_count: loaded.data.stargazers_count,
+        forks_count: loaded.data.forks_count,
+        subscribers_count: loaded.data.subscribers_count,
+        description: loaded.data.description,
+        owner: loaded.owner,
+        owner_url: loaded.ownerUrl,
+        repo_name: loaded.repo,
+        repo_updated: loaded.data.pushed_at,
+        plugins_count: preserved.plugins_count,
+        github_node_id: loaded.githubNodeId,
+        marketplace_oid: preserved.marketplace_oid,
+        repository_etag: loaded.repositoryEtag,
+        marketplace_etag: preserved.marketplace_etag,
+        marketplace_parser_version: preserved.marketplace_parser_version,
+      },
+      at,
+    )
+    if (rebound.removedId !== null) removedIds.add(rebound.removedId)
+    return { id: rebound.id, removedId: rebound.removedId, ready: loaded.ready }
+  })
+}
+
 function recordInvalidMarketplace(
   db: Database.Database,
   runId: string,
   counts: EnrichmentCounts,
   row: RepositoryRow,
-  ready: boolean,
+  loaded: LoadedRepository,
+  removedIds: Set<number>,
   failure: 'invalid-json' | 'invalid-manifest',
   reason: string,
   status: number,
@@ -359,16 +414,17 @@ function recordInvalidMarketplace(
   now: () => string,
   log?: Log,
 ): null {
+  const target = persistRepositoryMetadataOnMarketplaceError(db, runId, row, loaded, removedIds, now())
   if (identity.cacheOid) {
     runWhileActive(db, runId, () => {
       db.prepare('UPDATE repositories SET marketplace_failed_oid = ?, marketplace_failed_parser_version = ? WHERE id = ?').run(
         identity.cacheOid,
         MARKETPLACE_PARSER_VERSION,
-        row.id,
+        target.id,
       )
     })
   }
-  recordProblem(db, runId, counts, row, invalidContentCategory(failure), ready, true, now, retryCount, log, {
+  recordProblem(db, runId, counts, row, invalidContentCategory(failure), loaded.ready, true, now, retryCount, log, {
     request,
     status,
     reason,
@@ -384,9 +440,21 @@ function recordKnownInvalidMarketplace(
   counts: EnrichmentCounts,
   row: RepositoryRow,
   loaded: LoadedRepository,
+  removedIds: Set<number>,
   now: () => string,
   log?: Log,
 ): null {
+  const failedOid = row.marketplace_failed_oid
+  const target = persistRepositoryMetadataOnMarketplaceError(db, runId, row, loaded, removedIds, now())
+  if (failedOid) {
+    runWhileActive(db, runId, () => {
+      db.prepare('UPDATE repositories SET marketplace_failed_oid = ?, marketplace_failed_parser_version = ? WHERE id = ?').run(
+        failedOid,
+        MARKETPLACE_PARSER_VERSION,
+        target.id,
+      )
+    })
+  }
   counts.knownInvalidSkipped = (counts.knownInvalidSkipped ?? 0) + 1
   recordProblem(db, runId, counts, row, 'marketplace_known_invalid_content', loaded.ready, true, now, 0, log, {
     request: null,
@@ -467,7 +535,8 @@ async function loadLegacyMarketplace(
       runId,
       counts,
       row,
-      loaded.ready,
+      loaded,
+      removedIds,
       result.failure,
       result.reason,
       result.status,
@@ -523,6 +592,7 @@ function resolveGraphQLMarketplaceBlob(
   currentMarketplaceOid: string,
   blob: GitHubGraphQLMarketplaceBlob,
   counts: EnrichmentCounts,
+  removedIds: Set<number>,
   now: () => string,
   log?: Log,
 ): MarketplaceState | null | undefined {
@@ -572,7 +642,8 @@ function resolveGraphQLMarketplaceBlob(
     runId,
     counts,
     row,
-    loaded.ready,
+    loaded,
+    removedIds,
     decoded.failure,
     decoded.reason,
     200,
@@ -664,7 +735,8 @@ async function loadGraphQLMarketplaceViaRest(
       runId,
       counts,
       row,
-      loaded.ready,
+      loaded,
+      removedIds,
       result.failure,
       result.reason,
       result.status,
@@ -709,7 +781,7 @@ async function loadGraphQLMarketplace(
   log?: Log,
 ): Promise<MarketplaceState | null | RetryLater> {
   if (row.marketplace_failed_oid === currentMarketplaceOid && row.marketplace_failed_parser_version === MARKETPLACE_PARSER_VERSION) {
-    return recordKnownInvalidMarketplace(db, runId, counts, row, loaded, now, log)
+    return recordKnownInvalidMarketplace(db, runId, counts, row, loaded, removedIds, now, log)
   }
   if (!needsMarketplaceContent(row, currentMarketplaceOid)) {
     return {
@@ -720,7 +792,7 @@ async function loadGraphQLMarketplace(
     }
   }
   if (blob) {
-    const resolved = resolveGraphQLMarketplaceBlob(db, runId, row, loaded, currentMarketplaceOid, blob, counts, now, log)
+    const resolved = resolveGraphQLMarketplaceBlob(db, runId, row, loaded, currentMarketplaceOid, blob, counts, removedIds, now, log)
     if (resolved !== undefined) return resolved
   }
   return loadGraphQLMarketplaceViaRest(db, reader, runId, row, loaded, currentMarketplaceOid, blob, counts, removedIds, now, policy, log)
