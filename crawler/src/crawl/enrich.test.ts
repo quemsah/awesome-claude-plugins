@@ -11,7 +11,7 @@ import {
   type RepoResult,
 } from '../github/client.js'
 import { listPublishable, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
-import { beginRun, listRunErrors } from '../storage/runs.js'
+import { beginRun, getRun, listRunErrors } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
 import { enrichRepositories } from './enrich.js'
 
@@ -1079,6 +1079,36 @@ it('counts a canonical merge as updated when the removed duplicate was already r
   ])
 })
 
+it('counts a canonical duplicate removed from a future page as processed', async () => {
+  const db = database()
+  const originalId = upsertDiscovery(db, 'https://github.com/old-team/repo', null)
+  ready(db, originalId, 'old-team', 'repo')
+  for (let id = 2; id <= 50; id++) {
+    db.prepare('INSERT INTO repositories (id, html_url, createdAt, updatedAt) VALUES (?, NULL, ?, ?)').run(
+      id,
+      'legacy-created',
+      'legacy-updated',
+    )
+  }
+  db.prepare(`
+    INSERT INTO repositories (id, html_url, createdAt, updatedAt)
+    VALUES (500, 'https://github.com/new-team/repo', 'legacy-created', 'legacy-updated')
+  `).run()
+  ready(db, 500, 'new-team', 'repo')
+
+  await enrichRepositories(
+    db,
+    reader(async (owner, name) => ({
+      kind: 'found',
+      data: owner === 'old-team' && name === 'repo' ? githubRepo('new-team', 'repo') : githubRepo(owner, name),
+    })),
+    'crawl-1',
+  )
+
+  expect(getRun(db, 'crawl-1')).toMatchObject({ phase: 'enrichment', phase_total: 51, phase_processed: 51 })
+  expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 1 })
+})
+
 it.each(['repository', 'marketplace'] as const)('deletes a case-variant URL on confirmed %s 404', async (endpoint) => {
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/Team/Repo', null)
@@ -1370,4 +1400,5 @@ it('aborts on fatal reader errors while retaining earlier per-row updates', asyn
   await expect(enrichRepositories(db, client, 'crawl-1')).rejects.toBeInstanceOf(GitHubFatalError)
   expect(db.prepare('SELECT owner FROM repositories WHERE id = ?').get(first)).toEqual({ owner: 'team' })
   expect(db.prepare('SELECT owner FROM repositories WHERE id = ?').get(second)).toEqual({ owner: null })
+  expect(getRun(db, 'crawl-1')).toMatchObject({ phase: 'enrichment', phase_total: 2, phase_processed: 1 })
 })

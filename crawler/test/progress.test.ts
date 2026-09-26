@@ -5,7 +5,8 @@ import { runCli } from '../src/cli.js'
 import { openDatabase } from '../src/storage/db.js'
 import { populateFixture } from '../src/storage/fixtureDb.js'
 import { inspectProgress } from '../src/storage/progress.js'
-import { beginRun, recordRunError } from '../src/storage/runs.js'
+import { upsertDiscovery } from '../src/storage/repositories.js'
+import { advanceRunPhase, beginRun, recordRunError, startRunPhase } from '../src/storage/runs.js'
 
 const scratch: string[] = []
 
@@ -24,6 +25,7 @@ describe('crawl progress inspection', () => {
     const db = openDatabase(databasePath())
     populateFixture(db)
     beginRun(db, 'current-run', '2026-09-24T08:34:58.000Z')
+    startRunPhase(db, 'current-run', 'enrichment', '2026-09-24T08:50:00.000Z', 5)
     db.prepare("UPDATE repositories SET updatedAt = '2026-09-24T09:00:00.000Z' WHERE id = 1").run()
     db.prepare("UPDATE repositories SET updatedAt = '2026-09-24T09:05:00.000Z' WHERE id = 8").run()
     recordRunError(db, {
@@ -34,13 +36,19 @@ describe('crawl progress inspection', () => {
       retry_count: 1,
       occurred_at: '2026-09-24T09:05:01.000Z',
     })
+    advanceRunPhase(db, 'current-run', 2, '2026-09-24T09:05:02.000Z')
 
     expect(inspectProgress(db)).toEqual({
       run: {
         runId: 'current-run',
         status: 'running',
+        phase: 'enrichment',
+        phaseStartedAt: '2026-09-24T08:50:00.000Z',
+        phaseTotal: 5,
+        phaseProcessed: 2,
+        phasePercent: 40,
         startedAt: '2026-09-24T08:34:58.000Z',
-        heartbeatAt: '2026-09-24T08:34:58.000Z',
+        heartbeatAt: '2026-09-24T09:05:02.000Z',
         completedAt: null,
         publishedAt: null,
         warningCount: 0,
@@ -68,6 +76,30 @@ describe('crawl progress inspection', () => {
       errors: {
         count: 1,
         latestAt: '2026-09-24T09:05:01.000Z',
+      },
+    })
+    db.close()
+  })
+
+  it('does not treat discovery node-id refreshes as enrichment progress', () => {
+    const db = openDatabase(databasePath())
+    populateFixture(db)
+    beginRun(db, 'current-run', '2026-09-24T08:34:58.000Z')
+    startRunPhase(db, 'current-run', 'discovery', '2026-09-24T08:35:00.000Z')
+    const before = db.prepare('SELECT html_url FROM repositories WHERE id = 1').get() as { html_url: string }
+    upsertDiscovery(db, before.html_url, 'rediscovered', '2026-09-24T09:00:00.000Z', 'node-id')
+
+    expect(inspectProgress(db)).toMatchObject({
+      run: {
+        phase: 'discovery',
+        phaseTotal: null,
+        phaseProcessed: 0,
+        phasePercent: null,
+      },
+      repositories: {
+        updatedThisRun: 0,
+        pendingThisRun: null,
+        updatedPercent: null,
       },
     })
     db.close()
@@ -118,6 +150,7 @@ describe('crawl progress inspection', () => {
     const db = openDatabase(databasePath())
     populateFixture(db)
     beginRun(db, 'current-run', '2026-09-24T08:34:58.000Z')
+    startRunPhase(db, 'current-run', 'enrichment', '2026-09-24T08:39:00.000Z', 5)
     recordRunError(db, {
       run_id: 'current-run',
       phase: 'enrich',
@@ -127,6 +160,7 @@ describe('crawl progress inspection', () => {
       occurred_at: '2026-09-24T08:40:00.000Z',
     })
     db.prepare("UPDATE repositories SET updatedAt = '2026-09-24T09:00:00.000Z' WHERE id = 1").run()
+    advanceRunPhase(db, 'current-run', 1, '2026-09-24T09:00:01.000Z')
 
     expect(inspectProgress(db)).toMatchObject({
       repositories: {
@@ -142,7 +176,9 @@ describe('crawl progress inspection', () => {
     const setup = openDatabase(path)
     populateFixture(setup)
     beginRun(setup, 'current-run', '2026-09-24T08:34:58.000Z')
+    startRunPhase(setup, 'current-run', 'enrichment', '2026-09-24T08:50:00.000Z', 5)
     setup.prepare("UPDATE repositories SET updatedAt = '2026-09-24T09:00:00.000Z' WHERE id = 1").run()
+    advanceRunPhase(setup, 'current-run', 1, '2026-09-24T09:00:01.000Z')
     setup.close()
     const output = vi.fn()
 

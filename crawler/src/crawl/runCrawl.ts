@@ -13,6 +13,7 @@ import {
   PublicationLeaseError,
   RunNotActiveError,
   recordRunError,
+  startRunPhase,
   terminateRun,
 } from '../storage/runs.js'
 import { type DiscoverySummary, discover } from './discover.js'
@@ -99,6 +100,7 @@ async function crawlAndComplete(
     if (!heartbeatRun(db, runId, now())) throw new CrawlError('run_not_active')
   }
   throwIfShutdown(options.signal)
+  startRunPhase(db, runId, 'discovery', now())
   options.onPhase?.('discovery')
   const discovery = await discover(db, reader, runId, options.ranges ?? [[0, 400_000]], heartbeat, now, options.log)
   options.log?.({
@@ -114,6 +116,8 @@ async function crawlAndComplete(
     warningCount: discovery.warningCount,
   })
   heartbeat()
+  const enrichmentTotal = (db.prepare('SELECT COUNT(*) AS count FROM repositories').get() as { count: number }).count
+  startRunPhase(db, runId, 'enrichment', now(), enrichmentTotal)
   options.onPhase?.('enrichment')
   const enrichment = await enrichRepositories(db, reader, runId, heartbeat, now, options.log)
   options.log?.({

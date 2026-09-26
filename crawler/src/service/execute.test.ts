@@ -61,7 +61,7 @@ describe('orchestration', () => {
     expect(notify.notifyDryRun).toHaveBeenCalledWith(
       expect.objectContaining({
         progress: expect.objectContaining({
-          repositories: expect.objectContaining({ total: 1, publishable: 1, pendingThisRun: 0 }),
+          repositories: expect.objectContaining({ total: 1, publishable: 1, pendingThisRun: null }),
           publication: { lastPublishedSize: 3, currentPublishableSize: 1, delta: -2 },
         }),
       }),
