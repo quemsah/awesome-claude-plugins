@@ -40,7 +40,12 @@ function splitFrontmatter(markdown: string) {
     throw new Error(`markdown does not start with a frontmatter block:\n${markdown}`)
   }
 
-  return { frontmatter: frontmatterMatch[1], body: frontmatterMatch[2] }
+  const [, frontmatter, body] = frontmatterMatch
+  if (frontmatter === undefined || body === undefined) {
+    throw new Error(`markdown frontmatter capture failed:\n${markdown}`)
+  }
+
+  return { frontmatter, body }
 }
 
 function headingLines(markdown: string) {
