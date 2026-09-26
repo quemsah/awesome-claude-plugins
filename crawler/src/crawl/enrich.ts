@@ -644,19 +644,7 @@ async function loadGraphQLMarketplace(
     const resolved = resolveGraphQLMarketplaceBlob(db, runId, row, loaded, currentMarketplaceOid, blob, counts, now, log)
     if (resolved !== undefined) return resolved
   }
-  return loadGraphQLMarketplaceViaRest(
-    db,
-    reader,
-    runId,
-    row,
-    loaded,
-    currentMarketplaceOid,
-    blob,
-    counts,
-    removedIds,
-    now,
-    log,
-  )
+  return loadGraphQLMarketplaceViaRest(db, reader, runId, row, loaded, currentMarketplaceOid, blob, counts, removedIds, now, log)
 }
 
 function loadCachedRepository(
