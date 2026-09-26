@@ -214,8 +214,7 @@ export function StatsPage({ stats }: StatsPageProps) {
             <h2>Repository Count Over Time</h2>
           </CardTitle>
           <CardDescription>
-            {activeRangeLabel} - Daily repository count from {firstChartItem?.formattedDate ?? ''} to{' '}
-            {latestChartItem?.formattedDate ?? ''}
+            {activeRangeLabel} - Daily repository count from {firstChartItem?.formattedDate ?? ''} to {latestChartItem?.formattedDate ?? ''}
           </CardDescription>
         </CardHeader>
         <CardContent>
