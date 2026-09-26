@@ -121,13 +121,7 @@ export function heartbeatRun(db: Database.Database, runId: string, at: string): 
   return db.prepare("UPDATE runs SET heartbeat_at = ? WHERE run_id = ? AND status = 'running'").run(at, runId).changes !== 0
 }
 
-export function startRunPhase(
-  db: Database.Database,
-  runId: string,
-  phase: RunPhase,
-  at: string,
-  total: number | null = null,
-): void {
+export function startRunPhase(db: Database.Database, runId: string, phase: RunPhase, at: string, total: number | null = null): void {
   if (total !== null && (!Number.isSafeInteger(total) || total < 0)) throw new Error('phase total must be nonnegative or null')
   const result = db
     .prepare(`
