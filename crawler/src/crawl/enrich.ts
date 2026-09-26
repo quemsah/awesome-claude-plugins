@@ -454,6 +454,75 @@ function acceptGraphQLNotModified(
   return true
 }
 
+function resolveGraphQLMarketplaceBlob(
+  db: Database.Database,
+  runId: string,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  currentMarketplaceOid: string,
+  blob: GitHubGraphQLMarketplaceBlob,
+  counts: EnrichmentCounts,
+  now: () => string,
+  log?: Log,
+): MarketplaceState | null | undefined {
+  let decoded: MarketplaceBlobDecode
+  try {
+    decoded = decodeGraphQLMarketplaceBlob(blob)
+  } catch {
+    recordProblem(db, runId, counts, row, 'marketplace_parser_error', loaded.ready, true, now, 0, log, {
+      request: 'POST /graphql',
+      status: 200,
+      reason: 'Marketplace parser failure',
+      contentOid: blob.oid,
+    })
+    return null
+  }
+  if (decoded.kind === 'found') {
+    return {
+      pluginsCount: decoded.pluginsCount,
+      marketplaceOid: decoded.marketplaceOid,
+      marketplaceEtag: null,
+      clearMarketplaceEtag: true,
+      parserVersion: MARKETPLACE_PARSER_VERSION,
+    }
+  }
+  if (decoded.kind === 'unsupported') return undefined
+  if (blob.oid !== currentMarketplaceOid) {
+    log?.({
+      level: 'warn',
+      event: 'crawl.marketplace_oid_changed_during_read',
+      phase: 'enrichment',
+      category: 'marketplace_oid_mismatch',
+      runId,
+      message: `Marketplace OID changed while reading ${loaded.owner}/${loaded.repo}; falling back to REST`,
+      repository: `${loaded.owner}/${loaded.repo}`,
+      repositoryId: row.id,
+      repositoryUrl: row.html_url,
+      request: 'POST /graphql',
+      status: 200,
+      marketplaceOid: currentMarketplaceOid,
+      contentOid: blob.oid,
+      fallback: 'REST',
+    })
+    return undefined
+  }
+  return recordInvalidMarketplace(
+    db,
+    runId,
+    counts,
+    row,
+    loaded.ready,
+    decoded.failure,
+    decoded.reason,
+    200,
+    0,
+    { cacheOid: blob.oid, marketplaceOid: currentMarketplaceOid, contentOid: blob.oid },
+    'POST /graphql',
+    now,
+    log,
+  )
+}
+
 async function loadGraphQLMarketplace(
   db: Database.Database,
   reader: GitHubReader,
@@ -481,62 +550,8 @@ async function loadGraphQLMarketplace(
   }
 
   if (blob) {
-    let decoded: MarketplaceBlobDecode
-    try {
-      decoded = decodeGraphQLMarketplaceBlob(blob)
-    } catch {
-      recordProblem(db, runId, counts, row, 'marketplace_parser_error', loaded.ready, true, now, 0, log, {
-        request: 'POST /graphql',
-        status: 200,
-        reason: 'Marketplace parser failure',
-        contentOid: blob.oid,
-      })
-      return null
-    }
-    if (decoded.kind === 'found') {
-      return {
-        pluginsCount: decoded.pluginsCount,
-        marketplaceOid: decoded.marketplaceOid,
-        marketplaceEtag: null,
-        clearMarketplaceEtag: true,
-        parserVersion: MARKETPLACE_PARSER_VERSION,
-      }
-    }
-    if (decoded.kind === 'invalid-content') {
-      if (blob.oid === currentMarketplaceOid) {
-        return recordInvalidMarketplace(
-          db,
-          runId,
-          counts,
-          row,
-          loaded.ready,
-          decoded.failure,
-          decoded.reason,
-          200,
-          0,
-          { cacheOid: blob.oid, marketplaceOid: currentMarketplaceOid, contentOid: blob.oid },
-          'POST /graphql',
-          now,
-          log,
-        )
-      }
-      log?.({
-        level: 'warn',
-        event: 'crawl.marketplace_oid_changed_during_read',
-        phase: 'enrichment',
-        category: 'marketplace_oid_mismatch',
-        runId,
-        message: `Marketplace OID changed while reading ${loaded.owner}/${loaded.repo}; falling back to REST`,
-        repository: `${loaded.owner}/${loaded.repo}`,
-        repositoryId: row.id,
-        repositoryUrl: row.html_url,
-        request: 'POST /graphql',
-        status: 200,
-        marketplaceOid: currentMarketplaceOid,
-        contentOid: blob.oid,
-        fallback: 'REST',
-      })
-    }
+    const resolved = resolveGraphQLMarketplaceBlob(db, runId, row, loaded, currentMarketplaceOid, blob, counts, now, log)
+    if (resolved !== undefined) return resolved
   }
 
   const authoritativeMarketplaceOid = blob?.oid ?? currentMarketplaceOid

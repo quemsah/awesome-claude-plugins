@@ -439,7 +439,7 @@ it('falls back to REST without negative-caching a stale metadata OID when the Gr
       .get(id),
   ).toEqual({
     plugins_count: 2,
-    marketplace_oid: null,
+    marketplace_oid: oldOid,
     marketplace_failed_oid: null,
     marketplace_failed_parser_version: null,
   })
