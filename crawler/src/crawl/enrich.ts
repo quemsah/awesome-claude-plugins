@@ -541,7 +541,7 @@ function buildLoadedRepository(
   row: RepositoryRow,
   identity: NonNullable<ReturnType<typeof parseRepositoryUrl>>,
   previouslyReady: boolean,
-  result: Extract<RepoResult<GitHubRepo>, { kind: 'ok' }>,
+  result: Extract<RepoResult<GitHubRepo>, { kind: 'found' }>,
 ): LoadedRepository | null {
   const canonical = canonicalIdentity(result.data)
   if (!canonical) return null
