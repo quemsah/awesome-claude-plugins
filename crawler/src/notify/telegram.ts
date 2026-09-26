@@ -102,14 +102,25 @@ function retryAfterJson(value: unknown): number | null {
   return typeof seconds === 'number' && Number.isFinite(seconds) && seconds >= 0 ? Math.ceil(seconds * 1000) : null
 }
 
+function retryDetails(name: string, bucket: GitHubRateBuckets['core']): string[] {
+  const retries = bucket.retries ?? 0
+  const retryWaitMs = bucket.retryWaitMs ?? 0
+  const reasons = Object.entries(bucket.retryReasons ?? {}).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  return [
+    `${name} requests: ${bucket.requests}; wait ms: ${bucket.waitMs}; retries: ${retries}; retry wait ms: ${retryWaitMs}`,
+    ...(reasons.length
+      ? [`${name} retry reasons: ${reasons.map(([reason, count]) => `${reason}: ${count}`).join(', ')}`]
+      : []),
+  ]
+}
+
 function rateBucketDetails(rateBuckets: GitHubRateBuckets): string[] {
-  const details = (['code_search', 'core'] as const).map(
-    (bucket) => `${bucket} requests: ${rateBuckets[bucket].requests}; wait ms: ${rateBuckets[bucket].waitMs}`,
-  )
+  const details = [...retryDetails('code_search', rateBuckets.code_search), ...retryDetails('core', rateBuckets.core)]
   const graphql = rateBuckets.graphql
   if (!graphql) return details
 
-  details.push(`graphql requests: ${graphql.requests}; cost: ${graphql.totalCost}; remaining: ${graphql.lastRemaining ?? 'unknown'}`)
+  details.push(...retryDetails('graphql', graphql))
+  details.push(`graphql cost: ${graphql.totalCost}; remaining: ${graphql.lastRemaining ?? 'unknown'}`)
   if (graphql.totalLatencyMs === undefined || graphql.latencySamples === undefined || graphql.lastLatencyMs === undefined) return details
 
   const average = graphql.latencySamples ? Math.round(graphql.totalLatencyMs / graphql.latencySamples) : 0
@@ -148,6 +159,7 @@ function summaryText(summary: TelegramSummary): string {
         `new incomplete: ${summary.enrichment.newIncomplete}`,
         `deleted 404: ${summary.enrichment.deleted404}`,
         `deleted blank URL: ${summary.enrichment.deletedBlankUrl}`,
+        `known invalid skipped: ${summary.enrichment.knownInvalidSkipped ?? 0}`,
       ]
     : []
   details.push(...progressDetails(summary.progress))

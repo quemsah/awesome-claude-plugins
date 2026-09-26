@@ -52,7 +52,8 @@ function isEnrichment(value: unknown): value is EnrichmentCounts {
     record(value) &&
     ['updated', 'unchangedOnError', 'newReady', 'newIncomplete', 'deleted404', 'deletedBlankUrl', 'conclusive', 'warnings'].every(
       (field) => Number.isSafeInteger(value[field]) && typeof value[field] === 'number' && value[field] >= 0,
-    )
+    ) &&
+    optionalNonnegative(value.knownInvalidSkipped)
   )
 }
 
@@ -68,6 +69,29 @@ function optionalNonnegative(value: unknown): boolean {
   return value === undefined || nonnegative(value)
 }
 
+const retryReasons = new Set([
+  'network',
+  'body_read',
+  'server_5xx',
+  'primary_rate_limit',
+  'secondary_rate_limit',
+  'invalid_json',
+  'invalid_manifest',
+  'parser_internal',
+  'invalid_response',
+  'http_error',
+  'unexpected_304',
+  'graphql_timeout',
+  'graphql_invalid_response',
+])
+
+function validRetryMetrics(value: Record<string, unknown>): boolean {
+  if (!optionalNonnegative(value.retries) || !optionalNonnegative(value.retryWaitMs)) return false
+  if (value.retryReasons === undefined) return true
+  if (!record(value.retryReasons)) return false
+  return Object.entries(value.retryReasons).every(([reason, count]) => retryReasons.has(reason) && nonnegative(count))
+}
+
 function validGraphQLRate(value: unknown): boolean {
   if (!record(value)) return false
   const countersValid = ['requests', 'waitMs', 'totalCost'].every((field) => nonnegative(value[field]))
@@ -77,11 +101,17 @@ function validGraphQLRate(value: unknown): boolean {
     optionalNonnegative(value.latencySamples) &&
     (value.lastLatencyMs === undefined || nullableNonnegative(value.lastLatencyMs))
   const resetValid = value.resetAt === null || (typeof value.resetAt === 'string' && !Number.isNaN(Date.parse(value.resetAt)))
-  return countersValid && nullableCountersValid && latencyValid && resetValid
+  return countersValid && nullableCountersValid && latencyValid && resetValid && validRetryMetrics(value)
 }
 
 function validRateBucket(value: unknown): boolean {
-  return record(value) && nonnegative(value.requests) && nonnegative(value.waitMs) && nullableNonnegative(value.lastRemaining)
+  return (
+    record(value) &&
+    nonnegative(value.requests) &&
+    nonnegative(value.waitMs) &&
+    nullableNonnegative(value.lastRemaining) &&
+    validRetryMetrics(value)
+  )
 }
 
 function validRateBuckets(value: unknown): boolean {
