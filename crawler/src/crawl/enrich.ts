@@ -523,7 +523,12 @@ function resolveGraphQLMarketplaceBlob(
   )
 }
 
-async function loadGraphQLMarketplace(
+function marketplaceRequestEtag(row: RepositoryRow, changedOid: boolean): string | undefined {
+  if (row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION || changedOid || row.plugins_count === null) return undefined
+  return row.marketplace_etag ?? undefined
+}
+
+async function loadGraphQLMarketplaceViaRest(
   db: Database.Database,
   reader: GitHubReader,
   runId: string,
@@ -536,32 +541,12 @@ async function loadGraphQLMarketplace(
   now: () => string,
   log?: Log,
 ): Promise<MarketplaceState | null> {
-  const parserVersionChanged = row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION
-  if (row.marketplace_failed_oid === currentMarketplaceOid && row.marketplace_failed_parser_version === MARKETPLACE_PARSER_VERSION) {
-    return recordKnownInvalidMarketplace(db, runId, counts, row, loaded, now, log)
-  }
-  if (!needsMarketplaceContent(row, currentMarketplaceOid)) {
-    return {
-      pluginsCount: row.plugins_count as number,
-      marketplaceOid: currentMarketplaceOid,
-      marketplaceEtag: row.marketplace_etag,
-      parserVersion: MARKETPLACE_PARSER_VERSION,
-    }
-  }
-
-  if (blob) {
-    const resolved = resolveGraphQLMarketplaceBlob(db, runId, row, loaded, currentMarketplaceOid, blob, counts, now, log)
-    if (resolved !== undefined) return resolved
-  }
-
   const authoritativeMarketplaceOid = blob?.oid ?? currentMarketplaceOid
   const changedOid = row.marketplace_oid !== authoritativeMarketplaceOid
+  const etag = marketplaceRequestEtag(row, changedOid)
   let result: RepoResult<{ plugins: unknown[] }>
   try {
-    result =
-      row.marketplace_etag && !changedOid && row.plugins_count !== null && !parserVersionChanged
-        ? await reader.getMarketplace(loaded.owner, loaded.repo, row.marketplace_etag)
-        : await reader.getMarketplace(loaded.owner, loaded.repo)
+    result = etag ? await reader.getMarketplace(loaded.owner, loaded.repo, etag) : await reader.getMarketplace(loaded.owner, loaded.repo)
   } catch (error) {
     if (error instanceof GitHubFatalError) {
       log?.({
@@ -629,6 +614,49 @@ async function loadGraphQLMarketplace(
     marketplaceEtag,
     parserVersion: MARKETPLACE_PARSER_VERSION,
   }
+}
+
+async function loadGraphQLMarketplace(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  currentMarketplaceOid: string,
+  blob: GitHubGraphQLMarketplaceBlob | null,
+  counts: EnrichmentCounts,
+  removedIds: Set<number>,
+  now: () => string,
+  log?: Log,
+): Promise<MarketplaceState | null> {
+  if (row.marketplace_failed_oid === currentMarketplaceOid && row.marketplace_failed_parser_version === MARKETPLACE_PARSER_VERSION) {
+    return recordKnownInvalidMarketplace(db, runId, counts, row, loaded, now, log)
+  }
+  if (!needsMarketplaceContent(row, currentMarketplaceOid)) {
+    return {
+      pluginsCount: row.plugins_count as number,
+      marketplaceOid: currentMarketplaceOid,
+      marketplaceEtag: row.marketplace_etag,
+      parserVersion: MARKETPLACE_PARSER_VERSION,
+    }
+  }
+  if (blob) {
+    const resolved = resolveGraphQLMarketplaceBlob(db, runId, row, loaded, currentMarketplaceOid, blob, counts, now, log)
+    if (resolved !== undefined) return resolved
+  }
+  return loadGraphQLMarketplaceViaRest(
+    db,
+    reader,
+    runId,
+    row,
+    loaded,
+    currentMarketplaceOid,
+    blob,
+    counts,
+    removedIds,
+    now,
+    log,
+  )
 }
 
 function loadCachedRepository(
