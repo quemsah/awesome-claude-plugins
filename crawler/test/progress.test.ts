@@ -66,7 +66,7 @@ describe('crawl progress inspection', () => {
         updatedSinceRunStart: 2,
         enrichedSinceRunStart: 1,
         latestUpdatedAt: '2026-09-24T09:05:00.000Z',
-        updatedPercent: 40,
+        updatedPercent: 20,
       },
       publication: {
         lastPublishedSize: 3,
