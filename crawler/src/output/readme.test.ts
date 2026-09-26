@@ -187,7 +187,7 @@ it('renders all 100 legacy repository links without changing their URLs', () => 
   })
 
   const links = (text: string) =>
-    [...text.matchAll(/^\\| \\d+ \\| \\[[^\\]]+\\]\\((https:\\/\\/github\\.com\\/[^)]+)\\) \\|/gm)].map((match) => match[1])
+    [...text.matchAll(/^\| \d+ \| \[[^\]]+\]\((https:\/\/github\.com\/[^)]+)\) \|/gm)].map((match) => match[1])
 
   expect(links(renderReadme(repositories, { id: 304, date: '2026-09-22T08:12:33.125Z', size: repositories.length }))).toEqual(
     LEGACY_RANKED_LINKS,
