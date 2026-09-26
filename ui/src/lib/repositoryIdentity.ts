@@ -23,7 +23,7 @@ function replaceUnpairedSurrogates(value: string): string {
     if (code >= 0xd800 && code <= 0xdbff) {
       const next = value.charCodeAt(index + 1)
       if (next >= 0xdc00 && next <= 0xdfff) {
-        result += value[index] + value[index + 1]
+        result += value.slice(index, index + 2)
         index += 1
       } else {
         result += '\uFFFD'
@@ -31,7 +31,7 @@ function replaceUnpairedSurrogates(value: string): string {
     } else if (code >= 0xdc00 && code <= 0xdfff) {
       result += '\uFFFD'
     } else {
-      result += value[index]
+      result += value.slice(index, index + 1)
     }
   }
   return result
