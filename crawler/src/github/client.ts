@@ -32,8 +32,8 @@ export type Marketplace = { plugins: unknown[] }
 export type GitHubGraphQLRepo = GitHubRepo & {
   node_id: string
   marketplace_oid: string | null
-  marketplace_byte_size: number | null
-  marketplace_is_binary: boolean | null
+  marketplace_byte_size?: number | null
+  marketplace_is_binary?: boolean | null
 }
 export type GraphQLRateLimit = { cost: number; remaining: number; resetAt: string; limit: number; used: number }
 type GraphQLResult<T> =
