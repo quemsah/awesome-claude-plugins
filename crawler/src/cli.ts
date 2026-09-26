@@ -342,7 +342,13 @@ async function runCrawlCommand(
     throw error
   }
 
-  const rates = rateTracker((buckets) => setSetting(db, `run_rate_metrics_${runId}`, JSON.stringify(buckets)))
+  const rates = rateTracker((buckets) => {
+    try {
+      setSetting(db, `run_rate_metrics_${runId}`, JSON.stringify(buckets))
+    } catch {
+      console.error(JSON.stringify({ level: 'error', phase: 'github_rate', category: 'rate_checkpoint_failed', runId }))
+    }
+  })
   try {
     rates.checkpoint()
     await runCrawl(db, config, dependencies, options, runId, now, output, rates)
