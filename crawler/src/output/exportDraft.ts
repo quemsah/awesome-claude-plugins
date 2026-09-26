@@ -38,6 +38,7 @@ export function exportDraftSnapshot(db: Database.Database, runId: string, direct
     writeFileSync(resolve(target, 'README.md'), files.readme, { flag: 'wx', mode: 0o600 })
     writeFileSync(resolve(data, 'repos.json'), files.reposJson, { flag: 'wx', mode: 0o600 })
     writeFileSync(resolve(data, 'stats.json'), files.statsJson, { flag: 'wx', mode: 0o600 })
+    writeFileSync(resolve(data, 'markdown-paths.json'), files.markdownPathsJson, { flag: 'wx', mode: 0o600 })
   } catch {
     rmSync(target, { recursive: true })
     throw new DraftExportError('export_write_failed')
