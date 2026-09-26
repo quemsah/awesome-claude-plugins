@@ -811,14 +811,18 @@ it('falls back to REST only for an unusable blob inside a successful content bat
       })),
       rateLimit: { cost: 2, remaining: 4_998, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 2 },
     }),
-    getMarketplaceBlobsByNodeId: async () => ({
-      kind: 'found' as const,
-      data: [
-        graphQLMarketplaceBlob(rows[0].nodeId, rows[0].newOid),
-        graphQLMarketplaceBlob(rows[1].nodeId, rows[1].newOid, { is_truncated: true }),
-      ],
-      rateLimit: { cost: 2, remaining: 4_996, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 4 },
-    }),
+    getMarketplaceBlobsByNodeId: async () => {
+      const [firstRow, secondRow] = rows
+      if (firstRow === undefined || secondRow === undefined) throw new Error('Expected two GraphQL fixture rows')
+      return {
+        kind: 'found' as const,
+        data: [
+          graphQLMarketplaceBlob(firstRow.nodeId, firstRow.newOid),
+          graphQLMarketplaceBlob(secondRow.nodeId, secondRow.newOid, { is_truncated: true }),
+        ],
+        rateLimit: { cost: 2, remaining: 4_996, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 4 },
+      }
+    },
   }
 
   const counts = await enrichRepositories(db, client, 'crawl-1')
