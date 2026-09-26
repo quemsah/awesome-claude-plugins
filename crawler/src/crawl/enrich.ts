@@ -307,6 +307,19 @@ function isRetryLater(value: unknown): value is RetryLater {
   return typeof value === 'object' && value !== null && 'kind' in value && value.kind === RETRY_LATER
 }
 
+function graphQLRetryReason(result: {
+  status: number | null
+  reason: string
+  failureReason?: GitHubRetryReason
+}): GitHubRetryReason {
+  if (result.failureReason) return result.failureReason
+  if (/timeout/i.test(result.reason)) return 'graphql_timeout'
+  if (/invalid graphql response/i.test(result.reason)) return 'graphql_invalid_response'
+  if (result.status === null) return 'network'
+  if (result.status >= 500) return 'server_5xx'
+  return 'invalid_response'
+}
+
 type MarketplaceState = {
   pluginsCount: number
   marketplaceOid: string | null
@@ -1399,6 +1412,7 @@ async function loadGraphQLMarketplaceBlobs(
         fallback: canSplit ? 'split' : 'REST',
       })
       if (canSplit) {
+        reader.noteRetry?.('graphql', graphQLRetryReason(result))
         const midpoint = Math.ceil(batch.length / 2)
         await fetchBatch(batch.slice(0, midpoint))
         await fetchBatch(batch.slice(midpoint))
@@ -1484,6 +1498,7 @@ async function enrichGraphQLBatch(
   }
   const latency = Date.now() - startedAt
   if (result.kind === 'temporary-error') {
+    if (rows.length > 10) reader.noteRetry?.('graphql', graphQLRetryReason(result))
     log?.({
       level: 'warn',
       event: 'crawl.graphql_batch_fallback',

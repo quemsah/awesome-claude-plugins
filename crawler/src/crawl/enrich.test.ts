@@ -862,6 +862,7 @@ it('splits a timed-out marketplace GraphQL batch before falling back to REST', a
       rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
     }
   })
+  const noteRetry = vi.fn()
   const client = {
     ...reader(undefined, getMarketplace),
     getRepositoriesByNodeId: async () => ({
@@ -870,12 +871,15 @@ it('splits a timed-out marketplace GraphQL batch before falling back to REST', a
       rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
     }),
     getMarketplaceBlobsByNodeId,
+    noteRetry,
   }
 
   const counts = await enrichRepositories(db, client, 'crawl-1')
 
   expect(counts).toMatchObject({ updated: 2, conclusive: 2, warnings: 0 })
   expect(getMarketplaceBlobsByNodeId.mock.calls.map(([nodeIds]) => nodeIds)).toEqual([['node-one', 'node-two'], ['node-one'], ['node-two']])
+  expect(noteRetry).toHaveBeenCalledTimes(1)
+  expect(noteRetry).toHaveBeenCalledWith('graphql', 'graphql_timeout')
   expect(getMarketplace).not.toHaveBeenCalled()
 })
 
@@ -918,15 +922,19 @@ it('recovers a failed metadata batch without losing marketplace content batching
   const getMarketplace = vi.fn(async () => {
     throw new Error('REST marketplace should not be used after recovered GraphQL metadata batches')
   })
+  const noteRetry = vi.fn()
   const client = {
     ...reader(undefined, getMarketplace),
     getRepositoriesByNodeId,
     getMarketplaceBlobsByNodeId,
+    noteRetry,
   }
 
   const counts = await enrichRepositories(db, client, 'crawl-1')
 
   expect(counts).toMatchObject({ updated: 11, conclusive: 11, warnings: 0 })
+  expect(noteRetry).toHaveBeenCalledTimes(1)
+  expect(noteRetry).toHaveBeenCalledWith('graphql', 'server_5xx')
   expect(getRepositoriesByNodeId.mock.calls.map(([nodeIds]) => nodeIds.length)).toEqual([11, 10, 1])
   expect(getMarketplaceBlobsByNodeId.mock.calls.map(([nodeIds]) => nodeIds.length)).toEqual([10, 1])
   expect(getMarketplace).not.toHaveBeenCalled()
