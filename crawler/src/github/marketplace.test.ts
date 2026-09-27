@@ -14,3 +14,10 @@ it('counts plugin entries without validating their fields', () => {
 it('rejects a document without the required marketplace root fields', () => {
   expect(() => parseMarketplace({ name: 'catalog', owner: { name: 'maintainer' }, plugins: {} })).toThrow(MarketplaceFormatError)
 })
+
+it.each([
+  { name: '', owner: { name: 'maintainer' }, plugins: [] },
+  { name: 'catalog', owner: { name: '' }, plugins: [] },
+])('rejects empty required marketplace names', (input) => {
+  expect(() => parseMarketplace(input)).toThrow(MarketplaceFormatError)
+})
