@@ -1693,7 +1693,6 @@ it('aborts on fatal reader errors while retaining earlier per-row updates', asyn
   expect(getRun(db, 'crawl-1')).toMatchObject({ phase: 'enrichment', phase_total: 2, phase_processed: 1 })
 })
 
-
 it('reprocesses a matching failed marketplace OID from an older content-cache version', async () => {
   const db = database()
   const nodeId = 'node-stale-negative-cache'
