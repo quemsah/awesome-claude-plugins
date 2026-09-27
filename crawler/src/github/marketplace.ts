@@ -1,8 +1,10 @@
+export const MARKETPLACE_INVALID_CONTENT_CACHE_VERSION = 2
+
 export type Marketplace = { plugins: unknown[] }
 
 export class MarketplaceFormatError extends Error {
   constructor() {
-    super('Marketplace must have name, owner.name, and a plugins array')
+    super('Marketplace must have non-empty name, non-empty owner.name, and a plugins array')
     this.name = 'MarketplaceFormatError'
   }
 }
@@ -15,8 +17,10 @@ export function parseMarketplace(value: unknown): Marketplace {
   if (
     !isRecord(value) ||
     typeof value.name !== 'string' ||
+    value.name.length === 0 ||
     !isRecord(value.owner) ||
     typeof value.owner.name !== 'string' ||
+    value.owner.name.length === 0 ||
     !Array.isArray(value.plugins)
   ) {
     throw new MarketplaceFormatError()
