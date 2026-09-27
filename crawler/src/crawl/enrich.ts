@@ -495,7 +495,7 @@ async function loadLegacyMarketplace(
   policy: RestAttemptPolicy,
   log?: Log,
 ): Promise<MarketplaceState | null | RetryLater> {
-  const etag = row.marketplace_etag ?? undefined
+  const etag = row.marketplace_failed_oid === null ? (row.marketplace_etag ?? undefined) : undefined
   let result: RepoResult<{ plugins: unknown[] }>
   try {
     result = await reader.getMarketplace(loaded.owner, loaded.repo, etag, { maxAttempts: policy.maxAttempts })
