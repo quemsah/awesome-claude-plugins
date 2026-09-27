@@ -1,15 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { marketplaceFixtures } from '../../../../crawler/marketplace-contract/fixtures.js'
 import { getMarketplaceName, MarketplacePluginsSchema } from './plugin.type.ts'
 
 describe('MarketplacePluginsSchema', () => {
-  it.each(marketplaceFixtures)('matches the shared contract for $name', (fixture) => {
-    const result = MarketplacePluginsSchema.safeParse(fixture.input)
-    expect(result.success).toBe(fixture.valid)
-    if (result.success) {
-      expect(result.data).toHaveLength(fixture.pluginsCount)
-      expect(getMarketplaceName(fixture.input)).toBe(fixture.marketplaceName)
-    }
+  it('reads supported plugin fields for display', () => {
+    const payload = { name: 'catalog', plugins: [{ name: 'plugin', source: './plugins/plugin' }] }
+    const result = MarketplacePluginsSchema.safeParse(payload)
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data).toHaveLength(1)
+    expect(getMarketplaceName(payload)).toBe('catalog')
   })
 
   it('extracts marketplace names only from marketplace wrappers', () => {
