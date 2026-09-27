@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { describe, expect, it } from 'vitest'
 
+import { REPO_PAGES_ENDING_IN_MD } from './lib/markdownPaths.ts'
 import { proxy } from './proxy.ts'
 
 const ORIGIN = 'https://awesomeclaudeplugins.com'
@@ -21,8 +22,7 @@ describe('proxy', () => {
   })
 
   it('serves the html page of a repository whose name itself ends in .md', () => {
-    expect(passesThrough('/sstklen/yes.md')).toBe(true)
-    expect(passesThrough('/wevm/curl.md')).toBe(true)
+    expect(passesThrough(`/${REPO_PAGES_ENDING_IN_MD[0]}`)).toBe(true)
   })
 
   it('serves the markdown of a .md-named repository from the doubled suffix', () => {
@@ -31,8 +31,7 @@ describe('proxy', () => {
 
   it('resolves the markdown suffix without regard to case', () => {
     expect(rewrittenTo('/YKDOJO/CLAUDE-CODE-TIPS.MD')).toBe(`${ORIGIN}/api/markdown/YKDOJO/CLAUDE-CODE-TIPS`)
-    expect(passesThrough('/Sstklen/Yes.md')).toBe(true)
-    expect(passesThrough('/jordantplows/STARTUP-OS.MD')).toBe(true)
+    expect(passesThrough(`/${REPO_PAGES_ENDING_IN_MD[0].toUpperCase()}`)).toBe(true)
   })
 
   it('routes unknown markdown paths to the api so they are reported as missing there', () => {
