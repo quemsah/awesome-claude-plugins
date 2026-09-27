@@ -1692,3 +1692,54 @@ it('aborts on fatal reader errors while retaining earlier per-row updates', asyn
   expect(db.prepare('SELECT owner FROM repositories WHERE id = ?').get(second)).toEqual({ owner: null })
   expect(getRun(db, 'crawl-1')).toMatchObject({ phase: 'enrichment', phase_total: 2, phase_processed: 1 })
 })
+
+
+it('reprocesses a matching failed marketplace OID from an older content-cache version', async () => {
+  const db = database()
+  const nodeId = 'node-stale-negative-cache'
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), nodeId)
+  ready(db, id)
+  const oid = 'e'.repeat(40)
+  db.prepare(
+    'UPDATE repositories SET marketplace_oid = ?, marketplace_failed_oid = ?, marketplace_failed_parser_version = 1 WHERE id = ?',
+  ).run(oid, oid, id)
+
+  const getMarketplace = vi.fn(async () => ({ kind: 'temporary-error' as const, status: 500, reason: 'REST must not run', retryCount: 0 }))
+  const getMarketplaceBlobsByNodeId = vi.fn(async () => ({
+    kind: 'found' as const,
+    data: [graphQLMarketplaceBlob(nodeId, oid)],
+    rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+  }))
+  const client = {
+    ...reader(undefined, getMarketplace),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [
+        {
+          ...githubRepo('team', 'repo'),
+          node_id: nodeId,
+          marketplace_oid: oid,
+          marketplace_byte_size: 100,
+          marketplace_is_binary: false,
+        },
+      ],
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+    getMarketplaceBlobsByNodeId,
+  }
+
+  await enrichRepositories(db, client, 'crawl-1')
+
+  expect(getMarketplaceBlobsByNodeId).toHaveBeenCalledWith([nodeId])
+  expect(getMarketplace).not.toHaveBeenCalled()
+  expect(
+    db
+      .prepare('SELECT plugins_count, marketplace_oid, marketplace_failed_oid, marketplace_failed_parser_version FROM repositories WHERE id = ?')
+      .get(id),
+  ).toEqual({
+    plugins_count: validMarketplaceFixture.pluginsCount,
+    marketplace_oid: oid,
+    marketplace_failed_oid: null,
+    marketplace_failed_parser_version: null,
+  })
+})
