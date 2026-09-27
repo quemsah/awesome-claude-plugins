@@ -670,11 +670,7 @@ function resolveGraphQLMarketplaceBlob(
   )
 }
 
-function marketplaceRequestEtag(
-  row: RepositoryRow,
-  authoritativeMarketplaceOid: string,
-  changedOid: boolean,
-): string | undefined {
+function marketplaceRequestEtag(row: RepositoryRow, authoritativeMarketplaceOid: string, changedOid: boolean): string | undefined {
   if (changedOid || row.plugins_count === null || row.marketplace_failed_oid === authoritativeMarketplaceOid) return undefined
   return row.marketplace_etag ?? undefined
 }
