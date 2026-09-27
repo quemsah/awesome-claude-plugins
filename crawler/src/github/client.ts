@@ -1,7 +1,9 @@
-import { MarketplaceValidationError, parseMarketplaceManifest } from '@awesome-claude-plugins/marketplace-contract'
 import type { components, operations } from '@octokit/openapi-types'
 import { throwIfShutdown } from '../shutdown.js'
+import { type Marketplace, MarketplaceFormatError, parseMarketplace } from './marketplace.js'
 import { type Clock, type GitHubRetryReason, RateBudget, type RateLog, type RateResource, systemClock } from './rateBudget.js'
+
+export type { Marketplace } from './marketplace.js'
 
 type SearchCodeResponse = operations['search/code']['responses'][200]['content']['application/json']
 type SearchCodeRepository = SearchCodeResponse['items'][number]['repository']
@@ -26,8 +28,6 @@ export type GitHubRepo = Pick<
   pushed_at: Extract<RepositoryResponse['pushed_at'], string>
   private?: RepositoryResponse['private']
 }
-
-export type Marketplace = { plugins: unknown[] }
 
 export type GitHubGraphQLRepo = GitHubRepo & {
   node_id: string
@@ -297,19 +297,6 @@ function parseGraphQLRateLimit(value: unknown): GraphQLRateLimit {
     throw new Error('Invalid GraphQL rate limit response')
   }
   return value as GraphQLRateLimit
-}
-
-function parseMarketplace(value: unknown): Marketplace {
-  return parseMarketplaceManifest(value)
-}
-
-function marketplaceValidationReason(error: MarketplaceValidationError): string {
-  const issue = error.issues[0]
-  const path = issue?.path.reduce<string>(
-    (prefix, part) => (typeof part === 'number' ? `${prefix}[${part}]` : prefix ? `${prefix}.${part}` : part),
-    '',
-  )
-  return `Invalid marketplace manifest${path ? ` at ${path}` : ''}: ${issue?.message ?? error.message}`
 }
 
 function safeEntityTag(value: string | null): string | null {
@@ -1020,14 +1007,14 @@ export class GitHubClient implements GitHubReader {
     try {
       data = parse(value)
     } catch (error) {
-      if (permanentContentErrors && error instanceof MarketplaceValidationError) {
+      if (permanentContentErrors && error instanceof MarketplaceFormatError) {
         return {
           kind: 'result',
           result: {
             kind: 'invalid-content',
             failure: 'invalid-manifest',
             status: response.status,
-            reason: marketplaceValidationReason(error),
+            reason: error.message,
             retryCount: attempt,
             failureReason: 'invalid_manifest',
             retryable: false,

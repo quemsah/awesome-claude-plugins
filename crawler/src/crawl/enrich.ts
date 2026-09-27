@@ -1,12 +1,8 @@
-import {
-  MARKETPLACE_CONTRACT_VERSION,
-  MarketplaceValidationError,
-  parseMarketplaceManifest,
-} from '@awesome-claude-plugins/marketplace-contract'
 import type Database from 'better-sqlite3'
 import type { GitHubGraphQLMarketplaceBlob } from '../github/client.js'
 import { GitHubFatalError, type GitHubGraphQLRepo, type GitHubReader, type GitHubRepo, type RepoResult } from '../github/client.js'
 import { isValidGitHubPathSegment, parseGitHubOwnerUrl } from '../github/identifiers.js'
+import { MARKETPLACE_INVALID_CONTENT_CACHE_VERSION, MarketplaceFormatError, parseMarketplace } from '../github/marketplace.js'
 import type { GitHubRetryReason } from '../github/rateBudget.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import type { Log } from '../logging.js'
@@ -95,15 +91,6 @@ function invalidContentCategory(failure: 'invalid-json' | 'invalid-manifest'): s
   return failure === 'invalid-json' ? 'marketplace_invalid_json' : 'marketplace_invalid_manifest'
 }
 
-function marketplaceValidationReason(error: MarketplaceValidationError): string {
-  const issue = error.issues[0]
-  const path = issue?.path.reduce<string>(
-    (prefix, part) => (typeof part === 'number' ? `${prefix}[${part}]` : prefix ? `${prefix}.${part}` : part),
-    '',
-  )
-  return `Invalid marketplace manifest${path ? ` at ${path}` : ''}: ${issue?.message ?? error.message}`
-}
-
 function recordProblem(
   db: Database.Database,
   runId: string,
@@ -174,7 +161,6 @@ function persistEnrichment(
   pluginsCount: number,
   marketplaceOid: string | null,
   marketplaceEtag: string | null,
-  marketplaceParserVersion: number,
   at: string,
   clearMarketplaceEtag = false,
 ): EnrichmentTarget {
@@ -200,7 +186,6 @@ function persistEnrichment(
         marketplace_oid: marketplaceOid,
         repository_etag: loaded.repositoryEtag,
         marketplace_etag: marketplaceEtag,
-        marketplace_parser_version: marketplaceParserVersion,
       },
       at,
     )
@@ -254,7 +239,6 @@ function completeEnrichment(counts: EnrichmentCounts, target: EnrichmentTarget, 
   else counts.newReady++
 }
 
-const MARKETPLACE_PARSER_VERSION = MARKETPLACE_CONTRACT_VERSION
 const MARKETPLACE_CONTENT_BATCH_SIZE = 25
 const MARKETPLACE_CONTENT_MAX_BYTES = 750_000
 const MARKETPLACE_UNKNOWN_BYTES = 32_768
@@ -322,18 +306,17 @@ type MarketplaceState = {
   marketplaceOid: string | null
   marketplaceEtag: string | null
   clearMarketplaceEtag?: boolean
-  parserVersion: number
 }
 
 function needsMarketplaceContent(row: RepositoryRow, currentMarketplaceOid: string): boolean {
-  if (row.marketplace_failed_oid === currentMarketplaceOid && row.marketplace_failed_parser_version === MARKETPLACE_PARSER_VERSION) {
+  if (
+    row.marketplace_failed_oid === currentMarketplaceOid &&
+    row.marketplace_failed_parser_version === MARKETPLACE_INVALID_CONTENT_CACHE_VERSION
+  ) {
     return false
   }
-  return (
-    row.marketplace_oid !== currentMarketplaceOid ||
-    row.plugins_count === null ||
-    row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION
-  )
+  if (row.marketplace_failed_oid === currentMarketplaceOid) return true
+  return row.marketplace_oid !== currentMarketplaceOid || row.plugins_count === null
 }
 
 type MarketplaceBlobDecode =
@@ -350,14 +333,14 @@ function decodeGraphQLMarketplaceBlob(blob: GitHubGraphQLMarketplaceBlob): Marke
     return { kind: 'invalid-content', failure: 'invalid-json', reason: 'Invalid marketplace JSON' }
   }
   try {
-    const marketplace = parseMarketplaceManifest(value)
+    const marketplace = parseMarketplace(value)
     return { kind: 'found', pluginsCount: marketplace.plugins.length, marketplaceOid: blob.oid }
   } catch (error) {
-    if (!(error instanceof MarketplaceValidationError)) throw error
+    if (!(error instanceof MarketplaceFormatError)) throw error
     return {
       kind: 'invalid-content',
       failure: 'invalid-manifest',
-      reason: marketplaceValidationReason(error),
+      reason: error.message,
     }
   }
 }
@@ -370,8 +353,6 @@ type InvalidMarketplaceIdentity = {
 
 function marketplaceStateScore(row: RepositoryRow): number {
   let score = 0
-  if (row.marketplace_parser_version === MARKETPLACE_PARSER_VERSION) score += 16
-  else if (row.marketplace_parser_version !== null) score += 8
   if (row.marketplace_oid !== null) score += 4
   if (row.marketplace_etag !== null) score += 2
   if (row.plugins_count !== null) score += 1
@@ -456,7 +437,7 @@ function recordInvalidMarketplace(
     runWhileActive(db, runId, () => {
       db.prepare('UPDATE repositories SET marketplace_failed_oid = ?, marketplace_failed_parser_version = ? WHERE id = ?').run(
         identity.cacheOid,
-        MARKETPLACE_PARSER_VERSION,
+        MARKETPLACE_INVALID_CONTENT_CACHE_VERSION,
         target.id,
       )
     })
@@ -487,7 +468,7 @@ function recordKnownInvalidMarketplace(
     runWhileActive(db, runId, () => {
       db.prepare('UPDATE repositories SET marketplace_failed_oid = ?, marketplace_failed_parser_version = ? WHERE id = ?').run(
         failedOid,
-        MARKETPLACE_PARSER_VERSION,
+        MARKETPLACE_INVALID_CONTENT_CACHE_VERSION,
         target.id,
       )
     })
@@ -496,7 +477,7 @@ function recordKnownInvalidMarketplace(
   recordProblem(db, runId, counts, row, 'marketplace_known_invalid_content', loaded.ready, true, now, 0, log, {
     request: null,
     marketplaceOid: row.marketplace_failed_oid,
-    reason: `Skipped unchanged marketplace OID rejected by parser version ${MARKETPLACE_PARSER_VERSION}`,
+    reason: `Skipped unchanged marketplace OID previously rejected by content cache version ${MARKETPLACE_INVALID_CONTENT_CACHE_VERSION}`,
     skippedDownload: true,
   })
   return null
@@ -514,8 +495,7 @@ async function loadLegacyMarketplace(
   policy: RestAttemptPolicy,
   log?: Log,
 ): Promise<MarketplaceState | null | RetryLater> {
-  const parserVersionChanged = row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION
-  const etag = row.marketplace_etag && !parserVersionChanged ? row.marketplace_etag : undefined
+  const etag = row.marketplace_failed_oid === null ? (row.marketplace_etag ?? undefined) : undefined
   let result: RepoResult<{ plugins: unknown[] }>
   try {
     result = await reader.getMarketplace(loaded.owner, loaded.repo, etag, { maxAttempts: policy.maxAttempts })
@@ -593,7 +573,6 @@ async function loadLegacyMarketplace(
     pluginsCount,
     marketplaceOid: row.marketplace_oid,
     marketplaceEtag: result.etag ?? row.marketplace_etag,
-    parserVersion: MARKETPLACE_PARSER_VERSION,
   }
 }
 
@@ -651,7 +630,6 @@ function resolveGraphQLMarketplaceBlob(
       marketplaceOid: decoded.marketplaceOid,
       marketplaceEtag: null,
       clearMarketplaceEtag: true,
-      parserVersion: MARKETPLACE_PARSER_VERSION,
     }
   }
   if (decoded.kind === 'unsupported') return undefined
@@ -692,8 +670,8 @@ function resolveGraphQLMarketplaceBlob(
   )
 }
 
-function marketplaceRequestEtag(row: RepositoryRow, changedOid: boolean): string | undefined {
-  if (row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION || changedOid || row.plugins_count === null) return undefined
+function marketplaceRequestEtag(row: RepositoryRow, authoritativeMarketplaceOid: string, changedOid: boolean): string | undefined {
+  if (changedOid || row.plugins_count === null || row.marketplace_failed_oid === authoritativeMarketplaceOid) return undefined
   return row.marketplace_etag ?? undefined
 }
 
@@ -713,7 +691,7 @@ async function loadGraphQLMarketplaceViaRest(
 ): Promise<MarketplaceState | null | RetryLater> {
   const authoritativeMarketplaceOid = blob?.oid ?? currentMarketplaceOid
   const changedOid = row.marketplace_oid !== authoritativeMarketplaceOid
-  const etag = marketplaceRequestEtag(row, changedOid)
+  const etag = marketplaceRequestEtag(row, authoritativeMarketplaceOid, changedOid)
   let result: RepoResult<{ plugins: unknown[] }>
   try {
     result = await reader.getMarketplace(loaded.owner, loaded.repo, etag, { maxAttempts: policy.maxAttempts })
@@ -792,14 +770,12 @@ async function loadGraphQLMarketplaceViaRest(
       pluginsCount: row.plugins_count,
       marketplaceOid: authoritativeMarketplaceOid,
       marketplaceEtag,
-      parserVersion: MARKETPLACE_PARSER_VERSION,
     }
   }
   return {
     pluginsCount: result.data.plugins.length,
     marketplaceOid: null,
     marketplaceEtag,
-    parserVersion: MARKETPLACE_PARSER_VERSION,
   }
 }
 
@@ -817,7 +793,10 @@ async function loadGraphQLMarketplace(
   policy: RestAttemptPolicy,
   log?: Log,
 ): Promise<MarketplaceState | null | RetryLater> {
-  if (row.marketplace_failed_oid === currentMarketplaceOid && row.marketplace_failed_parser_version === MARKETPLACE_PARSER_VERSION) {
+  if (
+    row.marketplace_failed_oid === currentMarketplaceOid &&
+    row.marketplace_failed_parser_version === MARKETPLACE_INVALID_CONTENT_CACHE_VERSION
+  ) {
     return recordKnownInvalidMarketplace(db, runId, counts, row, loaded, removedIds, now, log)
   }
   if (!needsMarketplaceContent(row, currentMarketplaceOid)) {
@@ -825,7 +804,6 @@ async function loadGraphQLMarketplace(
       pluginsCount: row.plugins_count as number,
       marketplaceOid: currentMarketplaceOid,
       marketplaceEtag: row.marketplace_etag,
-      parserVersion: MARKETPLACE_PARSER_VERSION,
     }
   }
   if (blob) {
@@ -1087,17 +1065,7 @@ async function enrichOne(
       await beginDeferredRetry(reader, marketplace)
       const retried = await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, RETRY_PASS_REST, log)
       if (!retried || isRetryLater(retried)) return
-      const target = persistEnrichment(
-        db,
-        runId,
-        row,
-        loaded,
-        retried.pluginsCount,
-        retried.marketplaceOid,
-        retried.marketplaceEtag,
-        retried.parserVersion,
-        now(),
-      )
+      const target = persistEnrichment(db, runId, row, loaded, retried.pluginsCount, retried.marketplaceOid, retried.marketplaceEtag, now())
       completeEnrichment(counts, target, removedIds)
     })
     return
@@ -1111,7 +1079,6 @@ async function enrichOne(
     marketplace.pluginsCount,
     marketplace.marketplaceOid,
     marketplace.marketplaceEtag,
-    marketplace.parserVersion,
     now(),
   )
   completeEnrichment(counts, target, removedIds)
@@ -1235,7 +1202,6 @@ async function enrichGraphQLOne(
     marketplace.pluginsCount,
     marketplace.marketplaceOid,
     marketplace.marketplaceEtag,
-    marketplace.parserVersion,
     now(),
     marketplace.clearMarketplaceEtag ?? false,
   )

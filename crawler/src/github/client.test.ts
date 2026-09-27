@@ -1,4 +1,3 @@
-import { marketplaceFixtures } from '@awesome-claude-plugins/marketplace-contract/fixtures'
 import { describe, expect, it, vi } from 'vitest'
 import { GitHubClient, GitHubFatalError, GitHubTemporaryError } from './client.js'
 
@@ -449,7 +448,9 @@ describe('GitHubClient', () => {
   })
 
   it('reads raw marketplace content and preserves an empty plugins array', async () => {
-    const test = harness([Response.json({ plugins: [] }, { headers: { etag: 'W/"marketplace-v1"' } })])
+    const test = harness([
+      Response.json({ name: 'catalog', owner: { name: 'maintainer' }, plugins: [] }, { headers: { etag: 'W/"marketplace-v1"' } }),
+    ])
     expect(await test.client.getMarketplace('acme', 'catalog')).toEqual({
       kind: 'found',
       data: { plugins: [] },
@@ -460,7 +461,7 @@ describe('GitHubClient', () => {
   })
 
   it('parses marketplace files larger than the Contents API base64 limit', async () => {
-    const largeManifest = { plugins: [], padding: 'x'.repeat(1_100_000) }
+    const largeManifest = { name: 'catalog', owner: { name: 'maintainer' }, plugins: [], padding: 'x'.repeat(1_100_000) }
     const test = harness([manifest(largeManifest)])
     expect(await test.client.getMarketplace('acme', 'catalog')).toEqual({ kind: 'found', data: { plugins: [] } })
     expect(test.requests).toHaveLength(1)
@@ -488,28 +489,21 @@ describe('GitHubClient', () => {
     expect(test.requests).toHaveLength(1)
   })
 
-  it.each(marketplaceFixtures.filter((fixture) => fixture.valid))('uses the shared marketplace contract for $name', async (fixture) => {
-    const test = harness([manifest(fixture.input)])
+  it('counts marketplace entries without validating their fields', async () => {
+    const test = harness([manifest({ name: 'catalog', owner: { name: 'maintainer' }, plugins: [{}, null, 'unexpected entry'] })])
     const result = await test.client.getMarketplace('acme', 'catalog')
     expect(result.kind).toBe('found')
-    if (result.kind === 'found') expect(result.data.plugins).toHaveLength(fixture.pluginsCount)
+    if (result.kind === 'found') expect(result.data.plugins).toHaveLength(3)
   })
 
-  it.each(marketplaceFixtures.filter((fixture) => !fixture.valid))('rejects invalid shared marketplace fixture: $name', async (fixture) => {
-    const test = harness([manifest(fixture.input)])
+  it.each([
+    { name: 'catalog', owner: { name: 'maintainer' }, plugins: {} },
+    { name: 'catalog', owner: {}, plugins: [] },
+    { name: 'catalog', plugins: [] },
+  ])('rejects a marketplace with missing root data', async (input) => {
+    const test = harness([manifest(input)])
     const result = await test.client.getMarketplace('acme', 'catalog')
     expect(result).toMatchObject({ kind: 'invalid-content', failure: 'invalid-manifest', retryCount: 0 })
-    expect(test.requests).toHaveLength(1)
-  })
-
-  it('reports the failing manifest path without retrying invalid content', async () => {
-    const test = harness([manifest({ plugins: [{}] })])
-    expect(await test.client.getMarketplace('acme', 'catalog')).toMatchObject({
-      kind: 'invalid-content',
-      failure: 'invalid-manifest',
-      reason: 'Invalid marketplace manifest at plugins[0]: Manifest entry does not contain plugin metadata',
-      retryCount: 0,
-    })
     expect(test.requests).toHaveLength(1)
   })
 
@@ -538,7 +532,7 @@ describe('GitHubClient', () => {
         },
       }),
     )
-    const test = harness([brokenBody, manifest({ plugins: [] })])
+    const test = harness([brokenBody, manifest({ name: 'catalog', owner: { name: 'maintainer' }, plugins: [] })])
 
     expect(await test.client.getMarketplace('acme', 'catalog')).toMatchObject({ kind: 'found', data: { plugins: [] } })
     expect(test.requests).toHaveLength(2)
