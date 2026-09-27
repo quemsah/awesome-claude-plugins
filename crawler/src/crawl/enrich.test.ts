@@ -1734,7 +1734,9 @@ it('reprocesses a matching failed marketplace OID from an older content-cache ve
   expect(getMarketplace).not.toHaveBeenCalled()
   expect(
     db
-      .prepare('SELECT plugins_count, marketplace_oid, marketplace_failed_oid, marketplace_failed_parser_version FROM repositories WHERE id = ?')
+      .prepare(
+        'SELECT plugins_count, marketplace_oid, marketplace_failed_oid, marketplace_failed_parser_version FROM repositories WHERE id = ?',
+      )
       .get(id),
   ).toEqual({
     plugins_count: validMarketplaceFixture.pluginsCount,
