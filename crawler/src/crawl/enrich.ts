@@ -2,7 +2,7 @@ import type Database from 'better-sqlite3'
 import type { GitHubGraphQLMarketplaceBlob } from '../github/client.js'
 import { GitHubFatalError, type GitHubGraphQLRepo, type GitHubReader, type GitHubRepo, type RepoResult } from '../github/client.js'
 import { isValidGitHubPathSegment, parseGitHubOwnerUrl } from '../github/identifiers.js'
-import { MarketplaceFormatError, parseMarketplace } from '../github/marketplace.js'
+import { MARKETPLACE_INVALID_CONTENT_CACHE_VERSION, MarketplaceFormatError, parseMarketplace } from '../github/marketplace.js'
 import type { GitHubRetryReason } from '../github/rateBudget.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import type { Log } from '../logging.js'
@@ -239,7 +239,6 @@ function completeEnrichment(counts: EnrichmentCounts, target: EnrichmentTarget, 
   else counts.newReady++
 }
 
-const MARKETPLACE_INVALID_CONTENT_CACHE_VERSION = 2
 const MARKETPLACE_CONTENT_BATCH_SIZE = 25
 const MARKETPLACE_CONTENT_MAX_BYTES = 750_000
 const MARKETPLACE_UNKNOWN_BYTES = 32_768
@@ -316,6 +315,7 @@ function needsMarketplaceContent(row: RepositoryRow, currentMarketplaceOid: stri
   ) {
     return false
   }
+  if (row.marketplace_failed_oid === currentMarketplaceOid) return true
   return row.marketplace_oid !== currentMarketplaceOid || row.plugins_count === null
 }
 
