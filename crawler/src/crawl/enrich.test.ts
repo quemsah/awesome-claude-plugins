@@ -1693,6 +1693,60 @@ it('aborts on fatal reader errors while retaining earlier per-row updates', asyn
   expect(getRun(db, 'crawl-1')).toMatchObject({ phase: 'enrichment', phase_total: 2, phase_processed: 1 })
 })
 
+it('bypasses a cached ETag when stale failed marketplace content falls back to REST', async () => {
+  const db = database()
+  const nodeId = 'node-stale-negative-cache-rest'
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), nodeId)
+  ready(db, id)
+  const oid = 'f'.repeat(40)
+  db.prepare(
+    'UPDATE repositories SET marketplace_oid = ?, marketplace_etag = ?, marketplace_failed_oid = ?, marketplace_failed_parser_version = 1 WHERE id = ?',
+  ).run(oid, '"old"', oid, id)
+
+  const getMarketplace = vi.fn(async () => ({
+    kind: 'found' as const,
+    data: { plugins: [1, 2] },
+    etag: '"new"',
+  }))
+  const getMarketplaceBlobsByNodeId = vi.fn(async () => {
+    throw new Error('indeterminate encodings should bypass GraphQL text batching')
+  })
+  const client = {
+    ...reader(undefined, getMarketplace),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [
+        {
+          ...githubRepo('team', 'repo'),
+          node_id: nodeId,
+          marketplace_oid: oid,
+          marketplace_byte_size: 100,
+          marketplace_is_binary: null,
+        },
+      ],
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+    getMarketplaceBlobsByNodeId,
+  }
+
+  await enrichRepositories(db, client, 'crawl-1')
+
+  expect(getMarketplaceBlobsByNodeId).not.toHaveBeenCalled()
+  expect(getMarketplace).toHaveBeenCalledWith('team', 'repo', undefined, { maxAttempts: 1 })
+  expect(
+    db
+      .prepare(
+        'SELECT plugins_count, marketplace_etag, marketplace_failed_oid, marketplace_failed_parser_version FROM repositories WHERE id = ?',
+      )
+      .get(id),
+  ).toEqual({
+    plugins_count: 2,
+    marketplace_etag: '"new"',
+    marketplace_failed_oid: null,
+    marketplace_failed_parser_version: null,
+  })
+})
+
 it('reprocesses a matching failed marketplace OID from an older content-cache version', async () => {
   const db = database()
   const nodeId = 'node-stale-negative-cache'
