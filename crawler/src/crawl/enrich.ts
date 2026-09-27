@@ -670,8 +670,12 @@ function resolveGraphQLMarketplaceBlob(
   )
 }
 
-function marketplaceRequestEtag(row: RepositoryRow, changedOid: boolean): string | undefined {
-  if (changedOid || row.plugins_count === null) return undefined
+function marketplaceRequestEtag(
+  row: RepositoryRow,
+  authoritativeMarketplaceOid: string,
+  changedOid: boolean,
+): string | undefined {
+  if (changedOid || row.plugins_count === null || row.marketplace_failed_oid === authoritativeMarketplaceOid) return undefined
   return row.marketplace_etag ?? undefined
 }
 
@@ -691,7 +695,7 @@ async function loadGraphQLMarketplaceViaRest(
 ): Promise<MarketplaceState | null | RetryLater> {
   const authoritativeMarketplaceOid = blob?.oid ?? currentMarketplaceOid
   const changedOid = row.marketplace_oid !== authoritativeMarketplaceOid
-  const etag = marketplaceRequestEtag(row, changedOid)
+  const etag = marketplaceRequestEtag(row, authoritativeMarketplaceOid, changedOid)
   let result: RepoResult<{ plugins: unknown[] }>
   try {
     result = await reader.getMarketplace(loaded.owner, loaded.repo, etag, { maxAttempts: policy.maxAttempts })
