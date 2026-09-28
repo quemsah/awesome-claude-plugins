@@ -220,10 +220,11 @@ export class GitHubGitClient implements GitHubGit {
   private async request(path: string, method = 'GET', body?: unknown, baseUrl = this.url): Promise<unknown> {
     throwIfShutdown(this.signal)
     let response: Response
+    const timeoutSignal = AbortSignal.timeout(30_000)
     try {
       response = await this.transport(`${baseUrl}${path}`, {
         method,
-        signal: AbortSignal.timeout(30_000),
+        signal: this.signal ? AbortSignal.any([this.signal, timeoutSignal]) : timeoutSignal,
         headers: {
           Authorization: `Bearer ${this.token}`,
           Accept: 'application/vnd.github+json',
@@ -233,17 +234,22 @@ export class GitHubGitClient implements GitHubGit {
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       })
     } catch (error) {
+      throwIfShutdown(this.signal)
       if (isAbort(error)) throw new GitHubGitTimeoutError()
       throw new GitHubGitError('GitHub Git API network request failed')
     }
+    throwIfShutdown(this.signal)
     if (!response.ok) {
       const conflictStatus = method === 'PATCH' ? await refConflictStatus(response) : null
       if (conflictStatus !== null) throw new GitHubGitConflictError(conflictStatus)
       throw new GitHubGitHttpError(response.status)
     }
     try {
-      return (await response.json()) as unknown
+      const result = (await response.json()) as unknown
+      throwIfShutdown(this.signal)
+      return result
     } catch (error) {
+      throwIfShutdown(this.signal)
       if (isAbort(error)) throw new GitHubGitTimeoutError()
       throw new GitHubGitResponseError()
     }
