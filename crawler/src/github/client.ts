@@ -902,7 +902,11 @@ export class GitHubClient implements GitHubReader {
     const remaining = response.headers.get('x-ratelimit-remaining')
     let secondary = status === 429 || (remaining !== '0' && delay !== null)
     if (status === 403 && remaining !== '0' && delay === null) {
-      const body = await response.text().catch(() => '')
+      const body = await response.text().catch(() => {
+        throwIfShutdown(this.signal)
+        return ''
+      })
+      throwIfShutdown(this.signal)
       if (/secondary rate limit|abuse detection/i.test(body)) secondary = true
       else throw new GitHubFatalError('GitHub access forbidden (403)', status)
     }
