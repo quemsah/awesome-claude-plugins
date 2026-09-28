@@ -241,6 +241,7 @@ export class GitHubGitClient implements GitHubGit {
     throwIfShutdown(this.signal)
     if (!response.ok) {
       const conflictStatus = method === 'PATCH' ? await refConflictStatus(response) : null
+      throwIfShutdown(this.signal)
       if (conflictStatus !== null) throw new GitHubGitConflictError(conflictStatus)
       throw new GitHubGitHttpError(response.status)
     }
