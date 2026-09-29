@@ -1,6 +1,6 @@
 # Multi-family GitHub Code Search in Discovery
 
-**Status:** Approved conversational design; implementation plan pending.
+**Status:** Approved design; implementation plan in review.
 
 ## Goal
 
