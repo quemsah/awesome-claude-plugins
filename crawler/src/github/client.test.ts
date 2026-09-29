@@ -709,6 +709,46 @@ describe('GitHubClient', () => {
     expect((await test.client.getRepository('acme', 'catalog')).kind).toBe('temporary-error')
   })
 })
+it('preserves shutdown when GraphQL transport resolves after shutdown', async () => {
+  const shutdown = new AbortController()
+  const client = new GitHubClient({
+    token: 'test-secret',
+    signal: shutdown.signal,
+    clock: { now: () => 0, sleep: async () => {} },
+    fetch: (async () => {
+      shutdown.abort()
+      return new Response('{}', { status: 200 })
+    }) as typeof fetch,
+  })
+
+  await expect(client.getRepositoriesByNodeId(['MDEwOlJlcG9zaXRvcnkx'])).rejects.toMatchObject({ category: 'terminated' })
+})
+
+it('preserves shutdown after a GraphQL body is read successfully', async () => {
+  const shutdown = new AbortController()
+  const payload = JSON.stringify({
+    data: {
+      nodes: [null],
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T22:00:00Z', limit: 5_000, used: 1 },
+    },
+  })
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      shutdown.abort()
+      controller.enqueue(new TextEncoder().encode(payload))
+      controller.close()
+    },
+  })
+  const client = new GitHubClient({
+    token: 'test-secret',
+    signal: shutdown.signal,
+    clock: { now: () => 0, sleep: async () => {} },
+    fetch: (async () => new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } })) as typeof fetch,
+  })
+
+  await expect(client.getRepositoriesByNodeId(['MDEwOlJlcG9zaXRvcnkx'])).rejects.toMatchObject({ category: 'terminated' })
+})
+
 it('preserves shutdown while reading a GraphQL success body', async () => {
   const shutdown = new AbortController()
   const body = new ReadableStream({

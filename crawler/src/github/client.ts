@@ -628,6 +628,7 @@ export class GitHubClient implements GitHubReader {
   ): Promise<GraphQLAction<T>> {
     try {
       const payload: unknown = await response.json()
+      throwIfShutdown(this.signal)
       let isolatedErrorIndexes = new Set<number>()
       if (record(payload) && Array.isArray(payload.errors) && payload.errors.length > 0) {
         const message = payload.errors
@@ -701,6 +702,7 @@ export class GitHubClient implements GitHubReader {
           variables: { ids },
         }),
       })
+      throwIfShutdown(this.signal)
       return { kind: 'response', response, requestStartedAt }
     } catch {
       throwIfShutdown(this.signal)
@@ -767,6 +769,7 @@ export class GitHubClient implements GitHubReader {
         parseNode,
         isolateNodeErrors,
       )
+      throwIfShutdown(this.signal)
       if (action.kind === 'result') return action.result
       secondaryCount = action.secondaryCount
     }
