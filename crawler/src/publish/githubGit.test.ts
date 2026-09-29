@@ -264,6 +264,19 @@ describe('GitHubGitClient', () => {
     expect(String(failure)).not.toContain('private-publish-token')
   })
 
+  it('preserves shutdown while parsing a PATCH conflict response body', async () => {
+    const shutdown = new AbortController()
+    const body = new ReadableStream({
+      pull(controller) {
+        shutdown.abort()
+        controller.error(new DOMException('shutdown body read', 'AbortError'))
+      },
+    })
+    const { client } = mockClient([new Response(body, { status: 422 })], { signal: shutdown.signal })
+
+    await expect(client.updateBranch(pendingSha)).rejects.toMatchObject({ category: 'terminated' })
+  })
+
   it('reports an aborted response body as a typed timeout without exposing credentials', async () => {
     const body = new ReadableStream({
       start(controller) {

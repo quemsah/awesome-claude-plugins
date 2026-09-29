@@ -788,9 +788,10 @@ export class GitHubClient implements GitHubReader {
       await this.budget.acquire(bucket, this.signal)
       throwIfShutdown(this.signal)
       let response: Response
+      const timeoutSignal = AbortSignal.timeout(30_000)
       try {
         response = await this.transport(`https://api.github.com${path}`, {
-          signal: AbortSignal.timeout(30_000),
+          signal: this.signal ? AbortSignal.any([this.signal, timeoutSignal]) : timeoutSignal,
           headers: {
             Authorization: `Bearer ${this.token}`,
             Accept: accept,
@@ -813,6 +814,7 @@ export class GitHubClient implements GitHubReader {
         await this.waitForTransientRetry(bucket, 'network', this.transientDelay(attempt))
         continue
       }
+      throwIfShutdown(this.signal)
       const action = await this.handleResponse(
         bucket,
         response,
@@ -900,7 +902,11 @@ export class GitHubClient implements GitHubReader {
     const remaining = response.headers.get('x-ratelimit-remaining')
     let secondary = status === 429 || (remaining !== '0' && delay !== null)
     if (status === 403 && remaining !== '0' && delay === null) {
-      const body = await response.text().catch(() => '')
+      const body = await response.text().catch(() => {
+        throwIfShutdown(this.signal)
+        return ''
+      })
+      throwIfShutdown(this.signal)
       if (/secondary rate limit|abuse detection/i.test(body)) secondary = true
       else throw new GitHubFatalError('GitHub access forbidden (403)', status)
     }

@@ -732,6 +732,24 @@ it('aborts an in-flight GraphQL request when shutdown is requested', async () =>
   expect(requestSignals[0]?.aborted).toBe(true)
 })
 
+it('preserves shutdown while reading a 403 response body', async () => {
+  const shutdown = new AbortController()
+  const body = new ReadableStream({
+    pull(controller) {
+      shutdown.abort()
+      controller.error(new DOMException('shutdown body read', 'AbortError'))
+    },
+  })
+  const client = new GitHubClient({
+    token: 'test-secret',
+    signal: shutdown.signal,
+    clock: { now: () => 0, sleep: async () => {} },
+    fetch: (async () => new Response(body, { status: 403, headers: { 'x-ratelimit-remaining': '1' } })) as typeof fetch,
+  })
+
+  await expect(client.getRepository('acme', 'catalog')).rejects.toMatchObject({ category: 'terminated' })
+})
+
 it('cancels a production rate-limit wait when shutdown is requested', async () => {
   const shutdown = new AbortController()
   let requests = 0
