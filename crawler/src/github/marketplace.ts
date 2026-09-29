@@ -1,4 +1,3 @@
-export const MARKETPLACE_PARSER_VERSION = 2
 export const MARKETPLACE_INVALID_CONTENT_CACHE_VERSION = 3
 
 export type Marketplace = { plugins: unknown[] }
@@ -27,6 +26,5 @@ export function parseMarketplace(value: unknown): Marketplace {
     throw new MarketplaceFormatError()
   }
 
-  // ponytail: shallow check; share the UI schema if malformed non-empty entries must be rejected too.
   return { plugins: value.plugins.filter((plugin) => isRecord(plugin) && Object.keys(plugin).length > 0) }
 }
