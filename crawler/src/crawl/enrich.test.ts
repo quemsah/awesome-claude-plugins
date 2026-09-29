@@ -9,6 +9,7 @@ import {
   type Marketplace,
   type RepoResult,
 } from '../github/client.js'
+import { MARKETPLACE_INVALID_CONTENT_CACHE_VERSION } from '../github/marketplace.js'
 import { listPublishable, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
 import { beginRun, getRun, listRunErrors } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
@@ -76,7 +77,11 @@ function ready(db: Database.Database, id: number, owner = 'team', repo = 'repo')
 }
 
 const validMarketplaceFixture = (() => {
-  const input = { name: 'catalog', owner: { name: 'maintainer' }, plugins: [{}, null] }
+  const input = {
+    name: 'catalog',
+    owner: { name: 'maintainer' },
+    plugins: [{ name: 'plugin-one' }, { name: 'plugin-two' }],
+  }
   return { input, pluginsCount: input.plugins.length }
 })()
 
@@ -389,7 +394,7 @@ it('does not refetch an invalid GraphQL marketplace blob through REST and rememb
     plugins_count: (before as { plugins_count: number }).plugins_count,
     marketplace_oid: oldOid,
     marketplace_failed_oid: currentOid,
-    marketplace_failed_parser_version: 2,
+    marketplace_failed_parser_version: MARKETPLACE_INVALID_CONTENT_CACHE_VERSION,
   })
   expect(listRunErrors(db, 'crawl-1').map(({ error_type, retry_count }) => ({ error_type, retry_count }))).toEqual([
     { error_type: 'marketplace_invalid_json', retry_count: 0 },
@@ -442,7 +447,7 @@ it('keeps a newly discovered repository with invalid marketplace content out of 
     owner_url: null,
     repo_name: null,
     marketplace_failed_oid: currentOid,
-    marketplace_failed_parser_version: 2,
+    marketplace_failed_parser_version: MARKETPLACE_INVALID_CONTENT_CACHE_VERSION,
   })
 
   const second = await enrichRepositories(db, client, 'crawl-1')
