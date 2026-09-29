@@ -22,7 +22,7 @@ The order preserves the current query first and runs the broadest path-only quer
 
 - Merge candidates from all families into the existing discovery pipeline.
 - Deduplicate case-insensitively by repository URL across families and size ranges. Count and upsert each repository once per crawl.
-- Enrich the merged candidate set once, after all three discovery sweeps.
+- Run the existing enrichment phase once after all three discovery sweeps. It processes the entire `repositories` table, including repositories found in earlier crawls, rather than only this crawl's search candidates.
 - Keep the existing enrichment and marketplace validation rules. A candidate found by the broad path-only family is still removed or rejected by the current checks if it does not have a valid marketplace.
 
 ## Adaptive range cache and migration
@@ -49,9 +49,17 @@ Add deterministic tests for:
 3. Schema migration assigning existing cached ranges to `marketplace_filename_path`, preserving those ranges, and storing query-family warnings.
 4. Case-insensitive deduplication when the same repository appears in multiple families and size ranges.
 5. A partial or temporarily failed family emitting a family-specific warning, retaining its previous cache, and allowing the other families to continue.
-6. One enrichment pass after the merged discovery results.
+6. One enrichment phase after all family sweeps that still processes the full `repositories` table, including rows persisted by earlier crawls.
 
-Do not add a live GitHub API test or a seed/allowlist for `mnemoverse/claude-plugin`. After rollout, manually check whether that repository appears in the catalog after about one week.
+GitHub's [REST documentation](https://docs.github.com/en/rest/search/search#search-code) says code search requires at least one search term. A one-time authenticated request to the actual `GET /search/code` endpoint on 2026-09-30 returned HTTP 200 for each exact root query:
+
+- `filename:marketplace.json path:.claude-plugin size:0..400000`
+- `.claude-plugin/marketplace.json size:0..400000`
+- `path:.claude-plugin size:0..400000`
+
+The qualifier-only third query was accepted by the endpoint. Keep this as a manual syntax check; do not add a recurring live GitHub API test.
+
+Do not add a seed/allowlist for `mnemoverse/claude-plugin`. After rollout, manually check whether that repository appears in the catalog after about one week.
 
 ## Operational impact and scope
 
