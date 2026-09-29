@@ -50,7 +50,7 @@
 - Produces `DiscoveryQueryFamily`, the ordered `discoverySearchFamilies` list, and `buildQuery(range: SizeRange): string` on each family entry.
 - IDs and order: `marketplace_filename_path`, `marketplace_path_literal`, `claude_plugin_path`.
 
-- [ ] **Step 1: Write the failing family table test**
+- [x] **Step 1: Write the failing family table test**
 
 In `searchFamilies.test.ts`, assert the exact ordered IDs and query strings for `[12, 34]`:
 
@@ -60,23 +60,23 @@ filename:marketplace.json path:.claude-plugin size:12..34
 path:.claude-plugin size:12..34
 ```
 
-- [ ] **Step 2: Run the focused test and confirm it fails**
+- [x] **Step 2: Run the focused test and confirm it fails**
 
 Run from `crawler/`: `npm exec vitest run src/github/searchFamilies.test.ts`
 
 Expected: FAIL because the family module does not exist.
 
-- [ ] **Step 3: Implement the ordered family definitions**
+- [x] **Step 3: Implement the ordered family definitions**
 
 Export the stable ID type and an ordered array whose `buildQuery` functions produce the three exact templates. Keep query construction in this module so discovery and tests use the same definitions.
 
-- [ ] **Step 4: Run the focused test**
+- [x] **Step 4: Run the focused test**
 
 Run from `crawler/`: `npm exec vitest run src/github/searchFamilies.test.ts`
 
 Expected: PASS for all IDs, query strings, and order.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crawler/src/github/searchFamilies.ts crawler/src/github/searchFamilies.test.ts
