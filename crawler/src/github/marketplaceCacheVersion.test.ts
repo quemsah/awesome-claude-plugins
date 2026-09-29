@@ -8,7 +8,7 @@ const PARSER_BLOB_SHA_BY_CACHE_VERSION: Readonly<Record<number, string>> = {
 }
 
 function gitBlobSha(content: Buffer): string {
-  return createHash('sha1').update(`blob ${content.byteLength}\\0`).update(content).digest('hex')
+  return createHash('sha1').update(`blob ${content.byteLength}\0`).update(content).digest('hex')
 }
 
 it('requires an invalid-content cache version bump when marketplace parsing semantics change', () => {
