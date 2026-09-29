@@ -4,7 +4,7 @@ import { expect, it } from 'vitest'
 import { MARKETPLACE_INVALID_CONTENT_CACHE_VERSION } from './marketplace.js'
 
 const PARSER_BLOB_SHA_BY_CACHE_VERSION: Readonly<Record<number, string>> = {
-  2: '0f7a59eeeef7b41bf726b0c37f17708af9658bef',
+  3: 'b65a57fb3c73564682c073da7c0294dd81b59144',
 }
 
 function gitBlobSha(content: Buffer): string {
