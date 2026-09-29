@@ -709,6 +709,42 @@ describe('GitHubClient', () => {
     expect((await test.client.getRepository('acme', 'catalog')).kind).toBe('temporary-error')
   })
 })
+it('preserves shutdown while reading a GraphQL success body', async () => {
+  const shutdown = new AbortController()
+  const body = new ReadableStream({
+    pull(controller) {
+      shutdown.abort()
+      controller.error(new DOMException('shutdown body read', 'AbortError'))
+    },
+  })
+  const client = new GitHubClient({
+    token: 'test-secret',
+    signal: shutdown.signal,
+    clock: { now: () => 0, sleep: async () => {} },
+    fetch: (async () => new Response(body, { status: 200 })) as typeof fetch,
+  })
+
+  await expect(client.getRepositoriesByNodeId(['MDEwOlJlcG9zaXRvcnkx'])).rejects.toMatchObject({ category: 'terminated' })
+})
+
+it('preserves shutdown while reading a GraphQL 403 body', async () => {
+  const shutdown = new AbortController()
+  const body = new ReadableStream({
+    pull(controller) {
+      shutdown.abort()
+      controller.error(new DOMException('shutdown body read', 'AbortError'))
+    },
+  })
+  const client = new GitHubClient({
+    token: 'test-secret',
+    signal: shutdown.signal,
+    clock: { now: () => 0, sleep: async () => {} },
+    fetch: (async () => new Response(body, { status: 403, headers: { 'x-ratelimit-remaining': '1' } })) as typeof fetch,
+  })
+
+  await expect(client.getRepositoriesByNodeId(['MDEwOlJlcG9zaXRvcnkx'])).rejects.toMatchObject({ category: 'terminated' })
+})
+
 it('aborts an in-flight GraphQL request when shutdown is requested', async () => {
   const shutdown = new AbortController()
   const requestSignals: AbortSignal[] = []
