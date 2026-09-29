@@ -460,7 +460,11 @@ export class GitHubClient implements GitHubReader {
       return { kind: 'retry', secondaryCount }
     }
     if (response.status === 403 && delay === null) {
-      const body = await response.text().catch(() => '')
+      const body = await response.text().catch(() => {
+        throwIfShutdown(this.signal)
+        return ''
+      })
+      throwIfShutdown(this.signal)
       if (!/secondary rate limit|abuse detection/i.test(body)) {
         throw new GitHubFatalError('GitHub GraphQL access forbidden (403)', 403)
       }
@@ -624,6 +628,7 @@ export class GitHubClient implements GitHubReader {
   ): Promise<GraphQLAction<T>> {
     try {
       const payload: unknown = await response.json()
+      throwIfShutdown(this.signal)
       let isolatedErrorIndexes = new Set<number>()
       if (record(payload) && Array.isArray(payload.errors) && payload.errors.length > 0) {
         const message = payload.errors
@@ -656,6 +661,7 @@ export class GitHubClient implements GitHubReader {
       })
       return { kind: 'result', result: { kind: 'found', data, rateLimit } }
     } catch {
+      throwIfShutdown(this.signal)
       return {
         kind: 'result',
         result: {
@@ -696,6 +702,7 @@ export class GitHubClient implements GitHubReader {
           variables: { ids },
         }),
       })
+      throwIfShutdown(this.signal)
       return { kind: 'response', response, requestStartedAt }
     } catch {
       throwIfShutdown(this.signal)
@@ -762,6 +769,7 @@ export class GitHubClient implements GitHubReader {
         parseNode,
         isolateNodeErrors,
       )
+      throwIfShutdown(this.signal)
       if (action.kind === 'result') return action.result
       secondaryCount = action.secondaryCount
     }
