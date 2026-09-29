@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import type { DiscoveryQueryFamily } from '../github/searchFamilies.js'
 import { assertValidStatsDraft, type StatsRecord } from '../output/statsDraft.js'
 
 export type RunStatus = 'running' | 'completed' | 'failed' | 'published'
@@ -30,6 +31,7 @@ export type RunErrorPhase = 'search' | 'enrich' | 'publish' | 'notify' | 'crawl'
 export interface RunErrorInput {
   run_id: string
   phase: RunErrorPhase
+  query_family?: DiscoveryQueryFamily | null
   repository_id?: number | null
   range_start?: number | null
   range_end?: number | null
@@ -223,10 +225,11 @@ export function recordRunError(db: Database.Database, error: RunErrorInput): voi
   if (!['search', 'enrich', 'publish', 'notify', 'crawl'].includes(error.phase)) throw new Error('Invalid error phase')
   if (!Number.isSafeInteger(error.retry_count) || error.retry_count < 0) throw new Error('retry_count must be nonnegative')
   db.prepare(`
-    INSERT INTO run_errors (run_id, phase, repository_id, range_start, range_end, error_type, retry_count, occurred_at)
-    VALUES (@run_id, @phase, @repository_id, @range_start, @range_end, @error_type, @retry_count, @occurred_at)
+    INSERT INTO run_errors (run_id, phase, query_family, repository_id, range_start, range_end, error_type, retry_count, occurred_at)
+    VALUES (@run_id, @phase, @query_family, @repository_id, @range_start, @range_end, @error_type, @retry_count, @occurred_at)
   `).run({
     ...error,
+    query_family: error.query_family ?? null,
     repository_id: error.repository_id ?? null,
     range_start: error.range_start ?? null,
     range_end: error.range_end ?? null,

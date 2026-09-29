@@ -92,36 +92,38 @@ git commit -m "feat: define discovery search families"
 - Modify: `crawler/src/storage/discoveryRanges.test.ts`
 - Modify: `crawler/src/storage/runs.ts`
 - Modify: `crawler/src/storage/runs.test.ts`
+- Modify: `crawler/src/crawl/discover.ts` (pass the existing family ID until Task 3 replaces the single-family loop)
 
 **Interfaces:**
 - Consumes `DiscoveryQueryFamily` from Task 1.
 - Change cache signatures to `listCachedDiscoveryRanges(db, queryFamily, root)` and `replaceCachedDiscoveryRanges(db, queryFamily, root, ranges)`.
 - Add optional nullable `query_family: DiscoveryQueryFamily | null` to `RunErrorInput`; return it as nullable on `RunErrorRow`.
 
-- [ ] **Step 1: Write migration and family-isolation tests**
+- [x] **Step 1: Write migration and family-isolation tests**
 
 Seed a version-10 database with a split `discovery_ranges` partition and an old `run_errors` row. After migration, assert schema version 11, unchanged range bounds assigned to `marketplace_filename_path`, and old `query_family` is `NULL`. Add a cache test storing different partitions for the same root under two family IDs and assert reads/replacements stay isolated.
 
-- [ ] **Step 2: Run the focused tests and confirm they fail**
+- [x] **Step 2: Run the focused tests and confirm they fail**
 
 Run from `crawler/`: `npm exec vitest run src/storage/schema.test.ts src/storage/discoveryRanges.test.ts src/storage/runs.test.ts`
 
 Expected: FAIL because the schema and cache APIs have no family dimension.
 
-- [ ] **Step 3: Implement schema version 11 and storage APIs**
+- [x] **Step 3: Implement schema version 11 and storage APIs**
 
 Rebuild `discovery_ranges` with primary key `(query_family, root_start, root_end, range_start, range_end)` and copy every existing row as `marketplace_filename_path`. Add nullable `run_errors.query_family`; make `recordRunError` store a family when supplied and `NULL` otherwise. Scope exact-partition reads and replacements to the family argument.
+Keep the current discovery caller compiling by passing `marketplace_filename_path`; Task 3 replaces this transitional use with the family loop.
 
-- [ ] **Step 4: Run focused storage tests**
+- [x] **Step 4: Run focused storage tests**
 
 Run from `crawler/`: `npm exec vitest run src/storage/schema.test.ts src/storage/discoveryRanges.test.ts src/storage/runs.test.ts`
 
 Expected: PASS; existing migration assertions now expect version 11, prior cache bounds are preserved, and family caches do not overlap.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
-git add crawler/src/storage/schema.ts crawler/src/storage/schema.test.ts crawler/src/storage/discoveryRanges.ts crawler/src/storage/discoveryRanges.test.ts crawler/src/storage/runs.ts crawler/src/storage/runs.test.ts
+git add crawler/src/storage/schema.ts crawler/src/storage/schema.test.ts crawler/src/storage/discoveryRanges.ts crawler/src/storage/discoveryRanges.test.ts crawler/src/storage/runs.ts crawler/src/storage/runs.test.ts crawler/src/crawl/discover.ts docs/superpowers/plans/2026-09-30-discovery-search-families.md
 git commit -m "feat: persist discovery query families"
 ```
 

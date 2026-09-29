@@ -348,13 +348,13 @@ export async function discover(
   const countedUrls = new Set<string>()
 
   for (const rootRange of ranges) {
-    const cachedRanges = listCachedDiscoveryRanges(db, rootRange) ?? [rootRange]
+    const cachedRanges = listCachedDiscoveryRanges(db, 'marketplace_filename_path', rootRange) ?? [rootRange]
     const coverage: CoverageState = { complete: true, leaves: [], log }
     for (const range of cachedRanges) {
       await searchRange(db, reader, runId, lookup, range, summary, now, coverage, onProgress, countedUrls)
     }
     if (coverage.complete) {
-      runWhileActive(db, runId, () => replaceCachedDiscoveryRanges(db, rootRange, coverage.leaves))
+      runWhileActive(db, runId, () => replaceCachedDiscoveryRanges(db, 'marketplace_filename_path', rootRange, coverage.leaves))
     }
     onProgress?.()
   }

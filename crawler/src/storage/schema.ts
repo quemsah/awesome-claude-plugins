@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 11
+const schemaVersion = 12
 
 function createSchema(db: Database.Database): void {
   db.exec(`
@@ -279,6 +279,26 @@ function migrateTo11(db: Database.Database): void {
   db.pragma('user_version = 11')
 }
 
+function migrateTo12(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE discovery_ranges RENAME TO discovery_ranges_v10;
+    CREATE TABLE discovery_ranges (
+      query_family TEXT NOT NULL,
+      root_start INTEGER NOT NULL CHECK(root_start >= 0),
+      root_end INTEGER NOT NULL CHECK(root_end >= root_start),
+      range_start INTEGER NOT NULL CHECK(range_start >= root_start),
+      range_end INTEGER NOT NULL CHECK(range_end >= range_start AND range_end <= root_end),
+      PRIMARY KEY (query_family, root_start, root_end, range_start, range_end)
+    );
+    INSERT INTO discovery_ranges (query_family, root_start, root_end, range_start, range_end)
+      SELECT 'marketplace_filename_path', root_start, root_end, range_start, range_end
+      FROM discovery_ranges_v10;
+    DROP TABLE discovery_ranges_v10;
+    ALTER TABLE run_errors ADD COLUMN query_family TEXT;
+    PRAGMA user_version = 12;
+  `)
+}
+
 function migrateSchema(db: Database.Database, version: number): void {
   if (version === 0) createSchema(db)
   if (version < 2) migrateTo2(db)
@@ -291,6 +311,7 @@ function migrateSchema(db: Database.Database, version: number): void {
   if (version < 9) migrateTo9(db)
   if (version < 10) migrateTo10(db)
   if (version < 11) migrateTo11(db)
+  if (version < 12) migrateTo12(db)
 }
 
 export function initializeSchema(db: Database.Database): void {
