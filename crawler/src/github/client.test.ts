@@ -489,11 +489,13 @@ describe('GitHubClient', () => {
     expect(test.requests).toHaveLength(1)
   })
 
-  it('counts marketplace entries without validating their fields', async () => {
-    const test = harness([manifest({ name: 'catalog', owner: { name: 'maintainer' }, plugins: [{}, null, 'unexpected entry'] })])
+  it('filters empty and non-object marketplace entries', async () => {
+    const test = harness([
+      manifest({ name: 'catalog', owner: { name: 'maintainer' }, plugins: [{ name: 'valid' }, {}, null, 'unexpected entry'] }),
+    ])
     const result = await test.client.getMarketplace('acme', 'catalog')
     expect(result.kind).toBe('found')
-    if (result.kind === 'found') expect(result.data.plugins).toHaveLength(3)
+    if (result.kind === 'found') expect(result.data.plugins).toEqual([{ name: 'valid' }])
   })
 
   it.each([
