@@ -115,6 +115,87 @@ it('runs discovery before enrichment and completes with a typed report and store
   expect(db.prepare('SELECT COUNT(*) AS count FROM stats').get()).toEqual({ count: 0 })
 })
 
+it('logs per-family outcomes and enriches stored and newly discovered repositories after all searches', async () => {
+  const db = database()
+  const existingUrl = 'https://github.com/existing/repo'
+  const discoveredUrl = 'https://github.com/new/repo'
+  upsertDiscovery(db, existingUrl, null)
+  const events: string[] = []
+  const log = vi.fn()
+  const client = reader({
+    searchCode: async (query) => {
+      events.push(`search:${query}`)
+      if (query.startsWith('filename:')) return { items: [{ repository: { html_url: discoveredUrl, description: 'found' } }], total_count: 1, incomplete_results: false }
+      if (query.startsWith('.claude-plugin/')) throw new GitHubTemporaryError('temporary outage', 503)
+      return { items: [{ repository: { html_url: discoveredUrl, description: 'duplicate' } }], total_count: 1, incomplete_results: false }
+    },
+    getRepository: async (owner, name) => {
+      events.push(`repository:${owner}/${name}`)
+      return { kind: 'found', data: repo(owner, name) }
+    },
+  })
+
+  const result = await runCrawl(db, client, 'family-outcomes', { ranges: [[0, 10]], log })
+
+  expect(events.slice(0, 3)).toEqual([
+    'search:filename:marketplace.json path:.claude-plugin size:0..10',
+    'search:.claude-plugin/marketplace.json size:0..10',
+    'search:path:.claude-plugin size:0..10',
+  ])
+  expect(events.slice(3)).toEqual(['repository:existing/repo', 'repository:new/repo'])
+  expect(result.discovery).toMatchObject({
+    newUrls: 1,
+    successfulRanges: 2,
+    warningCount: 1,
+    families: {
+      marketplace_filename_path: { successfulRanges: 1, warningCount: 0 },
+      marketplace_path_literal: { successfulRanges: 0, warningCount: 1 },
+      claude_plugin_path: { successfulRanges: 1, warningCount: 0 },
+    },
+  })
+  expect(result.enrichment.conclusive).toBe(2)
+  expect(listRunErrors(db, 'family-outcomes')).toContainEqual(
+    expect.objectContaining({ phase: 'search', query_family: 'marketplace_path_literal', error_type: 'temporary-error' }),
+  )
+  expect(log).toHaveBeenCalledWith(
+    expect.objectContaining({
+      event: 'crawl.phase_completed',
+      phase: 'discovery',
+      families: result.discovery.families,
+    }),
+  )
+})
+
+it('logs the fatal family and skips enrichment when family three receives HTTP 422', async () => {
+  const db = database()
+  const getRepository = vi.fn()
+  const getMarketplace = vi.fn()
+  const log = vi.fn()
+  const client = reader({
+    searchCode: async (query) => {
+      if (query.startsWith('path:')) throw new GitHubFatalError('Code Search rejected the query', 422)
+      return { items: [], total_count: 0, incomplete_results: false }
+    },
+    getRepository,
+    getMarketplace,
+  })
+
+  await expect(runCrawl(db, client, 'family-fatal', { ranges: [[0, 10]], log })).rejects.toMatchObject({
+    category: 'github_fatal_error',
+  })
+
+  expect(listRunErrors(db, 'family-fatal').some(({ phase }) => phase === 'enrich')).toBe(false)
+  expect(getRepository).not.toHaveBeenCalled()
+  expect(getMarketplace).not.toHaveBeenCalled()
+  expect(log).toHaveBeenCalledWith(
+    expect.objectContaining({
+      event: 'crawl.request_failed',
+      query_family: 'claude_plugin_path',
+      status: 422,
+    }),
+  )
+})
+
 it('reports a pending publication as an explicit lock instead of treating it as a database failure', async () => {
   const db = database()
   beginRun(db, 'old', '2026-09-20T00:00:00.000Z')

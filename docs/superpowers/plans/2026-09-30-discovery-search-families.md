@@ -177,21 +177,21 @@ git commit -m "feat: search all discovery query families"
 - Consumes the family-aware `DiscoverySummary` from Task 3.
 - New crawl reports require the family totals; stored reports from earlier versions remain readable and are interpreted as `marketplace_filename_path`-only runs.
 
-- [ ] **Step 1: Write the crawl integration and legacy-report tests**
+- [x] **Step 1: Write the crawl integration and legacy-report tests**
 
 Assert all three searches finish before enrichment starts, and enrichment still visits both a repository already stored before this crawl and a newly discovered repository. Assert the discovery phase-completed log includes family totals, a successful family lets the crawl continue despite sibling failures, and zero successful ranges across all families still yields `no_successful_ranges`. Add a fatal 422 test from family #3 that asserts the error remains fatal, the failure log identifies the family, and enrichment is skipped. Add a stored-report test with the old summary shape and assert it is still accepted during publish/recovery.
 
-- [ ] **Step 2: Run focused integration tests and confirm the new assertions fail**
+- [x] **Step 2: Run focused integration tests and confirm the new assertions fail**
 
 Run from `crawler/`: `npm exec vitest run src/crawl/runCrawl.test.ts src/service/execute.test.ts`
 
 Expected: FAIL because only one query is run and report validation does not understand family totals.
 
-- [ ] **Step 3: Implement summary propagation and backward-compatible report parsing**
+- [x] **Step 3: Implement summary propagation and backward-compatible report parsing**
 
 Add the family totals to the discovery completion log. Keep the existing single enrichment call and full-table iterator unchanged. Validate family keys/counts and warning `query_family` in new reports; when loading a legacy stored report without those fields, assign its aggregate counts and warnings to `marketplace_filename_path` and zero to the two new families.
 
-- [ ] **Step 4: Run focused tests and the full unit suite**
+- [x] **Step 4: Run focused tests and the full unit suite**
 
 Run from `crawler/`:
 
@@ -203,7 +203,7 @@ npm run typecheck
 
 Expected: PASS; all existing crawl, persistence, and publication tests remain green, including legacy report recovery.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crawler/src/crawl/runCrawl.ts crawler/src/crawl/runCrawl.test.ts crawler/src/service/execute.ts crawler/src/service/execute.test.ts

@@ -1,7 +1,9 @@
 import type Database from 'better-sqlite3'
 import type { EnrichmentCounts } from '../crawl/enrich.js'
+import type { DiscoverySummary } from '../crawl/discover.js'
 import { CrawlError, type CrawlSummary, runCrawl } from '../crawl/runCrawl.js'
 import type { GitHubReader } from '../github/client.js'
+import { discoverySearchFamilies, type DiscoveryQueryFamily } from '../github/searchFamilies.js'
 import type { GitHubRateBuckets } from '../github/rateBudget.js'
 import type { SizeRange } from '../github/sizeRanges.js'
 import type { LogEvent } from '../logging.js'
@@ -42,6 +44,12 @@ export type RunReport = Pick<CrawlSummary, 'discovery' | 'enrichment' | 'warning
   rateBuckets?: GitHubRateBuckets
   durationMs?: number
 }
+
+type LegacyDiscoverySummary = Omit<DiscoverySummary, 'families' | 'warnings'> & {
+  warnings: Array<Omit<DiscoverySummary['warnings'][number], 'query_family'>>
+}
+
+type StoredDiscoverySummary = DiscoverySummary | LegacyDiscoverySummary
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -120,24 +128,71 @@ function validRateBuckets(value: unknown): boolean {
   return !Object.hasOwn(value, 'graphql') || validGraphQLRate(value.graphql)
 }
 
-function isDiscovery(value: unknown): value is RunReport['discovery'] {
-  return (
-    record(value) &&
-    nonnegative(value.newUrls) &&
-    nonnegative(value.existingUrls) &&
-    nonnegative(value.successfulRanges) &&
-    nonnegative(value.warningCount) &&
-    Array.isArray(value.warnings) &&
-    value.warnings.every(
-      (warning: unknown) =>
-        record(warning) &&
-        Array.isArray(warning.range) &&
-        warning.range.length === 2 &&
-        warning.range.every(nonnegative) &&
-        typeof warning.category === 'string' &&
-        ['saturated', 'page-limit', 'incomplete-results', 'temporary-error', 'invalid-url', 'short-page'].includes(warning.category),
-    )
-  )
+const discoveryWarningCategories = ['saturated', 'page-limit', 'incomplete-results', 'temporary-error', 'invalid-url', 'short-page']
+
+function isDiscoveryQueryFamily(value: unknown): value is DiscoveryQueryFamily {
+  return discoverySearchFamilies.some(({ queryFamily }) => queryFamily === value)
+}
+
+function isDiscovery(value: unknown): value is StoredDiscoverySummary {
+  if (
+    !record(value) ||
+    !nonnegative(value.newUrls) ||
+    !nonnegative(value.existingUrls) ||
+    !nonnegative(value.successfulRanges) ||
+    !nonnegative(value.warningCount) ||
+    !Array.isArray(value.warnings) ||
+    value.warnings.length !== value.warningCount
+  ) {
+    return false
+  }
+
+  const hasFamilies = Object.hasOwn(value, 'families')
+  const warningCounts = new Map(discoverySearchFamilies.map(({ queryFamily }) => [queryFamily, 0]))
+  for (const warning of value.warnings as unknown[]) {
+    if (
+      !record(warning) ||
+      !Array.isArray(warning.range) ||
+      warning.range.length !== 2 ||
+      !warning.range.every(nonnegative) ||
+      typeof warning.category !== 'string' ||
+      !discoveryWarningCategories.includes(warning.category)
+    ) {
+      return false
+    }
+    if (!hasFamilies) {
+      if (Object.hasOwn(warning, 'query_family')) return false
+      continue
+    }
+    if (!isDiscoveryQueryFamily(warning.query_family)) return false
+    warningCounts.set(warning.query_family, warningCounts.get(warning.query_family)! + 1)
+  }
+
+  if (!hasFamilies) return true
+  if (!record(value.families) || Object.keys(value.families).length !== discoverySearchFamilies.length) return false
+  let successfulRanges = 0
+  let warningCount = 0
+  for (const { queryFamily } of discoverySearchFamilies) {
+    const family = value.families[queryFamily]
+    if (!record(family) || !nonnegative(family.successfulRanges) || !nonnegative(family.warningCount)) return false
+    if (family.warningCount !== warningCounts.get(queryFamily)) return false
+    successfulRanges += family.successfulRanges
+    warningCount += family.warningCount
+  }
+  return successfulRanges === value.successfulRanges && warningCount === value.warningCount
+}
+
+function normalizeDiscovery(value: StoredDiscoverySummary): DiscoverySummary {
+  if ('families' in value) return value
+  return {
+    ...value,
+    warnings: value.warnings.map((warning) => ({ ...warning, query_family: 'marketplace_filename_path' })),
+    families: {
+      marketplace_filename_path: { successfulRanges: value.successfulRanges, warningCount: value.warningCount },
+      marketplace_path_literal: { successfulRanges: 0, warningCount: 0 },
+      claude_plugin_path: { successfulRanges: 0, warningCount: 0 },
+    },
+  }
 }
 
 function storedReport(db: Database.Database, runId: string): Partial<RunReport> | null {
@@ -165,7 +220,7 @@ function storedReport(db: Database.Database, runId: string): Partial<RunReport> 
   if (rate !== undefined && !validRateBuckets(rate)) throw new Error('Invalid stored GitHub rate report')
   if (value.durationMs !== undefined && !nonnegative(value.durationMs)) throw new Error('Invalid stored crawl duration')
   return {
-    discovery: value.discovery,
+    discovery: normalizeDiscovery(value.discovery as StoredDiscoverySummary),
     enrichment: value.enrichment,
     warningCount: value.warningCount,
     errorCategories: value.errorCategories as Record<string, number>,

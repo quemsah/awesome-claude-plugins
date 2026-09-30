@@ -114,6 +114,7 @@ async function crawlAndComplete(
     existingRepositories: discovery.existingUrls,
     successfulRanges: discovery.successfulRanges,
     warningCount: discovery.warningCount,
+    families: discovery.families,
   })
   heartbeat()
   const enrichmentTotal = (db.prepare('SELECT COUNT(*) AS count FROM repositories').get() as { count: number }).count

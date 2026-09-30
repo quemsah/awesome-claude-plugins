@@ -171,6 +171,109 @@ describe('orchestration', () => {
     db.close()
   })
 
+  it('reads legacy stored reports and maps their discovery counts to the original family', async () => {
+    const db = await dbFixture()
+    await executeCrawl(db, reader, 'legacy-report', { now, ranges: range, dryRun: true })
+    const report = JSON.parse(getSetting(db, 'run_report_legacy-report') ?? 'null')
+    report.discovery = {
+      newUrls: 2,
+      existingUrls: 3,
+      successfulRanges: 4,
+      warningCount: 1,
+      warnings: [{ range: [10, 20], category: 'temporary-error' }],
+    }
+    report.warningCount = 1
+    report.errorCategories = { 'temporary-error': 1 }
+    setSetting(db, 'run_report_legacy-report', JSON.stringify(report))
+
+    const git: GitHubGit = {
+      getBranchHead: vi.fn(async () => ({ sha: 'a'.repeat(40), treeSha: 'b'.repeat(40) })),
+      createTree: vi.fn(async () => 'c'.repeat(40)),
+      createCommit: vi.fn(async () => 'd'.repeat(40)),
+      updateBranch: vi.fn(async () => {}),
+      isCommitReachable: vi.fn(async () => false),
+    }
+    const result = await executePublish(db, git, 'legacy-report', { now, writeEnabled: true })
+
+    expect(result.report?.discovery).toEqual({
+      newUrls: 2,
+      existingUrls: 3,
+      successfulRanges: 4,
+      warningCount: 1,
+      warnings: [{ range: [10, 20], category: 'temporary-error', query_family: 'marketplace_filename_path' }],
+      families: {
+        marketplace_filename_path: { successfulRanges: 4, warningCount: 1 },
+        marketplace_path_literal: { successfulRanges: 0, warningCount: 0 },
+        claude_plugin_path: { successfulRanges: 0, warningCount: 0 },
+      },
+    })
+    db.close()
+  })
+
+  it('rejects a stored family report whose warning references an unknown query family', async () => {
+    const db = await dbFixture()
+    await executeCrawl(db, reader, 'invalid-family-warning', { now, ranges: range, dryRun: true })
+    const report = JSON.parse(getSetting(db, 'run_report_invalid-family-warning') ?? 'null')
+    report.discovery.warningCount = 1
+    report.discovery.warnings = [{ range: [0, 10], category: 'temporary-error', query_family: 'unknown' }]
+    report.discovery.families.marketplace_filename_path.warningCount = 1
+    report.warningCount = 1
+    report.errorCategories = { 'temporary-error': 1 }
+    setSetting(db, 'run_report_invalid-family-warning', JSON.stringify(report))
+    const git: GitHubGit = {
+      getBranchHead: vi.fn(async () => ({ sha: 'a'.repeat(40), treeSha: 'b'.repeat(40) })),
+      createTree: vi.fn(async () => 'c'.repeat(40)),
+      createCommit: vi.fn(async () => 'd'.repeat(40)),
+      updateBranch: vi.fn(async () => {}),
+      isCommitReachable: vi.fn(async () => false),
+    }
+
+    await expect(executePublish(db, git, 'invalid-family-warning', { now, writeEnabled: true })).rejects.toThrow(
+      'Invalid stored crawl report',
+    )
+    db.close()
+  })
+
+  it('rejects a stored discovery report whose family totals do not match its aggregates', async () => {
+    const db = await dbFixture()
+    await executeCrawl(db, reader, 'invalid-family-counts', { now, ranges: range, dryRun: true })
+    const report = JSON.parse(getSetting(db, 'run_report_invalid-family-counts') ?? 'null')
+    report.discovery.successfulRanges++
+    setSetting(db, 'run_report_invalid-family-counts', JSON.stringify(report))
+    const git: GitHubGit = {
+      getBranchHead: vi.fn(async () => ({ sha: 'a'.repeat(40), treeSha: 'b'.repeat(40) })),
+      createTree: vi.fn(async () => 'c'.repeat(40)),
+      createCommit: vi.fn(async () => 'd'.repeat(40)),
+      updateBranch: vi.fn(async () => {}),
+      isCommitReachable: vi.fn(async () => false),
+    }
+
+    await expect(executePublish(db, git, 'invalid-family-counts', { now, writeEnabled: true })).rejects.toThrow(
+      'Invalid stored crawl report',
+    )
+    db.close()
+  })
+
+  it('rejects a stored discovery report with unknown family keys', async () => {
+    const db = await dbFixture()
+    await executeCrawl(db, reader, 'invalid-family-key', { now, ranges: range, dryRun: true })
+    const report = JSON.parse(getSetting(db, 'run_report_invalid-family-key') ?? 'null')
+    report.discovery.families.unexpected = { successfulRanges: 0, warningCount: 0 }
+    setSetting(db, 'run_report_invalid-family-key', JSON.stringify(report))
+    const git: GitHubGit = {
+      getBranchHead: vi.fn(async () => ({ sha: 'a'.repeat(40), treeSha: 'b'.repeat(40) })),
+      createTree: vi.fn(async () => 'c'.repeat(40)),
+      createCommit: vi.fn(async () => 'd'.repeat(40)),
+      updateBranch: vi.fn(async () => {}),
+      isCommitReachable: vi.fn(async () => false),
+    }
+
+    await expect(executePublish(db, git, 'invalid-family-key', { now, writeEnabled: true })).rejects.toThrow(
+      'Invalid stored crawl report',
+    )
+    db.close()
+  })
+
   it('publishes even when the optional Telegram progress snapshot cannot be collected', async () => {
     const db = await dbFixture()
     await executeCrawl(db, reader, 'prepared-progress-failure', { now, ranges: range, dryRun: true })
