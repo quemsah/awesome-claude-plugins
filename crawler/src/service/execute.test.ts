@@ -125,10 +125,7 @@ describe('orchestration', () => {
     expect(notify.notifyFailure).toHaveBeenCalledWith(
       expect.objectContaining({
         reason: 'no_successful_ranges',
-        problematicRanges: [
-          'marketplace_filename_path size:0..150',
-          'marketplace_path_literal size:0..150',
-        ],
+        problematicRanges: ['marketplace_filename_path size:0..150', 'marketplace_path_literal size:0..150'],
       }),
     )
     expect(JSON.stringify(listRunErrors(db, 'failed'))).not.toContain('read-secret')
