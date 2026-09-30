@@ -265,12 +265,18 @@ function migrateTo10(db: Database.Database): void {
 }
 
 function migrateTo11(db: Database.Database): void {
-  db.exec(`
-    UPDATE repositories
-    SET plugins_count = NULL, marketplace_etag = NULL
-    WHERE plugins_count IS NOT NULL;
-    PRAGMA user_version = 11;
-  `)
+  if (hasColumn(db, 'plugins_count')) {
+    if (hasColumn(db, 'marketplace_etag')) {
+      db.exec(`
+        UPDATE repositories
+        SET plugins_count = NULL, marketplace_etag = NULL
+        WHERE plugins_count IS NOT NULL
+      `)
+    } else {
+      db.exec('UPDATE repositories SET plugins_count = NULL WHERE plugins_count IS NOT NULL')
+    }
+  }
+  db.pragma('user_version = 11')
 }
 
 function migrateSchema(db: Database.Database, version: number): void {

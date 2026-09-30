@@ -234,7 +234,7 @@ it('deduplicates case-variant repository URLs without mixing identity or revivin
       owner_url: 'https://github.com/team',
       repo_name: 'repo',
       repo_updated: '2026-09-23T00:00:00Z',
-      plugins_count: 3,
+      plugins_count: null,
     },
   ])
   expect(migrated.prepare("SELECT repository_id FROM run_errors WHERE run_id = 'migration-run'").get()).toEqual({
