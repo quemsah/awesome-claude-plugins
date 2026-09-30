@@ -156,10 +156,7 @@ function validDiscoveryWarning(warning: unknown): warning is Record<string, unkn
   )
 }
 
-function discoveryWarningCounts(
-  warnings: unknown[],
-  hasFamilies: boolean,
-): Map<DiscoveryQueryFamily, number> | null {
+function discoveryWarningCounts(warnings: unknown[], hasFamilies: boolean): Map<DiscoveryQueryFamily, number> | null {
   const counts = new Map(discoverySearchFamilies.map(({ queryFamily }) => [queryFamily, 0]))
   for (const warning of warnings) {
     if (!validDiscoveryWarning(warning)) return null
@@ -173,10 +170,7 @@ function discoveryWarningCounts(
   return counts
 }
 
-function validDiscoveryFamilies(
-  value: Record<string, unknown>,
-  warningCounts: Map<DiscoveryQueryFamily, number>,
-): boolean {
+function validDiscoveryFamilies(value: Record<string, unknown>, warningCounts: Map<DiscoveryQueryFamily, number>): boolean {
   const families = value.families
   if (!record(families) || Object.keys(families).length !== discoverySearchFamilies.length) return false
 
