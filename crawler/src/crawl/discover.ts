@@ -283,6 +283,76 @@ async function recoverIncompleteRange(
   return true
 }
 
+type SearchRangePageResult =
+  | { kind: 'temporary-failure' }
+  | { kind: 'handled' }
+  | { kind: 'result'; result: Awaited<ReturnType<GitHubReader['searchCode']>> }
+
+async function loadSearchRangePage(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  queryFamily: DiscoveryQueryFamily,
+  lookup: Database.Statement,
+  range: SizeRange,
+  summary: DiscoverySummary,
+  now: () => string,
+  coverage: CoverageState,
+  onProgress: (() => void) | undefined,
+  page: number,
+  found: number,
+  state: RangeState,
+  countedUrls: Set<string>,
+): Promise<SearchRangePageResult> {
+  state.page = page
+  onProgress?.()
+  let result = await searchCompletePage(reader, state.query, page, db, state, onProgress)
+  if (!result) return { kind: 'temporary-failure' }
+
+  result = await retryUnexpectedShortPage(reader, state.query, page, db, state, onProgress, result, found)
+  if (
+    await recoverIncompleteRange(
+      db,
+      reader,
+      runId,
+      queryFamily,
+      lookup,
+      range,
+      summary,
+      now,
+      onProgress,
+      page,
+      result,
+      state,
+      countedUrls,
+      coverage,
+    )
+  ) {
+    return { kind: 'handled' }
+  }
+  if (
+    await splitSaturatedRange(
+      db,
+      reader,
+      runId,
+      queryFamily,
+      lookup,
+      range,
+      summary,
+      now,
+      onProgress,
+      page,
+      result,
+      state,
+      countedUrls,
+      coverage,
+    )
+  ) {
+    return { kind: 'handled' }
+  }
+  return { kind: 'result', result }
+}
+
 async function searchRange(
   db: Database.Database,
   reader: GitHubReader,
@@ -318,52 +388,29 @@ async function searchRange(
   let sawShortPage = false
   let rangeComplete = true
   for (let page = 1; page <= 10; page++) {
-    state.page = page
-    onProgress?.()
-    let result = await searchCompletePage(reader, query, page, db, state, onProgress)
-    if (!result) {
+    const pageResult = await loadSearchRangePage(
+      db,
+      reader,
+      runId,
+      queryFamily,
+      lookup,
+      range,
+      summary,
+      now,
+      coverage,
+      onProgress,
+      page,
+      found,
+      state,
+      countedUrls,
+    )
+    if (pageResult.kind === 'temporary-failure') {
       rangeComplete = false
       break
     }
-    result = await retryUnexpectedShortPage(reader, query, page, db, state, onProgress, result, found)
-    if (
-      await recoverIncompleteRange(
-        db,
-        reader,
-        runId,
-        queryFamily,
-        lookup,
-        range,
-        summary,
-        now,
-        onProgress,
-        page,
-        result,
-        state,
-        countedUrls,
-        coverage,
-      )
-    )
-      return
-    if (
-      await splitSaturatedRange(
-        db,
-        reader,
-        runId,
-        queryFamily,
-        lookup,
-        range,
-        summary,
-        now,
-        onProgress,
-        page,
-        result,
-        state,
-        countedUrls,
-        coverage,
-      )
-    )
-      return
+    if (pageResult.kind === 'handled') return
+
+    const { result } = pageResult
     if (page === 1) adjustSuccessfulRanges(summary, queryFamily, 1)
     state.totalCount = result.total_count
     state.found = found + result.items.length

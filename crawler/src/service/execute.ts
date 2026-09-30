@@ -134,52 +134,70 @@ function isDiscoveryQueryFamily(value: unknown): value is DiscoveryQueryFamily {
   return discoverySearchFamilies.some(({ queryFamily }) => queryFamily === value)
 }
 
-function isDiscovery(value: unknown): value is StoredDiscoverySummary {
-  if (
-    !record(value) ||
-    !nonnegative(value.newUrls) ||
-    !nonnegative(value.existingUrls) ||
-    !nonnegative(value.successfulRanges) ||
-    !nonnegative(value.warningCount) ||
-    !Array.isArray(value.warnings) ||
-    value.warnings.length !== value.warningCount
-  ) {
-    return false
-  }
+function validDiscoveryTotals(value: Record<string, unknown>): boolean {
+  return (
+    nonnegative(value.newUrls) &&
+    nonnegative(value.existingUrls) &&
+    nonnegative(value.successfulRanges) &&
+    nonnegative(value.warningCount) &&
+    Array.isArray(value.warnings) &&
+    value.warnings.length === value.warningCount
+  )
+}
 
-  const hasFamilies = Object.hasOwn(value, 'families')
-  const warningCounts = new Map(discoverySearchFamilies.map(({ queryFamily }) => [queryFamily, 0]))
-  for (const warning of value.warnings as unknown[]) {
-    if (
-      !record(warning) ||
-      !Array.isArray(warning.range) ||
-      warning.range.length !== 2 ||
-      !warning.range.every(nonnegative) ||
-      typeof warning.category !== 'string' ||
-      !discoveryWarningCategories.includes(warning.category)
-    ) {
-      return false
-    }
+function validDiscoveryWarning(warning: unknown): warning is Record<string, unknown> {
+  return (
+    record(warning) &&
+    Array.isArray(warning.range) &&
+    warning.range.length === 2 &&
+    warning.range.every(nonnegative) &&
+    typeof warning.category === 'string' &&
+    discoveryWarningCategories.includes(warning.category)
+  )
+}
+
+function discoveryWarningCounts(
+  warnings: unknown[],
+  hasFamilies: boolean,
+): Map<DiscoveryQueryFamily, number> | null {
+  const counts = new Map(discoverySearchFamilies.map(({ queryFamily }) => [queryFamily, 0]))
+  for (const warning of warnings) {
+    if (!validDiscoveryWarning(warning)) return null
     if (!hasFamilies) {
-      if (Object.hasOwn(warning, 'query_family')) return false
+      if (Object.hasOwn(warning, 'query_family')) return null
       continue
     }
-    if (!isDiscoveryQueryFamily(warning.query_family)) return false
-    warningCounts.set(warning.query_family, (warningCounts.get(warning.query_family) ?? 0) + 1)
+    if (!isDiscoveryQueryFamily(warning.query_family)) return null
+    counts.set(warning.query_family, (counts.get(warning.query_family) ?? 0) + 1)
   }
+  return counts
+}
 
-  if (!hasFamilies) return true
-  if (!record(value.families) || Object.keys(value.families).length !== discoverySearchFamilies.length) return false
+function validDiscoveryFamilies(
+  value: Record<string, unknown>,
+  warningCounts: Map<DiscoveryQueryFamily, number>,
+): boolean {
+  const families = value.families
+  if (!record(families) || Object.keys(families).length !== discoverySearchFamilies.length) return false
+
   let successfulRanges = 0
   let warningCount = 0
   for (const { queryFamily } of discoverySearchFamilies) {
-    const family = value.families[queryFamily]
+    const family = families[queryFamily]
     if (!record(family) || !nonnegative(family.successfulRanges) || !nonnegative(family.warningCount)) return false
     if (family.warningCount !== warningCounts.get(queryFamily)) return false
     successfulRanges += family.successfulRanges
     warningCount += family.warningCount
   }
   return successfulRanges === value.successfulRanges && warningCount === value.warningCount
+}
+
+function isDiscovery(value: unknown): value is StoredDiscoverySummary {
+  if (!record(value) || !validDiscoveryTotals(value)) return false
+  const hasFamilies = Object.hasOwn(value, 'families')
+  const warningCounts = discoveryWarningCounts(value.warnings as unknown[], hasFamilies)
+  if (!warningCounts) return false
+  return !hasFamilies || validDiscoveryFamilies(value, warningCounts)
 }
 
 function normalizeDiscovery(value: StoredDiscoverySummary): DiscoverySummary {
