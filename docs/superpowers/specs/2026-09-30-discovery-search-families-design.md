@@ -21,7 +21,7 @@ The order preserves the current query first and runs the broadest path-only quer
 ## Candidate flow
 
 - Merge candidates from all families into the existing discovery pipeline.
-- Search the literal manifest term in paths only and accept a result only when its `item.path` is `.claude-plugin/marketplace.json` or ends in `/.claude-plugin/marketplace.json`. This prevents a content match in files such as `CLAUDE.md` from adding its repository as a candidate.
+- Search the literal manifest term in paths only and accept a result only when its `item.path` is exactly `.claude-plugin/marketplace.json`. This prevents content matches and nested paths from adding unrelated repositories as candidates.
 - Deduplicate case-insensitively by repository URL across families and size ranges. Count and upsert each repository once per crawl.
 - Run the existing enrichment phase once after all three discovery sweeps. It processes the entire `repositories` table, including repositories found in earlier crawls, rather than only this crawl's search candidates.
 - Keep the existing enrichment and marketplace validation rules. A candidate found by the broad path-only family is still removed or rejected by the current checks if it does not have a valid marketplace.

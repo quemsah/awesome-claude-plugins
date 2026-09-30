@@ -137,6 +137,29 @@ it('ignores a content match from CLAUDE.md in the literal manifest family', asyn
   expect(db.prepare('SELECT html_url FROM repositories').all()).toEqual([])
 })
 
+it('requires an exact root manifest path only for the literal manifest family', async () => {
+  const db = database()
+  const literalMatch = 'https://github.com/acme/nested-literal-match'
+  const broadMatch = 'https://github.com/acme/nested-broad-match'
+  const result = await discover(
+    db,
+    reader(async (query) => {
+      if (query.startsWith('.claude-plugin/marketplace.json')) {
+        return page([
+          item(literalMatch, null, 'plugins/.claude-plugin/marketplace.json'),
+          item('https://github.com/acme/case-variant', null, '.CLAUDE-PLUGIN/marketplace.json'),
+        ])
+      }
+      return query.startsWith('path:.claude-plugin') ? page([item(broadMatch, null, 'plugins/.claude-plugin/marketplace.json')]) : page([])
+    }),
+    'run-1',
+    [firstRange],
+  )
+
+  expect(result.newUrls).toBe(1)
+  expect(db.prepare('SELECT html_url FROM repositories').all()).toEqual([{ html_url: broadMatch }])
+})
+
 it('deduplicates case-variant URLs across families before upserting them again', async () => {
   const db = database()
   const duplicate = 'https://github.com/owner/repeated'
@@ -684,7 +707,12 @@ it('persists the repository node ID returned by Code Search', async () => {
   await discover(
     db,
     reader(async () =>
-      page([{ path: '.claude-plugin/marketplace.json', repository: { html_url: 'https://github.com/team/repo', description: 'repo', node_id: 'MDEwOlJlcG9zaXRvcnkx' } }]),
+      page([
+        {
+          path: '.claude-plugin/marketplace.json',
+          repository: { html_url: 'https://github.com/team/repo', description: 'repo', node_id: 'MDEwOlJlcG9zaXRvcnkx' },
+        },
+      ]),
     ),
     'run-1',
     [firstRange],
@@ -699,7 +727,10 @@ it('ignores private repositories returned by authenticated code search', async (
     db,
     reader(async () =>
       page([
-        { path: '.claude-plugin/marketplace.json', repository: { html_url: 'https://github.com/owner/private', description: 'secret', private: true } },
+        {
+          path: '.claude-plugin/marketplace.json',
+          repository: { html_url: 'https://github.com/owner/private', description: 'secret', private: true },
+        },
         item('https://github.com/owner/public', 'public'),
       ]),
     ),

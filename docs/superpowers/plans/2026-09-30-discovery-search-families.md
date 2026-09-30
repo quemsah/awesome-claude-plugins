@@ -23,7 +23,7 @@
 
 ## Follow-up review correction
 
-The REST `/search/code` endpoint searches file contents only when `in:` is omitted. The `marketplace_path_literal` query includes `in:path`, `SearchPage` validates and retains each hit's path, and discovery ignores that family's hits unless the path is `.claude-plugin/marketplace.json` or ends in `/.claude-plugin/marketplace.json`. Tests cover a content-only match from `CLAUDE.md`.
+The REST `/search/code` endpoint searches file contents only when `in:` is omitted. The `marketplace_path_literal` query includes `in:path`, `SearchPage` validates and retains each hit's path, and discovery accepts that family's hits only when the path is exactly `.claude-plugin/marketplace.json`. Tests cover content-only matches, nested paths, and case variants.
 
 ## File Map
 
