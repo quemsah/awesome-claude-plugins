@@ -122,7 +122,15 @@ describe('orchestration', () => {
     }
     await expect(executeCrawl(db, failing, 'failed', { now, ranges: range, dryRun: true, notifier: notify })).rejects.toThrow()
     expect(getRun(db, 'failed')?.status).toBe('failed')
-    expect(notify.notifyFailure).toHaveBeenCalledWith(expect.objectContaining({ reason: 'no_successful_ranges' }))
+    expect(notify.notifyFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: 'no_successful_ranges',
+        problematicRanges: [
+          'marketplace_filename_path size:0..150',
+          'marketplace_path_literal size:0..150',
+        ],
+      }),
+    )
     expect(JSON.stringify(listRunErrors(db, 'failed'))).not.toContain('read-secret')
     db.close()
   })

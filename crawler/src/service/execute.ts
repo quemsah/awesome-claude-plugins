@@ -249,7 +249,7 @@ function problematicRanges(errors: ReturnType<typeof listRunErrors>): string[] {
     ...new Set(
       errors
         .filter((error) => error.phase === 'search' && error.range_start !== null && error.range_end !== null)
-        .map((error) => `size:${error.range_start}..${error.range_end}`),
+        .map((error) => `${error.query_family ? `${error.query_family} ` : ''}size:${error.range_start}..${error.range_end}`),
     ),
   ]
 }
