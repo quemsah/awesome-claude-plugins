@@ -114,11 +114,7 @@ it('runs all query families in order and caches successful empty coverage per fa
     claude_plugin_path: { successfulRanges: 1, warningCount: 0 },
   })
   expect(result.successfulRanges).toBe(3)
-  expect(
-    db
-      .prepare('SELECT query_family, range_start, range_end FROM discovery_ranges ORDER BY query_family')
-      .all(),
-  ).toEqual([
+  expect(db.prepare('SELECT query_family, range_start, range_end FROM discovery_ranges ORDER BY query_family').all()).toEqual([
     { query_family: 'claude_plugin_path', range_start: 0, range_end: 10 },
     { query_family: 'marketplace_filename_path', range_start: 0, range_end: 10 },
     { query_family: 'marketplace_path_literal', range_start: 0, range_end: 10 },
@@ -187,19 +183,21 @@ it('tags warnings with their family and preserves that family cache while later 
     '.claude-plugin/marketplace.json size:0..1',
     'path:.claude-plugin size:0..1',
   ])
-  expect(db.prepare(`
+  expect(
+    db
+      .prepare(`
     SELECT query_family, range_start, range_end FROM discovery_ranges
     WHERE query_family = 'marketplace_filename_path' ORDER BY range_start
-  `).all()).toEqual([
+  `)
+      .all(),
+  ).toEqual([
     { query_family: 'marketplace_filename_path', range_start: 0, range_end: 0 },
     { query_family: 'marketplace_filename_path', range_start: 1, range_end: 1 },
   ])
   expect(listRunErrors(db, 'run-1').map(({ query_family, error_type }) => ({ query_family, error_type }))).toEqual([
     { query_family: 'marketplace_filename_path', error_type: 'temporary-error' },
   ])
-  expect(result.warnings).toEqual([
-    { range: [0, 0], category: 'temporary-error', query_family: 'marketplace_filename_path' },
-  ])
+  expect(result.warnings).toEqual([{ range: [0, 0], category: 'temporary-error', query_family: 'marketplace_filename_path' }])
   expect(result.families.marketplace_filename_path.warningCount).toBe(1)
   expect(logs.map(({ query_family }) => query_family)).toEqual(['marketplace_filename_path'])
 })
@@ -359,7 +357,13 @@ it('reuses persisted terminal size ranges instead of probing the saturated paren
     'filename:marketplace.json path:.claude-plugin size:0..1',
     'filename:marketplace.json path:.claude-plugin size:2..3',
   ])
-  expect(db.prepare("SELECT root_start, root_end, range_start, range_end FROM discovery_ranges WHERE query_family = 'marketplace_filename_path' ORDER BY range_start").all()).toEqual([
+  expect(
+    db
+      .prepare(
+        "SELECT root_start, root_end, range_start, range_end FROM discovery_ranges WHERE query_family = 'marketplace_filename_path' ORDER BY range_start",
+      )
+      .all(),
+  ).toEqual([
     { root_start: 0, root_end: 3, range_start: 0, range_end: 1 },
     { root_start: 0, root_end: 3, range_start: 2, range_end: 3 },
   ])
@@ -392,7 +396,13 @@ it('keeps the previous cached partition when a refined child range fails tempora
     [[0, 3]],
   )
 
-  expect(db.prepare("SELECT root_start, root_end, range_start, range_end FROM discovery_ranges WHERE query_family = 'marketplace_filename_path' ORDER BY range_start").all()).toEqual([
+  expect(
+    db
+      .prepare(
+        "SELECT root_start, root_end, range_start, range_end FROM discovery_ranges WHERE query_family = 'marketplace_filename_path' ORDER BY range_start",
+      )
+      .all(),
+  ).toEqual([
     { root_start: 0, root_end: 3, range_start: 0, range_end: 1 },
     { root_start: 0, root_end: 3, range_start: 2, range_end: 3 },
   ])

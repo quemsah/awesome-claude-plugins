@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3'
 import { GitHubFatalError, type GitHubReader, GitHubTemporaryError } from '../github/client.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
-import { discoverySearchFamilies, type DiscoveryQueryFamily } from '../github/searchFamilies.js'
+import { type DiscoveryQueryFamily, discoverySearchFamilies } from '../github/searchFamilies.js'
 import type { SizeRange } from '../github/sizeRanges.js'
 import type { Log } from '../logging.js'
 import { listCachedDiscoveryRanges, replaceCachedDiscoveryRanges } from '../storage/discoveryRanges.js'
@@ -324,10 +324,42 @@ async function searchRange(
     }
     result = await retryUnexpectedShortPage(reader, query, page, db, state, onProgress, result, found)
     if (
-      await recoverIncompleteRange(db, reader, runId, queryFamily, lookup, range, summary, now, onProgress, page, result, state, countedUrls, coverage)
+      await recoverIncompleteRange(
+        db,
+        reader,
+        runId,
+        queryFamily,
+        lookup,
+        range,
+        summary,
+        now,
+        onProgress,
+        page,
+        result,
+        state,
+        countedUrls,
+        coverage,
+      )
     )
       return
-    if (await splitSaturatedRange(db, reader, runId, queryFamily, lookup, range, summary, now, onProgress, page, result, state, countedUrls, coverage))
+    if (
+      await splitSaturatedRange(
+        db,
+        reader,
+        runId,
+        queryFamily,
+        lookup,
+        range,
+        summary,
+        now,
+        onProgress,
+        page,
+        result,
+        state,
+        countedUrls,
+        coverage,
+      )
+    )
       return
     if (page === 1) adjustSuccessfulRanges(summary, queryFamily, 1)
     state.totalCount = result.total_count

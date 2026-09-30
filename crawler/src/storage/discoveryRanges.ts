@@ -18,11 +18,7 @@ function isExactPartition(root: SizeRange, ranges: readonly SizeRange[]): boolea
   return nextStart === rootEnd + 1
 }
 
-export function listCachedDiscoveryRanges(
-  db: Database.Database,
-  queryFamily: DiscoveryQueryFamily,
-  root: SizeRange,
-): SizeRange[] | null {
+export function listCachedDiscoveryRanges(db: Database.Database, queryFamily: DiscoveryQueryFamily, root: SizeRange): SizeRange[] | null {
   const [rootStart, rootEnd] = root
   const rows = db
     .prepare(
@@ -45,7 +41,11 @@ export function replaceCachedDiscoveryRanges(
   if (!isExactPartition(root, ranges)) throw new Error('Discovery ranges must exactly partition the root range')
   const [rootStart, rootEnd] = root
   const replace = () => {
-    db.prepare('DELETE FROM discovery_ranges WHERE query_family = ? AND root_start = ? AND root_end = ?').run(queryFamily, rootStart, rootEnd)
+    db.prepare('DELETE FROM discovery_ranges WHERE query_family = ? AND root_start = ? AND root_end = ?').run(
+      queryFamily,
+      rootStart,
+      rootEnd,
+    )
     const insert = db.prepare(
       'INSERT INTO discovery_ranges (query_family, root_start, root_end, range_start, range_end) VALUES (?, ?, ?, ?, ?)',
     )

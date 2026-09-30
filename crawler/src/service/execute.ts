@@ -1,10 +1,10 @@
 import type Database from 'better-sqlite3'
-import type { EnrichmentCounts } from '../crawl/enrich.js'
 import type { DiscoverySummary } from '../crawl/discover.js'
+import type { EnrichmentCounts } from '../crawl/enrich.js'
 import { CrawlError, type CrawlSummary, runCrawl } from '../crawl/runCrawl.js'
 import type { GitHubReader } from '../github/client.js'
-import { discoverySearchFamilies, type DiscoveryQueryFamily } from '../github/searchFamilies.js'
 import type { GitHubRateBuckets } from '../github/rateBudget.js'
+import { type DiscoveryQueryFamily, discoverySearchFamilies } from '../github/searchFamilies.js'
 import type { SizeRange } from '../github/sizeRanges.js'
 import type { LogEvent } from '../logging.js'
 import type { TelegramSummary } from '../notify/telegram.js'
@@ -165,7 +165,7 @@ function isDiscovery(value: unknown): value is StoredDiscoverySummary {
       continue
     }
     if (!isDiscoveryQueryFamily(warning.query_family)) return false
-    warningCounts.set(warning.query_family, warningCounts.get(warning.query_family)! + 1)
+    warningCounts.set(warning.query_family, (warningCounts.get(warning.query_family) ?? 0) + 1)
   }
 
   if (!hasFamilies) return true

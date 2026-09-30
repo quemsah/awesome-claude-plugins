@@ -51,9 +51,9 @@ it('keeps cached partitions isolated for overlapping root ranges', () => {
 
 it('ignores a cached partition unless it covers the root exactly', () => {
   const db = database()
-  db.prepare(
-    'INSERT INTO discovery_ranges (query_family, root_start, root_end, range_start, range_end) VALUES (?, 0, 3, 0, 1)',
-  ).run('marketplace_filename_path')
+  db.prepare('INSERT INTO discovery_ranges (query_family, root_start, root_end, range_start, range_end) VALUES (?, 0, 3, 0, 1)').run(
+    'marketplace_filename_path',
+  )
 
   expect(listCachedDiscoveryRanges(db, 'marketplace_filename_path', [0, 3])).toBeNull()
 })

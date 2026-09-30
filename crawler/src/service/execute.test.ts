@@ -268,9 +268,7 @@ describe('orchestration', () => {
       isCommitReachable: vi.fn(async () => false),
     }
 
-    await expect(executePublish(db, git, 'invalid-family-key', { now, writeEnabled: true })).rejects.toThrow(
-      'Invalid stored crawl report',
-    )
+    await expect(executePublish(db, git, 'invalid-family-key', { now, writeEnabled: true })).rejects.toThrow('Invalid stored crawl report')
     db.close()
   })
 

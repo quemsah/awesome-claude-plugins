@@ -86,10 +86,14 @@ it('runs discovery before enrichment and completes with a typed report and store
   const result = await runCrawl(db, client, 'success', { ranges, now: () => new Date(time) })
 
   expect(events).toEqual([
-    'search:0..150', 'search:0..200',
-    'search:0..150', 'search:0..200',
-    'search:0..150', 'search:0..200',
-    'repository', 'marketplace',
+    'search:0..150',
+    'search:0..200',
+    'search:0..150',
+    'search:0..200',
+    'search:0..150',
+    'search:0..200',
+    'repository',
+    'marketplace',
   ])
   expect(result).toMatchObject({
     runId: 'success',
@@ -125,7 +129,8 @@ it('logs per-family outcomes and enriches stored and newly discovered repositori
   const client = reader({
     searchCode: async (query) => {
       events.push(`search:${query}`)
-      if (query.startsWith('filename:')) return { items: [{ repository: { html_url: discoveredUrl, description: 'found' } }], total_count: 1, incomplete_results: false }
+      if (query.startsWith('filename:'))
+        return { items: [{ repository: { html_url: discoveredUrl, description: 'found' } }], total_count: 1, incomplete_results: false }
       if (query.startsWith('.claude-plugin/')) throw new GitHubTemporaryError('temporary outage', 503)
       return { items: [{ repository: { html_url: discoveredUrl, description: 'duplicate' } }], total_count: 1, incomplete_results: false }
     },
