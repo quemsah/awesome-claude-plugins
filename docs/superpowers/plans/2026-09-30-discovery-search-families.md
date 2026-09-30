@@ -21,9 +21,13 @@
 - Continue after partial or temporary family failures; fail with `no_successful_ranges` only when no family processes any range successfully. Preserve fatal GitHub API behavior.
 - Do not add a recurring live GitHub API test or a seed for `mnemoverse/claude-plugin`; the user will check that repository manually after rollout.
 
+## Follow-up review correction
+
+The REST `/search/code` endpoint searches file contents only when `in:` is omitted. The `marketplace_path_literal` query includes `in:path`, `SearchPage` validates and retains each hit's path, and discovery ignores that family's hits unless the path is `.claude-plugin/marketplace.json` or ends in `/.claude-plugin/marketplace.json`. Tests cover a content-only match from `CLAUDE.md`.
+
 ## File Map
 
-- Create `crawler/src/github/searchFamilies.ts` for stable family IDs, order, and exact query builders.
+- Create `crawler/src/github/searchFamilies.ts` for stable family IDs, order, and exact query builders; modify `crawler/src/github/client.ts` to retain validated Code Search paths.
 - Modify `crawler/src/crawl/discover.ts` and `discover.test.ts` to run families, share dedupe state, and report family-specific warnings and counts.
 - Modify `crawler/src/storage/schema.ts` and `schema.test.ts` for schema version 12 and migration of cached ranges and errors. The base branch already uses version 11 for marketplace-cache invalidation.
 - Modify `crawler/src/storage/discoveryRanges.ts` and `discoveryRanges.test.ts` for family-scoped cache reads and replacement.
@@ -56,7 +60,7 @@ In `searchFamilies.test.ts`, assert the exact ordered IDs and query strings for 
 
 ```text
 filename:marketplace.json path:.claude-plugin size:12..34
-.claude-plugin/marketplace.json size:12..34
+.claude-plugin/marketplace.json in:path size:12..34
 path:.claude-plugin size:12..34
 ```
 

@@ -131,7 +131,15 @@ function processItems(
   result: Awaited<ReturnType<GitHubReader['searchCode']>>,
   state: RangeState,
 ): void {
-  for (const { repository } of result.items) {
+  for (const { path, repository } of result.items) {
+    const normalizedPath = path.toLowerCase()
+    if (
+      state.queryFamily === 'marketplace_path_literal' &&
+      normalizedPath !== '.claude-plugin/marketplace.json' &&
+      !normalizedPath.endsWith('/.claude-plugin/marketplace.json')
+    ) {
+      continue
+    }
     if (repository.private === true) continue
     const url = repository.html_url
     if (!parseRepositoryUrl(url)) {

@@ -9,7 +9,7 @@ it('builds the three exact discovery queries in stable order', () => {
   ])
   expect(discoverySearchFamilies.map(({ buildQuery }) => buildQuery([12, 34]))).toEqual([
     'filename:marketplace.json path:.claude-plugin size:12..34',
-    '.claude-plugin/marketplace.json size:12..34',
+    '.claude-plugin/marketplace.json in:path size:12..34',
     'path:.claude-plugin size:12..34',
   ])
 })

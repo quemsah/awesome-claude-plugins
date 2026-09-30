@@ -32,6 +32,7 @@ it('runs discovery, enrichment, snapshot generation and Git publication through 
         incomplete_results: false,
         items: [
           {
+            path: '.claude-plugin/marketplace.json',
             repository: {
               html_url: 'https://github.com/acme/catalog',
               description: 'discovered',

@@ -23,8 +23,8 @@ afterEach(() => {
   for (const db of databases.splice(0)) db.close()
 })
 
-function item(url: string, description: string | null = null): SearchPage['items'][number] {
-  return { repository: { html_url: url, description } }
+function item(url: string, description: string | null = null, path = '.claude-plugin/marketplace.json') {
+  return { path, repository: { html_url: url, description } }
 }
 
 function page(items: SearchPage['items'], total_count = items.length, incomplete_results = false): SearchPage {
@@ -72,7 +72,7 @@ it('counts an empty first page as a successful range without inserting rows or r
 
   expect(calls).toEqual([
     ['filename:marketplace.json path:.claude-plugin size:0..150', 1],
-    ['.claude-plugin/marketplace.json size:0..150', 1],
+    ['.claude-plugin/marketplace.json in:path size:0..150', 1],
     ['path:.claude-plugin size:0..150', 1],
   ])
   expect(result).toEqual({
@@ -105,7 +105,7 @@ it('runs all query families in order and caches successful empty coverage per fa
 
   expect(calls).toEqual([
     ['filename:marketplace.json path:.claude-plugin size:0..10', 1],
-    ['.claude-plugin/marketplace.json size:0..10', 1],
+    ['.claude-plugin/marketplace.json in:path size:0..10', 1],
     ['path:.claude-plugin size:0..10', 1],
   ])
   expect(result.families).toEqual({
@@ -119,6 +119,22 @@ it('runs all query families in order and caches successful empty coverage per fa
     { query_family: 'marketplace_filename_path', range_start: 0, range_end: 10 },
     { query_family: 'marketplace_path_literal', range_start: 0, range_end: 10 },
   ])
+})
+
+it('ignores a content match from CLAUDE.md in the literal manifest family', async () => {
+  const db = database()
+  const mentionedRepository = 'https://github.com/acme/mentioned-in-docs'
+  const result = await discover(
+    db,
+    reader(async (query) =>
+      query.startsWith('.claude-plugin/marketplace.json') ? page([item(mentionedRepository, null, 'CLAUDE.md')]) : page([]),
+    ),
+    'run-1',
+    [firstRange],
+  )
+
+  expect(result.newUrls).toBe(0)
+  expect(db.prepare('SELECT html_url FROM repositories').all()).toEqual([])
 })
 
 it('deduplicates case-variant URLs across families before upserting them again', async () => {
@@ -180,7 +196,7 @@ it('tags warnings with their family and preserves that family cache while later 
   expect(calls).toEqual([
     'filename:marketplace.json path:.claude-plugin size:0..0',
     'filename:marketplace.json path:.claude-plugin size:1..1',
-    '.claude-plugin/marketplace.json size:0..1',
+    '.claude-plugin/marketplace.json in:path size:0..1',
     'path:.claude-plugin size:0..1',
   ])
   expect(
@@ -668,7 +684,7 @@ it('persists the repository node ID returned by Code Search', async () => {
   await discover(
     db,
     reader(async () =>
-      page([{ repository: { html_url: 'https://github.com/team/repo', description: 'repo', node_id: 'MDEwOlJlcG9zaXRvcnkx' } }]),
+      page([{ path: '.claude-plugin/marketplace.json', repository: { html_url: 'https://github.com/team/repo', description: 'repo', node_id: 'MDEwOlJlcG9zaXRvcnkx' } }]),
     ),
     'run-1',
     [firstRange],
@@ -683,7 +699,7 @@ it('ignores private repositories returned by authenticated code search', async (
     db,
     reader(async () =>
       page([
-        { repository: { html_url: 'https://github.com/owner/private', description: 'secret', private: true } },
+        { path: '.claude-plugin/marketplace.json', repository: { html_url: 'https://github.com/owner/private', description: 'secret', private: true } },
         item('https://github.com/owner/public', 'public'),
       ]),
     ),

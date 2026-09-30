@@ -50,7 +50,7 @@ function repo(owner: string, name: string): GitHubRepo {
 function reader(overrides: Partial<GitHubReader> = {}): GitHubReader {
   return {
     searchCode: async () => ({
-      items: [{ repository: { html_url: url, description: 'from search' } }],
+      items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: url, description: 'from search' } }],
       total_count: 1,
       incomplete_results: false,
     }),
@@ -69,7 +69,11 @@ it('runs discovery before enrichment and completes with a typed report and store
       expect(getActiveRun(db)?.run_id).toBe('success')
       events.push(`search:${query.slice(-6)}`)
       time += 60_000
-      return { items: [{ repository: { html_url: url, description: 'search' } }], total_count: 1, incomplete_results: false }
+      return {
+        items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: url, description: 'search' } }],
+        total_count: 1,
+        incomplete_results: false,
+      }
     },
     getRepository: async (owner, name) => {
       events.push('repository')
@@ -130,9 +134,17 @@ it('logs per-family outcomes and enriches stored and newly discovered repositori
     searchCode: async (query) => {
       events.push(`search:${query}`)
       if (query.startsWith('filename:'))
-        return { items: [{ repository: { html_url: discoveredUrl, description: 'found' } }], total_count: 1, incomplete_results: false }
+        return {
+          items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: discoveredUrl, description: 'found' } }],
+          total_count: 1,
+          incomplete_results: false,
+        }
       if (query.startsWith('.claude-plugin/')) throw new GitHubTemporaryError('temporary outage', 503)
-      return { items: [{ repository: { html_url: discoveredUrl, description: 'duplicate' } }], total_count: 1, incomplete_results: false }
+      return {
+        items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: discoveredUrl, description: 'duplicate' } }],
+        total_count: 1,
+        incomplete_results: false,
+      }
     },
     getRepository: async (owner, name) => {
       events.push(`repository:${owner}/${name}`)
@@ -144,7 +156,7 @@ it('logs per-family outcomes and enriches stored and newly discovered repositori
 
   expect(events.slice(0, 3)).toEqual([
     'search:filename:marketplace.json path:.claude-plugin size:0..10',
-    'search:.claude-plugin/marketplace.json size:0..10',
+    'search:.claude-plugin/marketplace.json in:path size:0..10',
     'search:path:.claude-plugin size:0..10',
   ])
   expect(events.slice(3)).toEqual(['repository:existing/repo', 'repository:new/repo'])
@@ -265,7 +277,7 @@ it('completes with warnings from stored search and enrichment errors, including 
     searchCode: async (query) => {
       if (query.endsWith('150..200')) throw new GitHubTemporaryError('outage', null)
       return {
-        items: [{ repository: { html_url: url, description: null } }],
+        items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: url, description: null } }],
         total_count: 1,
         incomplete_results: query.endsWith('0..150'),
       }
@@ -298,7 +310,11 @@ it('counts any valid persisted error category without inheriting object properti
           retry_count: 0,
           occurred_at: '2026-09-23T00:00:00Z',
         })
-        return { items: [{ repository: { html_url: url, description: null } }], total_count: 1, incomplete_results: false }
+        return {
+          items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: url, description: null } }],
+          total_count: 1,
+          incomplete_results: false,
+        }
       },
     }),
     'category',
@@ -342,7 +358,11 @@ it('marks a SQLite failure during discovery as failed without leaking the raw ex
   const client = reader({
     searchCode: async () => {
       db.exec('DROP TABLE repositories')
-      return { items: [{ repository: { html_url: url, description: null } }], total_count: 1, incomplete_results: false }
+      return {
+        items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: url, description: null } }],
+        total_count: 1,
+        incomplete_results: false,
+      }
     },
   })
 
@@ -414,7 +434,11 @@ it('prevents a recovered stale crawl from writing after its in-flight request re
       searchCode: async () => {
         started?.()
         await waiting
-        return { items: [{ repository: { html_url: staleUrl, description: 'stale' } }], total_count: 1, incomplete_results: false }
+        return {
+          items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: staleUrl, description: 'stale' } }],
+          total_count: 1,
+          incomplete_results: false,
+        }
       },
     }),
     'interrupted',

@@ -1,6 +1,6 @@
 # Multi-family GitHub Code Search in Discovery
 
-**Status:** Approved design; implementation plan in review.
+**Status:** Approved design; implementation in PR #313.
 
 ## Goal
 
@@ -13,7 +13,7 @@ Run all families on every crawl, sequentially, over the existing adaptive size d
 | Run order | Stable family ID | Query template |
 | --- | --- | --- |
 | First (n8n #2) | `marketplace_filename_path` | `filename:marketplace.json path:.claude-plugin size:<min>..<max>` |
-| Second (n8n #1) | `marketplace_path_literal` | `.claude-plugin/marketplace.json size:<min>..<max>` |
+| Second (n8n #1) | `marketplace_path_literal` | `.claude-plugin/marketplace.json in:path size:<min>..<max>` |
 | Third (n8n #3) | `claude_plugin_path` | `path:.claude-plugin size:<min>..<max>` |
 
 The order preserves the current query first and runs the broadest path-only query last. Each family uses the current pagination, retry, saturation, short-page, and adaptive range-splitting behavior. Queries share the existing GitHub Code Search rate budget and run sequentially.
@@ -21,6 +21,7 @@ The order preserves the current query first and runs the broadest path-only quer
 ## Candidate flow
 
 - Merge candidates from all families into the existing discovery pipeline.
+- Search the literal manifest term in paths only and accept a result only when its `item.path` is `.claude-plugin/marketplace.json` or ends in `/.claude-plugin/marketplace.json`. This prevents a content match in files such as `CLAUDE.md` from adding its repository as a candidate.
 - Deduplicate case-insensitively by repository URL across families and size ranges. Count and upsert each repository once per crawl.
 - Run the existing enrichment phase once after all three discovery sweeps. It processes the entire `repositories` table, including repositories found in earlier crawls, rather than only this crawl's search candidates.
 - Keep the existing enrichment and marketplace validation rules. A candidate found by the broad path-only family is still removed or rejected by the current checks if it does not have a valid marketplace.
@@ -50,11 +51,12 @@ Add deterministic tests for:
 4. Case-insensitive deduplication when the same repository appears in multiple families and size ranges.
 5. A partial or temporarily failed family emitting a family-specific warning, retaining its previous cache, and allowing the other families to continue.
 6. One enrichment phase after all family sweeps that still processes the full `repositories` table, including rows persisted by earlier crawls.
+7. The literal-path family rejects a result whose `item.path` is `CLAUDE.md`, even if its contents contain `.claude-plugin/marketplace.json`.
 
-GitHub's [REST documentation](https://docs.github.com/en/rest/search/search#search-code) says code search requires at least one search term. A one-time authenticated request to the actual `GET /search/code` endpoint on 2026-09-30 returned HTTP 200 for each exact root query:
+GitHub's [REST code search syntax documentation](https://docs.github.com/en/search-github/searching-on-github/searching-code#search-by-the-file-contents-or-file-path) says that omitting `in:` searches file contents only, while `in:path` searches file paths. A one-time authenticated request to `GET /search/code` on 2026-09-30 confirmed that the literal query without `in:path` returned 83,840 results, including `CLAUDE.md` files; with `in:path` it returned 45,632 results, whose sampled paths were marketplace manifests. The corrected exact root queries returned HTTP 200:
 
 - `filename:marketplace.json path:.claude-plugin size:0..400000`
-- `.claude-plugin/marketplace.json size:0..400000`
+- `.claude-plugin/marketplace.json in:path size:0..400000`
 - `path:.claude-plugin size:0..400000`
 
 The qualifier-only third query was accepted by the endpoint. Keep this as a manual syntax check; do not add a recurring live GitHub API test.

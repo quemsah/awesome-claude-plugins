@@ -7,7 +7,7 @@ export const discoverySearchFamilies = [
   },
   {
     queryFamily: 'marketplace_path_literal',
-    buildQuery: ([min, max]: SizeRange) => `.claude-plugin/marketplace.json size:${min}..${max}`,
+    buildQuery: ([min, max]: SizeRange) => `.claude-plugin/marketplace.json in:path size:${min}..${max}`,
   },
   {
     queryFamily: 'claude_plugin_path',

@@ -10,6 +10,7 @@ type SearchCodeRepository = SearchCodeResponse['items'][number]['repository']
 
 export type SearchPage = Pick<SearchCodeResponse, 'total_count' | 'incomplete_results'> & {
   items: Array<{
+    path: SearchCodeResponse['items'][number]['path']
     repository: Pick<SearchCodeRepository, 'html_url' | 'description'> & {
       node_id?: SearchCodeRepository['node_id']
       private?: SearchCodeRepository['private']
@@ -168,6 +169,7 @@ function parseSearch(value: unknown): SearchPage {
     !value.items.every(
       (item: unknown) =>
         record(item) &&
+        nonempty(item.path) &&
         record(item.repository) &&
         nonempty(item.repository.html_url) &&
         description(item.repository.description) &&
