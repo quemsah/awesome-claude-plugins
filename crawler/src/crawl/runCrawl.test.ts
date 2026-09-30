@@ -73,7 +73,7 @@ it('runs discovery before enrichment and completes with a typed report and store
     },
     getRepository: async (owner, name) => {
       events.push('repository')
-      expect(getRun(db, 'success')?.heartbeat_at).toBe('2026-09-23T00:02:00.000Z')
+      expect(getRun(db, 'success')?.heartbeat_at).toBe('2026-09-23T00:06:00.000Z')
       return { kind: 'found', data: repo(owner, name) }
     },
     getMarketplace: async () => {
@@ -85,11 +85,16 @@ it('runs discovery before enrichment and completes with a typed report and store
 
   const result = await runCrawl(db, client, 'success', { ranges, now: () => new Date(time) })
 
-  expect(events).toEqual(['search:0..150', 'search:0..200', 'repository', 'marketplace'])
+  expect(events).toEqual([
+    'search:0..150', 'search:0..200',
+    'search:0..150', 'search:0..200',
+    'search:0..150', 'search:0..200',
+    'repository', 'marketplace',
+  ])
   expect(result).toMatchObject({
     runId: 'success',
     status: 'completed',
-    discovery: { newUrls: 1, existingUrls: 0, successfulRanges: 2, warningCount: 0 },
+    discovery: { newUrls: 1, existingUrls: 0, successfulRanges: 6, warningCount: 0 },
     enrichment: { newReady: 1, updated: 0, deleted404: 0, conclusive: 1 },
     warningCount: 0,
     errorCategories: {},
@@ -97,8 +102,8 @@ it('runs discovery before enrichment and completes with a typed report and store
   expect(getRun(db, 'success')).toMatchObject({
     status: 'completed',
     started_at: '2026-09-23T00:00:00.000Z',
-    heartbeat_at: '2026-09-23T00:02:30.000Z',
-    completed_at: '2026-09-23T00:02:30.000Z',
+    heartbeat_at: '2026-09-23T00:06:30.000Z',
+    completed_at: '2026-09-23T00:06:30.000Z',
     warning_count: 0,
     published_at: null,
     commit_sha: null,
@@ -133,11 +138,9 @@ it('fails rather than completing when every search range fails, even if enrichme
 
   expect(db.prepare('SELECT owner FROM repositories WHERE html_url = ?').get(url)).toEqual({ owner: 'team' })
   expect(getRun(db, 'no-search')).toMatchObject({ status: 'failed', last_error: 'no_successful_ranges', published_at: null })
-  expect(listRunErrors(db, 'no-search').map(({ phase, error_type }) => ({ phase, error_type }))).toEqual([
-    { phase: 'search', error_type: 'temporary-error' },
-    { phase: 'search', error_type: 'temporary-error' },
-    { phase: 'crawl', error_type: 'no_successful_ranges' },
-  ])
+  const errors = listRunErrors(db, 'no-search')
+  expect(errors.filter(({ phase }) => phase === 'search')).toHaveLength(6)
+  expect(errors.at(-1)).toMatchObject({ phase: 'crawl', error_type: 'no_successful_ranges' })
 })
 
 it('fails when search succeeds but every marketplace result is transient', async () => {
@@ -189,11 +192,11 @@ it('completes with warnings from stored search and enrichment errors, including 
 
   const result = await runCrawl(db, client, 'partial', { ranges })
 
-  expect(result.discovery.successfulRanges).toBe(2)
+  expect(result.discovery.successfulRanges).toBe(6)
   expect(result.enrichment).toMatchObject({ newIncomplete: 1, conclusive: 1 })
-  expect(result.errorCategories).toEqual({ 'incomplete-results': 1, 'temporary-error': 1, repository_temporary_error: 1 })
-  expect(result.warningCount).toBe(3)
-  expect(getRun(db, 'partial')).toMatchObject({ status: 'completed', warning_count: 3 })
+  expect(result.errorCategories).toEqual({ 'incomplete-results': 3, 'temporary-error': 3, repository_temporary_error: 1 })
+  expect(result.warningCount).toBe(7)
+  expect(getRun(db, 'partial')).toMatchObject({ status: 'completed', warning_count: 7 })
 })
 
 it('counts any valid persisted error category without inheriting object properties', async () => {
@@ -216,9 +219,9 @@ it('counts any valid persisted error category without inheriting object properti
     { ranges: [firstRange] },
   )
 
-  expect(result.warningCount).toBe(1)
-  expect(result.errorCategories).toEqual({ constructor: 1 })
-  expect(getRun(db, 'category')?.warning_count).toBe(1)
+  expect(result.warningCount).toBe(3)
+  expect(result.errorCategories).toEqual({ constructor: 3 })
+  expect(getRun(db, 'category')?.warning_count).toBe(3)
 })
 
 it('heartbeats throughout enrichment batches without adding reader requests', async () => {

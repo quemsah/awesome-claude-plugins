@@ -89,7 +89,7 @@ describe('orchestration', () => {
       })
       expect(result).toMatchObject({
         report: {
-          discovery: { successfulRanges: 1 },
+          discovery: { successfulRanges: 3 },
           enrichment: { updated: 1, deleted404: 2, deletedBlankUrl: 2 },
           errorCategories: {},
           rateBuckets,
@@ -147,7 +147,7 @@ describe('orchestration', () => {
     const result = await executePublish(db, git, 'prepared', { now, notifier: notify, log, writeEnabled: true })
     expect(result).toMatchObject({ status: 'published', sha: 'd'.repeat(40) })
     expect(result.report).toMatchObject({
-      discovery: { successfulRanges: 1 },
+      discovery: { successfulRanges: 3 },
       enrichment: { updated: 1 },
       warningCount: 0,
       errorCategories: {},

@@ -132,35 +132,36 @@ git commit -m "feat: persist discovery query families"
 **Files:**
 - Modify: `crawler/src/crawl/discover.ts`
 - Modify: `crawler/src/crawl/discover.test.ts`
+- Update: aggregate discovery-count expectations in `crawler/src/crawl/runCrawl.test.ts`, `crawler/src/service/execute.test.ts`, and `crawler/test/cli.test.ts`
 
 **Interfaces:**
 - Consumes `discoverySearchFamilies` from Task 1 and family-scoped cache/error APIs from Task 2.
 - Add `query_family` to each `DiscoveryWarning` and search warning log. Add `families: Record<DiscoveryQueryFamily, { successfulRanges: number; warningCount: number }>` to `DiscoverySummary`.
 
-- [ ] **Step 1: Write the family discovery tests**
+- [x] **Step 1: Write the family discovery tests**
 
 Add tests asserting: exact calls run #2 -> #1 -> #3 for the same root; an empty successful response counts and saves that family's full cache; case-variant duplicates across families are counted and upserted once; a temporary error in one family leaves its seeded cache intact and the next family runs; warnings carry `query_family` in the DB row, summary, and log; a saturated split updates the aggregate and owning-family counts together.
 
-- [ ] **Step 2: Run discovery tests and confirm the new cases fail**
+- [x] **Step 2: Run discovery tests and confirm the new cases fail**
 
 Run from `crawler/`: `npm exec vitest run src/crawl/discover.test.ts`
 
 Expected: FAIL because discovery still builds only the current query and summaries have no family fields.
 
-- [ ] **Step 3: Implement the family loop and scoped coverage**
+- [x] **Step 3: Implement the family loop and scoped coverage**
 
 Loop through `discoverySearchFamilies` in declared order, then through configured root ranges. Use family-scoped cache reads/writes and a fresh coverage state per family/root. Keep one `countedUrls` set across the whole crawl; skip a previously seen lowercase URL before lookup/upsert/counting. Update both aggregate and per-family counters on range success, split, and warning.
 
-- [ ] **Step 4: Run focused discovery tests**
+- [x] **Step 4: Run focused discovery tests**
 
 Run from `crawler/`: `npm exec vitest run src/crawl/discover.test.ts src/storage/discoveryRanges.test.ts`
 
 Expected: PASS; one family's temporary failure does not block subsequent families, and incomplete coverage does not replace its cached partition.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
-git add crawler/src/crawl/discover.ts crawler/src/crawl/discover.test.ts
+git add crawler/src/crawl/discover.ts crawler/src/crawl/discover.test.ts crawler/src/crawl/runCrawl.test.ts crawler/src/service/execute.test.ts crawler/test/cli.test.ts docs/superpowers/plans/2026-09-30-discovery-search-families.md
 git commit -m "feat: search all discovery query families"
 ```
 
