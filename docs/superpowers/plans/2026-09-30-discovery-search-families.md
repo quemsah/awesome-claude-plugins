@@ -25,7 +25,7 @@
 
 - Create `crawler/src/github/searchFamilies.ts` for stable family IDs, order, and exact query builders.
 - Modify `crawler/src/crawl/discover.ts` and `discover.test.ts` to run families, share dedupe state, and report family-specific warnings and counts.
-- Modify `crawler/src/storage/schema.ts` and `schema.test.ts` for schema version 11 and migration of cached ranges and errors.
+- Modify `crawler/src/storage/schema.ts` and `schema.test.ts` for schema version 12 and migration of cached ranges and errors. The base branch already uses version 11 for marketplace-cache invalidation.
 - Modify `crawler/src/storage/discoveryRanges.ts` and `discoveryRanges.test.ts` for family-scoped cache reads and replacement.
 - Modify `crawler/src/storage/runs.ts` and `runs.test.ts` to persist nullable `query_family` on run errors.
 - Modify `crawler/src/crawl/runCrawl.ts`, `runCrawl.test.ts`, `crawler/src/service/execute.ts`, and `execute.test.ts` for aggregate logging, persisted report validation, and end-to-end behavior.
@@ -101,7 +101,7 @@ git commit -m "feat: define discovery search families"
 
 - [x] **Step 1: Write migration and family-isolation tests**
 
-Seed a version-10 database with a split `discovery_ranges` partition and an old `run_errors` row. After migration, assert schema version 11, unchanged range bounds assigned to `marketplace_filename_path`, and old `query_family` is `NULL`. Add a cache test storing different partitions for the same root under two family IDs and assert reads/replacements stay isolated.
+Seed a version-10 database with a split `discovery_ranges` partition and an old `run_errors` row. After migration, assert schema version 12, unchanged range bounds assigned to `marketplace_filename_path`, and old `query_family` is `NULL`. Add a cache test storing different partitions for the same root under two family IDs and assert reads/replacements stay isolated.
 
 - [x] **Step 2: Run the focused tests and confirm they fail**
 
@@ -109,7 +109,7 @@ Run from `crawler/`: `npm exec vitest run src/storage/schema.test.ts src/storage
 
 Expected: FAIL because the schema and cache APIs have no family dimension.
 
-- [x] **Step 3: Implement schema version 11 and storage APIs**
+- [x] **Step 3: Implement schema version 12 and storage APIs**
 
 Rebuild `discovery_ranges` with primary key `(query_family, root_start, root_end, range_start, range_end)` and copy every existing row as `marketplace_filename_path`. Add nullable `run_errors.query_family`; make `recordRunError` store a family when supplied and `NULL` otherwise. Scope exact-partition reads and replacements to the family argument.
 Keep the current discovery caller compiling by passing `marketplace_filename_path`; Task 3 replaces this transitional use with the family loop.
@@ -118,7 +118,7 @@ Keep the current discovery caller compiling by passing `marketplace_filename_pat
 
 Run from `crawler/`: `npm exec vitest run src/storage/schema.test.ts src/storage/discoveryRanges.test.ts src/storage/runs.test.ts`
 
-Expected: PASS; existing migration assertions now expect version 11, prior cache bounds are preserved, and family caches do not overlap.
+Expected: PASS; existing migration assertions now expect version 12, prior cache bounds are preserved, and family caches do not overlap.
 
 - [x] **Step 5: Commit**
 
