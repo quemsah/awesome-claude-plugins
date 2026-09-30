@@ -190,7 +190,6 @@ function normalizeDiscovery(value: StoredDiscoverySummary): DiscoverySummary {
     families: {
       marketplace_filename_path: { successfulRanges: value.successfulRanges, warningCount: value.warningCount },
       marketplace_path_literal: { successfulRanges: 0, warningCount: 0 },
-      claude_plugin_path: { successfulRanges: 0, warningCount: 0 },
     },
   }
 }

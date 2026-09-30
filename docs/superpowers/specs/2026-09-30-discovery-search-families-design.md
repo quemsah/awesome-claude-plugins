@@ -4,33 +4,34 @@
 
 ## Goal
 
-Increase repository discovery coverage by searching GitHub Code Search with three query forms. Code Search does not index or return every repository, so alternate query forms can surface candidates that the current query misses. This is a coverage improvement, not a guarantee that any particular repository will be returned.
+Increase repository discovery coverage with two GitHub Code Search query forms that both target `marketplace.json`. Code Search does not index or return every repository, so alternate query forms can surface marketplace candidates that the current query misses. This is a coverage improvement, not a guarantee that any particular repository will be returned.
 
 ## Search families
 
-Run all families on every crawl, sequentially, over the existing adaptive size domain `0..400000`:
+Run both families on every crawl, sequentially, over the existing adaptive size domain `0..400000`:
 
 | Run order | Stable family ID | Query template |
 | --- | --- | --- |
 | First (n8n #2) | `marketplace_filename_path` | `filename:marketplace.json path:.claude-plugin size:<min>..<max>` |
 | Second (n8n #1) | `marketplace_path_literal` | `.claude-plugin/marketplace.json in:path size:<min>..<max>` |
-| Third (n8n #3) | `claude_plugin_path` | `path:.claude-plugin size:<min>..<max>` |
 
-The order preserves the current query first and runs the broadest path-only query last. Each family uses the current pagination, retry, saturation, short-page, and adaptive range-splitting behavior. Queries share the existing GitHub Code Search rate budget and run sequentially.
+The order preserves the current query first. Each family uses the current pagination, retry, saturation, short-page, and adaptive range-splitting behavior. Queries share the existing GitHub Code Search rate budget and run sequentially.
 
 ## Candidate flow
 
-- Merge candidates from all families into the existing discovery pipeline.
+- Merge candidates from both families into the existing discovery pipeline.
 - Search the literal manifest term in paths only and accept a result only when its `item.path` is exactly `.claude-plugin/marketplace.json`. This prevents content matches and nested paths from adding unrelated repositories as candidates.
 - Deduplicate case-insensitively by repository URL across families and size ranges. Count and upsert each repository once per crawl.
-- Run the existing enrichment phase once after all three discovery sweeps. It processes the entire `repositories` table, including repositories found in earlier crawls, rather than only this crawl's search candidates.
-- Keep the existing enrichment and marketplace validation rules. A candidate found by the broad path-only family is still removed or rejected by the current checks if it does not have a valid marketplace.
+- Run the existing enrichment phase once after both discovery sweeps. It processes the entire `repositories` table, including repositories found in earlier crawls, rather than only this crawl's search candidates.
+- Keep the existing enrichment and marketplace validation rules for every repository in the table.
+
+The broad `path:.claude-plugin` family was considered and removed from the design: a manual check returned 68,992 matching files, including unrelated `README.md` and `SKILL.md` results. Those repositories would consume crawl time and then be rejected during marketplace enrichment. Discovery stays focused on marketplace manifests.
 
 ## Adaptive range cache and migration
 
 Add a `query_family` dimension to persisted discovery partitions. Rebuild `discovery_ranges` in one schema migration so its key is `(query_family, root_start, root_end, range_start, range_end)` and its partition checks are scoped to a family.
 
-Migrate existing range rows to `marketplace_filename_path`, preserving the learned partition for the current query. The two added families start with the full root range and learn their own partitions. Replace a family's cache only after that family's search completes with exact coverage; keep its previous cache if the sweep is incomplete.
+Migrate existing range rows to `marketplace_filename_path`, preserving the learned partition for the current query. The added `marketplace_path_literal` family starts with the full root range and learns its own partitions. Replace a family's cache only after that family's search completes with exact coverage; keep its previous cache if the sweep is incomplete.
 
 Add nullable `query_family` to `run_errors` in the same migration. Existing rows and non-discovery errors keep `NULL`.
 
@@ -45,7 +46,7 @@ Add nullable `query_family` to `run_errors` in the same migration. Existing rows
 
 Add deterministic tests for:
 
-1. Exact query construction for all three families and sequential execution in the specified order.
+1. Exact query construction for both families and sequential execution in the specified order.
 2. Independent adaptive splits and cache reads/writes per family.
 3. Schema migration assigning existing cached ranges to `marketplace_filename_path`, preserving those ranges, and storing query-family warnings.
 4. Case-insensitive deduplication when the same repository appears in multiple families and size ranges.
@@ -57,14 +58,13 @@ GitHub's [REST code search syntax documentation](https://docs.github.com/en/sear
 
 - `filename:marketplace.json path:.claude-plugin size:0..400000`
 - `.claude-plugin/marketplace.json in:path size:0..400000`
-- `path:.claude-plugin size:0..400000`
 
-The qualifier-only third query was accepted by the endpoint. Keep this as a manual syntax check; do not add a recurring live GitHub API test.
+The broad `path:.claude-plugin size:0..400000` query was checked manually and rejected from the design because its results include files unrelated to marketplace manifests. Keep the query checks manual; do not add a recurring live GitHub API test.
 
 Do not add a seed/allowlist for `mnemoverse/claude-plugin`. After rollout, manually check whether that repository appears in the catalog after about one week.
 
 ## Operational impact and scope
 
-The two additional query families add Code Search requests and may extend discovery duration; the exact increase depends on result density and adaptive splitting. Sequential execution avoids introducing concurrent pressure on the shared rate budget.
+The added query family adds Code Search requests and may extend discovery duration; the exact increase depends on result density and adaptive splitting. Sequential execution avoids introducing concurrent pressure on the shared rate budget.
 
 This change does not alter marketplace validation, enrich repositories more than once, or guarantee discovery when GitHub Code Search omits a repository from its results.

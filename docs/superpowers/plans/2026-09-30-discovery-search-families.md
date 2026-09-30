@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Expand discovery to run the three approved GitHub Code Search query families with independent adaptive caches and family-aware warnings.
+**Goal:** Expand discovery to run the two approved GitHub Code Search query families with independent adaptive caches and family-aware warnings.
 
 **Architecture:** Define the ordered family IDs and query builders once, then pass the family through discovery, storage, logs, and summaries. Migrate existing partitions to the current family, keep independent cache coverage for each family, and run the existing enrichment phase once over the whole repository table after discovery.
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Run `marketplace_filename_path` -> `marketplace_path_literal` -> `claude_plugin_path` sequentially on every crawl over the adaptive root range `0..400000`.
+- Run `marketplace_filename_path` -> `marketplace_path_literal` sequentially on every crawl over the adaptive root range `0..400000`.
 - Preserve the exact query templates in the spec and the existing pagination, retry, saturation, short-page, and splitting behavior.
 - Use a shared case-insensitive URL set across all families and ranges; count and upsert each URL once per crawl.
 - Keep one enrichment phase after discovery; it processes the full `repositories` table, including rows from earlier crawls.
@@ -36,7 +36,7 @@ The REST `/search/code` endpoint searches file contents only when `in:` is omitt
 
 ## Review Focus
 
-- A saturated split must update aggregate and owning-family range counts consistently. Test in Task 3: split one family and assert aggregate counts equal the sum of its three family counts.
+- A saturated split must update aggregate and owning-family range counts consistently. Test in Task 3: split one family and assert aggregate counts equal the sum of its two family counts.
 - A successful empty result still counts as a successful family range and permits its full cache to be saved. Test in Task 3.
 - A temporary failure in one family must preserve that family's prior cache while later families continue. Test in Task 3.
 - A fatal 401/422 in a later family must remain fatal, include that family in the failure log, and prevent later searches and enrichment. Test in Task 4.
@@ -52,7 +52,7 @@ The REST `/search/code` endpoint searches file contents only when `in:` is omitt
 
 **Interfaces:**
 - Produces `DiscoveryQueryFamily`, the ordered `discoverySearchFamilies` list, and `buildQuery(range: SizeRange): string` on each family entry.
-- IDs and order: `marketplace_filename_path`, `marketplace_path_literal`, `claude_plugin_path`.
+- IDs and order: `marketplace_filename_path`, `marketplace_path_literal`.
 
 - [x] **Step 1: Write the failing family table test**
 
@@ -61,7 +61,6 @@ In `searchFamilies.test.ts`, assert the exact ordered IDs and query strings for 
 ```text
 filename:marketplace.json path:.claude-plugin size:12..34
 .claude-plugin/marketplace.json in:path size:12..34
-path:.claude-plugin size:12..34
 ```
 
 - [x] **Step 2: Run the focused test and confirm it fails**
@@ -72,7 +71,7 @@ Expected: FAIL because the family module does not exist.
 
 - [x] **Step 3: Implement the ordered family definitions**
 
-Export the stable ID type and an ordered array whose `buildQuery` functions produce the three exact templates. Keep query construction in this module so discovery and tests use the same definitions.
+Export the stable ID type and an ordered array whose `buildQuery` functions produce the two exact templates. Keep query construction in this module so discovery and tests use the same definitions.
 
 - [x] **Step 4: Run the focused test**
 
@@ -144,7 +143,7 @@ git commit -m "feat: persist discovery query families"
 
 - [x] **Step 1: Write the family discovery tests**
 
-Add tests asserting: exact calls run #2 -> #1 -> #3 for the same root; an empty successful response counts and saves that family's full cache; case-variant duplicates across families are counted and upserted once; a temporary error in one family leaves its seeded cache intact and the next family runs; warnings carry `query_family` in the DB row, summary, and log; a saturated split updates the aggregate and owning-family counts together.
+Add tests asserting: exact calls run #2 -> #1 for the same root; an empty successful response counts and saves that family's full cache; case-variant duplicates across families are counted and upserted once; a temporary error in one family leaves its seeded cache intact and the other family runs; warnings carry `query_family` in the DB row, summary, and log; a saturated split updates the aggregate and owning-family counts together.
 
 - [x] **Step 2: Run discovery tests and confirm the new cases fail**
 
@@ -183,7 +182,7 @@ git commit -m "feat: search all discovery query families"
 
 - [x] **Step 1: Write the crawl integration and legacy-report tests**
 
-Assert all three searches finish before enrichment starts, and enrichment still visits both a repository already stored before this crawl and a newly discovered repository. Assert the discovery phase-completed log includes family totals, a successful family lets the crawl continue despite sibling failures, and zero successful ranges across all families still yields `no_successful_ranges`. Add a fatal 422 test from family #3 that asserts the error remains fatal, the failure log identifies the family, and enrichment is skipped. Add a stored-report test with the old summary shape and assert it is still accepted during publish/recovery.
+Assert both searches finish before enrichment starts, and enrichment still visits both a repository already stored before this crawl and a newly discovered repository. Assert the discovery phase-completed log includes family totals, one successful family lets the crawl continue despite the other failing, and zero successful ranges across both families still yields `no_successful_ranges`. Add a fatal 422 test from `marketplace_path_literal` that asserts the error remains fatal, the failure log identifies the family, and enrichment is skipped. Add a stored-report test with the old summary shape and assert it is still accepted during publish/recovery.
 
 - [x] **Step 2: Run focused integration tests and confirm the new assertions fail**
 
@@ -193,7 +192,7 @@ Expected: FAIL because only one query is run and report validation does not unde
 
 - [x] **Step 3: Implement summary propagation and backward-compatible report parsing**
 
-Add the family totals to the discovery completion log. Keep the existing single enrichment call and full-table iterator unchanged. Validate family keys/counts and warning `query_family` in new reports; when loading a legacy stored report without those fields, assign its aggregate counts and warnings to `marketplace_filename_path` and zero to the two new families.
+Add the family totals to the discovery completion log. Keep the existing single enrichment call and full-table iterator unchanged. Validate family keys/counts and warning `query_family` in new reports; when loading a legacy stored report without those fields, assign its aggregate counts and warnings to `marketplace_filename_path` and zero to `marketplace_path_literal`.
 
 - [x] **Step 4: Run focused tests and the full unit suite**
 

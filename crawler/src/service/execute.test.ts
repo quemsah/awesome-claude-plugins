@@ -89,7 +89,7 @@ describe('orchestration', () => {
       })
       expect(result).toMatchObject({
         report: {
-          discovery: { successfulRanges: 3 },
+          discovery: { successfulRanges: 2 },
           enrichment: { updated: 1, deleted404: 2, deletedBlankUrl: 2 },
           errorCategories: {},
           rateBuckets,
@@ -147,7 +147,7 @@ describe('orchestration', () => {
     const result = await executePublish(db, git, 'prepared', { now, notifier: notify, log, writeEnabled: true })
     expect(result).toMatchObject({ status: 'published', sha: 'd'.repeat(40) })
     expect(result.report).toMatchObject({
-      discovery: { successfulRanges: 3 },
+      discovery: { successfulRanges: 2 },
       enrichment: { updated: 1 },
       warningCount: 0,
       errorCategories: {},
@@ -204,7 +204,6 @@ describe('orchestration', () => {
       families: {
         marketplace_filename_path: { successfulRanges: 4, warningCount: 1 },
         marketplace_path_literal: { successfulRanges: 0, warningCount: 0 },
-        claude_plugin_path: { successfulRanges: 0, warningCount: 0 },
       },
     })
     db.close()

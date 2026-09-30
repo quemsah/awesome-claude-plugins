@@ -407,7 +407,6 @@ export async function discover(
     families: {
       marketplace_filename_path: { successfulRanges: 0, warningCount: 0 },
       marketplace_path_literal: { successfulRanges: 0, warningCount: 0 },
-      claude_plugin_path: { successfulRanges: 0, warningCount: 0 },
     },
   }
   const lookup = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE LIMIT 1')

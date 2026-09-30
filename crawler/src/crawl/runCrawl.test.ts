@@ -77,7 +77,7 @@ it('runs discovery before enrichment and completes with a typed report and store
     },
     getRepository: async (owner, name) => {
       events.push('repository')
-      expect(getRun(db, 'success')?.heartbeat_at).toBe('2026-09-23T00:06:00.000Z')
+      expect(getRun(db, 'success')?.heartbeat_at).toBe('2026-09-23T00:04:00.000Z')
       return { kind: 'found', data: repo(owner, name) }
     },
     getMarketplace: async () => {
@@ -89,20 +89,11 @@ it('runs discovery before enrichment and completes with a typed report and store
 
   const result = await runCrawl(db, client, 'success', { ranges, now: () => new Date(time) })
 
-  expect(events).toEqual([
-    'search:0..150',
-    'search:0..200',
-    'search:0..150',
-    'search:0..200',
-    'search:0..150',
-    'search:0..200',
-    'repository',
-    'marketplace',
-  ])
+  expect(events).toEqual(['search:0..150', 'search:0..200', 'search:0..150', 'search:0..200', 'repository', 'marketplace'])
   expect(result).toMatchObject({
     runId: 'success',
     status: 'completed',
-    discovery: { newUrls: 1, existingUrls: 0, successfulRanges: 6, warningCount: 0 },
+    discovery: { newUrls: 1, existingUrls: 0, successfulRanges: 4, warningCount: 0 },
     enrichment: { newReady: 1, updated: 0, deleted404: 0, conclusive: 1 },
     warningCount: 0,
     errorCategories: {},
@@ -110,8 +101,8 @@ it('runs discovery before enrichment and completes with a typed report and store
   expect(getRun(db, 'success')).toMatchObject({
     status: 'completed',
     started_at: '2026-09-23T00:00:00.000Z',
-    heartbeat_at: '2026-09-23T00:06:30.000Z',
-    completed_at: '2026-09-23T00:06:30.000Z',
+    heartbeat_at: '2026-09-23T00:04:30.000Z',
+    completed_at: '2026-09-23T00:04:30.000Z',
     warning_count: 0,
     published_at: null,
     commit_sha: null,
@@ -154,20 +145,18 @@ it('logs per-family outcomes and enriches stored and newly discovered repositori
 
   const result = await runCrawl(db, client, 'family-outcomes', { ranges: [[0, 10]], log })
 
-  expect(events.slice(0, 3)).toEqual([
+  expect(events.slice(0, 2)).toEqual([
     'search:filename:marketplace.json path:.claude-plugin size:0..10',
     'search:.claude-plugin/marketplace.json in:path size:0..10',
-    'search:path:.claude-plugin size:0..10',
   ])
-  expect(events.slice(3)).toEqual(['repository:existing/repo', 'repository:new/repo'])
+  expect(events.slice(2)).toEqual(['repository:existing/repo', 'repository:new/repo'])
   expect(result.discovery).toMatchObject({
     newUrls: 1,
-    successfulRanges: 2,
+    successfulRanges: 1,
     warningCount: 1,
     families: {
       marketplace_filename_path: { successfulRanges: 1, warningCount: 0 },
       marketplace_path_literal: { successfulRanges: 0, warningCount: 1 },
-      claude_plugin_path: { successfulRanges: 1, warningCount: 0 },
     },
   })
   expect(result.enrichment.conclusive).toBe(2)
@@ -183,14 +172,14 @@ it('logs per-family outcomes and enriches stored and newly discovered repositori
   )
 })
 
-it('logs the fatal family and skips enrichment when family three receives HTTP 422', async () => {
+it('logs the fatal family and skips enrichment when the literal marketplace query receives HTTP 422', async () => {
   const db = database()
   const getRepository = vi.fn()
   const getMarketplace = vi.fn()
   const log = vi.fn()
   const client = reader({
     searchCode: async (query) => {
-      if (query.startsWith('path:')) throw new GitHubFatalError('Code Search rejected the query', 422)
+      if (query.startsWith('.claude-plugin/')) throw new GitHubFatalError('Code Search rejected the query', 422)
       return { items: [], total_count: 0, incomplete_results: false }
     },
     getRepository,
@@ -207,7 +196,7 @@ it('logs the fatal family and skips enrichment when family three receives HTTP 4
   expect(log).toHaveBeenCalledWith(
     expect.objectContaining({
       event: 'crawl.request_failed',
-      query_family: 'claude_plugin_path',
+      query_family: 'marketplace_path_literal',
       status: 422,
     }),
   )
@@ -237,7 +226,7 @@ it('fails rather than completing when every search range fails, even if enrichme
   expect(db.prepare('SELECT owner FROM repositories WHERE html_url = ?').get(url)).toEqual({ owner: 'team' })
   expect(getRun(db, 'no-search')).toMatchObject({ status: 'failed', last_error: 'no_successful_ranges', published_at: null })
   const errors = listRunErrors(db, 'no-search')
-  expect(errors.filter(({ phase }) => phase === 'search')).toHaveLength(6)
+  expect(errors.filter(({ phase }) => phase === 'search')).toHaveLength(4)
   expect(errors.at(-1)).toMatchObject({ phase: 'crawl', error_type: 'no_successful_ranges' })
 })
 
@@ -290,11 +279,11 @@ it('completes with warnings from stored search and enrichment errors, including 
 
   const result = await runCrawl(db, client, 'partial', { ranges })
 
-  expect(result.discovery.successfulRanges).toBe(6)
+  expect(result.discovery.successfulRanges).toBe(4)
   expect(result.enrichment).toMatchObject({ newIncomplete: 1, conclusive: 1 })
-  expect(result.errorCategories).toEqual({ 'incomplete-results': 3, 'temporary-error': 3, repository_temporary_error: 1 })
-  expect(result.warningCount).toBe(7)
-  expect(getRun(db, 'partial')).toMatchObject({ status: 'completed', warning_count: 7 })
+  expect(result.errorCategories).toEqual({ 'incomplete-results': 2, 'temporary-error': 2, repository_temporary_error: 1 })
+  expect(result.warningCount).toBe(5)
+  expect(getRun(db, 'partial')).toMatchObject({ status: 'completed', warning_count: 5 })
 })
 
 it('counts any valid persisted error category without inheriting object properties', async () => {
@@ -321,9 +310,9 @@ it('counts any valid persisted error category without inheriting object properti
     { ranges: [firstRange] },
   )
 
-  expect(result.warningCount).toBe(3)
-  expect(result.errorCategories).toEqual({ constructor: 3 })
-  expect(getRun(db, 'category')?.warning_count).toBe(3)
+  expect(result.warningCount).toBe(2)
+  expect(result.errorCategories).toEqual({ constructor: 2 })
+  expect(getRun(db, 'category')?.warning_count).toBe(2)
 })
 
 it('heartbeats throughout enrichment batches without adding reader requests', async () => {

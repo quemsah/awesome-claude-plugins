@@ -359,7 +359,7 @@ describe('CLI', () => {
       output: vi.fn(),
     })
 
-    expect(reader.searchCode).toHaveBeenCalledTimes(3)
+    expect(reader.searchCode).toHaveBeenCalledTimes(2)
     const verified = openDatabase(path)
     expect(getRun(verified, 'stale-run')).toMatchObject({ status: 'failed', last_error: 'stale_run' })
     expect(listRunErrors(verified, 'stale-run')).toContainEqual(expect.objectContaining({ phase: 'crawl', error_type: 'stale_run' }))
@@ -566,7 +566,7 @@ describe('CLI', () => {
     })
     const draft = output.mock.calls.map(([line]) => JSON.parse(line)).find((line) => line.status === 'draft')
     expect(draft.report).toMatchObject({
-      discovery: { successfulRanges: 3 },
+      discovery: { successfulRanges: 2 },
       enrichment: { updated: 1 },
       rateBuckets: report.buckets,
       errorCategories: expect.any(Object),
@@ -725,7 +725,7 @@ describe('CLI', () => {
       now: () => new Date('2026-09-23T12:00:00.000Z'),
       output,
     })
-    expect(reader.searchCode).toHaveBeenCalledTimes(3)
+    expect(reader.searchCode).toHaveBeenCalledTimes(2)
     expect(git.updateBranch).toHaveBeenCalledOnce()
     expect(notifier.notifySuccess).toHaveBeenCalledWith(expect.objectContaining({ confirmedGitSha: 'd'.repeat(40) }))
     const publishedOutput = output.mock.calls
