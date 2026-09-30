@@ -60,13 +60,14 @@ it('recovers only a stale active run from its heartbeat', () => {
   expect(listRunErrors(db, 'stale-run')).toContainEqual(expect.objectContaining({ phase: 'crawl', error_type: 'stale_run' }))
 })
 
-it('persists structured errors without storing tokens or HTTP response bodies', () => {
+it('persists query families on search errors and leaves non-search errors unclassified', () => {
   const { beginRun, recordRunError, listRunErrors, failRun, getRun } = runStorage
   const db = database()
   beginRun(db, 'run-1', '2025-01-01T00:00:00Z')
   recordRunError(db, {
     run_id: 'run-1',
     phase: 'search',
+    query_family: 'marketplace_path_literal',
     range_start: 1,
     range_end: 150,
     error_type: 'rate-limited',
@@ -91,8 +92,24 @@ it('persists structured errors without storing tokens or HTTP response bodies', 
     }),
   ).toThrow(/error_type/)
   expect(listRunErrors(db, 'run-1')).toMatchObject([
-    { phase: 'search', range_start: 1, range_end: 150, repository_id: null, error_type: 'rate-limited', retry_count: 2 },
-    { phase: 'enrich', range_start: null, range_end: null, repository_id: 45, error_type: 'manifest-invalid', retry_count: 0 },
+    {
+      phase: 'search',
+      query_family: 'marketplace_path_literal',
+      range_start: 1,
+      range_end: 150,
+      repository_id: null,
+      error_type: 'rate-limited',
+      retry_count: 2,
+    },
+    {
+      phase: 'enrich',
+      query_family: null,
+      range_start: null,
+      range_end: null,
+      repository_id: 45,
+      error_type: 'manifest-invalid',
+      retry_count: 0,
+    },
   ])
   expect(failRun(db, 'run-1', '2025-01-01T00:03:00Z', 'quota-exhausted')).toBe(true)
   expect(getRun(db, 'run-1')).toMatchObject({ status: 'failed', last_error: 'quota-exhausted' })

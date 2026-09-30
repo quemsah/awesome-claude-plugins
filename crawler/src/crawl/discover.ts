@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import { GitHubFatalError, type GitHubReader, GitHubTemporaryError } from '../github/client.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
+import { type DiscoveryQueryFamily, discoverySearchFamilies } from '../github/searchFamilies.js'
 import type { SizeRange } from '../github/sizeRanges.js'
 import type { Log } from '../logging.js'
 import { listCachedDiscoveryRanges, replaceCachedDiscoveryRanges } from '../storage/discoveryRanges.js'
@@ -11,7 +12,9 @@ export type { SizeRange } from '../github/sizeRanges.js'
 
 export type DiscoveryWarningCategory = 'saturated' | 'page-limit' | 'incomplete-results' | 'temporary-error' | 'invalid-url' | 'short-page'
 
-export type DiscoveryWarning = { range: SizeRange; category: DiscoveryWarningCategory }
+export type DiscoveryWarning = { range: SizeRange; category: DiscoveryWarningCategory; query_family: DiscoveryQueryFamily }
+
+export type DiscoveryFamilySummary = { successfulRanges: number; warningCount: number }
 
 export type DiscoverySummary = {
   newUrls: number
@@ -20,10 +23,12 @@ export type DiscoverySummary = {
   successfulRanges: number
   warningCount: number
   warnings: DiscoveryWarning[]
+  families: Record<DiscoveryQueryFamily, DiscoveryFamilySummary>
 }
 
 type RangeState = {
   runId: string
+  queryFamily: DiscoveryQueryFamily
   range: SizeRange
   warned: Set<DiscoveryWarningCategory>
   countedUrls: Set<string>
@@ -55,6 +60,7 @@ function warn(
     recordRunError(db, {
       run_id: state.runId,
       phase: 'search',
+      query_family: state.queryFamily,
       range_start: min,
       range_end: max,
       error_type: category,
@@ -63,13 +69,15 @@ function warn(
     })
   })
   state.warned.add(category)
-  state.summary.warnings.push({ range: state.range, category })
+  state.summary.warnings.push({ range: state.range, category, query_family: state.queryFamily })
   state.summary.warningCount++
+  state.summary.families[state.queryFamily].warningCount++
   state.log?.({
     level: 'warn',
     event: 'crawl.warning',
     phase: 'discovery',
     category,
+    query_family: state.queryFamily,
     runId: state.runId,
     message: `Code Search ${category} for size:${min}..${max}`,
     request: 'GET /search/code',
@@ -99,6 +107,7 @@ async function searchPage(
         event: 'crawl.request_failed',
         phase: 'discovery',
         category: 'github_fatal_error',
+        query_family: state.queryFamily,
         runId: state.runId,
         message: `Code Search request failed for size:${state.range[0]}..${state.range[1]}`,
         request: 'GET /search/code',
@@ -122,23 +131,31 @@ function processItems(
   result: Awaited<ReturnType<GitHubReader['searchCode']>>,
   state: RangeState,
 ): void {
-  for (const { repository } of result.items) {
+  for (const { path, repository } of result.items) {
+    if (state.queryFamily === 'marketplace_path_literal' && path !== '.claude-plugin/marketplace.json') {
+      continue
+    }
     if (repository.private === true) continue
     const url = repository.html_url
     if (!parseRepositoryUrl(url)) {
       warn(db, state, 'invalid-url', 0, { repositoryUrl: url })
       continue
     }
+    const countKey = url.toLowerCase()
+    if (state.countedUrls.has(countKey)) continue
     const existing = Boolean(lookup.get(url))
     runWhileActive(db, state.runId, () => {
       upsertDiscovery(db, url, repository.description, state.now(), repository.node_id)
     })
-    const countKey = url.toLowerCase()
-    if (state.countedUrls.has(countKey)) continue
     state.countedUrls.add(countKey)
     if (existing) state.summary.existingUrls++
     else state.summary.newUrls++
   }
+}
+
+function adjustSuccessfulRanges(summary: DiscoverySummary, queryFamily: DiscoveryQueryFamily, change: 1 | -1): void {
+  summary.successfulRanges += change
+  summary.families[queryFamily].successfulRanges += change
 }
 
 function recordPageWarnings(
@@ -156,6 +173,7 @@ async function splitRange(
   db: Database.Database,
   reader: GitHubReader,
   runId: string,
+  queryFamily: DiscoveryQueryFamily,
   lookup: Database.Statement,
   [min, max]: SizeRange,
   summary: DiscoverySummary,
@@ -165,17 +183,18 @@ async function splitRange(
   countedAsSuccessful: boolean,
   coverage: CoverageState,
 ): Promise<void> {
-  if (countedAsSuccessful) summary.successfulRanges--
+  if (countedAsSuccessful) adjustSuccessfulRanges(summary, queryFamily, -1)
   onProgress?.()
   const middle = Math.floor((min + max) / 2)
-  await searchRange(db, reader, runId, lookup, [min, middle], summary, now, coverage, onProgress, countedUrls)
-  await searchRange(db, reader, runId, lookup, [middle + 1, max], summary, now, coverage, onProgress, countedUrls)
+  await searchRange(db, reader, runId, queryFamily, lookup, [min, middle], summary, now, coverage, onProgress, countedUrls)
+  await searchRange(db, reader, runId, queryFamily, lookup, [middle + 1, max], summary, now, coverage, onProgress, countedUrls)
 }
 
 async function splitSaturatedRange(
   db: Database.Database,
   reader: GitHubReader,
   runId: string,
+  queryFamily: DiscoveryQueryFamily,
   lookup: Database.Statement,
   range: SizeRange,
   summary: DiscoverySummary,
@@ -194,7 +213,7 @@ async function splitSaturatedRange(
   if (!saturatedRange && !fullLastPage) return false
   if (result.incomplete_results) warn(db, state, 'incomplete-results')
   if (fullLastPage) processItems(db, lookup, result, state)
-  await splitRange(db, reader, runId, lookup, range, summary, now, onProgress, countedUrls, page > 1, coverage)
+  await splitRange(db, reader, runId, queryFamily, lookup, range, summary, now, onProgress, countedUrls, page > 1, coverage)
   return true
 }
 
@@ -240,6 +259,7 @@ async function recoverIncompleteRange(
   db: Database.Database,
   reader: GitHubReader,
   runId: string,
+  queryFamily: DiscoveryQueryFamily,
   lookup: Database.Statement,
   range: SizeRange,
   summary: DiscoverySummary,
@@ -255,18 +275,89 @@ async function recoverIncompleteRange(
   warn(db, state, 'incomplete-results')
   const [min, max] = range
   if (min >= max) {
-    if (page > 1) summary.successfulRanges--
+    if (page > 1) adjustSuccessfulRanges(summary, queryFamily, -1)
     coverage.complete = false
     return true
   }
-  await splitRange(db, reader, runId, lookup, range, summary, now, onProgress, countedUrls, page > 1, coverage)
+  await splitRange(db, reader, runId, queryFamily, lookup, range, summary, now, onProgress, countedUrls, page > 1, coverage)
   return true
+}
+
+type SearchRangePageResult =
+  | { kind: 'temporary-failure' }
+  | { kind: 'handled' }
+  | { kind: 'result'; result: Awaited<ReturnType<GitHubReader['searchCode']>> }
+
+async function loadSearchRangePage(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  queryFamily: DiscoveryQueryFamily,
+  lookup: Database.Statement,
+  range: SizeRange,
+  summary: DiscoverySummary,
+  now: () => string,
+  coverage: CoverageState,
+  onProgress: (() => void) | undefined,
+  page: number,
+  found: number,
+  state: RangeState,
+  countedUrls: Set<string>,
+): Promise<SearchRangePageResult> {
+  state.page = page
+  onProgress?.()
+  let result = await searchCompletePage(reader, state.query, page, db, state, onProgress)
+  if (!result) return { kind: 'temporary-failure' }
+
+  result = await retryUnexpectedShortPage(reader, state.query, page, db, state, onProgress, result, found)
+  if (
+    await recoverIncompleteRange(
+      db,
+      reader,
+      runId,
+      queryFamily,
+      lookup,
+      range,
+      summary,
+      now,
+      onProgress,
+      page,
+      result,
+      state,
+      countedUrls,
+      coverage,
+    )
+  ) {
+    return { kind: 'handled' }
+  }
+  if (
+    await splitSaturatedRange(
+      db,
+      reader,
+      runId,
+      queryFamily,
+      lookup,
+      range,
+      summary,
+      now,
+      onProgress,
+      page,
+      result,
+      state,
+      countedUrls,
+      coverage,
+    )
+  ) {
+    return { kind: 'handled' }
+  }
+  return { kind: 'result', result }
 }
 
 async function searchRange(
   db: Database.Database,
   reader: GitHubReader,
   runId: string,
+  queryFamily: DiscoveryQueryFamily,
   lookup: Database.Statement,
   range: SizeRange,
   summary: DiscoverySummary,
@@ -276,9 +367,11 @@ async function searchRange(
   countedUrls: Set<string> = new Set(),
 ): Promise<void> {
   const [min, max] = range
-  const query = `filename:marketplace.json path:.claude-plugin size:${min}..${max}`
+  const query = discoverySearchFamilies.find((family) => family.queryFamily === queryFamily)?.buildQuery(range)
+  if (!query) throw new Error(`Unknown discovery query family: ${queryFamily}`)
   const state: RangeState = {
     runId,
+    queryFamily,
     range,
     warned: new Set(),
     countedUrls,
@@ -295,21 +388,30 @@ async function searchRange(
   let sawShortPage = false
   let rangeComplete = true
   for (let page = 1; page <= 10; page++) {
-    state.page = page
-    onProgress?.()
-    let result = await searchCompletePage(reader, query, page, db, state, onProgress)
-    if (!result) {
+    const pageResult = await loadSearchRangePage(
+      db,
+      reader,
+      runId,
+      queryFamily,
+      lookup,
+      range,
+      summary,
+      now,
+      coverage,
+      onProgress,
+      page,
+      found,
+      state,
+      countedUrls,
+    )
+    if (pageResult.kind === 'temporary-failure') {
       rangeComplete = false
       break
     }
-    result = await retryUnexpectedShortPage(reader, query, page, db, state, onProgress, result, found)
-    if (
-      await recoverIncompleteRange(db, reader, runId, lookup, range, summary, now, onProgress, page, result, state, countedUrls, coverage)
-    )
-      return
-    if (await splitSaturatedRange(db, reader, runId, lookup, range, summary, now, onProgress, page, result, state, countedUrls, coverage))
-      return
-    if (page === 1) summary.successfulRanges++
+    if (pageResult.kind === 'handled') return
+
+    const { result } = pageResult
+    if (page === 1) adjustSuccessfulRanges(summary, queryFamily, 1)
     state.totalCount = result.total_count
     state.found = found + result.items.length
     recordPageWarnings(db, result, page, state)
@@ -322,7 +424,7 @@ async function searchRange(
   if (sawShortPage && found < lastTotalCount) {
     warn(db, state, 'short-page')
     if (min < max) {
-      await splitRange(db, reader, runId, lookup, range, summary, now, onProgress, countedUrls, true, coverage)
+      await splitRange(db, reader, runId, queryFamily, lookup, range, summary, now, onProgress, countedUrls, true, coverage)
       onProgress?.()
       return
     }
@@ -343,20 +445,32 @@ export async function discover(
   now: () => string = () => new Date().toISOString(),
   log?: Log,
 ): Promise<DiscoverySummary> {
-  const summary: DiscoverySummary = { newUrls: 0, existingUrls: 0, successfulRanges: 0, warningCount: 0, warnings: [] }
+  const summary: DiscoverySummary = {
+    newUrls: 0,
+    existingUrls: 0,
+    successfulRanges: 0,
+    warningCount: 0,
+    warnings: [],
+    families: {
+      marketplace_filename_path: { successfulRanges: 0, warningCount: 0 },
+      marketplace_path_literal: { successfulRanges: 0, warningCount: 0 },
+    },
+  }
   const lookup = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE LIMIT 1')
   const countedUrls = new Set<string>()
 
-  for (const rootRange of ranges) {
-    const cachedRanges = listCachedDiscoveryRanges(db, rootRange) ?? [rootRange]
-    const coverage: CoverageState = { complete: true, leaves: [], log }
-    for (const range of cachedRanges) {
-      await searchRange(db, reader, runId, lookup, range, summary, now, coverage, onProgress, countedUrls)
+  for (const family of discoverySearchFamilies) {
+    for (const rootRange of ranges) {
+      const cachedRanges = listCachedDiscoveryRanges(db, family.queryFamily, rootRange) ?? [rootRange]
+      const coverage: CoverageState = { complete: true, leaves: [], log }
+      for (const range of cachedRanges) {
+        await searchRange(db, reader, runId, family.queryFamily, lookup, range, summary, now, coverage, onProgress, countedUrls)
+      }
+      if (coverage.complete) {
+        runWhileActive(db, runId, () => replaceCachedDiscoveryRanges(db, family.queryFamily, rootRange, coverage.leaves))
+      }
+      onProgress?.()
     }
-    if (coverage.complete) {
-      runWhileActive(db, runId, () => replaceCachedDiscoveryRanges(db, rootRange, coverage.leaves))
-    }
-    onProgress?.()
   }
 
   return summary

@@ -50,7 +50,7 @@ function repo(owner: string, name: string): GitHubRepo {
 function reader(overrides: Partial<GitHubReader> = {}): GitHubReader {
   return {
     searchCode: async () => ({
-      items: [{ repository: { html_url: url, description: 'from search' } }],
+      items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: url, description: 'from search' } }],
       total_count: 1,
       incomplete_results: false,
     }),
@@ -69,11 +69,15 @@ it('runs discovery before enrichment and completes with a typed report and store
       expect(getActiveRun(db)?.run_id).toBe('success')
       events.push(`search:${query.slice(-6)}`)
       time += 60_000
-      return { items: [{ repository: { html_url: url, description: 'search' } }], total_count: 1, incomplete_results: false }
+      return {
+        items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: url, description: 'search' } }],
+        total_count: 1,
+        incomplete_results: false,
+      }
     },
     getRepository: async (owner, name) => {
       events.push('repository')
-      expect(getRun(db, 'success')?.heartbeat_at).toBe('2026-09-23T00:02:00.000Z')
+      expect(getRun(db, 'success')?.heartbeat_at).toBe('2026-09-23T00:04:00.000Z')
       return { kind: 'found', data: repo(owner, name) }
     },
     getMarketplace: async () => {
@@ -85,11 +89,11 @@ it('runs discovery before enrichment and completes with a typed report and store
 
   const result = await runCrawl(db, client, 'success', { ranges, now: () => new Date(time) })
 
-  expect(events).toEqual(['search:0..150', 'search:0..200', 'repository', 'marketplace'])
+  expect(events).toEqual(['search:0..150', 'search:0..200', 'search:0..150', 'search:0..200', 'repository', 'marketplace'])
   expect(result).toMatchObject({
     runId: 'success',
     status: 'completed',
-    discovery: { newUrls: 1, existingUrls: 0, successfulRanges: 2, warningCount: 0 },
+    discovery: { newUrls: 1, existingUrls: 0, successfulRanges: 4, warningCount: 0 },
     enrichment: { newReady: 1, updated: 0, deleted404: 0, conclusive: 1 },
     warningCount: 0,
     errorCategories: {},
@@ -97,8 +101,8 @@ it('runs discovery before enrichment and completes with a typed report and store
   expect(getRun(db, 'success')).toMatchObject({
     status: 'completed',
     started_at: '2026-09-23T00:00:00.000Z',
-    heartbeat_at: '2026-09-23T00:02:30.000Z',
-    completed_at: '2026-09-23T00:02:30.000Z',
+    heartbeat_at: '2026-09-23T00:04:30.000Z',
+    completed_at: '2026-09-23T00:04:30.000Z',
     warning_count: 0,
     published_at: null,
     commit_sha: null,
@@ -108,6 +112,94 @@ it('runs discovery before enrichment and completes with a typed report and store
     plugins_count: 1,
   })
   expect(db.prepare('SELECT COUNT(*) AS count FROM stats').get()).toEqual({ count: 0 })
+})
+
+it('logs per-family outcomes and enriches stored and newly discovered repositories after all searches', async () => {
+  const db = database()
+  const existingUrl = 'https://github.com/existing/repo'
+  const discoveredUrl = 'https://github.com/new/repo'
+  upsertDiscovery(db, existingUrl, null)
+  const events: string[] = []
+  const log = vi.fn()
+  const client = reader({
+    searchCode: async (query) => {
+      events.push(`search:${query}`)
+      if (query.startsWith('filename:'))
+        return {
+          items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: discoveredUrl, description: 'found' } }],
+          total_count: 1,
+          incomplete_results: false,
+        }
+      if (query.startsWith('.claude-plugin/')) throw new GitHubTemporaryError('temporary outage', 503)
+      return {
+        items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: discoveredUrl, description: 'duplicate' } }],
+        total_count: 1,
+        incomplete_results: false,
+      }
+    },
+    getRepository: async (owner, name) => {
+      events.push(`repository:${owner}/${name}`)
+      return { kind: 'found', data: repo(owner, name) }
+    },
+  })
+
+  const result = await runCrawl(db, client, 'family-outcomes', { ranges: [[0, 10]], log })
+
+  expect(events.slice(0, 2)).toEqual([
+    'search:filename:marketplace.json path:.claude-plugin size:0..10',
+    'search:.claude-plugin/marketplace.json in:path size:0..10',
+  ])
+  expect(events.slice(2)).toEqual(['repository:existing/repo', 'repository:new/repo'])
+  expect(result.discovery).toMatchObject({
+    newUrls: 1,
+    successfulRanges: 1,
+    warningCount: 1,
+    families: {
+      marketplace_filename_path: { successfulRanges: 1, warningCount: 0 },
+      marketplace_path_literal: { successfulRanges: 0, warningCount: 1 },
+    },
+  })
+  expect(result.enrichment.conclusive).toBe(2)
+  expect(listRunErrors(db, 'family-outcomes')).toContainEqual(
+    expect.objectContaining({ phase: 'search', query_family: 'marketplace_path_literal', error_type: 'temporary-error' }),
+  )
+  expect(log).toHaveBeenCalledWith(
+    expect.objectContaining({
+      event: 'crawl.phase_completed',
+      phase: 'discovery',
+      families: result.discovery.families,
+    }),
+  )
+})
+
+it('logs the fatal family and skips enrichment when the literal marketplace query receives HTTP 422', async () => {
+  const db = database()
+  const getRepository = vi.fn()
+  const getMarketplace = vi.fn()
+  const log = vi.fn()
+  const client = reader({
+    searchCode: async (query) => {
+      if (query.startsWith('.claude-plugin/')) throw new GitHubFatalError('Code Search rejected the query', 422)
+      return { items: [], total_count: 0, incomplete_results: false }
+    },
+    getRepository,
+    getMarketplace,
+  })
+
+  await expect(runCrawl(db, client, 'family-fatal', { ranges: [[0, 10]], log })).rejects.toMatchObject({
+    category: 'github_fatal_error',
+  })
+
+  expect(listRunErrors(db, 'family-fatal').some(({ phase }) => phase === 'enrich')).toBe(false)
+  expect(getRepository).not.toHaveBeenCalled()
+  expect(getMarketplace).not.toHaveBeenCalled()
+  expect(log).toHaveBeenCalledWith(
+    expect.objectContaining({
+      event: 'crawl.request_failed',
+      query_family: 'marketplace_path_literal',
+      status: 422,
+    }),
+  )
 })
 
 it('reports a pending publication as an explicit lock instead of treating it as a database failure', async () => {
@@ -133,11 +225,9 @@ it('fails rather than completing when every search range fails, even if enrichme
 
   expect(db.prepare('SELECT owner FROM repositories WHERE html_url = ?').get(url)).toEqual({ owner: 'team' })
   expect(getRun(db, 'no-search')).toMatchObject({ status: 'failed', last_error: 'no_successful_ranges', published_at: null })
-  expect(listRunErrors(db, 'no-search').map(({ phase, error_type }) => ({ phase, error_type }))).toEqual([
-    { phase: 'search', error_type: 'temporary-error' },
-    { phase: 'search', error_type: 'temporary-error' },
-    { phase: 'crawl', error_type: 'no_successful_ranges' },
-  ])
+  const errors = listRunErrors(db, 'no-search')
+  expect(errors.filter(({ phase }) => phase === 'search')).toHaveLength(4)
+  expect(errors.at(-1)).toMatchObject({ phase: 'crawl', error_type: 'no_successful_ranges' })
 })
 
 it('fails when search succeeds but every marketplace result is transient', async () => {
@@ -176,7 +266,7 @@ it('completes with warnings from stored search and enrichment errors, including 
     searchCode: async (query) => {
       if (query.endsWith('150..200')) throw new GitHubTemporaryError('outage', null)
       return {
-        items: [{ repository: { html_url: url, description: null } }],
+        items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: url, description: null } }],
         total_count: 1,
         incomplete_results: query.endsWith('0..150'),
       }
@@ -189,11 +279,11 @@ it('completes with warnings from stored search and enrichment errors, including 
 
   const result = await runCrawl(db, client, 'partial', { ranges })
 
-  expect(result.discovery.successfulRanges).toBe(2)
+  expect(result.discovery.successfulRanges).toBe(4)
   expect(result.enrichment).toMatchObject({ newIncomplete: 1, conclusive: 1 })
-  expect(result.errorCategories).toEqual({ 'incomplete-results': 1, 'temporary-error': 1, repository_temporary_error: 1 })
-  expect(result.warningCount).toBe(3)
-  expect(getRun(db, 'partial')).toMatchObject({ status: 'completed', warning_count: 3 })
+  expect(result.errorCategories).toEqual({ 'incomplete-results': 2, 'temporary-error': 2, repository_temporary_error: 1 })
+  expect(result.warningCount).toBe(5)
+  expect(getRun(db, 'partial')).toMatchObject({ status: 'completed', warning_count: 5 })
 })
 
 it('counts any valid persisted error category without inheriting object properties', async () => {
@@ -209,16 +299,20 @@ it('counts any valid persisted error category without inheriting object properti
           retry_count: 0,
           occurred_at: '2026-09-23T00:00:00Z',
         })
-        return { items: [{ repository: { html_url: url, description: null } }], total_count: 1, incomplete_results: false }
+        return {
+          items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: url, description: null } }],
+          total_count: 1,
+          incomplete_results: false,
+        }
       },
     }),
     'category',
     { ranges: [firstRange] },
   )
 
-  expect(result.warningCount).toBe(1)
-  expect(result.errorCategories).toEqual({ constructor: 1 })
-  expect(getRun(db, 'category')?.warning_count).toBe(1)
+  expect(result.warningCount).toBe(2)
+  expect(result.errorCategories).toEqual({ constructor: 2 })
+  expect(getRun(db, 'category')?.warning_count).toBe(2)
 })
 
 it('heartbeats throughout enrichment batches without adding reader requests', async () => {
@@ -253,7 +347,11 @@ it('marks a SQLite failure during discovery as failed without leaking the raw ex
   const client = reader({
     searchCode: async () => {
       db.exec('DROP TABLE repositories')
-      return { items: [{ repository: { html_url: url, description: null } }], total_count: 1, incomplete_results: false }
+      return {
+        items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: url, description: null } }],
+        total_count: 1,
+        incomplete_results: false,
+      }
     },
   })
 
@@ -325,7 +423,11 @@ it('prevents a recovered stale crawl from writing after its in-flight request re
       searchCode: async () => {
         started?.()
         await waiting
-        return { items: [{ repository: { html_url: staleUrl, description: 'stale' } }], total_count: 1, incomplete_results: false }
+        return {
+          items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: staleUrl, description: 'stale' } }],
+          total_count: 1,
+          incomplete_results: false,
+        }
       },
     }),
     'interrupted',

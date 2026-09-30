@@ -15,7 +15,7 @@ const repo = {
 const page = {
   total_count: 1,
   incomplete_results: false,
-  items: [{ repository: { html_url: repo.html_url, description: null } }],
+  items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: repo.html_url, description: null } }],
 }
 
 function harness(responses: Array<Response | Error>, random: () => number = () => 0) {
@@ -70,6 +70,16 @@ describe('GitHubClient', () => {
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
     })
+  })
+
+  it('rejects code search results without a file path', async () => {
+    const invalidPage = {
+      ...page,
+      items: [{ repository: { html_url: repo.html_url, description: null } }],
+    }
+    const test = harness(Array.from({ length: 10 }, () => Response.json(invalidPage)))
+
+    await expect(test.client.searchCode('marketplace.json', 1)).rejects.toThrow('Invalid GitHub response')
   })
 
   it('returns typed repository data and encodes owner and repo as path segments', async () => {
