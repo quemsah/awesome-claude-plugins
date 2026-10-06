@@ -6,12 +6,20 @@ import { proxy } from './proxy.ts'
 
 const ORIGIN = 'https://awesomeclaudeplugins.com'
 
-function rewrittenTo(pathname: string) {
-  return proxy(new NextRequest(`${ORIGIN}${pathname}`)).headers.get('x-middleware-rewrite')
+function responseFor(pathname: string, accept?: string) {
+  return proxy(
+    new NextRequest(`${ORIGIN}${pathname}`, {
+      headers: accept ? { Accept: accept } : undefined,
+    }),
+  )
 }
 
-function passesThrough(pathname: string) {
-  const response = proxy(new NextRequest(`${ORIGIN}${pathname}`))
+function rewrittenTo(pathname: string, accept?: string) {
+  return responseFor(pathname, accept).headers.get('x-middleware-rewrite')
+}
+
+function passesThrough(pathname: string, accept?: string) {
+  const response = responseFor(pathname, accept)
 
   return response.headers.get('x-middleware-next') === '1' && response.headers.get('x-middleware-rewrite') === null
 }
@@ -49,8 +57,43 @@ describe('proxy', () => {
   })
 
   it('keeps the query string of a markdown request', () => {
-    const response = proxy(new NextRequest(`${ORIGIN}/ykdojo/claude-code-tips.md?section=plugins`))
+    const response = responseFor('/ykdojo/claude-code-tips.md?section=plugins')
 
     expect(response.headers.get('x-middleware-rewrite')).toBe(`${ORIGIN}/api/markdown/ykdojo/claude-code-tips?section=plugins`)
+  })
+
+  it('negotiates the home page to its markdown representation', () => {
+    const response = responseFor('/', 'text/markdown')
+
+    expect(response.headers.get('x-middleware-rewrite')).toBe(`${ORIGIN}/index.md`)
+    expect(response.headers.get('vary')).toBe('Accept')
+  })
+
+  it('negotiates static pages that already publish markdown alternates', () => {
+    expect(rewrittenTo('/about', 'text/markdown')).toBe(`${ORIGIN}/about.md`)
+    expect(rewrittenTo('/stats', 'text/markdown')).toBe(`${ORIGIN}/stats.md`)
+  })
+
+  it('negotiates repository detail pages through the markdown api', () => {
+    expect(rewrittenTo('/ykdojo/claude-code-tips', 'text/markdown')).toBe(`${ORIGIN}/api/markdown/ykdojo/claude-code-tips`)
+  })
+
+  it('negotiates the canonical html path of a repository whose name ends in .md', () => {
+    expect(rewrittenTo(`/${REPO_PAGES_ENDING_IN_MD[0]}`, 'text/markdown')).toBe(
+      `${ORIGIN}/api/markdown/${REPO_PAGES_ENDING_IN_MD[0]}`,
+    )
+  })
+
+  it('keeps html as the default representation', () => {
+    expect(passesThrough('/', 'text/html,application/xhtml+xml')).toBe(true)
+    expect(passesThrough('/ykdojo/claude-code-tips', '*/*')).toBe(true)
+  })
+
+  it('does not negotiate markdown when it is explicitly unacceptable', () => {
+    expect(passesThrough('/', 'text/markdown;q=0, text/html;q=1')).toBe(true)
+  })
+
+  it('does not misclassify browse pagination as a repository detail page', () => {
+    expect(passesThrough('/browse/2', 'text/markdown')).toBe(true)
   })
 })
