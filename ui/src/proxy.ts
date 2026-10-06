@@ -10,8 +10,13 @@ const STATIC_MARKDOWN_PATHS: Readonly<Record<string, string>> = {
 
 const RESERVED_REPOSITORY_ROOTS = new Set(['.well-known', '_next', 'api', 'browse', 'sitemap'])
 
+type MediaPreference = {
+  quality: number
+  specificity: number
+}
+
 export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl
+  const { pathname, searchParams } = request.nextUrl
   const requestedPath = pathname.slice(1)
   const accept = request.headers.get('accept')
 
@@ -38,6 +43,12 @@ export function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // The home page search and sort parameters change the HTML representation. Its static Markdown
+  // alternate does not implement those views, so keep the parameterized URL in HTML.
+  if (pathname === '/' && (searchParams.has('q') || searchParams.has('sort'))) {
+    return NextResponse.next()
+  }
+
   const staticMarkdownPath = STATIC_MARKDOWN_PATHS[pathname]
   if (staticMarkdownPath) {
     return rewriteMarkdown(request, staticMarkdownPath, true)
@@ -56,20 +67,59 @@ function acceptsMarkdown(accept: string | null): boolean {
     return false
   }
 
-  return accept.split(',').some((range) => {
+  const markdown = getMediaPreference(accept, 'text/markdown')
+  if (markdown.specificity < 0 || markdown.quality <= 0) {
+    return false
+  }
+
+  const html = getMediaPreference(accept, 'text/html')
+  if (html.specificity < 0 || html.quality <= 0) {
+    return true
+  }
+
+  if (markdown.quality !== html.quality) {
+    return markdown.quality > html.quality
+  }
+
+  if (markdown.specificity !== html.specificity) {
+    return markdown.specificity > html.specificity
+  }
+
+  // Keep HTML as the default for wildcard-only ties, but honor an explicit Markdown option.
+  return markdown.specificity === 2
+}
+
+function getMediaPreference(accept: string, target: string): MediaPreference {
+  const [targetType, targetSubtype] = target.toLowerCase().split('/')
+  let best: MediaPreference = { quality: 0, specificity: -1 }
+
+  for (const range of accept.split(',')) {
     const [mediaType = '', ...parameters] = range.split(';').map((part) => part.trim())
-    if (mediaType.toLowerCase() !== 'text/markdown') {
-      return false
+    const [type, subtype] = mediaType.toLowerCase().split('/')
+
+    let specificity = -1
+    if (type === targetType && subtype === targetSubtype) {
+      specificity = 2
+    } else if (type === targetType && subtype === '*') {
+      specificity = 1
+    } else if (type === '*' && subtype === '*') {
+      specificity = 0
     }
 
-    const qualityParameter = parameters.find((parameter) => parameter.toLowerCase().startsWith('q='))
-    if (!qualityParameter) {
-      return true
+    if (specificity < 0) {
+      continue
     }
 
-    const quality = Number(qualityParameter.slice(2).trim())
-    return Number.isFinite(quality) && quality > 0
-  })
+    const qualityParameter = parameters.find((parameter) => /^q\s*=/i.test(parameter))
+    const quality = qualityParameter ? Number(qualityParameter.slice(qualityParameter.indexOf('=') + 1).trim()) : 1
+    const normalizedQuality = Number.isFinite(quality) && quality >= 0 && quality <= 1 ? quality : 0
+
+    if (specificity > best.specificity) {
+      best = { quality: normalizedQuality, specificity }
+    }
+  }
+
+  return best
 }
 
 function rewriteRepositoryMarkdown(request: NextRequest, segments: string[], varyOnAccept = false) {
