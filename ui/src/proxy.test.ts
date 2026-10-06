@@ -82,9 +82,13 @@ describe('proxy', () => {
     expect(rewrittenTo(`/${REPO_PAGES_ENDING_IN_MD[0]}`, 'text/markdown')).toBe(`${ORIGIN}/api/markdown/${REPO_PAGES_ENDING_IN_MD[0]}`)
   })
 
+  it('uses markdown for text wildcards but keeps html for an all-types wildcard', () => {
+    expect(rewrittenTo('/', 'text/*')).toBe(`${ORIGIN}/index.md`)
+    expect(passesThrough('/ykdojo/claude-code-tips', '*/*')).toBe(true)
+  })
+
   it('keeps html as the default representation', () => {
     expect(passesThrough('/', 'text/html,application/xhtml+xml')).toBe(true)
-    expect(passesThrough('/ykdojo/claude-code-tips', '*/*')).toBe(true)
   })
 
   it('honors relative media type quality when html and markdown are both acceptable', () => {
