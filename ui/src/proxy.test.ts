@@ -92,6 +92,7 @@ describe('proxy', () => {
   })
 
   it('honors relative media type quality when html and markdown are both acceptable', () => {
+    expect(passesThrough('/', 'text/markdown, text/html')).toBe(true)
     expect(passesThrough('/', 'text/html;q=1, text/markdown;q=0.5')).toBe(true)
     expect(rewrittenTo('/', 'text/html;q=0.5, text/markdown;q=1')).toBe(`${ORIGIN}/index.md`)
   })
