@@ -9,6 +9,7 @@ const STATIC_MARKDOWN_PATHS: Readonly<Record<string, string>> = {
 }
 
 const RESERVED_REPOSITORY_ROOTS = new Set(['.well-known', '_next', 'api', 'browse', 'sitemap'])
+const QUALITY_PARAMETER_PATTERN = /^q\s*=/i
 
 type MediaPreference = {
   quality: number
@@ -111,7 +112,7 @@ function getMediaPreference(accept: string, target: string): MediaPreference {
       continue
     }
 
-    const qualityParameter = parameters.find((parameter) => /^q\s*=/i.test(parameter))
+    const qualityParameter = parameters.find((parameter) => QUALITY_PARAMETER_PATTERN.test(parameter))
     const quality = qualityParameter ? Number(qualityParameter.slice(qualityParameter.indexOf('=') + 1).trim()) : 1
     const normalizedQuality = Number.isFinite(quality) && quality >= 0 && quality <= 1 ? quality : 0
 
