@@ -85,8 +85,9 @@ function acceptsMarkdown(accept: string | null): boolean {
     return markdown.specificity > html.specificity
   }
 
-  // Keep HTML as the default for wildcard-only ties, but honor an explicit Markdown option.
-  return markdown.specificity === 2
+  // A text wildcard still expresses a preference for a text representation, while */* keeps
+  // the browser-oriented HTML default.
+  return markdown.specificity > 0
 }
 
 function getMediaPreference(accept: string, target: string): MediaPreference {
