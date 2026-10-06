@@ -9,8 +9,8 @@ const ORIGIN = 'https://awesomeclaudeplugins.com'
 function responseFor(pathname: string, accept?: string) {
   return proxy(
     new NextRequest(`${ORIGIN}${pathname}`, {
-      headers: accept ? { Accept: accept } : undefined,
-    }),
+      headers: accept ? { accept } : undefined,
+    })
   )
 }
 
@@ -79,9 +79,7 @@ describe('proxy', () => {
   })
 
   it('negotiates the canonical html path of a repository whose name ends in .md', () => {
-    expect(rewrittenTo(`/${REPO_PAGES_ENDING_IN_MD[0]}`, 'text/markdown')).toBe(
-      `${ORIGIN}/api/markdown/${REPO_PAGES_ENDING_IN_MD[0]}`,
-    )
+    expect(rewrittenTo(`/${REPO_PAGES_ENDING_IN_MD[0]}`, 'text/markdown')).toBe(`${ORIGIN}/api/markdown/${REPO_PAGES_ENDING_IN_MD[0]}`)
   })
 
   it('keeps html as the default representation', () => {
