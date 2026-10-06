@@ -87,8 +87,18 @@ describe('proxy', () => {
     expect(passesThrough('/ykdojo/claude-code-tips', '*/*')).toBe(true)
   })
 
+  it('honors relative media type quality when html and markdown are both acceptable', () => {
+    expect(passesThrough('/', 'text/html;q=1, text/markdown;q=0.5')).toBe(true)
+    expect(rewrittenTo('/', 'text/html;q=0.5, text/markdown;q=1')).toBe(`${ORIGIN}/index.md`)
+  })
+
   it('does not negotiate markdown when it is explicitly unacceptable', () => {
     expect(passesThrough('/', 'text/markdown;q=0, text/html;q=1')).toBe(true)
+  })
+
+  it('keeps searched and sorted home pages in html', () => {
+    expect(passesThrough('/?q=mcp', 'text/markdown')).toBe(true)
+    expect(passesThrough('/?sort=stars', 'text/markdown')).toBe(true)
   })
 
   it('does not misclassify browse pagination as a repository detail page', () => {
