@@ -85,9 +85,9 @@ function acceptsMarkdown(accept: string | null): boolean {
     return markdown.specificity > html.specificity
   }
 
-  // A text wildcard still expresses a preference for a text representation, while */* keeps
+  // Cloudflare treats text/* as a Markdown request, while equal explicit types and */* keep
   // the browser-oriented HTML default.
-  return markdown.specificity > 0
+  return markdown.specificity === 1
 }
 
 function getMediaPreference(accept: string, target: string): MediaPreference {
@@ -115,7 +115,7 @@ function getMediaPreference(accept: string, target: string): MediaPreference {
     const quality = qualityParameter ? Number(qualityParameter.slice(qualityParameter.indexOf('=') + 1).trim()) : 1
     const normalizedQuality = Number.isFinite(quality) && quality >= 0 && quality <= 1 ? quality : 0
 
-    if (specificity > best.specificity) {
+    if (specificity > best.specificity || (specificity === best.specificity && normalizedQuality > best.quality)) {
       best = { quality: normalizedQuality, specificity }
     }
   }
