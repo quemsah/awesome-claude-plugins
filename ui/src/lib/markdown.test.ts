@@ -5,7 +5,7 @@ import { buildRepoMarkdown } from './markdown.ts'
 
 const catalogQuality = {
   publicationState: 'indexable' as const,
-  qualityReason: 'Canonical repository has a description and validated plugin count.',
+  qualityReason: 'Canonical repository has a validated plugin count.',
 }
 
 vi.mock('./catalog.ts', () => ({
@@ -64,7 +64,7 @@ describe('buildRepoMarkdown', () => {
         'forks: 1',
         'plugins_count: 2',
         'publication_state: "indexable"',
-        'quality_note: "Canonical repository has a description and validated plugin count."',
+        'quality_note: "Canonical repository has a validated plugin count."',
         'catalog_updated: "2026-09-19T07:37:34.881Z"',
         'install_command: "/plugin marketplace add example/repository"',
       ].join('\n')
