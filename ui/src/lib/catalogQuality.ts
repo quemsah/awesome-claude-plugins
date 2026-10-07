@@ -18,14 +18,6 @@ export function getCatalogQuality(repo: Repo, isCanonical: boolean): CatalogQual
     }
   }
 
-  if (!repo.description?.trim()) {
-    return {
-      descriptionQuality: 'missing',
-      publicationState: 'needs-review',
-      qualityReason: 'Repository description is missing.',
-    }
-  }
-
   if (repo.plugins_count === null) {
     return {
       descriptionQuality: getDescriptionQuality(repo),
@@ -37,7 +29,7 @@ export function getCatalogQuality(repo: Repo, isCanonical: boolean): CatalogQual
   return {
     descriptionQuality: getDescriptionQuality(repo),
     publicationState: 'indexable',
-    qualityReason: 'Canonical repository has a description and validated plugin count.',
+    qualityReason: 'Canonical repository has a validated plugin count.',
   }
 }
 
