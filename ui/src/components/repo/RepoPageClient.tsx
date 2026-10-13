@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import type { Plugin } from '../../app/types/plugin.type.ts'
-import { getMarketplaceName, MarketplacePluginsSchema } from '../../app/types/plugin.type.ts'
+import { getMarketplaceName, parseMarketplacePlugins } from '../../app/types/plugin.type.ts'
 import { BackToRepositoriesLink } from '../../components/repo/BackToRepositoriesLink.tsx'
 import { PluginCard } from '../../components/repo/PluginCard.tsx'
 import { RepoInfoCard } from '../../components/repo/RepoInfoCard.tsx'
@@ -39,6 +39,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
   const [plugins, setPlugins] = useState<Plugin[]>([])
   const [marketplaceName, setMarketplaceName] = useState<string | undefined>(undefined)
   const [pluginsError, setPluginsError] = useState<string | null>(null)
+  const [pluginsWarning, setPluginsWarning] = useState<string | null>(null)
   const [pluginsStatus, setPluginsStatus] = useState<'missing' | 'error' | null>(null)
   const [pluginsLoading, setPluginsLoading] = useState(true)
   const [_retryCount, setRetryCount] = useState(0)
@@ -58,6 +59,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
       setPlugins([])
       setMarketplaceName(undefined)
       setPluginsError(null)
+      setPluginsWarning(null)
       setPluginsStatus(null)
 
       try {
@@ -83,16 +85,27 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
 
         try {
           const payload: unknown = await response.json()
-          const parsedMarketplace = MarketplacePluginsSchema.safeParse(payload)
+          const parsedMarketplace = parseMarketplacePlugins(payload)
           if (parsedMarketplace.success) {
             if (!cancelled) {
-              setPlugins(parsedMarketplace.data)
+              setPlugins(parsedMarketplace.plugins)
               setMarketplaceName(getMarketplaceName(payload))
+              if (parsedMarketplace.issues.length) {
+                console.error('Some marketplace entries failed validation', {
+                  repoPath,
+                  issues: parsedMarketplace.issues,
+                })
+                setPluginsWarning(
+                  `Could not read ${parsedMarketplace.invalidPluginCount} marketplace plugin ${
+                    parsedMarketplace.invalidPluginCount === 1 ? 'entry' : 'entries'
+                  }; showing the valid plugins.`
+                )
+              }
               setPluginsLoading(false)
             }
           } else {
             if (!cancelled) {
-              console.error('Marketplace validation failed', { repoPath, issues: parsedMarketplace.error.issues })
+              console.error('Marketplace validation failed', { repoPath, issues: parsedMarketplace.issues })
               setPluginsStatus('error')
               setPluginsError('Marketplace manifest contains invalid data.')
               setPluginsLoading(false)
@@ -148,6 +161,11 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            {pluginsWarning ? (
+              <p className="mb-4 rounded-md border border-amber-500/50 bg-amber-500/10 p-4 text-sm" role="status">
+                {pluginsWarning}
+              </p>
+            ) : null}
             {pluginsLoading && !pluginsStatus && !pluginsError ? (
               <p className="py-4 text-center text-muted-foreground" role="status">
                 Loading plugins...
