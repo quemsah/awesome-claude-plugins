@@ -63,6 +63,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   // read "nothing in flight", abort the running replacement and append onto the list it was replacing.
   const inFlightCatalogRequest = useRef<CatalogRequestKind | null>(null)
   const pendingScrollRestore = useRef<{ attempts: number; scrollY: number; url: string } | null>(null)
+  const pendingSearchUrls = useRef(new Set<string>())
 
   const updateSearchUrl = useCallback(
     (nextSearchTerm: string, nextSortOption: SortOption, mode: 'push' | 'replace' = 'push') => {
@@ -73,6 +74,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
       })
 
       if (nextUrl !== `${pathname}${currentSearch}`) {
+        pendingSearchUrls.current.add(nextUrl)
         router[mode](nextUrl, { scroll: false })
       }
       window.sessionStorage.setItem('last-search-url', nextUrl)
@@ -220,11 +222,20 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   }, [])
 
   useEffect(() => {
-    const urlSearchTerm = searchParams.get('q') ?? ''
-    setSearchTerm(urlSearchTerm)
-    setSortOption(parseSortOption(searchParams.get('sort')))
-    window.sessionStorage.setItem('last-search-url', `${pathname}${searchParams.size > 0 ? `?${searchParams}` : ''}`)
+    const currentUrl = `${pathname}${searchParams.size > 0 ? `?${searchParams}` : ''}`
+    if (!pendingSearchUrls.current.delete(currentUrl)) {
+      pendingSearchUrls.current.clear()
+      setSearchTerm(searchParams.get('q') ?? '')
+      setSortOption(parseSortOption(searchParams.get('sort')))
+    }
+    window.sessionStorage.setItem('last-search-url', currentUrl)
   }, [pathname, searchParams])
+
+  useEffect(() => {
+    const clearPendingSearchUrls = () => pendingSearchUrls.current.clear()
+    window.addEventListener('popstate', clearPendingSearchUrls)
+    return () => window.removeEventListener('popstate', clearPendingSearchUrls)
+  }, [])
 
   // The browser restores the offset against the document it finds on arrival, and the remounted list
   // only holds the first catalog page, so any position past that page lands short. Re-applying it
