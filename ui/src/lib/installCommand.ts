@@ -5,7 +5,6 @@ export type InstallCommandType = 'marketplace-add' | 'plugin-install'
 
 export type PluginInstallCommandInput = {
   pluginName?: string
-  pluginId?: string
   marketplaceName?: string
 }
 
@@ -26,53 +25,33 @@ export function normalizePluginName(pluginName?: string): string {
 /**
  * Determines whether a plugin install command is verified.
  *
- * A non-empty plugin identifier takes precedence. When it is absent, a validated
- * marketplace name can verify the generated install target.
+ * A marketplace-backed command is verified only when both names are valid.
  */
-export function isPluginInstallCommandVerified(pluginId?: string, marketplaceName?: string): boolean {
-  const normalizedPluginId = typeof pluginId === 'string' ? pluginId.trim() : ''
+export function isPluginInstallCommandVerified(pluginName?: string, marketplaceName?: string): boolean {
+  const normalizedPluginName = normalizePluginName(pluginName)
   const normalizedMarketplaceName = typeof marketplaceName === 'string' ? marketplaceName.trim() : ''
 
-  return Boolean(
-    normalizedPluginId
-      ? PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedPluginId)
-      : normalizedMarketplaceName && PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedMarketplaceName)
-  )
+  return Boolean(normalizedPluginName && normalizedMarketplaceName && PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedMarketplaceName))
 }
 
 /**
  * Generates a `/plugin install` command from verified manifest semantics.
  *
- * Priority:
- * 1. `pluginName` + `pluginId` → `/plugin install {name}@{id}`
- * 2. `pluginName` + `marketplaceName` → `/plugin install {name}@{marketplaceName}`
- * 3. `pluginId` only → `/plugin install {id}`
- * 4. `pluginName` only → `/plugin install {name}` (unverified)
+ * Uses the marketplace manifest entry name and marketplace name when available.
+ * A plugin name without a marketplace name is displayed but remains unverified.
  *
- * Returns `null` when no identifier is provided or a supplied identifier is unsafe.
+ * Returns `null` when the plugin name is invalid or the supplied marketplace name is unsafe.
  */
-export function getPluginInstallCommand({ pluginName, pluginId, marketplaceName }: PluginInstallCommandInput): string | null {
+export function getPluginInstallCommand({ pluginName, marketplaceName }: PluginInstallCommandInput): string | null {
   const normalizedName = normalizePluginName(pluginName)
-  const normalizedPluginId = typeof pluginId === 'string' ? pluginId.trim() : undefined
   const normalizedMarketplaceName = typeof marketplaceName === 'string' ? marketplaceName.trim() : undefined
 
-  if (normalizedPluginId && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedPluginId)) {
-    return null
-  }
   if (normalizedMarketplaceName && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedMarketplaceName)) {
     return null
   }
 
-  if (normalizedName && normalizedPluginId) {
-    return `/plugin install ${normalizedName}@${normalizedPluginId}`
-  }
-
   if (normalizedName && normalizedMarketplaceName) {
     return `/plugin install ${normalizedName}@${normalizedMarketplaceName}`
-  }
-
-  if (normalizedPluginId) {
-    return `/plugin install ${normalizedPluginId}`
   }
 
   if (normalizedName) {
