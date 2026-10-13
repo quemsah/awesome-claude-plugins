@@ -49,8 +49,8 @@ export function getBrowsePageCount(): number {
   return Math.ceil(canonicalCatalogRepos.length / CATALOG_PAGE_SIZE)
 }
 
-export function getCatalogQualityForRepo(repo: CatalogRepo): CatalogQuality {
-  return getCatalogQuality(repo, canonicalCatalogRepos.includes(repo))
+export function getCatalogQualityForRepo(repo: CatalogRepo, fallbackDescription?: string | null): CatalogQuality {
+  return getCatalogQuality(repo, canonicalCatalogRepos.includes(repo), fallbackDescription)
 }
 
 function getUniqueCatalogRepos(repos: readonly CatalogRepo[]): readonly CatalogRepo[] {

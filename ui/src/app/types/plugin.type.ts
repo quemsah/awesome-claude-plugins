@@ -225,3 +225,42 @@ export function getMarketplaceName(value: unknown): string | undefined {
   const parsedName = MarketplaceNameSchema.safeParse(marketplace.name)
   return parsedName.success ? parsedName.data : undefined
 }
+
+export function getMarketplaceDescription(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') return undefined
+
+  let topLevelDesc: string | undefined
+  if (!Array.isArray(value)) {
+    const object = value as Record<string, unknown>
+    if (typeof object.description === 'string' && object.description.trim().length > 0) {
+      topLevelDesc = object.description.trim()
+    } else if (
+      isRecord(object.marketplace) &&
+      typeof object.marketplace.description === 'string' &&
+      object.marketplace.description.trim().length > 0
+    ) {
+      topLevelDesc = object.marketplace.description.trim()
+    }
+  }
+
+  if (topLevelDesc && topLevelDesc.length >= 40) {
+    return topLevelDesc
+  }
+
+  const parsed = MarketplacePluginsSchema.safeParse(value)
+  if (parsed.success && parsed.data.length > 0) {
+    const strongPlugin = parsed.data.find((plugin) => typeof plugin.description === 'string' && plugin.description.trim().length >= 40)
+    if (strongPlugin?.description) {
+      return strongPlugin.description.trim()
+    }
+
+    if (!topLevelDesc) {
+      const anyPluginWithDesc = parsed.data.find((plugin) => typeof plugin.description === 'string' && plugin.description.trim().length > 0)
+      if (anyPluginWithDesc?.description) {
+        return anyPluginWithDesc.description.trim()
+      }
+    }
+  }
+
+  return topLevelDesc
+}
