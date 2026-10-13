@@ -21,6 +21,24 @@ describe('catalog security boundaries', () => {
     expect(result.success).toBe(false)
   })
 
+  it('accepts catalog timestamps while preserving legacy snapshots without them', () => {
+    const repository = {
+      stargazers_count: 1,
+      forks_count: 0,
+      subscribers_count: 0,
+      description: null,
+      owner: 'owner',
+      repo_name: 'repo',
+      plugins_count: 0,
+      id: 1,
+    }
+
+    expect(RepoSchema.parse(repository).catalog_updated_at).toBeUndefined()
+    expect(RepoSchema.parse({ ...repository, catalog_updated_at: '2026-01-01T00:00:00.000Z' }).catalog_updated_at).toBe(
+      '2026-01-01T00:00:00.000Z'
+    )
+  })
+
   it('only generates catalog paths from encoded repository segments', () => {
     expect(getGitHubRepoPath('owner', 'repo')).toBe('owner/repo')
     expect(getGitHubRepoPath('owner name', 'repo name')).toBe('owner%20name/repo%20name')

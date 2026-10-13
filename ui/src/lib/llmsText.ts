@@ -90,7 +90,7 @@ This website provides a generated catalog of GitHub repositories related to Clau
 - [Catalog Browse Pages](${BASE_URL}/browse/2): Crawlable pagination for the full catalog.
 - [Statistics](${BASE_URL}/stats): Historical repository-count charts.
 - [About](${BASE_URL}/about): Project purpose and discovery workflow.
-- [Sitemap](${BASE_URL}/sitemap.xml): Indexable canonical repository URLs plus catalog browse and static pages.
+- [Sitemap](${BASE_URL}/sitemap.xml): Indexable canonical repository URLs and static pages.
 - [Catalog feed](${BASE_URL}/feed.json): Latest catalog snapshot.
 - [Web App Manifest](${BASE_URL}/manifest.webmanifest): Installable-web-app metadata.
 - [API Catalog](${BASE_URL}/.well-known/api-catalog): Machine-readable discovery links.
