@@ -12,6 +12,7 @@ export function renderRepos(rows: readonly PublishableRepository[]): string {
       owner: row.owner,
       repo_name: row.repo_name,
       plugins_count: row.plugins_count,
+      catalog_updated_at: row.catalog_updated_at,
       id: row.id,
     }),
   )
