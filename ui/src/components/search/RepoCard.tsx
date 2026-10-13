@@ -3,6 +3,7 @@
 import { GitFork, Star } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { trackEvent } from '../../lib/analytics.ts'
 import { copyText } from '../../lib/clipboard.ts'
 import { getMarketplaceAddCommand } from '../../lib/installCommand.ts'
 import { getGitHubOwnerUrl, getGitHubRepoPath } from '../../lib/repositoryIdentity.ts'
@@ -60,6 +61,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
     if (copied) {
       setCopyError(null)
       setIsCopied(true)
+      trackEvent('copy_marketplace_add')
       // Restart rather than stack: a second copy while the first countdown runs would otherwise be
       // cut short by the older timer, dropping the confirmation before its two seconds are up.
       clearTimeout(resetTimer.current)
@@ -80,7 +82,13 @@ export function RepoCard({ repo, className }: RepoCardProps) {
           <h2>{repo.repo_name}</h2>
         </CardTitle>
         <Button asChild className="touch-target absolute top-4 right-4 h-8 w-8 sm:top-6 sm:right-6" size="icon" variant="outline">
-          <a aria-label={`View ${repo.owner}/${repo.repo_name} on GitHub`} href={repo.html_url} rel="noopener noreferrer" target="_blank">
+          <a
+            aria-label={`View ${repo.owner}/${repo.repo_name} on GitHub`}
+            href={repo.html_url}
+            onClick={() => trackEvent('open_github')}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
             <AnimatedGithubIcon isHovered={isHovered} />
           </a>
         </Button>
@@ -89,6 +97,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
           <a
             className="underline-offset-4 hover:text-primary hover:underline"
             href={getGitHubOwnerUrl(repo.owner ?? '')}
+            onClick={() => trackEvent('open_github')}
             rel="noopener noreferrer"
             target="_blank"
           >
