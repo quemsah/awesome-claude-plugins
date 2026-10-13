@@ -143,4 +143,3 @@ function rewriteMarkdown(request: NextRequest, pathname: string, varyOnAccept: b
 
   return response
 }
-
