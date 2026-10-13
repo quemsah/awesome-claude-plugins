@@ -39,13 +39,11 @@ describe('RateLimiter', () => {
 })
 
 describe('getRateLimitKey', () => {
-  it('uses platform-controlled headers and ignores spoofable Cloudflare headers by default', () => {
-    expect(getRateLimitKey(new Headers({ 'cf-connecting-ip': '198.51.100.7', 'x-forwarded-for': '203.0.113.5' }), {})).toBe('203.0.113.5')
-    expect(getRateLimitKey(new Headers({ 'x-vercel-forwarded-for': '198.51.100.9', 'x-forwarded-for': '203.0.113.5' }), {})).toBe(
-      '198.51.100.9'
-    )
+  it('uses platform-controlled headers and ignores untrusted proxy headers by default', () => {
+    expect(getRateLimitKey(new Headers({ 'cf-connecting-ip': '198.51.100.7', 'x-forwarded-for': '203.0.113.5' }), {})).toBe('unknown')
+    expect(getRateLimitKey(new Headers({ 'x-vercel-forwarded-for': '198.51.100.9', 'x-forwarded-for': '203.0.113.5' }), {})).toBe('unknown')
     expect(getRateLimitKey(new Headers({ 'x-real-ip': '198.51.100.8', 'x-forwarded-for': '203.0.113.5' }), {})).toBe('198.51.100.8')
-    expect(getRateLimitKey(new Headers({ 'x-forwarded-for': '203.0.113.5, 10.0.0.1' }), {})).toBe('203.0.113.5')
+    expect(getRateLimitKey(new Headers({ 'x-forwarded-for': '203.0.113.5, 10.0.0.1' }), {})).toBe('unknown')
     expect(getRateLimitKey(new Headers(), {})).toBe('unknown')
   })
 

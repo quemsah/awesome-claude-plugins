@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 
 import { isRepoPageEndingInMd } from './lib/markdownPaths.ts'
+import { getRateLimitKey, RateLimiter } from './lib/rateLimit.ts'
 
 const STATIC_MARKDOWN_PATHS: Readonly<Record<string, string>> = {
   '/': '/index.md',
@@ -10,34 +11,67 @@ const STATIC_MARKDOWN_PATHS: Readonly<Record<string, string>> = {
 
 const RESERVED_REPOSITORY_ROOTS = new Set(['.well-known', '_next', 'api', 'browse', 'sitemap'])
 const QUALITY_PARAMETER_PATTERN = /^q\s*=/i
+const MAX_CATALOG_SEARCH_REQUESTS_PER_MINUTE = 20
+// A measured 480ms worst-case query caps one client's search work at about 10 CPU seconds per minute.
+const catalogSearchRateLimiter = new RateLimiter(10_000, MAX_CATALOG_SEARCH_REQUESTS_PER_MINUTE, 60_000)
 
 type MediaPreference = {
   quality: number
   specificity: number
 }
 
+function isCatalogSearchRateLimited(request: NextRequest): boolean {
+  const { pathname, searchParams } = request.nextUrl
+  const isSearchPath = pathname === '/api/catalog' || (pathname === '/' && searchParams.has('q'))
+  if (!isSearchPath) {
+    return false
+  }
+
+  if (!searchParams.get('q')?.trim()) {
+    return false
+  }
+
+  return catalogSearchRateLimiter.isRateLimited(getRateLimitKey(request.headers))
+}
+
+function getRepositorySegments(path: string): string[] | null {
+  const segments = path.split('/').filter(Boolean)
+  if (segments.length !== 2 || RESERVED_REPOSITORY_ROOTS.has(segments[0]?.toLowerCase() ?? '')) {
+    return null
+  }
+  return segments
+}
+
+function handleExplicitMarkdownRequest(request: NextRequest, requestedPath: string, accept: string | null) {
+  const segments = getRepositorySegments(requestedPath.slice(0, -3))
+  if (!segments) {
+    return NextResponse.next()
+  }
+
+  // A repository name can itself end in `.md`, which makes its HTML page indistinguishable from the
+  // markdown representation of a different repository.
+  if (isRepoPageEndingInMd(requestedPath)) {
+    if (!acceptsMarkdown(accept)) {
+      return NextResponse.next()
+    }
+
+    return rewriteRepositoryMarkdown(request, requestedPath.split('/').filter(Boolean), true)
+  }
+
+  return rewriteRepositoryMarkdown(request, segments)
+}
+
 export function proxy(request: NextRequest) {
+  if (isCatalogSearchRateLimited(request)) {
+    return NextResponse.json({ message: 'Too many requests' }, { status: 429, headers: { 'Retry-After': '60' } })
+  }
+
   const { pathname, searchParams } = request.nextUrl
   const requestedPath = pathname.slice(1)
   const accept = request.headers.get('accept')
 
   if (pathname.toLowerCase().endsWith('.md')) {
-    const segments = requestedPath.slice(0, -3).split('/').filter(Boolean)
-    if (segments.length !== 2 || RESERVED_REPOSITORY_ROOTS.has(segments[0]?.toLowerCase() ?? '')) {
-      return NextResponse.next()
-    }
-
-    // A repository name can itself end in `.md`, which makes its HTML page indistinguishable from the
-    // markdown representation of a different repository.
-    if (isRepoPageEndingInMd(requestedPath)) {
-      if (!acceptsMarkdown(accept)) {
-        return NextResponse.next()
-      }
-
-      return rewriteRepositoryMarkdown(request, requestedPath.split('/').filter(Boolean), true)
-    }
-
-    return rewriteRepositoryMarkdown(request, segments)
+    return handleExplicitMarkdownRequest(request, requestedPath, accept)
   }
 
   if (!acceptsMarkdown(accept)) {
@@ -55,8 +89,8 @@ export function proxy(request: NextRequest) {
     return rewriteMarkdown(request, staticMarkdownPath, true)
   }
 
-  const segments = requestedPath.split('/').filter(Boolean)
-  if (segments.length !== 2 || RESERVED_REPOSITORY_ROOTS.has(segments[0]?.toLowerCase() ?? '')) {
+  const segments = getRepositorySegments(requestedPath)
+  if (!segments) {
     return NextResponse.next()
   }
 
