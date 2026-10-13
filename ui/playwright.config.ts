@@ -33,7 +33,7 @@ export default defineConfig({
             url: `${mockGithubUrl}/health`,
           },
           {
-            command: `cross-env-shell GITHUB_API_URL=${mockGithubUrl} GITHUB_RAW_URL=${mockGithubUrl} PORT=${appPort} "npm run build && npm run start"`,
+            command: `cross-env-shell GITHUB_API_URL=${mockGithubUrl} GITHUB_RAW_URL=${mockGithubUrl} PORT=${appPort} "npm run start"`,
             reuseExistingServer: false,
             timeout: 120_000,
             url: baseUrl,
