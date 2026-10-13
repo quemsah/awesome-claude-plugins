@@ -3,7 +3,7 @@ import { getMarketplaceName, MarketplacePluginsSchema } from './plugin.type.ts'
 
 describe('MarketplacePluginsSchema', () => {
   it('reads supported plugin fields for display', () => {
-    const payload = { name: 'catalog', plugins: [{ name: 'plugin', source: './plugins/plugin' }] }
+    const payload = { name: 'catalog', owner: { name: 'maintainer' }, plugins: [{ name: 'plugin', source: './plugins/plugin' }] }
     const result = MarketplacePluginsSchema.safeParse(payload)
     expect(result.success).toBe(true)
     if (result.success) expect(result.data).toHaveLength(1)
@@ -12,13 +12,15 @@ describe('MarketplacePluginsSchema', () => {
 
   it('extracts marketplace names only from marketplace wrappers', () => {
     expect(getMarketplaceName({ name: 'ykdojo', plugins: [{ name: 'dx', source: './' }] })).toBe('ykdojo')
-    expect(getMarketplaceName({ marketplace: { name: 'nested-market', plugins: [{ name: 'nested-plugin' }] } })).toBe('nested-market')
+    expect(getMarketplaceName({ marketplace: { name: 'nested-market', plugins: [{ name: 'nested-plugin' }] } })).toBeUndefined()
     expect(getMarketplaceName({ name: 'single-plugin', source: './plugins/single-plugin' })).toBeUndefined()
     expect(getMarketplaceName({ name: 'bad/name', plugins: [] })).toBeUndefined()
   })
 
   it('accepts current Claude marketplace source objects', () => {
     const result = MarketplacePluginsSchema.safeParse({
+      name: 'catalog',
+      owner: { name: 'maintainer' },
       plugins: [
         {
           name: 'official-plugin',
@@ -47,16 +49,21 @@ describe('MarketplacePluginsSchema', () => {
     }
   })
 
-  it('rejects source URLs with embedded credentials', () => {
+  it('skips source URLs with embedded credentials', () => {
     const result = MarketplacePluginsSchema.safeParse({
+      name: 'catalog',
+      owner: { name: 'maintainer' },
       plugins: [{ name: 'unsafe-plugin', source: { source: 'url', url: 'https://user:pass@example.com/plugin.git' } }],
     })
 
-    expect(result.success).toBe(false)
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data).toEqual([])
   })
 
-  it('rejects traversal in source object fallback paths', () => {
+  it('skips traversal in source object fallback paths', () => {
     const result = MarketplacePluginsSchema.safeParse({
+      name: 'catalog',
+      owner: { name: 'maintainer' },
       plugins: [
         {
           name: 'unsafe-plugin',
@@ -65,10 +72,11 @@ describe('MarketplacePluginsSchema', () => {
       ],
     })
 
-    expect(result.success).toBe(false)
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data).toEqual([])
   })
 
-  it('accepts common marketplace wrappers and a single plugin entry', () => {
+  it('rejects marketplace shapes that do not follow the canonical root contract', () => {
     const wrapped = MarketplacePluginsSchema.safeParse({
       marketplace: {
         plugins: [{ name: 'wrapped-plugin', source: './plugins/wrapped-plugin' }],
@@ -82,20 +90,21 @@ describe('MarketplacePluginsSchema', () => {
       source: './plugins/single-plugin',
     })
 
-    expect(wrapped.success && wrapped.data[0]?.name).toBe('wrapped-plugin')
-    expect(repositories.success && repositories.data[0]?.name).toBe('repository-plugin')
-    expect(single.success && single.data[0]?.name).toBe('single-plugin')
+    expect(wrapped.success).toBe(false)
+    expect(repositories.success).toBe(false)
+    expect(single.success).toBe(false)
   })
 
-  it('treats skill-only metadata as an empty plugin list', () => {
+  it('rejects skill-only metadata without the canonical marketplace root', () => {
     const result = MarketplacePluginsSchema.safeParse({ skills: { pgns: { name: 'pgns' } }, strict: false })
 
-    expect(result.success).toBe(true)
-    if (result.success) expect(result.data).toEqual([])
+    expect(result.success).toBe(false)
   })
 
   it('accepts MCP server maps and non-standard author email values', () => {
     const result = MarketplacePluginsSchema.safeParse({
+      name: 'catalog',
+      owner: { name: 'maintainer' },
       plugins: [
         {
           name: 'firebase',

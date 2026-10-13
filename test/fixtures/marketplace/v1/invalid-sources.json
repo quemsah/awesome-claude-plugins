@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "name": "invalid-sources",
+  "expected": { "valid": true, "pluginsCount": 0 },
+  "input": {
+    "name": "catalog",
+    "owner": { "name": "maintainer" },
+    "plugins": [
+      { "name": "traversal", "source": "../outside" },
+      { "name": "credentials", "source": { "source": "url", "url": "https://user:pass@example.com/plugin.git" } }
+    ]
+  }
+}
