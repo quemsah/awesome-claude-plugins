@@ -18,7 +18,11 @@ export function catalogScrollKey(pathname: string, search: string): string {
   return `${pathname}${search}`
 }
 
-function readPositions(store: ScrollStore): ScrollPositions {
+function readPositions(store: ScrollStore | null): ScrollPositions {
+  if (store === null) {
+    return {}
+  }
+
   const raw = store.getItem(SCROLL_POSITIONS_KEY)
   if (!raw) {
     return {}
@@ -37,12 +41,16 @@ function readPositions(store: ScrollStore): ScrollPositions {
   }
 }
 
-function writePositions(store: ScrollStore, positions: ScrollPositions): void {
+function writePositions(store: ScrollStore | null, positions: ScrollPositions): void {
+  if (store === null) {
+    return
+  }
+
   const entries = Object.entries(positions).slice(-MAX_TRACKED_POSITIONS)
   store.setItem(SCROLL_POSITIONS_KEY, JSON.stringify(Object.fromEntries(entries)))
 }
 
-export function saveScrollPosition(store: ScrollStore, url: string, scrollY: number): void {
+export function saveScrollPosition(store: ScrollStore | null, url: string, scrollY: number): void {
   const positions = readPositions(store)
   const rounded = Math.round(scrollY)
   if (positions[url] === rounded) {
@@ -54,11 +62,11 @@ export function saveScrollPosition(store: ScrollStore, url: string, scrollY: num
   writePositions(store, positions)
 }
 
-export function readScrollPosition(store: ScrollStore, url: string): number {
+export function readScrollPosition(store: ScrollStore | null, url: string): number {
   return readPositions(store)[url] ?? 0
 }
 
-export function clearScrollPosition(store: ScrollStore, url: string): void {
+export function clearScrollPosition(store: ScrollStore | null, url: string): void {
   const positions = readPositions(store)
   delete positions[url]
   writePositions(store, positions)

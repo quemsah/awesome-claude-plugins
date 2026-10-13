@@ -3,12 +3,13 @@
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { safeSessionStorage } from '../../lib/sessionStorage.ts'
 
 export function BackToRepositoriesLink({ className = '' }: { className?: string }) {
   const [href, setHref] = useState('/')
 
   useEffect(() => {
-    const storedSearchUrl = window.sessionStorage.getItem('last-search-url')
+    const storedSearchUrl = safeSessionStorage()?.getItem('last-search-url')
     if (storedSearchUrl?.startsWith('/')) {
       setHref(storedSearchUrl)
     }
