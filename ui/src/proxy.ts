@@ -63,6 +63,10 @@ export function proxy(request: NextRequest) {
   return rewriteRepositoryMarkdown(request, segments, true)
 }
 
+export const config = {
+  matcher: ['/((?!api(?:/|$)|_next(?:/|$)|og(?:/|$)|favicon\\.ico$).*)'],
+}
+
 function acceptsMarkdown(accept: string | null): boolean {
   if (!accept) {
     return false
@@ -139,3 +143,4 @@ function rewriteMarkdown(request: NextRequest, pathname: string, varyOnAccept: b
 
   return response
 }
+
