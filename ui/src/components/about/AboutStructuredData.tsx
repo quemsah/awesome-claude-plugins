@@ -8,7 +8,8 @@ export function AboutStructuredData() {
     '@context': 'https://schema.org',
     '@type': 'AboutPage',
     name: 'About Awesome Claude Plugins',
-    description: 'Learn about the automated discovery workflow behind the Awesome Claude Plugins catalog.',
+    description:
+      'Learn about the automated discovery workflow behind the Awesome Claude Plugins catalog and compare it with official Anthropic registries.',
     url: `${BASE_URL}/about`,
     about: {
       '@type': 'Organization',
