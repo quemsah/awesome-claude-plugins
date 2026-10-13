@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "name": "legacy-wrapper",
+  "expected": { "valid": false, "pluginsCount": null },
+  "input": {
+    "marketplace": {
+      "name": "catalog",
+      "owner": { "name": "maintainer" },
+      "plugins": [{ "name": "local-plugin", "source": "./plugins/local-plugin" }]
+    }
+  }
+}

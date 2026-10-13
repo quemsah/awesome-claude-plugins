@@ -9,7 +9,7 @@ import {
   type Marketplace,
   type RepoResult,
 } from '../github/client.js'
-import { MARKETPLACE_INVALID_CONTENT_CACHE_VERSION } from '../github/marketplace.js'
+import { MARKETPLACE_INVALID_CONTENT_CACHE_VERSION, MARKETPLACE_PARSER_VERSION } from '../github/marketplace.js'
 import { listPublishable, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
 import { beginRun, getRun, listRunErrors } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
@@ -166,7 +166,11 @@ it('uses batched GraphQL metadata and skips marketplace REST when the stored OID
   const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), 'MDEwOlJlcG9zaXRvcnkx')
   ready(db, id)
   const oid = 'a'.repeat(40)
-  db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = 2 WHERE id = ?').run(oid, id)
+  db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = ? WHERE id = ?').run(
+    oid,
+    MARKETPLACE_PARSER_VERSION,
+    id,
+  )
   const repository: GitHubGraphQLRepo = { ...githubRepo('team', 'repo'), node_id: 'new-global-id', marketplace_oid: oid }
   const getRepositoriesByNodeId = vi.fn(async () => ({
     kind: 'found' as const,
@@ -211,7 +215,7 @@ it('rechecks an unchanged OID when the cached plugin count is missing', async ()
   expect(db.prepare('SELECT plugins_count, marketplace_etag, marketplace_parser_version FROM repositories WHERE id = ?').get(id)).toEqual({
     plugins_count: 2,
     marketplace_etag: '"new"',
-    marketplace_parser_version: null,
+    marketplace_parser_version: MARKETPLACE_PARSER_VERSION,
   })
 })
 
@@ -707,13 +711,13 @@ it('clears a stale REST ETag after accepting GraphQL marketplace content', async
   })
 })
 
-it('keeps a successful cached count when its old parser version is stale', async () => {
+it('rechecks a successful cached count when its parser version is stale', async () => {
   const db = database()
   const nodeId = 'MDEwOlJlcG9zaXRvcnky'
   const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), nodeId)
   ready(db, id)
   const oid = 'a'.repeat(40)
-  db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = 1 WHERE id = ?').run(oid, id)
+  db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = 2 WHERE id = ?').run(oid, id)
   const getMarketplace = vi.fn(async () => ({ kind: 'temporary-error' as const, status: 500, reason: 'REST must not run', retryCount: 0 }))
   const getMarketplaceBlobsByNodeId = vi.fn(async () => ({
     kind: 'found' as const,
@@ -740,11 +744,11 @@ it('keeps a successful cached count when its old parser version is stale', async
 
   await enrichRepositories(db, client, 'crawl-1')
 
-  expect(getMarketplaceBlobsByNodeId).not.toHaveBeenCalled()
+  expect(getMarketplaceBlobsByNodeId).toHaveBeenCalledWith([nodeId])
   expect(getMarketplace).not.toHaveBeenCalled()
   expect(db.prepare('SELECT plugins_count, marketplace_parser_version FROM repositories WHERE id = ?').get(id)).toEqual({
-    plugins_count: 3,
-    marketplace_parser_version: 1,
+    plugins_count: validMarketplaceFixture.pluginsCount,
+    marketplace_parser_version: MARKETPLACE_PARSER_VERSION,
   })
 })
 
@@ -1049,9 +1053,10 @@ it('reuses cached repository metadata after a conditional REST 304', async () =>
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old')
   ready(db, id)
-  db.prepare('UPDATE repositories SET repository_etag = ?, marketplace_etag = ?, marketplace_parser_version = 2 WHERE id = ?').run(
+  db.prepare('UPDATE repositories SET repository_etag = ?, marketplace_etag = ?, marketplace_parser_version = ? WHERE id = ?').run(
     '"repo"',
     '"manifest"',
+    MARKETPLACE_PARSER_VERSION,
     id,
   )
   const getRepository = vi.fn(async () => ({ kind: 'not-modified' as const, etag: '"repo"' }))

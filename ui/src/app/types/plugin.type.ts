@@ -135,78 +135,41 @@ export const PluginSchema: z.ZodType<Plugin> = z
     }
   })
 
-const PluginListSchema = z.array(PluginSchema)
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-function isEmptyMarketplace(value: Record<string, unknown>): boolean {
-  return Array.isArray(value.skills) || isRecord(value.skills)
+function isCountableMarketplacePlugin(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value) || typeof value.name !== 'string' || value.name.length === 0 || value.name.length > 160) return false
+
+  return (
+    (typeof value.source === 'string' && value.source.length > 0) ||
+    (isRecord(value.source) && typeof value.source.source === 'string' && value.source.source.length > 0)
+  )
 }
 
 export const MarketplacePluginsSchema = z.unknown().transform((value, context): Plugin[] => {
-  const parsePluginList = (plugins: unknown, path: PropertyKey[] = []): Plugin[] => {
-    const parsed = PluginListSchema.safeParse(plugins)
-    if (parsed.success) return parsed.data
-
-    for (const issue of parsed.error.issues) {
-      context.addIssue({
-        code: 'custom',
-        message: issue.message,
-        path: [...path, ...issue.path],
-      })
-    }
+  if (
+    !isRecord(value) ||
+    typeof value.name !== 'string' ||
+    value.name.length === 0 ||
+    !isRecord(value.owner) ||
+    typeof value.owner.name !== 'string' ||
+    value.owner.name.length === 0 ||
+    !Array.isArray(value.plugins)
+  ) {
+    context.addIssue({ code: 'custom', message: 'Marketplace must have non-empty name, non-empty owner.name, and a plugins array' })
     return []
   }
 
-  if (Array.isArray(value)) return parsePluginList(value)
+  return value.plugins.flatMap((entry) => {
+    if (!isCountableMarketplacePlugin(entry)) return []
+    const parsed = PluginSchema.safeParse(entry)
+    if (parsed.success) return [parsed.data]
 
-  if (!isRecord(value)) {
-    context.addIssue({ code: 'custom', message: 'Unsupported marketplace manifest shape' })
-    return []
-  }
-
-  const candidates: {
-    container: Record<string, unknown> | undefined
-    key: 'plugins' | 'repositories'
-    path: PropertyKey[]
-  }[] = [
-    { container: value, key: 'plugins', path: ['plugins'] },
-    {
-      container: isRecord(value.marketplace) ? value.marketplace : undefined,
-      key: 'plugins',
-      path: ['marketplace', 'plugins'],
-    },
-    { container: value, key: 'repositories', path: ['repositories'] },
-  ]
-
-  for (const { container, key, path } of candidates) {
-    if (container && Array.isArray(container[key])) {
-      return parsePluginList(container[key], path)
-    }
-  }
-
-  const hasMarketplaceWrapper = ['plugins', 'repositories', 'marketplace'].some((key) => key in value)
-  if (!hasMarketplaceWrapper) {
-    const parsedPlugin = PluginSchema.safeParse(value)
-    if (parsedPlugin.success) return [parsedPlugin.data]
-    if (isEmptyMarketplace(value)) return []
-
-    for (const issue of parsedPlugin.error.issues) {
-      context.addIssue({
-        code: 'custom',
-        message: issue.message,
-        path: issue.path,
-      })
-    }
-    return []
-  }
-
-  if (isEmptyMarketplace(value)) return []
-
-  context.addIssue({ code: 'custom', message: 'Unsupported marketplace manifest shape' })
-  return []
+    const corePlugin = PluginSchema.safeParse({ name: entry.name, source: entry.source })
+    return corePlugin.success ? [corePlugin.data] : []
+  })
 })
 
 export function getMarketplaceName(value: unknown): string | undefined {
@@ -218,10 +181,5 @@ export function getMarketplaceName(value: unknown): string | undefined {
     return parsedName.success ? parsedName.data : undefined
   }
 
-  if (!object.marketplace || typeof object.marketplace !== 'object' || Array.isArray(object.marketplace)) return undefined
-  const marketplace = object.marketplace as Record<string, unknown>
-  if (!Array.isArray(marketplace.plugins)) return undefined
-
-  const parsedName = MarketplaceNameSchema.safeParse(marketplace.name)
-  return parsedName.success ? parsedName.data : undefined
+  return undefined
 }
