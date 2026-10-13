@@ -44,7 +44,7 @@ it('renders only canonical, fully enriched repositories in original id and publi
     const result = renderRepos(listPublishable(db))
     expect(result.endsWith('\n')).toBe(true)
     expect(result).toBe(
-      '[{"html_url":"https://github.com/owner/Repo-two","stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":null,"owner":"owner","owner_url":"https://github.com/owner","repo_name":"Repo-two","plugins_count":null,"id":5},{"html_url":"https://github.com/Owner/Repo","stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":"🍃 Привет","owner":"Owner","owner_url":"https://github.com/Owner","repo_name":"Repo","plugins_count":null,"id":39}]\n',
+      `[\n{"stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":null,"owner":"owner","repo_name":"Repo-two","plugins_count":null,"id":5},\n{"stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":"🍃 Привет","owner":"Owner","repo_name":"Repo","plugins_count":null,"id":39}\n]\n`,
     )
     expect(JSON.parse(result)).toHaveLength(listPublishable(db).length)
   } finally {
