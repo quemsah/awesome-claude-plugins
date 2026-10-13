@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { BASE_URL, DEFAULT_OG_IMAGE } from '../../lib/constants.ts'
+import { withSiteAlternates } from '../../lib/metadata.ts'
 
 export const metadata: Metadata = {
   title: 'Repositories Statistics',
@@ -18,12 +19,12 @@ export const metadata: Metadata = {
       },
     ],
   },
-  alternates: {
+  alternates: withSiteAlternates({
     canonical: `${BASE_URL}/stats`,
     types: {
       'text/markdown': `${BASE_URL}/stats.md`,
     },
-  },
+  }),
   twitter: {
     card: 'summary_large_image',
     title: 'Repositories Statistics | Awesome Claude Plugins',
