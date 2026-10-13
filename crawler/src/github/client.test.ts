@@ -331,7 +331,7 @@ describe('GitHubClient', () => {
   it('keeps valid marketplace blobs when another node is malformed', async () => {
     const firstId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
     const secondId = 'MDEwOlJlcG9zaXRvcnkxMjk2Mjcw'
-    const text = JSON.stringify({ plugins: [{ name: 'first' }] })
+    const text = JSON.stringify({ plugins: [{ name: 'first', source: './plugins/first' }] })
     const test = harness([
       Response.json({
         data: {
@@ -372,7 +372,7 @@ describe('GitHubClient', () => {
   it('isolates marketplace node-scoped GraphQL errors instead of failing the whole batch', async () => {
     const firstId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
     const secondId = 'MDEwOlJlcG9zaXRvcnkxMjk2Mjcw'
-    const text = JSON.stringify({ plugins: [{ name: 'first' }] })
+    const text = JSON.stringify({ plugins: [{ name: 'first', source: './plugins/first' }] })
     const test = harness([
       Response.json({
         data: {
@@ -499,13 +499,24 @@ describe('GitHubClient', () => {
     expect(test.requests).toHaveLength(1)
   })
 
-  it('filters empty and non-object marketplace entries', async () => {
+  it('filters marketplace entries without a valid name and source', async () => {
     const test = harness([
-      manifest({ name: 'catalog', owner: { name: 'maintainer' }, plugins: [{ name: 'valid' }, {}, null, 'unexpected entry'] }),
+      manifest({
+        name: 'catalog',
+        owner: { name: 'maintainer' },
+        plugins: [
+          { name: 'valid', source: './plugins/valid' },
+          { name: 'missing-source' },
+          { source: './plugins/missing-name' },
+          {},
+          null,
+          'unexpected entry',
+        ],
+      }),
     ])
     const result = await test.client.getMarketplace('acme', 'catalog')
     expect(result.kind).toBe('found')
-    if (result.kind === 'found') expect(result.data.plugins).toEqual([{ name: 'valid' }])
+    if (result.kind === 'found') expect(result.data.plugins).toEqual([{ name: 'valid', source: './plugins/valid' }])
   })
 
   it.each([

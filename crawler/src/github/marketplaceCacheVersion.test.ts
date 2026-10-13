@@ -5,6 +5,7 @@ import { MARKETPLACE_INVALID_CONTENT_CACHE_VERSION } from './marketplace.js'
 
 const PARSER_BLOB_SHA_BY_CACHE_VERSION: Readonly<Record<number, string>> = {
   3: '8b813b589fb7fe694d8f694bcb1b2311a22e3f26',
+  4: '85498e71780903add3b130f70a4c6929673d666b',
 }
 
 function gitBlobSha(content: Buffer): string {
