@@ -10,9 +10,9 @@ it('renders only canonical, fully enriched repositories in original id and publi
   try {
     const insert = db.prepare(`
       INSERT INTO repositories (id, html_url, stargazers_count, forks_count, subscribers_count,
-        description, owner, owner_url, repo_name, plugins_count, repo_updated, createdAt, updatedAt)
+        description, owner, owner_url, repo_name, plugins_count, repo_updated, catalog_updated_at, createdAt, updatedAt)
       VALUES (@id, @html_url, @stargazers_count, @forks_count, @subscribers_count,
-        @description, @owner, @owner_url, @repo_name, @plugins_count, @repo_updated, 'created', 'updated')
+        @description, @owner, @owner_url, @repo_name, @plugins_count, @repo_updated, @catalog_updated_at, 'created', 'updated')
     `)
     const row = {
       html_url: 'https://github.com/Owner/Repo',
@@ -25,6 +25,7 @@ it('renders only canonical, fully enriched repositories in original id and publi
       repo_name: 'Repo',
       plugins_count: null,
       repo_updated: '2025-01-01T00:00:00Z',
+      catalog_updated_at: '2025-02-03T04:05:06.789Z',
     }
     insert.run({ ...row, id: 39 })
     insert.run({
@@ -44,7 +45,11 @@ it('renders only canonical, fully enriched repositories in original id and publi
     const result = renderRepos(listPublishable(db))
     expect(result.endsWith('\n')).toBe(true)
     expect(result).toBe(
-      `[\n{"stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":null,"owner":"owner","repo_name":"Repo-two","plugins_count":null,"id":5},\n{"stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":"🍃 Привет","owner":"Owner","repo_name":"Repo","plugins_count":null,"id":39}\n]\n`,
+      `[
+{"stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":null,"owner":"owner","repo_name":"Repo-two","plugins_count":null,"catalog_updated_at":"2025-02-03T04:05:06.789Z","id":5},
+{"stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":"🍃 Привет","owner":"Owner","repo_name":"Repo","plugins_count":null,"catalog_updated_at":"2025-02-03T04:05:06.789Z","id":39}
+]
+`,
     )
     expect(JSON.parse(result)).toHaveLength(listPublishable(db).length)
   } finally {

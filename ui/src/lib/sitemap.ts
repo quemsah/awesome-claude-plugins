@@ -1,12 +1,11 @@
 /** biome-ignore-all lint/style/useNamingConvention: external data */
 import type { MetadataRoute } from 'next'
-import { getBrowsePageCount, getCatalogLastModified, getIndexableCatalogRepos, getRepoCanonicalPath } from './catalog.ts'
+import { type CatalogRepo, getCatalogLastModified, getIndexableCatalogRepos, getRepoCanonicalPath } from './catalog.ts'
 import { BASE_URL } from './constants.ts'
 
 export const SITEMAP_SHARD_SIZE = 25_000
 
 const catalogLastModified = getCatalogLastModified()
-const totalBrowsePages = getBrowsePageCount()
 const sortedIndexableRepos = [...getIndexableCatalogRepos()].sort(
   (left, right) =>
     (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0) ||
@@ -18,16 +17,16 @@ const prefixEntries: MetadataRoute.Sitemap = [
   { url: `${BASE_URL}/stats`, lastModified: catalogLastModified },
   { url: `${BASE_URL}/about` },
   { url: `${BASE_URL}/privacy` },
-  ...Array.from({ length: Math.max(totalBrowsePages - 1, 0) }, (_, index) => ({
-    url: `${BASE_URL}/browse/${index + 2}`,
-    lastModified: catalogLastModified,
-  })),
 ]
+
+export function getRepoSitemapLastModified(repo: Pick<CatalogRepo, 'catalog_updated_at'>): Date {
+  return repo.catalog_updated_at ? new Date(repo.catalog_updated_at) : catalogLastModified
+}
 
 function repoEntry(repo: (typeof sortedIndexableRepos)[number]): MetadataRoute.Sitemap[number] {
   return {
     url: `${BASE_URL}/${getRepoCanonicalPath(repo)}`,
-    lastModified: catalogLastModified,
+    lastModified: getRepoSitemapLastModified(repo),
   }
 }
 

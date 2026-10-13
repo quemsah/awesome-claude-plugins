@@ -13,6 +13,7 @@ export interface RepositoryRow {
   repo_name: string | null
   repo_updated: string | null
   plugins_count: number | null
+  catalog_updated_at: string
   github_node_id: string | null
   marketplace_oid: string | null
   repository_etag: string | null
@@ -50,6 +51,7 @@ export type PublishableRepository = Pick<
   | 'owner_url'
   | 'repo_name'
   | 'plugins_count'
+  | 'catalog_updated_at'
 >
 
 export function upsertDiscovery(
@@ -191,7 +193,7 @@ export function listCoreComplete(db: Database.Database): PublishableRepository[]
   return db
     .prepare(`
     SELECT id, html_url, stargazers_count, forks_count, subscribers_count,
-           description, owner, owner_url, repo_name, plugins_count
+           description, owner, owner_url, repo_name, plugins_count, catalog_updated_at
     FROM repositories
     WHERE html_url IS NOT NULL AND owner IS NOT NULL AND repo_name IS NOT NULL AND owner_url IS NOT NULL
       AND stargazers_count IS NOT NULL AND forks_count IS NOT NULL

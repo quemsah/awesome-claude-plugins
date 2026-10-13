@@ -12,6 +12,7 @@ export const RepoSchema = z.object({
   owner: GitHubSegmentSchema.nullable(),
   repo_name: GitHubSegmentSchema.nullable(),
   plugins_count: z.number().nullable(),
+  catalog_updated_at: z.string().datetime().optional(),
   id: z.number(),
 })
 
