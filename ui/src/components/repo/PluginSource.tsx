@@ -41,7 +41,9 @@ export function PluginSource({ source, repoPath, defaultBranch }: PluginSourcePr
             ? `https://github.com/${sourceUrlValue}`
             : sourceUrlValue
         : targetRepo && branch
-          ? getGitHubBlobUrl(targetRepo, branch, sourcePath)
+          ? source.source === 'github' && !source.path
+            ? `https://github.com/${encodeGitHubPath(targetRepo)}`
+            : getGitHubBlobUrl(targetRepo, branch, sourcePath)
           : null
 
   if (!sourceUrl) return null
