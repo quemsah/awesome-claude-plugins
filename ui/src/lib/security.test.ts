@@ -43,15 +43,22 @@ describe('catalog security boundaries', () => {
 })
 
 describe('install command verification', () => {
-  it('treats only a well-formed pluginId as verified', () => {
-    expect(isPluginInstallCommandVerified('example-plugin')).toBe(true)
+  it('requires a marketplace name to verify an install target', () => {
+    expect(isPluginInstallCommandVerified('example-plugin')).toBe(false)
     expect(isPluginInstallCommandVerified('plugin\nexploit')).toBe(false)
     expect(isPluginInstallCommandVerified(undefined)).toBe(false)
     expect(isPluginInstallCommandVerified('')).toBe(false)
+    expect(isPluginInstallCommandVerified('example-plugin', 'ykdojo')).toBe(true)
   })
 
   it('uses a marketplace name when pluginId is absent', () => {
     expect(isPluginInstallCommandVerified(undefined, 'ykdojo')).toBe(true)
+    expect(
+      getPluginInstallCommand({ pluginName: 'Example Plugin', pluginId: 'plugin-id', marketplaceName: 'ykdojo' })
+    ).toBe('/plugin install example-plugin@ykdojo')
+    expect(getPluginInstallCommand({ pluginName: 'fallback-install-target', pluginId: 'legacy-id' })).toBe(
+      '/plugin install fallback-install-target'
+    )
     expect(getPluginInstallCommand({ pluginName: 'fallback-install-target', marketplaceName: 'ykdojo' })).toBe(
       '/plugin install fallback-install-target@ykdojo'
     )
