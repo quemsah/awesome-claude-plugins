@@ -4,13 +4,11 @@ type Issue = { path: string; message: string }
 type SnapshotOptions = { expectedSize?: number; requireLatestSize?: boolean }
 
 const repoKeys = [
-  'html_url',
   'stargazers_count',
   'forks_count',
   'subscribers_count',
   'description',
   'owner',
-  'owner_url',
   'repo_name',
   'plugins_count',
   'id',
@@ -97,18 +95,12 @@ function decode(value: string | Uint8Array, path: string, issues: Issue[]): unkn
 }
 
 function validateRepoIdentity(item: Record<string, unknown>, path: string, issues: Issue[]): void {
-  const { html_url: url, owner, owner_url: ownerUrl, repo_name: name } = item
+  const { owner, repo_name: name } = item
   if (typeof owner !== 'string' || !isValidGitHubPathSegment(owner)) {
     issues.push({ path: `${path}.owner`, message: 'must be a GitHub owner segment' })
   }
   if (typeof name !== 'string' || !isValidGitHubPathSegment(name)) {
     issues.push({ path: `${path}.repo_name`, message: 'must be a GitHub repository segment' })
-  }
-  if (typeof url !== 'string' || (typeof owner === 'string' && typeof name === 'string' && url !== `https://github.com/${owner}/${name}`)) {
-    issues.push({ path: `${path}.html_url`, message: 'must be the canonical GitHub repository URL' })
-  }
-  if (typeof ownerUrl !== 'string' || (typeof owner === 'string' && ownerUrl !== `https://github.com/${owner}`)) {
-    issues.push({ path: `${path}.owner_url`, message: 'must be the canonical GitHub owner URL' })
   }
 }
 
@@ -119,7 +111,7 @@ function validateRepoFields(item: Record<string, unknown>, path: string, issues:
   if (item.description !== null && typeof item.description !== 'string') {
     issues.push({ path: `${path}.description`, message: 'must be a string or null' })
   }
-  for (const key of ['description', 'owner', 'repo_name', 'html_url', 'owner_url'] as const) {
+  for (const key of ['description', 'owner', 'repo_name'] as const) {
     if (typeof item[key] === 'string' && hasUnpairedSurrogate(item[key])) {
       issues.push({ path: `${path}.${key}`, message: 'invalid UTF-8 (unpaired surrogate)' })
     }
