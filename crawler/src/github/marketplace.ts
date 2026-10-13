@@ -1,4 +1,4 @@
-export const MARKETPLACE_INVALID_CONTENT_CACHE_VERSION = 3
+export const MARKETPLACE_INVALID_CONTENT_CACHE_VERSION = 4
 
 export type Marketplace = { plugins: unknown[] }
 
@@ -11,6 +11,15 @@ export class MarketplaceFormatError extends Error {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isPluginEntry(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value) || typeof value.name !== 'string' || value.name.length === 0) return false
+
+  return (
+    (typeof value.source === 'string' && value.source.length > 0) ||
+    (isRecord(value.source) && typeof value.source.source === 'string' && value.source.source.length > 0)
+  )
 }
 
 export function parseMarketplace(value: unknown): Marketplace {
@@ -26,5 +35,5 @@ export function parseMarketplace(value: unknown): Marketplace {
     throw new MarketplaceFormatError()
   }
 
-  return { plugins: value.plugins.filter((plugin) => isRecord(plugin) && Object.keys(plugin).length > 0) }
+  return { plugins: value.plugins.filter(isPluginEntry) }
 }

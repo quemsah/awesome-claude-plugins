@@ -80,7 +80,10 @@ const validMarketplaceFixture = (() => {
   const input = {
     name: 'catalog',
     owner: { name: 'maintainer' },
-    plugins: [{ name: 'plugin-one' }, { name: 'plugin-two' }],
+    plugins: [
+      { name: 'plugin-one', source: './plugins/plugin-one' },
+      { name: 'plugin-two', source: './plugins/plugin-two' },
+    ],
   }
   return { input, pluginsCount: input.plugins.length }
 })()
