@@ -14,6 +14,10 @@ export function renderRepos(rows: readonly PublishableRepository[]): string {
     repo_name: row.repo_name,
     plugins_count: row.plugins_count,
     id: row.id,
+    ...(row.pushed_at !== undefined ? { pushed_at: row.pushed_at } : {}),
+    ...(row.created_at !== undefined ? { created_at: row.created_at } : {}),
+    ...(row.license !== undefined ? { license: row.license } : {}),
+    ...(row.archived !== undefined ? { archived: row.archived } : {}),
   }))
   return `${JSON.stringify(repositories)}\n`
 }

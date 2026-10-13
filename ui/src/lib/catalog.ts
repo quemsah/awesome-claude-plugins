@@ -27,17 +27,61 @@ for (const repo of catalogRepos) {
   }
 }
 
+const ARCHIVED_PREFIX_REGEX = /^\[archived\]/i
+
+export function isArchivedRepo(repo: CatalogRepo): boolean {
+  if (repo.archived === true) return true
+  if (repo.description && ARCHIVED_PREFIX_REGEX.test(repo.description.trim())) return true
+  return false
+}
+
+function compareArchived(left: CatalogRepo, right: CatalogRepo): number {
+  const leftArchived = isArchivedRepo(left) ? 1 : 0
+  const rightArchived = isArchivedRepo(right) ? 1 : 0
+  return leftArchived - rightArchived
+}
+
+function parseDateValue(dateString?: string | null): number {
+  return dateString ? Date.parse(dateString) || 0 : 0
+}
+
+function compareDates(leftDate?: string | null, rightDate?: string | null): number {
+  return parseDateValue(rightDate) - parseDateValue(leftDate)
+}
+
+function descriptionSignal(repo: CatalogRepo): number {
+  return repo.description?.trim() ? 1 : 0
+}
+
+function compareDefault(left: CatalogRepo, right: CatalogRepo): number {
+  return (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0) || descriptionSignal(right) - descriptionSignal(left)
+}
+
+function pluginScore(repo: CatalogRepo): number {
+  return (repo.plugins_count ?? 0) * Math.log10((repo.stargazers_count ?? 0) + 10)
+}
+
+function comparePlugins(left: CatalogRepo, right: CatalogRepo): number {
+  return pluginScore(right) - pluginScore(left) || (right.plugins_count ?? 0) - (left.plugins_count ?? 0)
+}
+
 function compareCatalogRepos(left: CatalogRepo, right: CatalogRepo, sortOption: SortOption): number {
-  const descriptionSignal = (repo: CatalogRepo) => (repo.description?.trim() ? 1 : 0)
+  const archivedDiff = compareArchived(left, right)
+  if (archivedDiff !== 0) {
+    return archivedDiff
+  }
+
   switch (sortOption) {
     case 'forks-desc':
       return (right.forks_count ?? 0) - (left.forks_count ?? 0)
-    case 'plugins-desc': {
-      const pluginSignal = (repo: CatalogRepo) => (repo.plugins_count ?? 0) * Math.log10((repo.stargazers_count ?? 0) + 10)
-      return pluginSignal(right) - pluginSignal(left) || (right.plugins_count ?? 0) - (left.plugins_count ?? 0)
-    }
+    case 'plugins-desc':
+      return comparePlugins(left, right)
+    case 'updated-desc':
+      return compareDates(left.pushed_at, right.pushed_at) || compareDefault(left, right)
+    case 'created-desc':
+      return compareDates(left.created_at, right.created_at) || compareDefault(left, right)
     default:
-      return (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0) || descriptionSignal(right) - descriptionSignal(left)
+      return compareDefault(left, right)
   }
 }
 
@@ -45,6 +89,8 @@ const catalogReposBySort: Record<SortOption, readonly CatalogRepo[]> = {
   'stars-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'stars-desc')),
   'forks-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'forks-desc')),
   'plugins-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'plugins-desc')),
+  'updated-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'updated-desc')),
+  'created-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'created-desc')),
 }
 const catalogPluginsCount = canonicalCatalogRepos.reduce((total, repo) => total + (repo.plugins_count ?? 0), 0)
 
