@@ -22,6 +22,13 @@ function urlsMatch(a: string, b: string): boolean {
   }
 }
 
+export const PluginSummarySchema = z.object({
+  description: z.string().optional(),
+  name: z.string().optional(),
+})
+
+export type PluginSummary = z.infer<typeof PluginSummarySchema>
+
 export const RepoSchema = z
   .object({
     html_url: z.string().refine(isValidHttpUrl, 'Must be a valid URL'),
@@ -33,6 +40,10 @@ export const RepoSchema = z
     owner_url: z.string().refine(isValidHttpUrl, 'Must be a valid URL').nullable(),
     repo_name: z.string().nullable(),
     plugins_count: z.number().nullable(),
+    plugins: z.array(PluginSummarySchema).optional(),
+    plugin_name: z.string().optional(),
+    plugin_description: z.string().optional(),
+    plugin_summaries: z.array(PluginSummarySchema).optional(),
     id: z.number(),
   })
   .superRefine((repo, context) => {
