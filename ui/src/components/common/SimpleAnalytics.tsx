@@ -23,6 +23,6 @@ export function SimpleAnalytics({ enabled }: SimpleAnalyticsProps) {
   }, [enabled])
 
   return mayLoad ? (
-    <Script data-collect-dnt="true" src="https://scripts.simpleanalyticscdn.com/latest.js" strategy="afterInteractive" />
+    <Script src="https://scripts.simpleanalyticscdn.com/latest.js" strategy="afterInteractive" />
   ) : null
 }
