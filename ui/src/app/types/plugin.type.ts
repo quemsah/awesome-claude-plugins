@@ -33,6 +33,7 @@ const SafeUrlSchema = (max: number) =>
         return false
       }
     }, 'Must be a safe HTTP(S) URL')
+const OptionalSafeUrlSchema = (max: number) => SafeUrlSchema(max).optional().catch(undefined)
 const SourceUrlSchema = SafeUrlSchema(512)
 const PluginSourceStringSchema = PluginPathSchema
 
@@ -66,7 +67,7 @@ export type Plugin = {
   strict?: boolean
   commands?: string[] | Record<string, unknown>
   agents?: string[] | Record<string, unknown>
-  mcpServers?: string[] | Record<string, unknown>
+  mcpServers?: (string | Record<string, unknown>)[] | Record<string, unknown>
   homepage?: string
   tags?: string[]
 }
@@ -95,7 +96,7 @@ export const PluginSchema: z.ZodType<Plugin> = z
     category: z.string().max(100).optional(),
     author: z
       .union([
-        z.object({ name: z.string().max(160).optional(), email: EmailSchema.optional(), url: SafeUrlSchema(2_048).optional() }),
+        z.object({ name: z.string().max(160).optional(), email: EmailSchema.optional(), url: OptionalSafeUrlSchema(2_048) }),
         z
           .string()
           .min(1)
@@ -106,10 +107,28 @@ export const PluginSchema: z.ZodType<Plugin> = z
     license: z.string().max(160).optional(),
     keywords: z.array(z.string().min(1).max(100)).max(50).optional(),
     strict: z.boolean().optional(),
-    commands: z.union([z.array(PluginPathSchema).max(100), z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
-    agents: z.union([z.array(PluginPathSchema).max(100), z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
-    mcpServers: z.union([z.array(PluginPathSchema).max(100), z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
-    homepage: SafeUrlSchema(2_048).optional(),
+    commands: z
+      .union([
+        PluginPathSchema.transform((path) => [path]),
+        z.array(PluginPathSchema).max(100),
+        z.record(z.string(), z.unknown()).transform(() => undefined),
+      ])
+      .optional(),
+    agents: z
+      .union([
+        PluginPathSchema.transform((path) => [path]),
+        z.array(PluginPathSchema).max(100),
+        z.record(z.string(), z.unknown()).transform(() => undefined),
+      ])
+      .optional(),
+    mcpServers: z
+      .union([
+        PluginPathSchema.transform((path) => [path]),
+        z.array(z.union([PluginPathSchema, z.record(z.string(), z.unknown())])).max(100),
+        z.record(z.string(), z.unknown()).transform(() => undefined),
+      ])
+      .optional(),
+    homepage: OptionalSafeUrlSchema(2_048),
     tags: z.array(z.string().min(1).max(100)).max(50).optional(),
   })
   .superRefine((plugin, context) => {
@@ -135,8 +154,6 @@ export const PluginSchema: z.ZodType<Plugin> = z
     }
   })
 
-const PluginListSchema = z.array(PluginSchema)
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
@@ -146,19 +163,13 @@ function isEmptyMarketplace(value: Record<string, unknown>): boolean {
 }
 
 export const MarketplacePluginsSchema = z.unknown().transform((value, context): Plugin[] => {
-  const parsePluginList = (plugins: unknown, path: PropertyKey[] = []): Plugin[] => {
-    const parsed = PluginListSchema.safeParse(plugins)
-    if (parsed.success) return parsed.data
-
-    for (const issue of parsed.error.issues) {
-      context.addIssue({
-        code: 'custom',
-        message: issue.message,
-        path: [...path, ...issue.path],
-      })
-    }
-    return []
-  }
+  const parsePluginList = (plugins: unknown): Plugin[] =>
+    Array.isArray(plugins)
+      ? plugins.flatMap((plugin) => {
+          const parsed = PluginSchema.safeParse(plugin)
+          return parsed.success ? [parsed.data] : []
+        })
+      : []
 
   if (Array.isArray(value)) return parsePluginList(value)
 
@@ -170,20 +181,18 @@ export const MarketplacePluginsSchema = z.unknown().transform((value, context): 
   const candidates: {
     container: Record<string, unknown> | undefined
     key: 'plugins' | 'repositories'
-    path: PropertyKey[]
   }[] = [
-    { container: value, key: 'plugins', path: ['plugins'] },
+    { container: value, key: 'plugins' },
     {
       container: isRecord(value.marketplace) ? value.marketplace : undefined,
       key: 'plugins',
-      path: ['marketplace', 'plugins'],
     },
-    { container: value, key: 'repositories', path: ['repositories'] },
+    { container: value, key: 'repositories' },
   ]
 
-  for (const { container, key, path } of candidates) {
+  for (const { container, key } of candidates) {
     if (container && Array.isArray(container[key])) {
-      return parsePluginList(container[key], path)
+      return parsePluginList(container[key])
     }
   }
 
