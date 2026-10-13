@@ -34,6 +34,10 @@ export const RepoSchema = z
     repo_name: z.string().nullable(),
     plugins_count: z.number().nullable(),
     id: z.number(),
+    pushed_at: z.string().nullable().optional(),
+    created_at: z.string().nullable().optional(),
+    license: z.string().nullable().optional(),
+    archived: z.boolean().nullable().optional(),
   })
   .superRefine((repo, context) => {
     if (!(repo.owner && repo.repo_name)) {

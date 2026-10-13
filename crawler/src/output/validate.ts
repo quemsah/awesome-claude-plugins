@@ -15,6 +15,7 @@ const repoKeys = [
   'plugins_count',
   'id',
 ] as const
+const optionalRepoKeys = ['pushed_at', 'created_at', 'license', 'archived'] as const
 const statsKeys = ['id', 'date', 'size'] as const
 const utcDate = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 
@@ -22,7 +23,7 @@ function safePath(path: string): string {
   if (path === 'expectedSize') return path
   const prefix = /^(repos|stats)(?:\[\d+\])?/.exec(path)?.[0] ?? 'snapshot'
   const field = path.slice(prefix.length)
-  const allowed = prefix.startsWith('repos') ? repoKeys : statsKeys
+  const allowed = prefix.startsWith('repos') ? [...repoKeys, ...optionalRepoKeys] : statsKeys
   return field.startsWith('.') && allowed.some((key) => field === `.${key}`) ? path : prefix
 }
 
@@ -46,12 +47,18 @@ function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-function keys(value: Record<string, unknown>, expected: readonly string[], path: string, issues: Issue[]): void {
+function keys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+  path: string,
+  issues: Issue[],
+  optional: readonly string[] = [],
+): void {
   for (const key of expected) {
     if (!(key in value)) issues.push({ path: `${path}.${key}`, message: 'required field is missing' })
   }
   for (const key of Object.keys(value)) {
-    if (!expected.includes(key)) issues.push({ path: `${path}.${key}`, message: 'unexpected public field' })
+    if (!expected.includes(key) && !optional.includes(key)) issues.push({ path: `${path}.${key}`, message: 'unexpected public field' })
   }
 }
 
@@ -119,6 +126,18 @@ function validateRepoFields(item: Record<string, unknown>, path: string, issues:
   if (item.description !== null && typeof item.description !== 'string') {
     issues.push({ path: `${path}.description`, message: 'must be a string or null' })
   }
+  if (item.pushed_at !== undefined && item.pushed_at !== null && typeof item.pushed_at !== 'string') {
+    issues.push({ path: `${path}.pushed_at`, message: 'must be a string or null' })
+  }
+  if (item.created_at !== undefined && item.created_at !== null && typeof item.created_at !== 'string') {
+    issues.push({ path: `${path}.created_at`, message: 'must be a string or null' })
+  }
+  if (item.license !== undefined && item.license !== null && typeof item.license !== 'string') {
+    issues.push({ path: `${path}.license`, message: 'must be a string or null' })
+  }
+  if (item.archived !== undefined && item.archived !== null && typeof item.archived !== 'boolean') {
+    issues.push({ path: `${path}.archived`, message: 'must be a boolean or null' })
+  }
   for (const key of ['description', 'owner', 'repo_name', 'html_url', 'owner_url'] as const) {
     if (typeof item[key] === 'string' && hasUnpairedSurrogate(item[key])) {
       issues.push({ path: `${path}.${key}`, message: 'invalid UTF-8 (unpaired surrogate)' })
@@ -131,7 +150,7 @@ function validateRepoItem(item: unknown, path: string, issues: Issue[], previous
     issues.push({ path, message: 'must be an object' })
     return previousId
   }
-  keys(item, repoKeys, path, issues)
+  keys(item, repoKeys, path, issues, optionalRepoKeys)
   validateRepoIdentity(item, path, issues)
   validateRepoFields(item, path, issues)
   const id = item.id

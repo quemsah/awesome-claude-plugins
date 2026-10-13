@@ -50,7 +50,12 @@ export type PublishableRepository = Pick<
   | 'owner_url'
   | 'repo_name'
   | 'plugins_count'
->
+> & {
+  pushed_at?: string | null
+  created_at?: string | null
+  license?: string | null
+  archived?: boolean | null
+}
 
 export function upsertDiscovery(
   db: Database.Database,

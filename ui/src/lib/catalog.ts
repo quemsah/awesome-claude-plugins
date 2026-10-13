@@ -127,12 +127,27 @@ function getScoredMatches(normalizedQuery: string, repos: readonly CatalogRepo[]
   return records
 }
 
+const ARCHIVED_PREFIX_REGEX = /^\[archived\]/i
+
+export function isArchivedRepo(repo: CatalogRepo): boolean {
+  if (repo.archived === true) return true
+  if (repo.description && ARCHIVED_PREFIX_REGEX.test(repo.description.trim())) return true
+  return false
+}
+
 export function searchCatalogRepos(query: string, sortOption: SortOption, page = 0, pageSize = CATALOG_PAGE_SIZE): CatalogSearchResult {
   const normalizedQuery = normalizeSearchQuery(query)
   const matchingRepos = getScoredMatches(normalizedQuery, getCanonicalCatalogRepos())
   const sortedRepos = [...matchingRepos].sort((left, right) => {
     const leftRepo = left.repo
     const rightRepo = right.repo
+
+    const leftArchived = isArchivedRepo(leftRepo) ? 1 : 0
+    const rightArchived = isArchivedRepo(rightRepo) ? 1 : 0
+    if (leftArchived !== rightArchived) {
+      return leftArchived - rightArchived
+    }
+
     const descriptionSignal = (repo: CatalogRepo) => (repo.description?.trim() ? 1 : 0)
     let sortResult: number
     switch (sortOption) {
@@ -146,6 +161,26 @@ export function searchCatalogRepos(query: string, sortOption: SortOption, page =
           return pluginCount * Math.log10(stars + 10)
         }
         sortResult = pluginSignal(rightRepo) - pluginSignal(leftRepo) || (rightRepo.plugins_count ?? 0) - (leftRepo.plugins_count ?? 0)
+        break
+      }
+      case 'updated-desc': {
+        const parseTime = (dateString?: string | null) => (dateString ? Date.parse(dateString) || 0 : 0)
+        const leftTime = parseTime(leftRepo.pushed_at)
+        const rightTime = parseTime(rightRepo.pushed_at)
+        sortResult =
+          rightTime - leftTime ||
+          (rightRepo.stargazers_count ?? 0) - (leftRepo.stargazers_count ?? 0) ||
+          descriptionSignal(rightRepo) - descriptionSignal(leftRepo)
+        break
+      }
+      case 'created-desc': {
+        const parseTime = (dateString?: string | null) => (dateString ? Date.parse(dateString) || 0 : 0)
+        const leftTime = parseTime(leftRepo.created_at)
+        const rightTime = parseTime(rightRepo.created_at)
+        sortResult =
+          rightTime - leftTime ||
+          (rightRepo.stargazers_count ?? 0) - (leftRepo.stargazers_count ?? 0) ||
+          descriptionSignal(rightRepo) - descriptionSignal(leftRepo)
         break
       }
       default:

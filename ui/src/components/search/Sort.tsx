@@ -1,4 +1,4 @@
-import { Box, GitFork, Star } from 'lucide-react'
+import { Box, CalendarPlus, Clock, GitFork, Star } from 'lucide-react'
 import type { SortOption } from '../../lib/sortOptions.ts'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select.tsx'
 
@@ -6,6 +6,8 @@ const sortOptions = [
   { value: 'stars-desc', label: 'Stars', icon: <Star className="mr-2 h-4 w-4" /> },
   { value: 'forks-desc', label: 'Forks', icon: <GitFork className="mr-2 h-4 w-4" /> },
   { value: 'plugins-desc', label: 'Plugins', icon: <Box className="mr-2 h-4 w-4" /> },
+  { value: 'updated-desc', label: 'Recently updated', icon: <Clock className="mr-2 h-4 w-4" /> },
+  { value: 'created-desc', label: 'Recently added', icon: <CalendarPlus className="mr-2 h-4 w-4" /> },
 ] as const
 
 interface SortProps {
