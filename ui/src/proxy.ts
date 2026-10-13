@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 
 import { isRepoPageEndingInMd } from './lib/markdownPaths.ts'
+import { getRateLimitKey, RateLimiter } from './lib/rateLimit.ts'
 
 const STATIC_MARKDOWN_PATHS: Readonly<Record<string, string>> = {
   '/': '/index.md',
@@ -10,6 +11,9 @@ const STATIC_MARKDOWN_PATHS: Readonly<Record<string, string>> = {
 
 const RESERVED_REPOSITORY_ROOTS = new Set(['.well-known', '_next', 'api', 'browse', 'sitemap'])
 const QUALITY_PARAMETER_PATTERN = /^q\s*=/i
+const MAX_CATALOG_SEARCH_REQUESTS_PER_MINUTE = 20
+// A measured 480ms worst-case query caps one client's search work at about 10 CPU seconds per minute.
+const catalogSearchRateLimiter = new RateLimiter(10_000, MAX_CATALOG_SEARCH_REQUESTS_PER_MINUTE, 60_000)
 
 type MediaPreference = {
   quality: number
@@ -18,6 +22,15 @@ type MediaPreference = {
 
 export function proxy(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl
+
+  if (
+    (pathname === '/api/catalog' || (pathname === '/' && searchParams.has('q'))) &&
+    searchParams.get('q')?.trim() &&
+    catalogSearchRateLimiter.isRateLimited(getRateLimitKey(request.headers))
+  ) {
+    return NextResponse.json({ message: 'Too many requests' }, { status: 429, headers: { 'Retry-After': '60' } })
+  }
+
   const requestedPath = pathname.slice(1)
   const accept = request.headers.get('accept')
 
@@ -139,3 +152,4 @@ function rewriteMarkdown(request: NextRequest, pathname: string, varyOnAccept: b
 
   return response
 }
+

@@ -56,10 +56,11 @@ export class RateLimiter {
  *
  * `cf-connecting-ip` is only honored when the deployment explicitly declares that it sits behind
  * Cloudflare: any client can send that header straight to an origin that is not fronted by
- * Cloudflare and thereby mint an unlimited number of fresh buckets.
+ * Cloudflare and thereby mint an unlimited number of fresh buckets. Forwarding headers are not
+ * trusted because a client can supply them unless the hosting proxy overwrites them.
  */
 export function getRateLimitKey(headers: Headers, env: Record<string, string | undefined> = process.env): string {
-  const trustedHeaders = env.TRUST_CF_CONNECTING_IP === 'true' ? ['cf-connecting-ip', 'x-real-ip'] : ['x-vercel-forwarded-for', 'x-real-ip']
+  const trustedHeaders = env.TRUST_CF_CONNECTING_IP === 'true' ? ['cf-connecting-ip', 'x-real-ip'] : ['x-real-ip']
 
   for (const header of trustedHeaders) {
     const value = headers.get(header)?.split(',')[0]?.trim()
@@ -68,5 +69,6 @@ export function getRateLimitKey(headers: Headers, env: Record<string, string | u
     }
   }
 
-  return headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  return 'unknown'
 }
+
