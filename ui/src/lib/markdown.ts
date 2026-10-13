@@ -35,6 +35,23 @@ export function buildAboutMarkdown(): string {
 
 Awesome Claude Plugins is a daily-updated directory of Claude Code plugins and tools, inspired by the "awesome" list movement.
 
+## Comparison with Official Anthropic Catalogs
+
+Anthropic maintains two official plugin repositories, while this project indexes the wider open-source GitHub ecosystem.
+
+| Catalog | Scope & Size | Verification & Curation | Direct Install Command | Best For |
+|---|---|---|---|---|
+| **Anthropic Official** [\`anthropics/claude-plugins-official\`](${BASE_URL}/anthropics/claude-plugins-official) | ~314 plugins | Verified by Anthropic; highest security and curation | \`/plugin marketplace add anthropics/claude-plugins-official\` | Production safety, enterprise environments, verified first-party tools |
+| **Anthropic Community** [\`anthropics/claude-plugins-community\`](${BASE_URL}/anthropics/claude-plugins-community) | ~2,282 plugins | Submitted by community; reviewed under Anthropic guidelines | \`/plugin marketplace add anthropics/claude-plugins-community\` | General use, vetted community utilities |
+| **Awesome Claude Plugins** [This directory](${BASE_URL}/) | 40,000+ repositories, 110,000+ plugins | Unvetted open ecosystem; automated daily GitHub crawl | Direct commands for any indexed repo | Finding niche tools, exploring bleeding-edge plugins across GitHub, analyzing ecosystem trends |
+
+### When to Choose Which Catalog
+
+- **Choose the Official Anthropic Catalogs** when you need production safety, enterprise compliance, and plugins thoroughly reviewed under Anthropic guidelines.
+- **Choose Awesome Claude Plugins** when you need to find niche community tools, explore bleeding-edge plugins across GitHub, compare stars/forks and activity metrics, or analyze broader ecosystem trends.
+
+## How to Read the Directory
+
 Repositories are discovered from public GitHub data and refreshed daily. Indexable entries require a validated marketplace plugin count. Plugin counts reflect manifests we can validate, not endorsements. Review code, licenses, and maintenance before installing.
 
 ## Provenance and corrections
