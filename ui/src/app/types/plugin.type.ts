@@ -135,6 +135,15 @@ export const PluginSchema: z.ZodType<Plugin> = z
     }
   })
 
+const MarketplacePluginEntrySchema = PluginSchema.superRefine((plugin, context) => {
+  if (!plugin.name?.trim()) {
+    context.addIssue({ code: 'custom', message: 'Marketplace plugins require a non-empty name', path: ['name'] })
+  }
+  if (!plugin.source) {
+    context.addIssue({ code: 'custom', message: 'Marketplace plugins require a supported source', path: ['source'] })
+  }
+})
+
 export type MarketplacePluginsParseResult = {
   plugins: Plugin[]
   issues: z.ZodIssue[]
@@ -156,7 +165,7 @@ export function parseMarketplacePlugins(value: unknown): MarketplacePluginsParse
   const parsePluginList = (plugins: unknown, path: PropertyKey[] = []): Plugin[] => {
     if (!Array.isArray(plugins)) return []
     return plugins.flatMap((plugin, index) => {
-      const parsed = PluginSchema.safeParse(plugin)
+      const parsed = MarketplacePluginEntrySchema.safeParse(plugin)
       if (parsed.success) return [parsed.data]
 
       invalidPluginCount += 1
@@ -198,7 +207,7 @@ export function parseMarketplacePlugins(value: unknown): MarketplacePluginsParse
 
   const hasMarketplaceWrapper = ['plugins', 'repositories', 'marketplace'].some((key) => key in value)
   if (!hasMarketplaceWrapper) {
-    const parsedPlugin = PluginSchema.safeParse(value)
+    const parsedPlugin = MarketplacePluginEntrySchema.safeParse(value)
     if (parsedPlugin.success) return { plugins: [parsedPlugin.data], issues, invalidPluginCount, success: true }
     if (isEmptyMarketplace(value)) return { plugins: [], issues, invalidPluginCount, success: true }
 
