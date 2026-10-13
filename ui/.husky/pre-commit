@@ -1,1 +1,2 @@
 npm --prefix ui run lint
+npm --prefix crawler run lint
