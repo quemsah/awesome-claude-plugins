@@ -28,7 +28,7 @@ export async function generateMetadata({ params }: BrowsePageProps): Promise<Met
 
   return {
     title: `Browse Claude Code Plugin Repositories - Page ${page}`,
-    description: `Browse page ${page} of the Awesome Claude Plugins catalog.`,
+    description: `Browse page ${page} of the Awesome Claude Code Plugins catalog.`,
     alternates: {
       canonical: `${BASE_URL}/browse/${page}`,
     },

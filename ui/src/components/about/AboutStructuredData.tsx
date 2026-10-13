@@ -7,17 +7,17 @@ export function AboutStructuredData() {
   const aboutPage = {
     '@context': 'https://schema.org',
     '@type': 'AboutPage',
-    name: 'About Awesome Claude Plugins',
-    description: 'Learn about the automated discovery workflow behind the Awesome Claude Plugins catalog.',
+    name: 'About Awesome Claude Code Plugins',
+    description: 'Learn about the automated discovery workflow behind the Awesome Claude Code Plugins catalog.',
     url: `${BASE_URL}/about`,
     about: {
-      '@type': 'Organization',
-      name: 'Awesome Claude Plugins Team',
-      url: BASE_URL,
+      '@type': 'Person',
+      name: 'Evgenii',
+      url: 'https://github.com/quemsah',
     },
     isPartOf: {
       '@type': 'WebSite',
-      name: 'Awesome Claude Plugins',
+      name: 'Awesome Claude Code Plugins',
       url: BASE_URL,
     },
   }

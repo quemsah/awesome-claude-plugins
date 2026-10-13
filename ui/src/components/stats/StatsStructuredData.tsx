@@ -15,7 +15,7 @@ export default function StatsStructuredData({ startDate, endDate }: StatsStructu
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'WebPage',
-    name: 'Repository Statistics | Awesome Claude Plugins',
+    name: 'Repository Statistics | Awesome Claude Code Plugins',
     description: 'View statistics and trends about Claude Code plugin adoption across GitHub repositories',
     url: `${BASE_URL}/stats`,
     about: {
@@ -27,15 +27,15 @@ export default function StatsStructuredData({ startDate, endDate }: StatsStructu
       license: 'https://creativecommons.org/publicdomain/zero/1.0/',
       isAccessibleForFree: true,
       creator: {
-        '@type': 'Organization',
-        name: 'Awesome Claude Plugins Team',
-        url: BASE_URL,
+        '@type': 'Person',
+        name: 'Evgenii',
+        url: 'https://github.com/quemsah',
       },
     },
     publisher: {
-      '@type': 'Organization',
-      name: 'Awesome Claude Plugins Team',
-      url: BASE_URL,
+      '@type': 'Person',
+      name: 'Evgenii',
+      url: 'https://github.com/quemsah',
     },
   }
 

@@ -41,7 +41,7 @@ export function getRepoStructuredData(repo: GitHubRepository): Record<string, un
     ...(repo.topics?.length ? { keywords: repo.topics.join(', ') } : {}),
     isPartOf: {
       '@type': 'WebSite',
-      name: 'Awesome Claude Plugins',
+      name: 'Awesome Claude Code Plugins',
       url: BASE_URL,
     },
   }
