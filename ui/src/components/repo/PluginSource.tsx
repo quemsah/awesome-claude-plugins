@@ -4,6 +4,7 @@ import { encodeGitHubPath, getGitHubBlobUrl } from '../../lib/repositoryIdentity
 const GIT_SUFFIX_PATTERN = /\.git$/
 const GITHUB_REPO_PATH_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
 const SAFE_SOURCE_PATH_PATTERN = /^(?!.*\.\.)(?!.*[\r\n]).+$/
+const TRAILING_SLASH_PATTERN = /\/$/
 
 interface PluginSourceProps {
   source?: string | PluginSourceType
@@ -14,35 +15,32 @@ interface PluginSourceProps {
 export function PluginSource({ source, repoPath, defaultBranch }: PluginSourceProps) {
   if (!source) return null
 
-  const sourcePath = typeof source === 'string' ? source : (source.path ?? source.url ?? source.source)
-  const sourceRepo = typeof source === 'string' ? null : source.repo
-  const sourceUrlValue = typeof source === 'string' ? null : source.url
-  const targetRepo = typeof source === 'string' ? repoPath : sourceRepo
-  const branch = typeof source === 'string' ? defaultBranch : (source.branch ?? source.ref ?? source.commit ?? 'HEAD')
-  const sourceStringUrl =
-    typeof source === 'string' && source.startsWith('github:')
-      ? GITHUB_REPO_PATH_PATTERN.test(source.slice('github:'.length))
-        ? `https://github.com/${source.slice('github:'.length)}`
-        : null
-      : typeof source === 'string' && SAFE_SOURCE_PATH_PATTERN.test(source) && targetRepo && branch
-        ? getGitHubBlobUrl(targetRepo, branch, source)
-        : null
-  const sourceUrl =
-    typeof source === 'string'
-      ? sourceStringUrl
-      : sourceUrlValue
-        ? source.path
-          ? GITHUB_REPO_PATH_PATTERN.test(sourceUrlValue)
-            ? getGitHubBlobUrl(sourceUrlValue, branch ?? 'HEAD', source.path)
-            : // A manifest may name another host outright, so only the segments added here are encoded:
-              // the base is already a complete URL, and re-encoding it would double its own `%` escapes.
-              `${sourceUrlValue.replace(GIT_SUFFIX_PATTERN, '')}/blob/${encodeGitHubPath(branch ?? 'HEAD')}/${encodeGitHubPath(source.path)}`
-          : GITHUB_REPO_PATH_PATTERN.test(sourceUrlValue)
-            ? `https://github.com/${sourceUrlValue}`
-            : sourceUrlValue
-        : targetRepo && branch
-          ? getGitHubBlobUrl(targetRepo, branch, sourcePath)
-          : null
+  const sourceType = typeof source === 'string' ? null : source.source
+  const sourcePath = typeof source === 'string' ? source : (source.path ?? source.url ?? source.repo ?? source.source)
+  const sourceRef = typeof source === 'string' ? defaultBranch : (source.branch ?? source.ref ?? source.commit ?? source.sha)
+  const branch = typeof source === 'string' ? defaultBranch : (source.branch ?? source.ref ?? source.commit ?? source.sha ?? 'HEAD')
+  let sourceUrl: string | null = null
+  let ariaLabel = `Open source file ${sourcePath} in a new tab`
+
+  if (typeof source === 'string') {
+    if (source.startsWith('github:')) {
+      const sourceRepo = source.slice('github:'.length)
+      if (GITHUB_REPO_PATH_PATTERN.test(sourceRepo)) sourceUrl = `https://github.com/${sourceRepo}`
+    } else if (SAFE_SOURCE_PATH_PATTERN.test(source)) {
+      sourceUrl = getGitHubBlobUrl(repoPath, branch ?? 'HEAD', source)
+    }
+  } else if (sourceType === 'github' && source.repo && GITHUB_REPO_PATH_PATTERN.test(source.repo)) {
+    sourceUrl = `https://github.com/${source.repo}${sourceRef ? `/tree/${encodeGitHubPath(sourceRef)}` : ''}`
+    ariaLabel = `Open source repository ${source.repo} in a new tab`
+  } else if (sourceType === 'url' && source.url) {
+    sourceUrl = GITHUB_REPO_PATH_PATTERN.test(source.url) ? `https://github.com/${source.url}` : source.url
+    ariaLabel = `Open source URL ${sourceUrl} in a new tab`
+  } else if (sourceType === 'git-subdir' && source.url && source.path) {
+    const baseUrl = GITHUB_REPO_PATH_PATTERN.test(source.url)
+      ? `https://github.com/${source.url}`
+      : source.url.replace(GIT_SUFFIX_PATTERN, '').replace(TRAILING_SLASH_PATTERN, '')
+    sourceUrl = `${baseUrl}/tree/${encodeGitHubPath(branch ?? 'HEAD')}/${encodeGitHubPath(source.path)}`
+  }
 
   if (!sourceUrl) return null
 
@@ -51,7 +49,7 @@ export function PluginSource({ source, repoPath, defaultBranch }: PluginSourcePr
       <dt className="mb-0.5 font-medium text-sm">Source</dt>
       <dd className="break-all text-muted-foreground text-sm">
         <a
-          aria-label={`Open source file ${sourcePath} in a new tab`}
+          aria-label={ariaLabel}
           className="underline-offset-4 transition-colors hover:text-primary hover:underline group-hover:text-primary"
           href={sourceUrl}
           rel="noopener noreferrer"

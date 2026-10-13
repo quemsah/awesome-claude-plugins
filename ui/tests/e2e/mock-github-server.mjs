@@ -47,7 +47,7 @@ const examplePlugin = {
 const fallbackPlugin = {
   name: 'Fallback Install Target',
   description: 'A plugin whose source points at another repository',
-  source: { source: 'plugins/fallback.json', repo: 'elsewhere/shared-plugins', branch: 'main' },
+  source: { source: 'github', repo: 'elsewhere/shared-plugins', ref: 'main' },
   author: { email: 'fallback@example.dev' },
 }
 
