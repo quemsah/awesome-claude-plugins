@@ -29,9 +29,27 @@ export function PluginCard({ marketplaceName, plugin, repoPath, repo }: PluginCa
           <PluginAuthor author={plugin.author} />
           <PluginId id={plugin.id} />
           <PluginKeywords keywords={plugin.keywords} />
-          <PluginList defaultBranch={repo?.default_branch} items={plugin.commands} repoPath={repoPath} title="Commands" />
-          <PluginList defaultBranch={repo?.default_branch} items={plugin.agents} repoPath={repoPath} title="Agents" />
-          <PluginList defaultBranch={repo?.default_branch} items={plugin.mcpServers} repoPath={repoPath} title="MCP Servers" />
+          <PluginList
+            defaultBranch={repo?.default_branch}
+            items={plugin.commands}
+            repoPath={repoPath}
+            source={plugin.source}
+            title="Commands"
+          />
+          <PluginList
+            defaultBranch={repo?.default_branch}
+            items={plugin.agents}
+            repoPath={repoPath}
+            source={plugin.source}
+            title="Agents"
+          />
+          <PluginList
+            defaultBranch={repo?.default_branch}
+            items={plugin.mcpServers}
+            repoPath={repoPath}
+            source={plugin.source}
+            title="MCP Servers"
+          />
         </dl>
       </CardContent>
     </Card>
