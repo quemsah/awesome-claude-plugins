@@ -1,5 +1,21 @@
 import type { StatsItem } from '../../schemas/stats.schema.ts'
 
+export function collapseDailySnapshots(stats: StatsItem[]): StatsItem[] {
+  const dailySnapshots = new Map<string, StatsItem>()
+
+  for (const snapshot of stats) {
+    const timestamp = new Date(snapshot.date)
+    const day = timestamp.toISOString().slice(0, 10)
+    const existing = dailySnapshots.get(day)
+
+    if (!existing || timestamp.getTime() >= new Date(existing.date).getTime()) {
+      dailySnapshots.set(day, snapshot)
+    }
+  }
+
+  return [...dailySnapshots.values()].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+}
+
 export function filterStatsByTimeRange(stats: StatsItem[], timeRange: string): StatsItem[] {
   if (timeRange === 'all') {
     return stats
