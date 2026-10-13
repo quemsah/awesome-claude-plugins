@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 644)
-Total output lines: 70
-
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
@@ -24,7 +21,26 @@ Total output lines: 70
   ],
   "packageRules": [
     {
-    …244 tokens truncated…adix-ui/react-dropdown-menu",
+      "description": "Keep framework updates isolated for focused review.",
+      "matchPackageNames": ["next", "react", "react-dom", "@next/bundle-analyzer"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "schedule": ["after 10am and before 11am on Monday"],
+      "groupName": "framework dependency updates",
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "Group lower-risk type and tooling updates.",
+      "matchPackageNames": ["@biomejs/biome", "@playwright/test", "@tailwindcss/postcss", "husky", "tailwindcss", "typescript", "/^@types//"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "schedule": ["after 2pm and before 3pm on Wednesday"],
+      "groupName": "tooling and type dependency updates",
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Group app runtime minor and patch updates apart from framework packages.",
+      "matchPackageNames": [
+        "@radix-ui/react-avatar",
+        "@radix-ui/react-dropdown-menu",
         "@radix-ui/react-icons",
         "@radix-ui/react-select",
         "@radix-ui/react-slot",
@@ -51,4 +67,3 @@ Total output lines: 70
     }
   ]
 }
-
