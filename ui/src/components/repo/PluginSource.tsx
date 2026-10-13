@@ -18,7 +18,7 @@ export function PluginSource({ source, repoPath, defaultBranch }: PluginSourcePr
   const sourceRepo = typeof source === 'string' ? null : source.repo
   const sourceUrlValue = typeof source === 'string' ? null : source.url
   const targetRepo = typeof source === 'string' ? repoPath : sourceRepo
-  const branch = typeof source === 'string' ? defaultBranch : (source.branch ?? source.ref ?? source.commit ?? 'HEAD')
+  const branch = typeof source === 'string' ? defaultBranch : (source.sha ?? source.branch ?? source.ref ?? source.commit ?? 'HEAD')
   const sourceStringUrl =
     typeof source === 'string' && source.startsWith('github:')
       ? GITHUB_REPO_PATH_PATTERN.test(source.slice('github:'.length))
