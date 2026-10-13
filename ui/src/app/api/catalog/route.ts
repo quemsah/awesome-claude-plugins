@@ -14,10 +14,15 @@ export function GET(request: Request) {
   }
 
   const searchParams = new URL(request.url).searchParams
-  const page = Number.parseInt(searchParams.get('page') ?? '0', 10)
-  const pageSize = Number.parseInt(searchParams.get('pageSize') ?? `${CATALOG_PAGE_SIZE}`, 10)
+  const pageValue = searchParams.get('page') ?? '0'
+  const pageSizeValue = searchParams.get('pageSize') ?? `${CATALOG_PAGE_SIZE}`
+  const page = Number(pageValue)
+  const pageSize = Number(pageSizeValue)
 
-  if (!(Number.isSafeInteger(page) && page >= 0 && Number.isSafeInteger(pageSize) && pageSize > 0 && pageSize <= MAX_PAGE_SIZE)) {
+  if (
+    !(/^\d+$/.test(pageValue) && Number.isSafeInteger(page) && page >= 0) ||
+    !(/^\d+$/.test(pageSizeValue) && Number.isSafeInteger(pageSize) && pageSize > 0 && pageSize <= MAX_PAGE_SIZE)
+  ) {
     return NextResponse.json({ message: 'Invalid pagination parameters' }, { status: 400 })
   }
 
