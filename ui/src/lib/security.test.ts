@@ -38,33 +38,32 @@ describe('catalog security boundaries', () => {
   it('refuses unsafe marketplace and install command tokens', () => {
     expect(getMarketplaceAddCommand('owner', 'repo')).toBe('/plugin marketplace add owner/repo')
     expect(getMarketplaceAddCommand('owner', 'repo\n/plugin install exploit')).toBeNull()
-    expect(getPluginInstallCommand({ pluginId: 'plugin\nexploit', pluginName: 'plugin' })).toBeNull()
+    expect(getPluginInstallCommand({ pluginName: 'plugin\nexploit', marketplaceName: 'ykdojo' })).toBeNull()
   })
 })
 
 describe('install command verification', () => {
-  it('treats only a well-formed pluginId as verified', () => {
-    expect(isPluginInstallCommandVerified('example-plugin')).toBe(true)
-    expect(isPluginInstallCommandVerified('plugin\nexploit')).toBe(false)
+  it('treats only a well-formed marketplace name as verified', () => {
+    expect(isPluginInstallCommandVerified('ykdojo')).toBe(true)
+    expect(isPluginInstallCommandVerified('bad/name')).toBe(false)
     expect(isPluginInstallCommandVerified(undefined)).toBe(false)
     expect(isPluginInstallCommandVerified('')).toBe(false)
   })
 
-  it('uses a marketplace name when pluginId is absent', () => {
-    expect(isPluginInstallCommandVerified(undefined, 'ykdojo')).toBe(true)
+  it('uses the marketplace name as the install target suffix', () => {
+    expect(isPluginInstallCommandVerified('ykdojo')).toBe(true)
     expect(getPluginInstallCommand({ pluginName: 'fallback-install-target', marketplaceName: 'ykdojo' })).toBe(
       '/plugin install fallback-install-target@ykdojo'
     )
-    expect(isPluginInstallCommandVerified(undefined, 'bad/name')).toBe(false)
+    expect(isPluginInstallCommandVerified('bad/name')).toBe(false)
   })
 
-  it('does not let a valid marketplace name hide an invalid pluginId', () => {
-    expect(isPluginInstallCommandVerified('bad id', 'ykdojo')).toBe(false)
-    expect(getPluginInstallCommand({ pluginId: 'bad id', pluginName: 'plugin', marketplaceName: 'ykdojo' })).toBeNull()
+  it('rejects an invalid marketplace name instead of generating a command', () => {
+    expect(getPluginInstallCommand({ pluginName: 'plugin', marketplaceName: 'bad/name' })).toBeNull()
   })
 
   it('does not derive an install target from a repository path', () => {
-    expect(getPluginInstallCommand({ pluginName: 'fallback-install-target' })).toBe('/plugin install fallback-install-target')
+    expect(getPluginInstallCommand({ pluginName: 'FallbackInstallTarget' })).toBe('/plugin install FallbackInstallTarget')
     expect(getPluginInstallCommand({})).toBeNull()
   })
 })

@@ -45,20 +45,20 @@ test('repo detail page refreshes repository and marketplace data in the browser'
     ])
   )
   expect(JSON.stringify(jsonLd)).not.toContain('"Unknown"')
-  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Example Plugin@1.2.3' }) })
-  await expect(plugin.getByText('/plugin install example-plugin@example-plugin')).toBeVisible()
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'ExamplePlugin@1.2.3' }) })
+  await expect(plugin.getByText('/plugin install ExamplePlugin@ykdojo')).toBeVisible()
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
-  await expect.poll(() => copiedText(page)).toBe('/plugin install example-plugin@example-plugin')
+  await expect.poll(() => copiedText(page)).toBe('/plugin install ExamplePlugin@ykdojo')
 })
 
 test('repo detail page uses the manifest marketplace name for fallback install commands', async ({ page }) => {
   await mockClipboard(page)
   await page.goto('/ykdojo/claude-code-tips')
 
-  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Fallback Install Target' }) })
-  await expect(plugin.getByText('/plugin install fallback-install-target@ykdojo')).toBeVisible()
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'FallbackInstallTarget' }) })
+  await expect(plugin.getByText('/plugin install FallbackInstallTarget@ykdojo')).toBeVisible()
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
-  await expect.poll(() => copiedText(page)).toBe('/plugin install fallback-install-target@ykdojo')
+  await expect.poll(() => copiedText(page)).toBe('/plugin install FallbackInstallTarget@ykdojo')
   await expect(plugin.getByRole('link', { name: 'Open source file plugins/fallback.json in a new tab' })).toHaveAttribute(
     'href',
     'https://github.com/elsewhere/shared-plugins/blob/main/plugins/fallback.json'
@@ -75,8 +75,8 @@ test('repo detail page renders plugins without a name or identifier without an i
 test('repo detail page accepts marketplace manifests served as a plugin array', async ({ page }) => {
   await page.goto('/mksglu/context-mode')
 
-  await expect(page.getByRole('heading', { name: 'Example Plugin@1.2.3' })).toBeVisible()
-  await expect(page.getByText('/plugin install example-plugin@example-plugin')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'ExamplePlugin@1.2.3' })).toBeVisible()
+  await expect(page.getByText('/plugin install ExamplePlugin')).toBeVisible()
 })
 
 test('repo detail page renders an empty plugin state when the manifest is missing', async ({ page }) => {
