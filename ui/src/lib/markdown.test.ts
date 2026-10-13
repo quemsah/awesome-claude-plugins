@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/style/useNamingConvention: Test fixture mirrors catalog field names. */
 
 import { describe, expect, it, vi } from 'vitest'
-import { buildRepoMarkdown } from './markdown.ts'
+import { buildAboutMarkdown, buildRepoMarkdown } from './markdown.ts'
 
 const catalogQuality = {
   publicationState: 'indexable' as const,
@@ -199,5 +199,28 @@ describe('buildRepoMarkdown', () => {
   it('returns nothing for records without a repository identity', () => {
     expect(buildRepoMarkdown({ ...makeRepo(), owner: null })).toBe('')
     expect(buildRepoMarkdown({ ...makeRepo(), repo_name: null })).toBe('')
+  })
+})
+
+describe('buildAboutMarkdown', () => {
+  it('includes comparison table with official and community Anthropic catalogs', () => {
+    const markdown = buildAboutMarkdown()
+
+    expect(markdown).toContain('## Comparison with Official Anthropic Catalogs')
+    expect(markdown).toContain('anthropics/claude-plugins-official')
+    expect(markdown).toContain('anthropics/claude-plugins-community')
+    expect(markdown).toContain('~314 plugins')
+    expect(markdown).toContain('~2,282 plugins')
+    expect(markdown).toContain('40,000+ repositories, 110,000+ plugins')
+  })
+
+  it('includes explicit usage guidance on when to choose each catalog', () => {
+    const markdown = buildAboutMarkdown()
+
+    expect(markdown).toContain('### When to Choose Which Catalog')
+    expect(markdown).toContain('Choose the Official Anthropic Catalogs')
+    expect(markdown).toContain('Choose Awesome Claude Plugins')
+    expect(markdown).toContain('production safety')
+    expect(markdown).toContain('niche community tools')
   })
 })
