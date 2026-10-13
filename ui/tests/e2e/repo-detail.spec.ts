@@ -59,9 +59,9 @@ test('repo detail page uses the manifest marketplace name for fallback install c
   await expect(plugin.getByText('/plugin install fallback-install-target@ykdojo')).toBeVisible()
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
   await expect.poll(() => copiedText(page)).toBe('/plugin install fallback-install-target@ykdojo')
-  await expect(plugin.getByRole('link', { name: 'Open source file plugins/fallback.json in a new tab' })).toHaveAttribute(
+  await expect(plugin.getByRole('link', { name: 'Open source repository elsewhere/shared-plugins in a new tab' })).toHaveAttribute(
     'href',
-    'https://github.com/elsewhere/shared-plugins/blob/main/plugins/fallback.json'
+    'https://github.com/elsewhere/shared-plugins/tree/main'
   )
 })
 
