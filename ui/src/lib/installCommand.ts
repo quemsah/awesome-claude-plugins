@@ -5,81 +5,47 @@ export type InstallCommandType = 'marketplace-add' | 'plugin-install'
 
 export type PluginInstallCommandInput = {
   pluginName?: string
-  pluginId?: string
   marketplaceName?: string
 }
 
 const PLUGIN_COMMAND_TOKEN_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i
 
 /**
- * Normalizes a plugin name for CLI usage.
- * Trims whitespace, lowercases, and collapses all whitespace sequences into hyphens.
- *
- * Examples:
- *   "  My   Plugin  " → "my-plugin"
+ * Validates a plugin entry name without changing its spelling.
  */
 export function normalizePluginName(pluginName?: string): string {
-  const normalized = typeof pluginName === 'string' ? pluginName.trim().toLowerCase().replace(/\s+/g, '-') : ''
-  return PLUGIN_COMMAND_TOKEN_PATTERN.test(normalized) ? normalized : ''
+  const name = typeof pluginName === 'string' ? pluginName : ''
+  return PLUGIN_COMMAND_TOKEN_PATTERN.test(name) ? name : ''
 }
 
 /**
  * Determines whether a plugin install command is verified.
  *
- * A non-empty plugin identifier takes precedence. When it is absent, a validated
- * marketplace name can verify the generated install target.
+ * A validated marketplace name verifies the generated install target.
  */
-export function isPluginInstallCommandVerified(pluginId?: string, marketplaceName?: string): boolean {
-  const normalizedPluginId = typeof pluginId === 'string' ? pluginId.trim() : ''
+export function isPluginInstallCommandVerified(marketplaceName?: string): boolean {
   const normalizedMarketplaceName = typeof marketplaceName === 'string' ? marketplaceName.trim() : ''
 
-  return Boolean(
-    normalizedPluginId
-      ? PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedPluginId)
-      : normalizedMarketplaceName && PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedMarketplaceName)
-  )
+  return Boolean(normalizedMarketplaceName && PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedMarketplaceName))
 }
 
 /**
  * Generates a `/plugin install` command from verified manifest semantics.
  *
- * Priority:
- * 1. `pluginName` + `pluginId` → `/plugin install {name}@{id}`
- * 2. `pluginName` + `marketplaceName` → `/plugin install {name}@{marketplaceName}`
- * 3. `pluginId` only → `/plugin install {id}`
- * 4. `pluginName` only → `/plugin install {name}` (unverified)
+ * Uses the exact valid entry name and appends the marketplace name when available.
+ * A command without a marketplace name is unverified.
  *
- * Returns `null` when no identifier is provided or a supplied identifier is unsafe.
+ * Returns `null` when the entry name or a supplied marketplace name is unsafe.
  */
-export function getPluginInstallCommand({ pluginName, pluginId, marketplaceName }: PluginInstallCommandInput): string | null {
-  const normalizedName = normalizePluginName(pluginName)
-  const normalizedPluginId = typeof pluginId === 'string' ? pluginId.trim() : undefined
+export function getPluginInstallCommand({ pluginName, marketplaceName }: PluginInstallCommandInput): string | null {
+  const name = normalizePluginName(pluginName)
   const normalizedMarketplaceName = typeof marketplaceName === 'string' ? marketplaceName.trim() : undefined
 
-  if (normalizedPluginId && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedPluginId)) {
-    return null
-  }
   if (normalizedMarketplaceName && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedMarketplaceName)) {
     return null
   }
 
-  if (normalizedName && normalizedPluginId) {
-    return `/plugin install ${normalizedName}@${normalizedPluginId}`
-  }
-
-  if (normalizedName && normalizedMarketplaceName) {
-    return `/plugin install ${normalizedName}@${normalizedMarketplaceName}`
-  }
-
-  if (normalizedPluginId) {
-    return `/plugin install ${normalizedPluginId}`
-  }
-
-  if (normalizedName) {
-    return `/plugin install ${normalizedName}`
-  }
-
-  return null
+  return name ? `/plugin install ${name}${normalizedMarketplaceName ? `@${normalizedMarketplaceName}` : ''}` : null
 }
 
 /**
