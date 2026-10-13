@@ -48,6 +48,9 @@ const connectSource = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  outputFileTracingIncludes: {
+    '/**': ['./src/data/repos.json'],
+  },
   env: {
     // biome-ignore lint/style/useNamingConvention: Next.js env keys must match the public environment variable name.
     NEXT_PUBLIC_RELEASE: release,

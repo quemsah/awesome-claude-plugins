@@ -1,11 +1,11 @@
 /** biome-ignore-all lint/style/useNamingConvention: catalog data uses snake_case fields */
 
-import reposData from '../data/repos.json' with { type: 'json' }
 import statsData from '../data/stats.json' with { type: 'json' }
 import type { Repo } from '../schemas/repo.schema.ts'
 import { getLatestValidStatsDate } from './catalogDates.ts'
 import { CATALOG_PAGE_SIZE } from './catalogPagination.ts'
 import { type CatalogQuality, getCatalogQuality } from './catalogQuality.ts'
+import { getCatalog } from './catalogStore.ts'
 import { createFuseIndex } from './fuzzySearch.ts'
 import { getGitHubRepoPath } from './repositoryIdentity.ts'
 import { normalizeSearchQuery } from './searchQuery.ts'
@@ -13,7 +13,7 @@ import type { SortOption } from './sortOptions.ts'
 
 export type CatalogRepo = Repo
 
-const catalogRepos: readonly CatalogRepo[] = (reposData as readonly Repo[]).filter(
+const catalogRepos: readonly CatalogRepo[] = getCatalog().filter(
   (repo): repo is CatalogRepo => repo.owner != null && repo.repo_name != null
 )
 const canonicalCatalogRepos = getUniqueCatalogRepos(catalogRepos)
