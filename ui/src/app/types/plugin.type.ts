@@ -135,7 +135,12 @@ export const PluginSchema: z.ZodType<Plugin> = z
     }
   })
 
-const PluginListSchema = z.array(PluginSchema)
+export type MarketplacePluginsParseResult = {
+  plugins: Plugin[]
+  issues: z.ZodIssue[]
+  invalidPluginCount: number
+  success: boolean
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -145,26 +150,30 @@ function isEmptyMarketplace(value: Record<string, unknown>): boolean {
   return Array.isArray(value.skills) || isRecord(value.skills)
 }
 
-export const MarketplacePluginsSchema = z.unknown().transform((value, context): Plugin[] => {
+export function parseMarketplacePlugins(value: unknown): MarketplacePluginsParseResult {
+  const issues: z.ZodIssue[] = []
+  let invalidPluginCount = 0
   const parsePluginList = (plugins: unknown, path: PropertyKey[] = []): Plugin[] => {
-    const parsed = PluginListSchema.safeParse(plugins)
-    if (parsed.success) return parsed.data
+    if (!Array.isArray(plugins)) return []
+    return plugins.flatMap((plugin, index) => {
+      const parsed = PluginSchema.safeParse(plugin)
+      if (parsed.success) return [parsed.data]
 
-    for (const issue of parsed.error.issues) {
-      context.addIssue({
-        code: 'custom',
+      invalidPluginCount += 1
+      issues.push(...parsed.error.issues.map((issue) => ({
+        code: 'custom' as const,
         message: issue.message,
-        path: [...path, ...issue.path],
-      })
-    }
-    return []
+        path: [...path, index, ...issue.path],
+      })))
+      return []
+    })
   }
 
-  if (Array.isArray(value)) return parsePluginList(value)
+  if (Array.isArray(value)) return { plugins: parsePluginList(value), issues, invalidPluginCount, success: true }
 
   if (!isRecord(value)) {
-    context.addIssue({ code: 'custom', message: 'Unsupported marketplace manifest shape' })
-    return []
+    issues.push({ code: 'custom', message: 'Unsupported marketplace manifest shape', path: [] })
+    return { plugins: [], issues, invalidPluginCount, success: false }
   }
 
   const candidates: {
@@ -183,30 +192,32 @@ export const MarketplacePluginsSchema = z.unknown().transform((value, context): 
 
   for (const { container, key, path } of candidates) {
     if (container && Array.isArray(container[key])) {
-      return parsePluginList(container[key], path)
+      return { plugins: parsePluginList(container[key], path), issues, invalidPluginCount, success: true }
     }
   }
 
   const hasMarketplaceWrapper = ['plugins', 'repositories', 'marketplace'].some((key) => key in value)
   if (!hasMarketplaceWrapper) {
     const parsedPlugin = PluginSchema.safeParse(value)
-    if (parsedPlugin.success) return [parsedPlugin.data]
-    if (isEmptyMarketplace(value)) return []
+    if (parsedPlugin.success) return { plugins: [parsedPlugin.data], issues, invalidPluginCount, success: true }
+    if (isEmptyMarketplace(value)) return { plugins: [], issues, invalidPluginCount, success: true }
 
-    for (const issue of parsedPlugin.error.issues) {
-      context.addIssue({
-        code: 'custom',
-        message: issue.message,
-        path: issue.path,
-      })
-    }
-    return []
+    issues.push(...parsedPlugin.error.issues.map((issue) => ({ code: 'custom' as const, message: issue.message, path: issue.path })))
+    return { plugins: [], issues, invalidPluginCount, success: false }
   }
 
-  if (isEmptyMarketplace(value)) return []
+  if (isEmptyMarketplace(value)) return { plugins: [], issues, invalidPluginCount, success: true }
 
-  context.addIssue({ code: 'custom', message: 'Unsupported marketplace manifest shape' })
-  return []
+  issues.push({ code: 'custom', message: 'Unsupported marketplace manifest shape', path: [] })
+  return { plugins: [], issues, invalidPluginCount, success: false }
+}
+
+export const MarketplacePluginsSchema = z.unknown().transform((value, context): Plugin[] => {
+  const parsed = parseMarketplacePlugins(value)
+  for (const issue of parsed.issues) {
+    context.addIssue({ code: 'custom', message: issue.message, path: issue.path })
+  }
+  return parsed.plugins
 })
 
 export function getMarketplaceName(value: unknown): string | undefined {
