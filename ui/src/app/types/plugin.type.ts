@@ -7,6 +7,10 @@ const PluginPathSchema = z
   .min(1)
   .max(512)
   .refine((value) => !(value.includes('..') || CONTROL_CHARACTER_PATTERN.test(value)), 'Must be a safe repository path')
+const PluginPathsSchema = z.union([
+  z.array(PluginPathSchema).max(100),
+  PluginPathSchema.transform((path) => [path]),
+])
 const GitHubRepoPathSchema = z.string().regex(GITHUB_REPO_PATH_PATTERN, 'Must be a GitHub repository path')
 const PluginIdSchema = z.string().regex(/^[A-Za-z0-9._-]+$/, 'Must be a safe plugin identifier')
 const MarketplaceNameSchema = PluginIdSchema
@@ -106,9 +110,9 @@ export const PluginSchema: z.ZodType<Plugin> = z
     license: z.string().max(160).optional(),
     keywords: z.array(z.string().min(1).max(100)).max(50).optional(),
     strict: z.boolean().optional(),
-    commands: z.union([z.array(PluginPathSchema).max(100), z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
-    agents: z.union([z.array(PluginPathSchema).max(100), z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
-    mcpServers: z.union([z.array(PluginPathSchema).max(100), z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
+    commands: z.union([PluginPathsSchema, z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
+    agents: z.union([PluginPathsSchema, z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
+    mcpServers: z.union([PluginPathsSchema, z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
     homepage: SafeUrlSchema(2_048).optional(),
     tags: z.array(z.string().min(1).max(100)).max(50).optional(),
   })
