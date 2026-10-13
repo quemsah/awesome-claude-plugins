@@ -166,7 +166,11 @@ it('uses batched GraphQL metadata and skips marketplace REST when the stored OID
   const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), 'MDEwOlJlcG9zaXRvcnkx')
   ready(db, id)
   const oid = 'a'.repeat(40)
-  db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = ? WHERE id = ?').run(oid, MARKETPLACE_PARSER_VERSION, id)
+  db.prepare('UPDATE repositories SET marketplace_oid = ?, marketplace_parser_version = ? WHERE id = ?').run(
+    oid,
+    MARKETPLACE_PARSER_VERSION,
+    id,
+  )
   const repository: GitHubGraphQLRepo = { ...githubRepo('team', 'repo'), node_id: 'new-global-id', marketplace_oid: oid }
   const getRepositoriesByNodeId = vi.fn(async () => ({
     kind: 'found' as const,
