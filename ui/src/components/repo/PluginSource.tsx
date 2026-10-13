@@ -14,7 +14,10 @@ interface PluginSourceProps {
 export function PluginSource({ source, repoPath, defaultBranch }: PluginSourceProps) {
   if (!source) return null
 
-  const sourcePath = typeof source === 'string' ? source : (source.path ?? source.url ?? source.source)
+  const sourcePath =
+    typeof source === 'string'
+      ? source
+      : (source.path ?? source.url ?? (source.source === 'github' ? (source.repo ?? source.source) : source.source))
   const sourceRepo = typeof source === 'string' ? null : source.repo
   const sourceUrlValue = typeof source === 'string' ? null : source.url
   const targetRepo = typeof source === 'string' ? repoPath : sourceRepo
@@ -40,9 +43,11 @@ export function PluginSource({ source, repoPath, defaultBranch }: PluginSourcePr
           : GITHUB_REPO_PATH_PATTERN.test(sourceUrlValue)
             ? `https://github.com/${sourceUrlValue}`
             : sourceUrlValue
-        : targetRepo && branch
-          ? getGitHubBlobUrl(targetRepo, branch, sourcePath)
-          : null
+        : source.source === 'github' && source.repo && !source.path
+          ? `https://github.com/${source.repo}`
+          : targetRepo && branch
+            ? getGitHubBlobUrl(targetRepo, branch, sourcePath)
+            : null
 
   if (!sourceUrl) return null
 
