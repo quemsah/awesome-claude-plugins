@@ -55,7 +55,7 @@ for (const storedTheme of ['dark', 'light'] as const) {
   test(`global error keeps the ${storedTheme} theme that was active before the crash`, async ({ page }) => {
     await storeTheme(page, storedTheme)
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: 'Awesome Claude Plugins' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Awesome Claude Code Plugins' })).toBeVisible()
     const healthyTheme = await themeState(page)
 
     await crashRootLayout(page, storedTheme)

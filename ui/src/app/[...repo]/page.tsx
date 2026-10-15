@@ -29,7 +29,7 @@ export async function generateMetadata({ params }: RouteParams): Promise<Metadat
   const canonicalPath = getRepoCanonicalPath(catalogRepo)
   const catalogQuality = getCatalogQualityForRepo(catalogRepo)
   const title = `${catalogRepo.owner}/${catalogRepo.repo_name}`
-  const description = catalogRepo.description ?? `Explore ${title} in the Awesome Claude Plugins directory.`
+  const description = catalogRepo.description ?? `Explore ${title} in the Awesome Claude Code Plugins directory.`
 
   return {
     title,

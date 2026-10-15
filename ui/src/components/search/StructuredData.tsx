@@ -13,9 +13,8 @@ export default function StructuredData({ repos }: StructuredDataProps) {
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
-    name: 'Awesome Claude Plugins',
-    description:
-      'Discover GitHub repositories that have adopted Claude Code plugins. Browse repositories by stars, forks, and plugin count',
+    name: 'Awesome Claude Code Plugins',
+    description: 'Search GitHub repositories with Claude Code plugin marketplaces. Copy install commands. Updated daily.',
     url: BASE_URL,
   }
 

@@ -5,23 +5,29 @@ import { Header } from '../components/common/Header.tsx'
 import { SimpleAnalytics } from '../components/common/SimpleAnalytics.tsx'
 import { WebVitals } from '../components/common/WebVitals.tsx'
 import { shouldLoadAnalytics } from '../lib/analytics.ts'
+import { getCanonicalCatalogRepos } from '../lib/catalog.ts'
 import { BASE_URL, DEFAULT_OG_IMAGE } from '../lib/constants.ts'
 import { GITHUB_RAW_URL } from '../lib/github.ts'
 import { Providers } from '../providers/providers.tsx'
 import './globals.css'
 
 export function generateMetadata(): Metadata {
+  const repoCount = getCanonicalCatalogRepos().length
+  const description =
+    repoCount > 0
+      ? `Search ${repoCount.toLocaleString('en-US')} GitHub repositories with Claude Code plugin marketplaces. Copy install commands. Updated daily.`
+      : 'Search GitHub repositories with Claude Code plugin marketplaces. Copy install commands. Updated daily.'
+
   return {
     metadataBase: new URL(BASE_URL),
     title: {
-      default: 'Awesome Claude Plugins',
-      template: '%s | Awesome Claude Plugins',
+      default: 'Awesome Claude Code Plugins',
+      template: '%s | Awesome Claude Code Plugins',
     },
-    description:
-      'Explore the ultimate collection of Claude Code plugins. Discover powerful AI tools, extensions, and integrations across GitHub repositories',
-    authors: [{ name: 'Awesome Claude Plugins Team', url: BASE_URL }],
-    creator: 'Awesome Claude Plugins Team',
-    publisher: 'Awesome Claude Plugins Team',
+    description,
+    authors: [{ name: 'Evgenii', url: 'https://github.com/quemsah' }],
+    creator: 'Evgenii',
+    publisher: 'Evgenii',
     icons: {
       icon: [
         { url: '/favicon.svg', type: 'image/svg+xml' },
@@ -42,25 +48,23 @@ export function generateMetadata(): Metadata {
       type: 'website',
       locale: 'en_US',
       url: BASE_URL,
-      title: 'Awesome Claude Plugins',
-      description:
-        'Explore the ultimate collection of Claude Code plugins. Discover powerful AI tools, extensions, and integrations across GitHub repositories',
-      siteName: 'Awesome Claude Plugins',
+      title: 'Awesome Claude Code Plugins',
+      description,
+      siteName: 'Awesome Claude Code Plugins',
       images: [
         {
           url: DEFAULT_OG_IMAGE,
           width: 1200,
           height: 630,
-          alt: 'Awesome Claude Plugins',
+          alt: 'Awesome Claude Code Plugins',
         },
       ],
     },
     twitter: {
       card: 'summary_large_image',
-      title: 'Awesome Claude Plugins | AI Development Tools',
-      description:
-        'Discover powerful plugins, extensions, and tools for Claude AI. Browse curated collections and boost your development workflow',
-      creator: '@awesome_claude_plugins',
+      title: 'Awesome Claude Code Plugins',
+      description,
+      creator: '@quemsah',
       images: [DEFAULT_OG_IMAGE],
     },
     robots: {

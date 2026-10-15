@@ -6,7 +6,7 @@ import { getGitHubRepoPath } from './repositoryIdentity.ts'
 import { formatDate } from './utils.ts'
 
 export function buildHomeMarkdown(): string {
-  return `# Awesome Claude Plugins
+  return `# Awesome Claude Code Plugins
 
 A searchable catalog of GitHub repositories related to Claude Code plugins, MCP servers, and agent skills.
 
@@ -31,9 +31,9 @@ Report missing, duplicate, or inaccurate data in the [public source repository](
 }
 
 export function buildAboutMarkdown(): string {
-  return `# About Awesome Claude Plugins
+  return `# About Awesome Claude Code Plugins
 
-Awesome Claude Plugins is a daily-updated directory of Claude Code plugins and tools, inspired by the "awesome" list movement.
+Awesome Claude Code Plugins is a daily-updated directory of Claude Code plugins and tools, inspired by the "awesome" list movement.
 
 Repositories are discovered from public GitHub data and refreshed daily. Indexable entries require a description and a validated marketplace plugin count. Plugin counts reflect manifests we can validate, not endorsements. Review code, licenses, and maintenance before installing.
 
@@ -51,7 +51,7 @@ Repository detail pages use current public GitHub metadata when available and sh
 export function buildStatsMarkdown(): string {
   return `# Repository Statistics
 
-The [statistics page](${BASE_URL}/stats) tracks the growth of repositories in the Awesome Claude Plugins catalog over time.
+The [statistics page](${BASE_URL}/stats) tracks the growth of repositories in the Awesome Claude Code Plugins catalog over time.
 
 The data is generated from checked-in daily catalog snapshots.
 
