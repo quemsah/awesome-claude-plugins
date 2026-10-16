@@ -1,4 +1,7 @@
+'use client'
+
 import { Box, GitFork, Star } from 'lucide-react'
+import { trackEvent } from '../../lib/analytics.ts'
 import type { SortOption } from '../../lib/sortOptions.ts'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select.tsx'
 
@@ -17,7 +20,13 @@ export function Sort({ sortOption, onSortChange }: SortProps) {
   const selectedOption = sortOptions.find((option) => option.value === sortOption) || sortOptions[0]
 
   return (
-    <Select onValueChange={(value: string) => onSortChange(value as SortOption)} value={sortOption}>
+    <Select
+      onValueChange={(value: string) => {
+        trackEvent('sort_change', { sort: value })
+        onSortChange(value as SortOption)
+      }}
+      value={sortOption}
+    >
       <SelectTrigger aria-label="Sort by" className="w-full sm:w-48">
         <SelectValue>
           <span className="flex items-center">

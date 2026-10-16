@@ -5,6 +5,7 @@
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDebouncedCallback } from 'use-debounce'
+import { trackEvent } from '../../lib/analytics.ts'
 import { CATALOG_PAGE_SIZE } from '../../lib/catalogPagination.ts'
 import { type CatalogRequestKind, mayStartCatalogRequest } from '../../lib/catalogRequestSlot.ts'
 import {
@@ -146,6 +147,9 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         setTotal(result.total)
         setHasMore(result.hasMore)
         setReplaceCompletion((current) => current + 1)
+        if (result.total === 0) {
+          trackEvent('search_no_results')
+        }
       } catch {
         if (!controller.signal.aborted) {
           setFailedLoad('replace')
@@ -218,6 +222,12 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   useEffect(() => {
     window.sessionStorage.setItem('last-search-url', `${window.location.pathname}${window.location.search}`)
   }, [])
+
+  useEffect(() => {
+    if (initialTotal === 0 && initialSearchTerm.trim().length > 0) {
+      trackEvent('search_no_results')
+    }
+  }, [initialSearchTerm, initialTotal])
 
   useEffect(() => {
     const urlSearchTerm = searchParams.get('q') ?? ''

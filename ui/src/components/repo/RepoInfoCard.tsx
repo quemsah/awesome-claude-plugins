@@ -1,5 +1,8 @@
+'use client'
+
 import { CircleDot, Code, ExternalLink, Eye, FileText, GitFork, Star } from 'lucide-react'
 import Image from 'next/image'
+import { trackEvent } from '../../lib/analytics.ts'
 import { formatDate as formatDateUtil } from '../../lib/utils.ts'
 import type { GitHubRepository } from '../../schemas/github.schema.ts'
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar.tsx'
@@ -54,6 +57,7 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
                   aria-label={`View ${repo.owner.login}'s GitHub profile`}
                   className="underline-offset-4 hover:text-primary hover:underline"
                   href={repo.owner.html_url}
+                  onClick={() => trackEvent('open_github')}
                   rel="noopener noreferrer"
                   target="_blank"
                 >
@@ -75,6 +79,7 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
               <a
                 aria-label={`View ${repo.owner.login}/${repo.name} on GitHub`}
                 href={repo.html_url}
+                onClick={() => trackEvent('open_github')}
                 rel="noopener noreferrer"
                 target="_blank"
               >
