@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/style/useNamingConvention: Test assertion mirrors catalog field names. */
 
 import { describe, expect, it } from 'vitest'
-import { type CatalogRepo, getCanonicalCatalogRepos, searchCatalogRepos } from './catalog.ts'
+import { type CatalogRepo, getCanonicalCatalogRepos, isArchivedRepo, searchCatalogRepos } from './catalog.ts'
 import { createFuseIndex } from './fuzzySearch.ts'
 
 function repoKey(repo: CatalogRepo) {
@@ -89,5 +89,85 @@ describe('searchCatalogRepos', () => {
       }
       expect(sawTie).toBe(true)
     }
+  })
+
+  it('correctly identifies archived repositories', () => {
+    expect(
+      isArchivedRepo({
+        id: 1,
+        html_url: 'https://github.com/a/b',
+        stargazers_count: 0,
+        forks_count: 0,
+        subscribers_count: 0,
+        description: '[Archived] old plugin',
+        owner: 'a',
+        owner_url: 'https://github.com/a',
+        repo_name: 'b',
+        plugins_count: null,
+      })
+    ).toBe(true)
+    expect(
+      isArchivedRepo({
+        id: 2,
+        html_url: 'https://github.com/a/c',
+        stargazers_count: 0,
+        forks_count: 0,
+        subscribers_count: 0,
+        description: 'Active plugin',
+        owner: 'a',
+        owner_url: 'https://github.com/a',
+        repo_name: 'c',
+        plugins_count: null,
+        archived: true,
+      })
+    ).toBe(true)
+    expect(
+      isArchivedRepo({
+        id: 3,
+        html_url: 'https://github.com/a/d',
+        stargazers_count: 0,
+        forks_count: 0,
+        subscribers_count: 0,
+        description: 'Active plugin',
+        owner: 'a',
+        owner_url: 'https://github.com/a',
+        repo_name: 'd',
+        plugins_count: null,
+        archived: false,
+      })
+    ).toBe(false)
+    expect(
+      isArchivedRepo({
+        id: 4,
+        html_url: 'https://github.com/a/e',
+        stargazers_count: 0,
+        forks_count: 0,
+        subscribers_count: 0,
+        description: null,
+        owner: 'a',
+        owner_url: 'https://github.com/a',
+        repo_name: 'e',
+        plugins_count: null,
+      })
+    ).toBe(false)
+  })
+
+  it('deprioritizes archived repositories to the bottom', () => {
+    const results = searchCatalogRepos('', 'stars-desc', 0, 1000)
+    let seenArchived = false
+    for (const repo of results.repos) {
+      if (isArchivedRepo(repo)) {
+        seenArchived = true
+      } else if (seenArchived) {
+        throw new Error(`Non-archived repository ${repo.owner}/${repo.repo_name} found after archived repository`)
+      }
+    }
+  })
+
+  it('supports sorting by updated-desc and created-desc', () => {
+    const updated = searchCatalogRepos('claude', 'updated-desc', 0, 50)
+    expect(updated.repos.length).toBeGreaterThan(0)
+    const created = searchCatalogRepos('claude', 'created-desc', 0, 50)
+    expect(created.repos.length).toBeGreaterThan(0)
   })
 })
