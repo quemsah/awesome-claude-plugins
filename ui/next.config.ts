@@ -58,7 +58,7 @@ const nextConfig: NextConfig = {
     removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error', 'warn', 'info'] } : false,
   },
   experimental: {
-    optimizePackageImports: ['lucide-react', 'recharts'],
+    optimizePackageImports: ['recharts'],
   },
   images: {
     remotePatterns: [{ protocol: 'https', hostname: 'avatars.githubusercontent.com' }],
