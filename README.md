@@ -2,7 +2,7 @@
 
 > Last updated: 18.10.2026 with 48781 total repositories indexed.
 
-| # | Repo Name | Description | Stars | Subs | Plugins |
+| # | Repo Name | Description | Stars | Watchers | Plugins |
 |---|-----------|-------------|-------|-------------|---------|
 | 1 | [superpowers](https://github.com/obra/superpowers) | An agentic skills framework & software development methodology that works. | 301204 | 1109 | 1 |
 | 2 | [skills](https://github.com/mattpocock/skills) | Skills for Real Engineers. Straight from my .agents directory. | 295082 | 1545 | 1 |

@@ -75,7 +75,9 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
         if (!response.ok) {
           if (!cancelled) {
             setPluginsStatus('error')
-            setPluginsError('Failed to load marketplace manifest.')
+            setPluginsError(
+              'Failed to load marketplace manifest. GitHub API may be rate limiting requests. Please try again later or inspect the manifest file directly on GitHub.'
+            )
             setPluginsLoading(false)
           }
           return
@@ -109,7 +111,9 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
       } catch (_error) {
         if (!cancelled) {
           setPluginsStatus('error')
-          setPluginsError('Failed to load marketplace manifest.')
+          setPluginsError(
+            'Failed to load marketplace manifest. GitHub API may be rate limiting requests. Please try again later or inspect the manifest file directly on GitHub.'
+          )
           setPluginsLoading(false)
         }
       }
@@ -144,7 +148,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
         <Card className="mt-8 p-6">
           <CardHeader className="mb-4 p-0">
             <CardTitle className="text-2xl">
-              <h2>Available Plugins</h2>
+              <h2>Available plugins</h2>
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">

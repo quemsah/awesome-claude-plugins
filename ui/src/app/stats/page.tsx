@@ -27,7 +27,7 @@ export default function StatsPageRoute() {
       <div className="container mx-auto px-4 py-8">
         <Breadcrumbs items={getStatsBreadcrumbs()} />
         <div className="mb-8">
-          <h1 className="mb-2 font-bold text-3xl">Repositories Statistics</h1>
+          <h1 className="mb-2 font-bold text-3xl">Repository statistics</h1>
           <p className="text-muted-foreground">The growth of repositories over time</p>
         </div>
 
