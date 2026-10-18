@@ -1,7 +1,7 @@
 'use client'
 
 import { Search } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDebouncedCallback } from 'use-debounce'
 import type { SortOption } from '../../lib/sortOptions.ts'
 import { Input } from '../ui/input.tsx'
@@ -29,6 +29,7 @@ export function SearchControls({
   filteredRepoCount,
 }: SearchControlsProps) {
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm)
+  const lastNavigationVersion = useRef(navigationVersion)
 
   useEffect(() => {
     setLocalSearchTerm(searchTerm)
@@ -50,6 +51,8 @@ export function SearchControls({
   // A Home link or browser history navigation supersedes an uncommitted local keystroke.
   // Otherwise the 250 ms callback can restore the query just cleared by the router.
   useEffect(() => {
+    if (lastNavigationVersion.current === navigationVersion) return
+    lastNavigationVersion.current = navigationVersion
     debouncedSearch.cancel()
   }, [debouncedSearch, navigationVersion])
 
