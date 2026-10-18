@@ -34,7 +34,7 @@ describe('generateMetadata', () => {
     expect(metadata.robots).toEqual({ index: true, follow: true })
   })
 
-  it('keeps truly empty repos non-indexed when manifest description is missing', async () => {
+  it('keeps publication stable when manifest description is unavailable', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: false,
       status: 404,
@@ -43,10 +43,10 @@ describe('generateMetadata', () => {
     const metadata = await generateMetadata({ params: Promise.resolve({ repo: ['chrisliu298', 'nanoresearch'] }) })
 
     expect(metadata.description).toBe('Explore chrisliu298/nanoresearch in the Awesome Claude Plugins directory.')
-    expect(metadata.robots).toEqual({ index: false, follow: true })
+    expect(metadata.robots).toEqual({ index: true, follow: true })
   })
 
-  it('keeps repos non-indexed when manifest description is weak (< 40 chars)', async () => {
+  it('keeps publication stable when manifest description is short (< 40 chars)', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -59,6 +59,6 @@ describe('generateMetadata', () => {
     const metadata = await generateMetadata({ params: Promise.resolve({ repo: ['chrisliu298', 'nanoresearch'] }) })
 
     expect(metadata.description).toBe('Short tool')
-    expect(metadata.robots).toEqual({ index: false, follow: true })
+    expect(metadata.robots).toEqual({ index: true, follow: true })
   })
 })

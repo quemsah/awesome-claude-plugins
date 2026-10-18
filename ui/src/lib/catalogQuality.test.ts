@@ -27,11 +27,11 @@ describe('getCatalogQuality', () => {
     })
   })
 
-  it('holds truly empty records with missing description for review', () => {
+  it('keeps a validated repository indexable even without a description', () => {
     expect(getCatalogQuality({ ...baseRepo, description: null }, true)).toEqual({
       descriptionQuality: 'missing',
-      publicationState: 'needs-review',
-      qualityReason: 'Repository description is missing.',
+      publicationState: 'indexable',
+      qualityReason: 'Canonical repository has a validated plugin count.',
     })
   })
 
@@ -43,11 +43,11 @@ describe('getCatalogQuality', () => {
     })
   })
 
-  it('holds records for review when fallback manifest description is weak (< 40 characters)', () => {
+  it('preserves indexability when the manifest description is weak (< 40 characters)', () => {
     expect(getCatalogQuality({ ...baseRepo, description: null }, true, 'Short manifest plugin')).toEqual({
       descriptionQuality: 'weak',
-      publicationState: 'needs-review',
-      qualityReason: 'Repository description is missing.',
+      publicationState: 'indexable',
+      qualityReason: 'Canonical repository has a validated plugin count.',
     })
   })
 

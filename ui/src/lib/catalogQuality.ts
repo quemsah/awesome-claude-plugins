@@ -19,17 +19,8 @@ export function getCatalogQuality(repo: Repo, isCanonical: boolean, fallbackDesc
   }
 
   const descriptionQuality = getDescriptionQuality(repo, fallbackDescription)
-  const hasRepoDescription = Boolean(repo.description?.trim())
-  const hasStrongFallback = Boolean(fallbackDescription?.trim() && fallbackDescription.trim().length >= 40)
-
-  if (!(hasRepoDescription || hasStrongFallback)) {
-    return {
-      descriptionQuality,
-      publicationState: 'needs-review',
-      qualityReason: 'Repository description is missing.',
-    }
-  }
-
+  // Publication is derived only from the checked-in catalog snapshot. A live manifest
+  // fetch may improve metadata but must never make robots disagree with the sitemap.
   if (repo.plugins_count === null) {
     return {
       descriptionQuality,

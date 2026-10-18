@@ -52,7 +52,7 @@ export async function generateMetadata({ params }: RouteParams): Promise<Metadat
     fallbackDescription = await fetchManifestDescription(catalogRepo.owner, catalogRepo.repo_name)
   }
 
-  const catalogQuality = getCatalogQualityForRepo(catalogRepo, fallbackDescription)
+  const catalogQuality = getCatalogQualityForRepo(catalogRepo)
   const title = `${catalogRepo.owner}/${catalogRepo.repo_name}`
   const description =
     catalogRepo.description?.trim() || fallbackDescription?.trim() || `Explore ${title} in the Awesome Claude Plugins directory.`
