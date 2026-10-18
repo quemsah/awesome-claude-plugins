@@ -16,6 +16,26 @@ describe('resolveSafeInternalUrl', () => {
     expect(resolveSafeInternalUrl('/\\attacker.com')).toBe('/')
   })
 
+  it('rejects control characters and backslashes that URLs can reinterpret as external navigation', () => {
+    for (const malicious of [
+      '/\t/evil.com',
+      '/\n/evil.com',
+      '/\r/evil.com',
+      '/\\evil.com',
+      '/foo\\bar',
+      '/\u0000/evil.com',
+      '/\u007f/evil.com',
+      ' //evil.com',
+    ]) {
+      expect(resolveSafeInternalUrl(malicious)).toBe('/')
+    }
+  })
+
+  it('returns a normalized same-origin path, including search and hash', () => {
+    expect(resolveSafeInternalUrl('/browse/../?q=claude#search')).toBe('/?q=claude#search')
+    expect(resolveSafeInternalUrl('/?q=encoded%20query')).toBe('/?q=encoded%20query')
+  })
+
   it('rejects non-root URLs, relative paths, and malicious schemes', () => {
     expect(resolveSafeInternalUrl('https://google.com')).toBe('/')
     expect(resolveSafeInternalUrl('javascript:alert(1)')).toBe('/')
