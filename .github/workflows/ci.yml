@@ -122,6 +122,8 @@ jobs:
       - name: Run browser e2e tests
         run: npm run test:e2e
         working-directory: ui
+        env:
+          PLAYWRIGHT_PREBUILT: '1'
 
       - name: Upload Playwright failure artifacts
         if: failure()
