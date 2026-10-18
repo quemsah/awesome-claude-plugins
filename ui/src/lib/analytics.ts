@@ -43,8 +43,37 @@ export function isAnalyticsActive(): boolean {
   return typeof window !== 'undefined' && typeof window.sa_event === 'function' && !isPrivacyRestricted()
 }
 
+// A user can click before the deferred analytics script becomes ready. Keep a small
+// bounded, anonymous queue and deliver it when the script reports readiness.
+const pendingEvents: Array<{ event: AnalyticsEvent; metadata?: AnalyticsMetadata }> = []
+const MAX_PENDING_EVENTS = 25
+
+export function flushPendingEvents(): void {
+  if (isPrivacyRestricted()) {
+    pendingEvents.length = 0
+    return
+  }
+  if (!isAnalyticsActive()) return
+  while (pendingEvents.length > 0) {
+    const item = pendingEvents.shift()
+    if (!item) break
+    try {
+      window.sa_event?.(item.event, item.metadata)
+    } catch {
+      // Analytics must never interfere with user interactions.
+    }
+  }
+}
+
 export function trackEvent(event: AnalyticsEvent, metadata?: AnalyticsMetadata): boolean {
+  if (typeof window === 'undefined') return false
+  if (isPrivacyRestricted()) {
+    pendingEvents.length = 0
+    return false
+  }
   if (!isAnalyticsActive()) {
+    if (pendingEvents.length === MAX_PENDING_EVENTS) pendingEvents.shift()
+    pendingEvents.push({ event, ...(metadata ? { metadata } : {}) })
     return false
   }
 

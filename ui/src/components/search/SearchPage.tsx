@@ -56,6 +56,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   const [replaceCompletion, setReplaceCompletion] = useState(0)
   const [failedLoad, setFailedLoad] = useState<PendingCatalogLoad>(null)
   const [_replaceRetry, setReplaceRetry] = useState(0)
+  const lastNoResultsQuery = useRef<string | null>(null)
   const initialRequest = useRef(true)
   const nextPage = useRef(1)
   const loadingController = useRef<AbortController | null>(null)
@@ -64,6 +65,17 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   // read "nothing in flight", abort the running replacement and append onto the list it was replacing.
   const inFlightCatalogRequest = useRef<CatalogRequestKind | null>(null)
   const pendingScrollRestore = useRef<{ attempts: number; scrollY: number; url: string } | null>(null)
+
+  const reportNoResults = useCallback((query: string, count: number) => {
+    const normalized = query.trim()
+    if (!normalized || count > 0) {
+      lastNoResultsQuery.current = null
+      return
+    }
+    if (lastNoResultsQuery.current === normalized) return
+    lastNoResultsQuery.current = normalized
+    trackEvent('search_no_results')
+  }, [])
 
   const updateSearchUrl = useCallback(
     (nextSearchTerm: string, nextSortOption: SortOption, mode: 'push' | 'replace' = 'push') => {
@@ -147,9 +159,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         setTotal(result.total)
         setHasMore(result.hasMore)
         setReplaceCompletion((current) => current + 1)
-        if (result.total === 0) {
-          trackEvent('search_no_results')
-        }
+        reportNoResults(searchTerm, result.total)
       } catch {
         if (!controller.signal.aborted) {
           setFailedLoad('replace')
@@ -224,10 +234,8 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   }, [])
 
   useEffect(() => {
-    if (initialTotal === 0 && initialSearchTerm.trim().length > 0) {
-      trackEvent('search_no_results')
-    }
-  }, [initialSearchTerm, initialTotal])
+    reportNoResults(initialSearchTerm, initialTotal)
+  }, [initialSearchTerm, initialTotal, reportNoResults])
 
   useEffect(() => {
     const urlSearchTerm = searchParams.get('q') ?? ''
