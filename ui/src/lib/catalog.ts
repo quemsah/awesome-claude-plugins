@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/style/useNamingConvention: catalog data uses snake_case fields */
 
 import statsData from '../data/stats.json' with { type: 'json' }
-import type { Repo } from '../schemas/repo.schema.ts'
+import type { PluginSummary, Repo } from '../schemas/repo.schema.ts'
 import { getLatestValidStatsDate } from './catalogDates.ts'
 import { CATALOG_PAGE_SIZE } from './catalogPagination.ts'
 import { type CatalogQuality, getCatalogQuality } from './catalogQuality.ts'
@@ -195,9 +195,60 @@ export function searchCatalogRepos(query: string, sortOption: SortOption, page =
   return {
     hasMore: start + pageSize < total,
     pluginsCount,
-    repos,
+    repos: repos.map((repo) => formatCatalogRepo(repo)),
     total,
   }
+}
+
+export function extractPluginSummaries(repo: CatalogRepo): PluginSummary[] | undefined {
+  if (Array.isArray(repo.plugins) && repo.plugins.length > 0) {
+    const list = repo.plugins
+      .filter((p): p is PluginSummary => typeof p === 'object' && p !== null)
+      .map((p) => {
+        const item: PluginSummary = {}
+        if (typeof p.name === 'string' && p.name.trim()) item.name = p.name.trim()
+        if (typeof p.description === 'string' && p.description.trim()) item.description = p.description.trim()
+        return item
+      })
+      .filter((p) => Boolean(p.name || p.description))
+
+    if (list.length > 0) return list
+  }
+
+  const raw = repo as Record<string, unknown>
+  if (Array.isArray(raw.plugin_summaries) && raw.plugin_summaries.length > 0) {
+    const list = raw.plugin_summaries
+      .filter((p): p is Record<string, unknown> => typeof p === 'object' && p !== null)
+      .map((p) => {
+        const item: PluginSummary = {}
+        if (typeof p.name === 'string' && p.name.trim()) item.name = p.name.trim()
+        if (typeof p.description === 'string' && p.description.trim()) item.description = p.description.trim()
+        return item
+      })
+      .filter((p) => Boolean(p.name || p.description))
+
+    if (list.length > 0) return list
+  }
+
+  if (typeof raw.plugin_name === 'string' || typeof raw.plugin_description === 'string') {
+    const item: PluginSummary = {}
+    if (typeof raw.plugin_name === 'string' && raw.plugin_name.trim()) item.name = raw.plugin_name.trim()
+    if (typeof raw.plugin_description === 'string' && raw.plugin_description.trim()) item.description = raw.plugin_description.trim()
+    if (item.name || item.description) return [item]
+  }
+
+  return undefined
+}
+
+export function formatCatalogRepo(repo: CatalogRepo): CatalogRepo {
+  const plugins = extractPluginSummaries(repo)
+  if (plugins && plugins.length > 0) {
+    return {
+      ...repo,
+      plugins,
+    }
+  }
+  return repo
 }
 
 export function findCatalogRepo(repoPath: string) {

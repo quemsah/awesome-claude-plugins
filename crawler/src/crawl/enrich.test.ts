@@ -73,6 +73,7 @@ function ready(db: Database.Database, id: number, owner = 'team', repo = 'repo')
     repo_name: repo,
     repo_updated: '2024-01-01T00:00:00Z',
     plugins_count: 3,
+    plugins_json: '[]',
   })
 }
 

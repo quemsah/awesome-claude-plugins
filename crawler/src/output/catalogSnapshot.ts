@@ -13,6 +13,7 @@ export function renderRepos(rows: readonly PublishableRepository[]): string {
     owner_url: row.owner_url,
     repo_name: row.repo_name,
     plugins_count: row.plugins_count,
+    ...(row.plugins_json ? { plugins: JSON.parse(row.plugins_json) as unknown } : {}),
     id: row.id,
   }))
   return `${JSON.stringify(repositories)}\n`

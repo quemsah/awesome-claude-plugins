@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { openDatabase } from '../storage/db.js'
-import { listPublishable } from '../storage/repositories.js'
+import { listPublishable, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
 import { renderMarkdownPaths, renderRepos, renderStats } from './catalogSnapshot.js'
 import { createStatsDraft } from './statsDraft.js'
 import { validateSnapshot } from './validate.js'
@@ -52,6 +52,30 @@ it('renders only canonical, fully enriched repositories in original id and publi
   }
 })
 
+it('publishes validated plugin names and descriptions collected from manifests', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const id = upsertDiscovery(db, 'https://github.com/example/plugins', null)
+    updateEnriched(db, id, {
+      owner: 'example',
+      repo_name: 'plugins',
+      owner_url: 'https://github.com/example',
+      description: null,
+      repo_updated: null,
+      stargazers_count: 3,
+      forks_count: 1,
+      subscribers_count: 0,
+      plugins_count: 1,
+      plugins_json: JSON.stringify([{ name: 'demo', description: 'Useful demonstration plugin' }]),
+    })
+    const snapshot = renderRepos(listPublishable(db))
+    expect(JSON.parse(snapshot)[0].plugins).toEqual([{ name: 'demo', description: 'Useful demonstration plugin' }])
+    const stats = '[{"id":1,"date":"2026-09-23T21:00:00.000Z","size":1}]'
+    expect(() => validateSnapshot(snapshot, stats, { expectedSize: 1 })).not.toThrow()
+  } finally {
+    db.close()
+  }
+})
 it('renders the markdown repository path sidecar from the publishable catalog', () => {
   const db = openDatabase(':memory:')
   try {
