@@ -22,8 +22,8 @@ export default function PrivacyPage() {
           <section>
             <h2 className="mb-2 font-semibold text-foreground text-xl">Catalog data</h2>
             <p>
-              Awesome Claude Plugins displays public GitHub repository metadata and plugin marketplace information. Repository details
-              are requested from GitHub when you open a repository page.
+              Awesome Claude Plugins displays public GitHub repository metadata and plugin marketplace information. Repository details are
+              requested from GitHub when you open a repository page.
             </p>
           </section>
           <section>
