@@ -64,7 +64,6 @@ export function generateMetadata(): Metadata {
       card: 'summary_large_image',
       title: 'Awesome Claude Plugins',
       description,
-      creator: '@awesome_claude_plugins',
       images: [DEFAULT_OG_IMAGE],
     },
     robots: {
