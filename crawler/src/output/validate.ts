@@ -125,10 +125,15 @@ function validateRepoFields(item: Record<string, unknown>, path: string, issues:
       issues.push({ path: `${path}.plugins`, message: 'must be at most 30 plugin summaries' })
     } else {
       for (const plugin of item.plugins) {
-        if (!record(plugin) || Object.keys(plugin).some((key) => key !== 'name' && key !== 'description') ||
+        if (
+          !record(plugin) ||
+          Object.keys(plugin).some((key) => key !== 'name' && key !== 'description') ||
           (typeof plugin.name !== 'string' && typeof plugin.description !== 'string') ||
-          (plugin.name !== undefined && (typeof plugin.name !== 'string' || plugin.name.length > 160 || hasUnpairedSurrogate(plugin.name))) ||
-          (plugin.description !== undefined && (typeof plugin.description !== 'string' || plugin.description.length > 300 || hasUnpairedSurrogate(plugin.description)))) {
+          (plugin.name !== undefined &&
+            (typeof plugin.name !== 'string' || plugin.name.length > 160 || hasUnpairedSurrogate(plugin.name))) ||
+          (plugin.description !== undefined &&
+            (typeof plugin.description !== 'string' || plugin.description.length > 300 || hasUnpairedSurrogate(plugin.description)))
+        ) {
           issues.push({ path: `${path}.plugins`, message: 'invalid public plugin summary' })
           break
         }
