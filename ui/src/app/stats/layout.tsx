@@ -15,7 +15,7 @@ export const metadata: Metadata = {
         url: DEFAULT_OG_IMAGE,
         width: 1200,
         height: 630,
-        alt: 'Claude Code Plugin Statistics',
+        alt: 'Awesome Claude Code Plugin Statistics',
       },
     ],
   },
