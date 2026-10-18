@@ -37,7 +37,12 @@ export type EnrichmentFields = Pick<
   | 'repo_updated'
   | 'plugins_count'
 > &
-  Partial<Pick<RepositoryRow, 'github_node_id' | 'marketplace_oid' | 'repository_etag' | 'marketplace_etag' | 'marketplace_parser_version' | 'plugins_json'>>
+  Partial<
+    Pick<
+      RepositoryRow,
+      'github_node_id' | 'marketplace_oid' | 'repository_etag' | 'marketplace_etag' | 'marketplace_parser_version' | 'plugins_json'
+    >
+  >
 
 export type PublishableRepository = Pick<
   RepositoryRow,
