@@ -52,3 +52,51 @@ test('url, sort control, and catalog results stay aligned when sort is chosen mi
   await expect.poll(screenState, { timeout: 10_000 }).toEqual(alignedState)
   await expectStable(screenState, alignedState, 2_000)
 })
+
+
+test('reversing sort before an earlier URL navigation settles restores the correct address', async ({ page }) => {
+  await page.goto('/')
+  await page.route(/_rsc=/, async (route) => {
+    if (new URL(route.request().url()).searchParams.get('sort') === 'forks-desc') {
+      await new Promise((resolve) => setTimeout(resolve, 900))
+    }
+    await route.continue()
+  })
+
+  await chooseSortOption(page, 'Forks')
+  await chooseSortOption(page, 'Stars')
+
+  const screenState = async () => ({
+    sortParam: new URL(page.url()).searchParams.get('sort'),
+    selectedSort: await page.getByRole('combobox', { name: 'Sort by' }).innerText(),
+  })
+  const expected = { sortParam: null, selectedSort: 'Stars' }
+  await expect.poll(screenState).toEqual(expected)
+  await expectStable(screenState, expected, 1_500)
+})
+
+test('a header link clears an abandoned search navigation and queued input', async ({ page }) => {
+  await page.goto('/?q=previous')
+  await page.route(/_rsc=/, async (route) => {
+    if (new URL(route.request().url()).searchParams.get('q') === 'replacement') {
+      await new Promise((resolve) => setTimeout(resolve, 900))
+    }
+    await route.continue()
+  })
+
+  const pendingSearchRequest = page.waitForRequest(
+    (request) => request.url().includes('_rsc=') && new URL(request.url()).searchParams.get('q') === 'replacement'
+  )
+  const searchbox = page.getByRole('searchbox', { name: 'Search repositories' })
+  await searchbox.fill('replacement')
+  await pendingSearchRequest
+  await page.getByRole('link', { name: 'Search repositories' }).click()
+
+  const screenState = async () => ({
+    queryParam: new URL(page.url()).searchParams.get('q'),
+    searchInput: await searchbox.inputValue(),
+  })
+  const expected = { queryParam: null, searchInput: '' }
+  await expect.poll(screenState).toEqual(expected)
+  await expectStable(screenState, expected, 1_500)
+})
