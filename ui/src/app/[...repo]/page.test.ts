@@ -1,6 +1,32 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { generateMetadata } from './page.tsx'
 
+// Keep metadata tests independent of churn in the checked-in daily catalog snapshot.
+vi.mock('../../lib/catalog.ts', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../lib/catalog.ts')>()
+  return {
+    ...original,
+    findCatalogRepo: (path: string) =>
+      path === 'chrisliu298/nanoresearch'
+        ? {
+            id: 123456789,
+            owner: 'chrisliu298',
+            repo_name: 'nanoresearch',
+            html_url: 'https://github.com/chrisliu298/nanoresearch',
+            owner_url: 'https://github.com/chrisliu298',
+            description: null,
+            stargazers_count: 2,
+            forks_count: 0,
+            subscribers_count: 0,
+            plugins_count: 1,
+          }
+        : original.findCatalogRepo(path),
+    getCatalogQualityForRepo: (repo: Parameters<typeof original.getCatalogQualityForRepo>[0]) =>
+      repo.owner === 'chrisliu298'
+        ? { descriptionQuality: 'missing' as const, publicationState: 'indexable' as const, qualityReason: 'Validated plugins.' }
+        : original.getCatalogQualityForRepo(repo),
+  }
+})
 const detailImagePattern = /\/og\/ykdojo\/claude-code-tips$/
 
 describe('generateMetadata', () => {
