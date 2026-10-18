@@ -1,7 +1,8 @@
-import { isValidGitHubPathSegment } from '../github/identifiers.js'
+import { RepoSchema } from '@awesome-claude-plugins/catalog-contract'
 
 type Issue = { path: string; message: string }
 type SnapshotOptions = { expectedSize?: number; requireLatestSize?: boolean }
+type ContractIssue = { code: string; keys?: string[]; path: (string | number)[]; message: string }
 
 const repoKeys = [
   'html_url',
@@ -96,33 +97,19 @@ function decode(value: string | Uint8Array, path: string, issues: Issue[]): unkn
   }
 }
 
-function validateRepoIdentity(item: Record<string, unknown>, path: string, issues: Issue[]): void {
-  const { html_url: url, owner, owner_url: ownerUrl, repo_name: name } = item
-  if (typeof owner !== 'string' || !isValidGitHubPathSegment(owner)) {
-    issues.push({ path: `${path}.owner`, message: 'must be a GitHub owner segment' })
-  }
-  if (typeof name !== 'string' || !isValidGitHubPathSegment(name)) {
-    issues.push({ path: `${path}.repo_name`, message: 'must be a GitHub repository segment' })
-  }
-  if (typeof url !== 'string' || (typeof owner === 'string' && typeof name === 'string' && url !== `https://github.com/${owner}/${name}`)) {
-    issues.push({ path: `${path}.html_url`, message: 'must be the canonical GitHub repository URL' })
-  }
-  if (typeof ownerUrl !== 'string' || (typeof owner === 'string' && ownerUrl !== `https://github.com/${owner}`)) {
-    issues.push({ path: `${path}.owner_url`, message: 'must be the canonical GitHub owner URL' })
-  }
-}
-
-function validateRepoFields(item: Record<string, unknown>, path: string, issues: Issue[]): void {
-  for (const key of ['stargazers_count', 'forks_count', 'subscribers_count', 'plugins_count'] as const) {
-    count(item[key], `${path}.${key}`, issues, key === 'plugins_count')
-  }
-  if (item.description !== null && typeof item.description !== 'string') {
-    issues.push({ path: `${path}.description`, message: 'must be a string or null' })
-  }
-  for (const key of ['description', 'owner', 'repo_name', 'html_url', 'owner_url'] as const) {
-    if (typeof item[key] === 'string' && hasUnpairedSurrogate(item[key])) {
-      issues.push({ path: `${path}.${key}`, message: 'invalid UTF-8 (unpaired surrogate)' })
+function appendContractIssues(contractIssues: ContractIssue[], path: string, issues: Issue[]): void {
+  // Preserve the legacy validator order: extra keys are reported before field refinements.
+  for (const issue of contractIssues) {
+    if (issue.code === 'unrecognized_keys') {
+      for (const key of issue.keys ?? []) {
+        issues.push({ path: `${path}.${key}`, message: 'unexpected public field' })
+      }
     }
+  }
+  for (const issue of contractIssues) {
+    if (issue.path[0] === 'id' || issue.code === 'unrecognized_keys') continue
+    const suffix = issue.path.map(String).join('.')
+    issues.push({ path: suffix ? `${path}.${suffix}` : path, message: issue.message })
   }
 }
 
@@ -131,9 +118,8 @@ function validateRepoItem(item: unknown, path: string, issues: Issue[], previous
     issues.push({ path, message: 'must be an object' })
     return previousId
   }
-  keys(item, repoKeys, path, issues)
-  validateRepoIdentity(item, path, issues)
-  validateRepoFields(item, path, issues)
+  const parsed = RepoSchema.safeParse(item)
+  if (!parsed.success) appendContractIssues(parsed.error.issues as ContractIssue[], path, issues)
   const id = item.id
   if (!nonnegativeInteger(id) || id === 0 || id <= previousId) {
     issues.push({ path: `${path}.id`, message: 'must be a positive unique id in ascending order' })

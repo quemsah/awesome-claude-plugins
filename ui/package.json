@@ -36,7 +36,8 @@
     "recharts": "3.10.1",
     "tailwind-merge": "^3.6.0",
     "use-debounce": "^10.1.1",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@awesome-claude-plugins/catalog-contract": "^0.1.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

@@ -1,3 +1,4 @@
+import { parseMarketplace as parseSharedMarketplace } from '@awesome-claude-plugins/catalog-contract'
 import { z } from 'zod'
 
 const CONTROL_CHARACTER_PATTERN = /[\r\n]/
@@ -135,40 +136,25 @@ export const PluginSchema: z.ZodType<Plugin> = z
     }
   })
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
-
-function isCountableMarketplacePlugin(value: unknown): value is Record<string, unknown> {
-  if (!isRecord(value) || typeof value.name !== 'string' || value.name.length === 0 || value.name.length > 160) return false
-
-  return (
-    (typeof value.source === 'string' && value.source.length > 0) ||
-    (isRecord(value.source) && typeof value.source.source === 'string' && value.source.source.length > 0)
-  )
-}
-
 export const MarketplacePluginsSchema = z.unknown().transform((value, context): Plugin[] => {
-  if (
-    !isRecord(value) ||
-    typeof value.name !== 'string' ||
-    value.name.length === 0 ||
-    !isRecord(value.owner) ||
-    typeof value.owner.name !== 'string' ||
-    value.owner.name.length === 0 ||
-    !Array.isArray(value.plugins)
-  ) {
+  let marketplace: { plugins: unknown[] }
+  try {
+    marketplace = parseSharedMarketplace(value)
+  } catch {
     context.addIssue({ code: 'custom', message: 'Marketplace must have non-empty name, non-empty owner.name, and a plugins array' })
     return []
   }
 
-  return value.plugins.flatMap((entry) => {
-    if (!isCountableMarketplacePlugin(entry)) return []
+  return marketplace.plugins.flatMap((entry) => {
     const parsed = PluginSchema.safeParse(entry)
     if (parsed.success) return [parsed.data]
 
-    const corePlugin = PluginSchema.safeParse({ name: entry.name, source: entry.source })
-    return corePlugin.success ? [corePlugin.data] : []
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      const candidate = entry as Record<string, unknown>
+      const corePlugin = PluginSchema.safeParse({ name: candidate.name, source: candidate.source })
+      return corePlugin.success ? [corePlugin.data] : []
+    }
+    return []
   })
 })
 

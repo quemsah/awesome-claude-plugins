@@ -33,16 +33,19 @@ jobs:
           filters: |
             app:
               - 'ui/**'
+              - 'packages/catalog-contract/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.npmrc'
               - '.github/workflows/ci.yml'
             crawler:
               - 'crawler/**'
               - 'README.md'
               - 'ui/src/data/repos.json'
-              - 'ui/src/schemas/**'
-              - 'ui/src/lib/repositoryIdentity.ts'
-              - 'ui/package.json'
-              - 'ui/package-lock.json'
-              - 'ui/.npmrc'
+              - 'packages/catalog-contract/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.npmrc'
               - '.github/workflows/ci.yml'
 
   app:
@@ -63,11 +66,10 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: ui/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
-        working-directory: ui
+      - name: Install app workspace dependencies
+        run: npm ci --workspace=awesome-claude-plugins --include-workspace-root=false
 
       - name: Run typecheck
         run: npm run typecheck
@@ -118,11 +120,10 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: crawler/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install crawler dependencies
-        run: npm ci
-        working-directory: crawler
+      - name: Install crawler workspace dependencies
+        run: npm ci --workspace=catalog-crawler --include-workspace-root=false
 
       - name: Run crawler typecheck
         run: npm run typecheck
@@ -136,14 +137,10 @@ jobs:
         run: npm run test
         working-directory: crawler
 
-      - name: Install UI schema dependencies
-        run: npm ci
-        working-directory: ui
-
-      - name: Typecheck crawler UI integration
+      - name: Typecheck crawler shared contract integration
         run: npm run typecheck:integration
         working-directory: crawler
 
-      - name: Test crawler output with UI schemas
+      - name: Test crawler output with the shared catalog contract
         run: npm run test:integration
         working-directory: crawler
