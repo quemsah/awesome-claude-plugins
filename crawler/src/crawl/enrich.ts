@@ -319,7 +319,7 @@ function needsMarketplaceContent(row: RepositoryRow, currentMarketplaceOid: stri
     return false
   }
   if (row.marketplace_failed_oid === currentMarketplaceOid) return true
-  return row.marketplace_oid !== currentMarketplaceOid || row.plugins_count === null
+  return row.marketplace_oid !== currentMarketplaceOid || row.plugins_count === null || row.plugins_json === null
 }
 
 type MarketplaceBlobDecode =
@@ -518,7 +518,7 @@ async function loadLegacyMarketplace(
   policy: RestAttemptPolicy,
   log?: Log,
 ): Promise<MarketplaceState | null | RetryLater> {
-  const etag = row.marketplace_failed_oid === null ? (row.marketplace_etag ?? undefined) : undefined
+  const etag = row.marketplace_failed_oid === null && row.plugins_json !== null ? (row.marketplace_etag ?? undefined) : undefined
   let result: RepoResult<{ plugins: unknown[] }>
   try {
     result = await reader.getMarketplace(loaded.owner, loaded.repo, etag, { maxAttempts: policy.maxAttempts })
@@ -696,7 +696,9 @@ function resolveGraphQLMarketplaceBlob(
 }
 
 function marketplaceRequestEtag(row: RepositoryRow, authoritativeMarketplaceOid: string, changedOid: boolean): string | undefined {
-  if (changedOid || row.plugins_count === null || row.marketplace_failed_oid === authoritativeMarketplaceOid) return undefined
+  if (changedOid || row.plugins_count === null || row.plugins_json === null || row.marketplace_failed_oid === authoritativeMarketplaceOid) {
+    return undefined
+  }
   return row.marketplace_etag ?? undefined
 }
 
