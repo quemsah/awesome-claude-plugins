@@ -109,4 +109,10 @@ describe('proxy', () => {
   it('does not misclassify browse pagination as a repository detail page', () => {
     expect(passesThrough('/browse/2', 'text/markdown')).toBe(true)
   })
+
+  it('does not rewrite requests ending in .md under reserved roots to repository markdown', () => {
+    expect(passesThrough('/api/catalog.md')).toBe(true)
+    expect(passesThrough('/sitemap/0.md')).toBe(true)
+    expect(passesThrough('/browse/2.md')).toBe(true)
+  })
 })
