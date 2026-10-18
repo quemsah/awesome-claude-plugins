@@ -54,7 +54,8 @@ export function SearchControls({
     if (lastNavigationVersion.current === navigationVersion) return
     lastNavigationVersion.current = navigationVersion
     debouncedSearch.cancel()
-  }, [debouncedSearch, navigationVersion])
+    setLocalSearchTerm(searchTerm)
+  }, [debouncedSearch, navigationVersion, searchTerm])
 
   const handleSearchChange = (value: string) => {
     setLocalSearchTerm(value)
