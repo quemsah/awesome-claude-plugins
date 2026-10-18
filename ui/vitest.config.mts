@@ -12,7 +12,7 @@ export default defineConfig({
           name: 'unit',
           include: ['src/**/*.test.ts'],
           exclude: realCatalogTests,
-          alias: { [resolve('src/data/repos.json')]: resolve('src/test/fixtures/repos.json') },
+          alias: { '../data/repos.json': resolve('src/test/fixtures/repos.json') },
         },
       },
       {
