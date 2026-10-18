@@ -49,8 +49,12 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   env: {
-    // biome-ignore lint/style/useNamingConvention: Next.js env keys must match the public environment variable name.
+    // biome-ignore lint/style/useNamingConvention: Next.js env keys must match the names already used by the application.
     NEXT_PUBLIC_RELEASE: release,
+    // biome-ignore lint/style/useNamingConvention: Next.js env keys must match the names already used by the application.
+    GITHUB_API_URL,
+    // biome-ignore lint/style/useNamingConvention: Next.js env keys must match the names already used by the application.
+    GITHUB_RAW_URL,
   },
   // Dev-only: `next dev` allow-lists the `localhost` hostname but not the `127.0.0.1` IP literal.
   allowedDevOrigins: ['127.0.0.1'],
