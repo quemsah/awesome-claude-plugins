@@ -516,7 +516,14 @@ function persistRepositoryMetadataOnMarketplaceError(
     ready: loaded.ready,
   }
   if (planned.removedId !== null) removedIds.add(planned.removedId)
-  writes.operations.push(persist)
+  writes.operations.push(() => {
+    // A preceding operation in this batch may have rebound the canonical URL.
+    // Resolve dependent writes against the actual target, not the pre-batch snapshot.
+    const actual = persist()
+    planned.id = actual.id
+    planned.removedId = actual.removedId
+    if (actual.removedId !== null) removedIds.add(actual.removedId)
+  })
   return planned
 }
 
