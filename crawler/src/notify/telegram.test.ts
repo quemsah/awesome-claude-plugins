@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { TelegramNotificationError, TelegramNotifier, type TelegramSummary } from './telegram.js'
+import { TelegramNotificationError, TelegramNotifier, type TelegramSummary, truncateTelegramMessage } from './telegram.js'
 
 const token = '12345:private-bot-secret'
 const summary: TelegramSummary = {
@@ -381,4 +381,56 @@ it('treats shutdown during the final Telegram 429 JSON parse as termination', as
   })
 
   await expect(notifier.notifyStart(summary)).rejects.toMatchObject({ category: 'terminated' })
+})
+
+describe('truncateTelegramMessage and payload safety', () => {
+  it('preserves text that is within the 4096 character limit', () => {
+    const text = 'short message'
+    expect(truncateTelegramMessage(text)).toBe(text)
+  })
+
+  it('safely truncates messages exceeding 4096 characters with an indicator', () => {
+    const oversized = 'a'.repeat(5000)
+    const truncated = truncateTelegramMessage(oversized)
+    expect(truncated.length).toBe(4096)
+    expect(truncated.endsWith('\n... (truncated)')).toBe(true)
+  })
+
+  const hugeSummary: TelegramSummary = {
+    ...summary,
+    // Ranges are intentionally budgeted already. Oversized category names exercise the actual
+    // overflow path that can be triggered by optional, unbounded summary details.
+    errorCategories: { ['category_' + 'x'.repeat(5000)]: 1 },
+  }
+
+  it('truncates a genuinely oversized dry-run payload without losing the run identity', async () => {
+    const test = harness([Response.json({ ok: true })])
+    await test.notifier.notifyDryRun(hugeSummary)
+    expect(test.requests).toHaveLength(1)
+    const text = body(test.requests[0]).text
+    expect(text.length).toBe(4096)
+    expect(text).toContain('run_id: run-17')
+    expect(text.endsWith('\n... (truncated)')).toBe(true)
+  })
+
+  it('retains the validated failure reason after truncating oversized optional details', async () => {
+    const test = harness([Response.json({ ok: true })])
+    await test.notifier.notifyFailure({ ...hugeSummary, reason: 'github_fatal_error' })
+    const text = body(test.requests[0]).text
+    expect(text.length).toBeLessThanOrEqual(4096)
+    expect(text).toContain('run_id: run-17')
+    expect(text).toContain('\n... (truncated)')
+    expect(text.endsWith('\nreason: github_fatal_error')).toBe(true)
+  })
+
+  it('retains the confirmed publication SHA after truncating oversized optional details', async () => {
+    const test = harness([Response.json({ ok: true })])
+    const sha = 'a'.repeat(40)
+    await test.notifier.notifySuccess({ ...hugeSummary, confirmedGitSha: sha })
+    const text = body(test.requests[0]).text
+    expect(text.length).toBeLessThanOrEqual(4096)
+    expect(text).toContain('run_id: run-17')
+    expect(text).toContain('\n... (truncated)')
+    expect(text.endsWith('\nconfirmed Git SHA: ' + sha)).toBe(true)
+  })
 })
