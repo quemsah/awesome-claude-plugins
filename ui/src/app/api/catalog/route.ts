@@ -22,12 +22,9 @@ export function GET(request: Request) {
 
   const validPage = DECIMAL_INTEGER_PATTERN.test(pageValue) && Number.isSafeInteger(page) && page >= 0
   const validPageSize =
-    DECIMAL_INTEGER_PATTERN.test(pageSizeValue) &&
-    Number.isSafeInteger(pageSize) &&
-    pageSize > 0 &&
-    pageSize <= MAX_PAGE_SIZE
+    DECIMAL_INTEGER_PATTERN.test(pageSizeValue) && Number.isSafeInteger(pageSize) && pageSize > 0 && pageSize <= MAX_PAGE_SIZE
 
-  if (!validPage || !validPageSize) {
+  if (!(validPage && validPageSize)) {
     return NextResponse.json({ message: 'Invalid pagination parameters' }, { status: 400 })
   }
 
