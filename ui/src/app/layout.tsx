@@ -25,9 +25,9 @@ export function generateMetadata(): Metadata {
       template: '%s | Awesome Claude Plugins',
     },
     description,
-    authors: [{ name: 'Evgenii', url: 'https://github.com/quemsah' }],
-    creator: 'Evgenii',
-    publisher: 'Evgenii',
+    authors: [{ name: 'Awesome Claude Plugins Team', url: BASE_URL }],
+    creator: 'Awesome Claude Plugins Team',
+    publisher: 'Awesome Claude Plugins Team',
     icons: {
       icon: [
         { url: '/favicon.svg', type: 'image/svg+xml' },
@@ -64,7 +64,7 @@ export function generateMetadata(): Metadata {
       card: 'summary_large_image',
       title: 'Awesome Claude Plugins',
       description,
-      creator: '@quemsah',
+      creator: '@awesome_claude_plugins',
       images: [DEFAULT_OG_IMAGE],
     },
     robots: {
