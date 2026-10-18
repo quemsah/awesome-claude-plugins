@@ -33,12 +33,9 @@ export function GET(request: Request) {
   const query = searchParams.get('q') ?? ''
   const searchResult = searchCatalogRepos(query, parseSortOption(searchParams.get('sort')), page, pageSize)
 
-  return NextResponse.json(
-    searchResult,
-    {
-      headers: {
-        'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
-      },
-    }
-  )
+  return NextResponse.json(searchResult, {
+    headers: {
+      'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
+    },
+  })
 }
