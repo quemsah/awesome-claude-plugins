@@ -262,4 +262,3 @@ export function getMarketplaceName(value: unknown): string | undefined {
   const parsedName = MarketplaceNameSchema.safeParse(marketplace.name)
   return parsedName.success ? parsedName.data : undefined
 }
-
