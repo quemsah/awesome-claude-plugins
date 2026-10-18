@@ -396,15 +396,41 @@ describe('truncateTelegramMessage and payload safety', () => {
     expect(truncated.endsWith('\n... (truncated)')).toBe(true)
   })
 
-  it('delivers oversized notification payloads truncated within 4096 without throwing configuration error', async () => {
+  const hugeSummary: TelegramSummary = {
+    ...summary,
+    // Ranges are intentionally budgeted already. Oversized category names exercise the actual
+    // overflow path that can be triggered by optional, unbounded summary details.
+    errorCategories: { ['category_' + 'x'.repeat(5000)]: 1 },
+  }
+
+  it('truncates a genuinely oversized dry-run payload without losing the run identity', async () => {
     const test = harness([Response.json({ ok: true })])
-    const hugeSummary: TelegramSummary = {
-      ...summary,
-      problematicRanges: Array.from({ length: 300 }, (_, i) => `range-${i}:${'x'.repeat(20)}`),
-    }
     await test.notifier.notifyDryRun(hugeSummary)
     expect(test.requests).toHaveLength(1)
     const text = body(test.requests[0]).text
+    expect(text.length).toBe(4096)
+    expect(text).toContain('run_id: run-17')
+    expect(text.endsWith('\n... (truncated)')).toBe(true)
+  })
+
+  it('retains the validated failure reason after truncating oversized optional details', async () => {
+    const test = harness([Response.json({ ok: true })])
+    await test.notifier.notifyFailure({ ...hugeSummary, reason: 'github_fatal_error' })
+    const text = body(test.requests[0]).text
     expect(text.length).toBeLessThanOrEqual(4096)
+    expect(text).toContain('run_id: run-17')
+    expect(text).toContain('\n... (truncated)')
+    expect(text.endsWith('\nreason: github_fatal_error')).toBe(true)
+  })
+
+  it('retains the confirmed publication SHA after truncating oversized optional details', async () => {
+    const test = harness([Response.json({ ok: true })])
+    const sha = 'a'.repeat(40)
+    await test.notifier.notifySuccess({ ...hugeSummary, confirmedGitSha: sha })
+    const text = body(test.requests[0]).text
+    expect(text.length).toBeLessThanOrEqual(4096)
+    expect(text).toContain('run_id: run-17')
+    expect(text).toContain('\n... (truncated)')
+    expect(text.endsWith('\nconfirmed Git SHA: ' + sha)).toBe(true)
   })
 })
