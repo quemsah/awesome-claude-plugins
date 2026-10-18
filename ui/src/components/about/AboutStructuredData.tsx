@@ -7,8 +7,8 @@ export function AboutStructuredData() {
   const aboutPage = {
     '@context': 'https://schema.org',
     '@type': 'AboutPage',
-    name: 'About Awesome Claude Code Plugins',
-    description: 'Learn about the automated discovery workflow behind the Awesome Claude Code Plugins catalog.',
+    name: 'About Awesome Claude Plugins',
+    description: 'Learn about the automated discovery workflow behind the Awesome Claude Plugins catalog.',
     url: `${BASE_URL}/about`,
     about: {
       '@type': 'Person',
@@ -17,7 +17,7 @@ export function AboutStructuredData() {
     },
     isPartOf: {
       '@type': 'WebSite',
-      name: 'Awesome Claude Code Plugins',
+      name: 'Awesome Claude Plugins',
       url: BASE_URL,
     },
   }

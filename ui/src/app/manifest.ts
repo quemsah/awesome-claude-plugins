@@ -3,8 +3,8 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Awesome Claude Code Plugins',
-    short_name: 'Claude Code Plugins',
+    name: 'Awesome Claude Plugins',
+    short_name: 'Claude Plugins',
     description: 'Search GitHub repositories with Claude Code plugin marketplaces. Copy install commands. Updated daily.',
     start_url: '/',
     display: 'standalone',

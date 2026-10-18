@@ -14,10 +14,10 @@ export function GET() {
   return Response.json(
     {
       version: 'https://jsonfeed.org/version/1.1',
-      title: 'Awesome Claude Code Plugins',
+      title: 'Awesome Claude Plugins',
       home_page_url: BASE_URL,
       feed_url: `${BASE_URL}/feed.json`,
-      description: 'Updates to the Awesome Claude Code Plugins repository catalog.',
+      description: 'Updates to the Awesome Claude Plugins repository catalog.',
       icon: `${BASE_URL}/favicon.svg`,
       items: [
         {

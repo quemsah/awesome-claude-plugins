@@ -21,8 +21,8 @@ export function generateMetadata(): Metadata {
   return {
     metadataBase: new URL(BASE_URL),
     title: {
-      default: 'Awesome Claude Code Plugins',
-      template: '%s | Awesome Claude Code Plugins',
+      default: 'Awesome Claude Plugins',
+      template: '%s | Awesome Claude Plugins',
     },
     description,
     authors: [{ name: 'Evgenii', url: 'https://github.com/quemsah' }],
@@ -48,21 +48,21 @@ export function generateMetadata(): Metadata {
       type: 'website',
       locale: 'en_US',
       url: BASE_URL,
-      title: 'Awesome Claude Code Plugins',
+      title: 'Awesome Claude Plugins',
       description,
-      siteName: 'Awesome Claude Code Plugins',
+      siteName: 'Awesome Claude Plugins',
       images: [
         {
           url: DEFAULT_OG_IMAGE,
           width: 1200,
           height: 630,
-          alt: 'Awesome Claude Code Plugins',
+          alt: 'Awesome Claude Plugins',
         },
       ],
     },
     twitter: {
       card: 'summary_large_image',
-      title: 'Awesome Claude Code Plugins',
+      title: 'Awesome Claude Plugins',
       description,
       creator: '@quemsah',
       images: [DEFAULT_OG_IMAGE],
