@@ -35,8 +35,7 @@ export function isPrivacyRestricted(): boolean {
   const nav = navigator as Navigator & { msDoNotTrack?: string }
   const win = typeof window !== 'undefined' ? (window as Window & { msDoNotTrack?: string }) : undefined
 
-  const dnt = nav.doNotTrack ?? nav.msDoNotTrack ?? win?.doNotTrack ?? win?.msDoNotTrack
-  return dnt === '1' || dnt === 'yes'
+  return [nav.doNotTrack, nav.msDoNotTrack, win?.doNotTrack, win?.msDoNotTrack].some((dnt) => dnt === '1' || dnt === 'yes')
 }
 
 export function isAnalyticsActive(): boolean {
