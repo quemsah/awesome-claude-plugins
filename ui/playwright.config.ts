@@ -5,6 +5,7 @@ const appPort = process.env.PORT ?? '3001'
 const mockGithubPort = process.env.MOCK_GITHUB_PORT ?? '3100'
 const mockGithubUrl = `http://127.0.0.1:${mockGithubPort}`
 const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${appPort}`
+// CI builds Next.js in a separate step; local Playwright runs still need a self-contained build.
 const appCommand = process.env.PLAYWRIGHT_PREBUILT === '1' ? 'npm run start' : 'npm run build && npm run start'
 
 export default defineConfig({
