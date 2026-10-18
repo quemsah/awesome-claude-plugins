@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 12
+const schemaVersion = 13
 
 function createSchema(db: Database.Database): void {
   db.exec(`
@@ -299,6 +299,11 @@ function migrateTo12(db: Database.Database): void {
   `)
 }
 
+function migrateTo13(db: Database.Database): void {
+  if (!hasColumn(db, 'plugins_json')) db.exec('ALTER TABLE repositories ADD COLUMN plugins_json TEXT')
+  db.pragma('user_version = 13')
+}
+
 function migrateSchema(db: Database.Database, version: number): void {
   if (version === 0) createSchema(db)
   if (version < 2) migrateTo2(db)
@@ -312,6 +317,7 @@ function migrateSchema(db: Database.Database, version: number): void {
   if (version < 10) migrateTo10(db)
   if (version < 11) migrateTo11(db)
   if (version < 12) migrateTo12(db)
+  if (version < 13) migrateTo13(db)
 }
 
 export function initializeSchema(db: Database.Database): void {
