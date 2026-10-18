@@ -10,6 +10,7 @@ import { Sort } from './Sort.tsx'
 const pluralRules = new Intl.PluralRules('en')
 
 interface SearchControlsProps {
+  navigationVersion: number
   searchTerm: string
   onSearchChange: (value: string) => void
   sortOption: SortOption
@@ -19,6 +20,7 @@ interface SearchControlsProps {
 }
 
 export function SearchControls({
+  navigationVersion,
   searchTerm,
   onSearchChange,
   sortOption,
@@ -44,6 +46,12 @@ export function SearchControls({
   const debouncedSearch = useDebouncedCallback((value: string) => {
     onSearchChange(value)
   }, 250)
+
+  // A Home link or browser history navigation supersedes an uncommitted local keystroke.
+  // Otherwise the 250 ms callback can restore the query just cleared by the router.
+  useEffect(() => {
+    debouncedSearch.cancel()
+  }, [debouncedSearch, navigationVersion])
 
   const handleSearchChange = (value: string) => {
     setLocalSearchTerm(value)
