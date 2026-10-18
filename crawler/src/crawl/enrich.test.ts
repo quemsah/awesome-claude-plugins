@@ -1877,3 +1877,43 @@ it('rolls back successful GraphQL enrichment writes when a later row in the resp
     { id: ids[1], stargazers_count: null },
   ])
 })
+
+it('stores invalid marketplace state on the actual ID after earlier batched canonical rebinds', async () => {
+  const db = database()
+  const firstId = upsertDiscovery(db, 'https://github.com/team/old', null, new Date().toISOString(), 'node-first')
+  const secondId = upsertDiscovery(db, 'https://github.com/team/other', null, new Date().toISOString(), 'node-second')
+  ready(db, firstId, 'team', 'old')
+  ready(db, secondId, 'team', 'other')
+  const invalidOid = 'f'.repeat(40)
+  const client: GitHubReader = {
+    ...reader(),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found',
+      data: [
+        { ...githubRepo('team', 'renamed'), node_id: 'node-first', marketplace_oid: null },
+        {
+          ...githubRepo('team', 'old'),
+          node_id: 'node-second',
+          marketplace_oid: invalidOid,
+          marketplace_byte_size: 20,
+          marketplace_is_binary: false,
+        },
+      ],
+      rateLimit: { cost: 2, remaining: 4_998, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 2 },
+    }),
+    getMarketplaceBlobsByNodeId: async () => ({
+      kind: 'found',
+      data: [graphQLMarketplaceBlob('node-second', invalidOid, { text: '{invalid json' })],
+      rateLimit: { cost: 1, remaining: 4_997, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 3 },
+    }),
+  }
+
+  await enrichRepositories(db, client, 'crawl-1')
+
+  expect(
+    db.prepare('SELECT id, html_url, marketplace_failed_oid FROM repositories ORDER BY id').all(),
+  ).toEqual([
+    { id: firstId, html_url: 'https://github.com/team/renamed', marketplace_failed_oid: null },
+    { id: secondId, html_url: 'https://github.com/team/old', marketplace_failed_oid: invalidOid },
+  ])
+})
