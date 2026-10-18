@@ -41,6 +41,14 @@ const SafeUrlSchema = (max: number) =>
   )
 const SourceUrlSchema = SafeUrlSchema(512)
 const PluginSourceStringSchema = PluginPathSchema
+const PluginComponentSchema = z.union([
+  z.pipe(
+    PluginPathSchema,
+    z.transform((path) => [path])
+  ),
+  z.array(PluginPathSchema).check(z.maxLength(100)),
+  z.record(z.string(), z.unknown()),
+])
 
 export type PluginAuthor = {
   name?: string
@@ -75,6 +83,16 @@ export type Plugin = {
   mcpServers?: string[] | Record<string, unknown>
   homepage?: string
   tags?: string[]
+}
+
+export type MarketplacePluginsResult = {
+  plugins: Plugin[]
+  invalidPluginCount: number
+  issues: z.core.$ZodIssue[]
+}
+
+function hasComponentEntries(value: string[] | Record<string, unknown> | undefined): boolean {
+  return Array.isArray(value) ? value.length > 0 : value !== undefined && Object.keys(value).length > 0
 }
 
 export const PluginSchema: z.ZodMiniType<Plugin> = z
@@ -115,33 +133,9 @@ export const PluginSchema: z.ZodMiniType<Plugin> = z
     license: z.optional(z.string().check(z.maxLength(160))),
     keywords: z.optional(z.array(z.string().check(z.minLength(1), z.maxLength(100))).check(z.maxLength(50))),
     strict: z.optional(z.boolean()),
-    commands: z.optional(
-      z.union([
-        z.array(PluginPathSchema).check(z.maxLength(100)),
-        z.pipe(
-          z.record(z.string(), z.unknown()),
-          z.transform(() => undefined)
-        ),
-      ])
-    ),
-    agents: z.optional(
-      z.union([
-        z.array(PluginPathSchema).check(z.maxLength(100)),
-        z.pipe(
-          z.record(z.string(), z.unknown()),
-          z.transform(() => undefined)
-        ),
-      ])
-    ),
-    mcpServers: z.optional(
-      z.union([
-        z.array(PluginPathSchema).check(z.maxLength(100)),
-        z.pipe(
-          z.record(z.string(), z.unknown()),
-          z.transform(() => undefined)
-        ),
-      ])
-    ),
+    commands: z.optional(PluginComponentSchema),
+    agents: z.optional(PluginComponentSchema),
+    mcpServers: z.optional(PluginComponentSchema),
     homepage: z.optional(SafeUrlSchema(2_048)),
     tags: z.optional(z.array(z.string().check(z.minLength(1), z.maxLength(100))).check(z.maxLength(50))),
   })
@@ -157,9 +151,9 @@ export const PluginSchema: z.ZodMiniType<Plugin> = z
         plugin.category ||
         plugin.homepage ||
         plugin.tags?.length ||
-        plugin.commands?.length ||
-        plugin.agents?.length ||
-        plugin.mcpServers?.length
+        hasComponentEntries(plugin.commands) ||
+        hasComponentEntries(plugin.agents) ||
+        hasComponentEntries(plugin.mcpServers)
       )
     ) {
       context.issues.push({
@@ -170,8 +164,6 @@ export const PluginSchema: z.ZodMiniType<Plugin> = z
     }
   })
 
-const PluginListSchema = z.array(PluginSchema)
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
@@ -180,27 +172,30 @@ function isEmptyMarketplace(value: Record<string, unknown>): boolean {
   return Array.isArray(value.skills) || isRecord(value.skills)
 }
 
-export const MarketplacePluginsSchema = z.transform((value, context): Plugin[] => {
-  const parsePluginList = (plugins: unknown, path: PropertyKey[] = []): Plugin[] => {
-    const parsed = PluginListSchema.safeParse(plugins)
-    if (parsed.success) return parsed.data
+export const MarketplacePluginsSchema: z.ZodMiniType<MarketplacePluginsResult> = z.transform((value, context): MarketplacePluginsResult => {
+  const parsePluginList = (entries: unknown[], path: PropertyKey[] = []): MarketplacePluginsResult => {
+    const result: MarketplacePluginsResult = { plugins: [], invalidPluginCount: 0, issues: [] }
 
-    for (const issue of parsed.error.issues) {
-      context.issues.push({
-        code: 'custom',
-        message: issue.message,
-        path: [...path, ...issue.path],
-        input: value,
-      })
-    }
-    return []
+    entries.forEach((entry, index) => {
+      const parsed = PluginSchema.safeParse(entry)
+      if (parsed.success) {
+        result.plugins.push(parsed.data)
+      } else {
+        result.invalidPluginCount += 1
+        result.issues.push(...parsed.error.issues.map((issue) => ({ ...issue, path: [...path, index, ...issue.path] })))
+      }
+    })
+
+    return result
   }
+
+  const emptyResult = (): MarketplacePluginsResult => ({ plugins: [], invalidPluginCount: 0, issues: [] })
 
   if (Array.isArray(value)) return parsePluginList(value)
 
   if (!isRecord(value)) {
     context.issues.push({ code: 'custom', message: 'Unsupported marketplace manifest shape', input: value })
-    return []
+    return emptyResult()
   }
 
   const candidates: {
@@ -226,8 +221,8 @@ export const MarketplacePluginsSchema = z.transform((value, context): Plugin[] =
   const hasMarketplaceWrapper = ['plugins', 'repositories', 'marketplace'].some((key) => key in value)
   if (!hasMarketplaceWrapper) {
     const parsedPlugin = PluginSchema.safeParse(value)
-    if (parsedPlugin.success) return [parsedPlugin.data]
-    if (isEmptyMarketplace(value)) return []
+    if (parsedPlugin.success) return { plugins: [parsedPlugin.data], invalidPluginCount: 0, issues: [] }
+    if (isEmptyMarketplace(value)) return emptyResult()
 
     for (const issue of parsedPlugin.error.issues) {
       context.issues.push({
@@ -237,13 +232,13 @@ export const MarketplacePluginsSchema = z.transform((value, context): Plugin[] =
         input: value,
       })
     }
-    return []
+    return emptyResult()
   }
 
-  if (isEmptyMarketplace(value)) return []
+  if (isEmptyMarketplace(value)) return emptyResult()
 
   context.issues.push({ code: 'custom', message: 'Unsupported marketplace manifest shape', input: value })
-  return []
+  return emptyResult()
 })
 
 export function getMarketplaceName(value: unknown): string | undefined {

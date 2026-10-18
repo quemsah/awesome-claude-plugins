@@ -79,6 +79,73 @@ test('repo detail page accepts marketplace manifests served as a plugin array', 
   await expect(page.getByText('/plugin install example-plugin')).toBeVisible()
 })
 
+test('repo detail page keeps valid plugins and string component paths from a partly invalid manifest', async ({ page }) => {
+  await page.route('**/ykdojo/claude-code-tips/HEAD/.claude-plugin/marketplace.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        name: 'ykdojo',
+        plugins: [
+          {
+            name: 'String Component Plugin',
+            source: './plugins/string-component-plugin',
+            commands: './commands/run.md',
+            agents: './agents/reviewer.md',
+            mcpServers: './mcp.json',
+          },
+          { name: 'Invalid Plugin', source: '../outside' },
+        ],
+      }),
+    })
+  )
+
+  await page.goto('/ykdojo/claude-code-tips')
+
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'String Component Plugin' }) })
+  await expect(plugin).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./commands/run.md in a new tab' })).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./agents/reviewer.md in a new tab' })).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./mcp.json in a new tab' })).toBeVisible()
+  await expect(page.getByText('1 invalid plugin entry was skipped.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Marketplace manifest contains invalid data.')).toBeHidden()
+})
+
+test('repo detail page renders component names from object maps without treating values as file links', async ({ page }) => {
+  await page.route('**/ykdojo/claude-code-tips/HEAD/.claude-plugin/marketplace.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        name: 'ykdojo',
+        plugins: [
+          {
+            name: 'Mapped Components Plugin',
+            source: './plugins/mapped-components',
+            commands: { deploy: './commands/deploy.md' },
+            agents: { reviewer: { description: 'Reviews code' } },
+            mcpServers: { firebase: { command: 'npx', args: ['-y', 'firebase-tools'] } },
+          },
+        ],
+      }),
+    })
+  )
+
+  await page.goto('/ykdojo/claude-code-tips')
+
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Mapped Components Plugin' }) })
+  await expect(plugin).toBeVisible()
+  await expect(plugin.getByText('Commands (1)')).toBeVisible()
+  await expect(plugin.getByText('Agents (1)')).toBeVisible()
+  await expect(plugin.getByText('MCP Servers (1)')).toBeVisible()
+  await expect(plugin.getByText('deploy', { exact: true })).toBeVisible()
+  await expect(plugin.getByText('reviewer', { exact: true })).toBeVisible()
+  await expect(plugin.getByText('firebase', { exact: true })).toBeVisible()
+  for (const component of ['deploy', 'reviewer', 'firebase']) {
+    await expect(plugin.getByRole('link', { name: `Open ${component} in a new tab` })).toHaveCount(0)
+  }
+})
+
 test('repo detail page renders an empty plugin state when the manifest is missing', async ({ page }) => {
   await page.goto('/ZeframLou/call-me')
 

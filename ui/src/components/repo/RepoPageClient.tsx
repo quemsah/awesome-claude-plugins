@@ -37,6 +37,7 @@ type RepoPageClientProps = {
 
 export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, rawBaseUrl }: RepoPageClientProps) {
   const [plugins, setPlugins] = useState<Plugin[]>([])
+  const [invalidPluginCount, setInvalidPluginCount] = useState(0)
   const [marketplaceName, setMarketplaceName] = useState<string | undefined>(undefined)
   const [pluginsError, setPluginsError] = useState<string | null>(null)
   const [pluginsStatus, setPluginsStatus] = useState<'missing' | 'error' | null>(null)
@@ -56,6 +57,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
     async function loadPlugins() {
       setPluginsLoading(true)
       setPlugins([])
+      setInvalidPluginCount(0)
       setMarketplaceName(undefined)
       setPluginsError(null)
       setPluginsStatus(null)
@@ -86,8 +88,12 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
           const parsedMarketplace = MarketplacePluginsSchema.safeParse(payload)
           if (parsedMarketplace.success) {
             if (!cancelled) {
-              setPlugins(parsedMarketplace.data)
+              setPlugins(parsedMarketplace.data.plugins)
+              setInvalidPluginCount(parsedMarketplace.data.invalidPluginCount)
               setMarketplaceName(getMarketplaceName(payload))
+              if (parsedMarketplace.data.invalidPluginCount > 0) {
+                console.error('Marketplace validation failed', { repoPath, issues: parsedMarketplace.data.issues })
+              }
               setPluginsLoading(false)
             }
           } else {
@@ -148,6 +154,23 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            {invalidPluginCount > 0 ? (
+              <div className="mb-4 flex flex-wrap items-center justify-center gap-3 py-4 text-sm" role="alert">
+                <p className="text-destructive">
+                  {invalidPluginCount} invalid plugin {invalidPluginCount === 1 ? 'entry was' : 'entries were'} skipped.
+                </p>
+                <a
+                  className="text-sm underline underline-offset-4"
+                  href={`${rawBaseUrl}/${encodeURIComponent(repoPath.split('/')[0])}/${encodeURIComponent(
+                    repoPath.split('/')[1]
+                  )}/HEAD/.claude-plugin/marketplace.json`}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  View marketplace.json
+                </a>
+              </div>
+            ) : null}
             {pluginsLoading && !pluginsStatus && !pluginsError ? (
               <p className="py-4 text-center text-muted-foreground" role="status">
                 Loading plugins...
