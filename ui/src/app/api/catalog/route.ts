@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { formatCatalogRepo, searchCatalogRepos } from '../../../lib/catalog.ts'
+import { searchCatalogRepos } from '../../../lib/catalog.ts'
 import { CATALOG_PAGE_SIZE } from '../../../lib/catalogPagination.ts'
 import { getRateLimitKey, RateLimiter } from '../../../lib/rateLimit.ts'
 import { parseSortOption } from '../../../lib/searchState.ts'
@@ -34,10 +34,7 @@ export function GET(request: Request) {
   const searchResult = searchCatalogRepos(query, parseSortOption(searchParams.get('sort')), page, pageSize)
 
   return NextResponse.json(
-    {
-      ...searchResult,
-      repos: searchResult.repos.map((repo) => formatCatalogRepo(repo)),
-    },
+    searchResult,
     {
       headers: {
         'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
