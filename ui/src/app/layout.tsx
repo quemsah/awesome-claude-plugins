@@ -7,6 +7,7 @@ import { WebVitals } from '../components/common/WebVitals.tsx'
 import { shouldLoadAnalytics } from '../lib/analytics.ts'
 import { BASE_URL, DEFAULT_OG_IMAGE } from '../lib/constants.ts'
 import { GITHUB_RAW_URL } from '../lib/github.ts'
+import { withSiteAlternates } from '../lib/metadata.ts'
 import { Providers } from '../providers/providers.tsx'
 import './globals.css'
 
@@ -74,12 +75,7 @@ export function generateMetadata(): Metadata {
         'max-snippet': -1,
       },
     },
-    alternates: {
-      types: {
-        'application/feed+json': `${BASE_URL}/feed.json`,
-        'text/markdown': `${BASE_URL}/index.md`,
-      },
-    },
+    alternates: withSiteAlternates({}),
     verification: {
       google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION_CODE,
     },
