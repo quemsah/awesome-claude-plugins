@@ -6,7 +6,7 @@ import { formatDate } from '../../lib/utils.ts'
 import type { StatsItem } from '../../schemas/stats.schema.ts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card.tsx'
 import { ChartContainer, ChartTooltipContent } from '../ui/chart.tsx'
-import { resolveStatsDisplay } from './statsView.ts'
+import { collapseDailySnapshots, resolveStatsDisplay } from './statsView.ts'
 import { TimeFilter } from './TimeFilter.tsx'
 
 const timeRangeLabels: Record<string, string> = {
@@ -115,7 +115,8 @@ export function StatsPage({ stats }: StatsPageProps) {
   const chartRef = useRef<HTMLDivElement>(null)
   const [timeRange, setTimeRange] = useState('all')
 
-  const { isEmptyRange, displayStats } = useMemo(() => resolveStatsDisplay(stats, timeRange), [stats, timeRange])
+  const dailyStats = useMemo(() => collapseDailySnapshots(stats), [stats])
+  const { isEmptyRange, displayStats } = useMemo(() => resolveStatsDisplay(dailyStats, timeRange), [dailyStats, timeRange])
 
   const chartData = useMemo(() => {
     const filledData = fillMissingDates(displayStats)
@@ -130,7 +131,7 @@ export function StatsPage({ stats }: StatsPageProps) {
 
   const trendData = useMemo(() => calculateTrend(displayStats), [displayStats])
 
-  const activeRangeLabel = isEmptyRange ? timeRangeLabels.all : timeRangeLabels[timeRange]
+  const activeRangeLabel = isEmptyRange ? timeRangeLabels.all : (timeRangeLabels[timeRange] ?? 'the selected period')
   const latestSnapshotLabel = chartData.length > 0 ? chartData[chartData.length - 1].formattedDate : ''
 
   useEffect(() => {
@@ -167,7 +168,7 @@ export function StatsPage({ stats }: StatsPageProps) {
 
       {isEmptyRange ? (
         <div className="rounded-md border border-border bg-muted px-4 py-3 text-muted-foreground text-sm" role="status">
-          No snapshots were recorded for {timeRangeLabels[timeRange]}. Showing the latest snapshot from{' '}
+          No snapshots were recorded for {timeRangeLabels[timeRange] ?? 'the selected period'}. Showing the latest snapshot from{' '}
           <span className="font-medium text-foreground">{latestSnapshotLabel}</span>.
         </div>
       ) : null}
@@ -279,7 +280,7 @@ export function StatsPage({ stats }: StatsPageProps) {
                   {chartData.map((item) => (
                     <tr className="border-b" key={item.date}>
                       <td className="p-2">{item.formattedDate}</td>
-                      <td className="p-2">{item.size.toLocaleString()}</td>
+                      <td className="p-2">{item.size.toLocaleString('en-US')}</td>
                       <td className="p-2">{item.snapshotType}</td>
                     </tr>
                   ))}

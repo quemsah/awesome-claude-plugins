@@ -23,7 +23,7 @@ export function proxy(request: NextRequest) {
 
   if (pathname.toLowerCase().endsWith('.md')) {
     const segments = requestedPath.slice(0, -3).split('/').filter(Boolean)
-    if (segments.length !== 2) {
+    if (segments.length !== 2 || RESERVED_REPOSITORY_ROOTS.has(segments[0]?.toLowerCase() ?? '')) {
       return NextResponse.next()
     }
 
@@ -61,6 +61,10 @@ export function proxy(request: NextRequest) {
   }
 
   return rewriteRepositoryMarkdown(request, segments, true)
+}
+
+export const config = {
+  matcher: ['/((?!api(?:/|$)|_next(?:/|$)|og(?:/|$)|favicon\\.ico$).*)'],
 }
 
 function acceptsMarkdown(accept: string | null): boolean {
