@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { StatsItem } from '../../schemas/stats.schema.ts'
-import { filterStatsByTimeRange, resolveStatsDisplay } from './statsView.ts'
+import { filterStatsByTimeRange, getTimeRangeLabel, resolveStatsDisplay } from './statsView.ts'
 
 const DAY = 1000 * 60 * 60 * 24
 
@@ -65,5 +65,27 @@ describe('filterStatsByTimeRange', () => {
     ])
 
     expect(filterStatsByTimeRange(stats, '30days')).toHaveLength(1)
+  })
+
+  it('falls back to all stats when an unrecognized time range is provided', () => {
+    const stats = snapshots([
+      { daysAgo: 60, size: 1 },
+      { daysAgo: 5, size: 2 },
+    ])
+
+    expect(filterStatsByTimeRange(stats, 'unknown')).toEqual(stats)
+  })
+})
+
+describe('getTimeRangeLabel', () => {
+  it('returns appropriate labels for known ranges', () => {
+    expect(getTimeRangeLabel('7days')).toBe('Last 7 days')
+    expect(getTimeRangeLabel('30days')).toBe('Last 30 days')
+    expect(getTimeRangeLabel('all')).toBe('All time')
+  })
+
+  it('falls back safely for unknown ranges without returning undefined', () => {
+    expect(getTimeRangeLabel('custom')).toBe('the selected period')
+    expect(getTimeRangeLabel('')).toBe('the selected period')
   })
 })
