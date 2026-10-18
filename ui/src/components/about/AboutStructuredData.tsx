@@ -11,9 +11,9 @@ export function AboutStructuredData() {
     description: 'Learn about the automated discovery workflow behind the Awesome Claude Plugins catalog.',
     url: `${BASE_URL}/about`,
     about: {
-      '@type': 'Person',
-      name: 'Evgenii',
-      url: 'https://github.com/quemsah',
+      '@type': 'Organization',
+      name: 'Awesome Claude Plugins Team',
+      url: BASE_URL,
     },
     isPartOf: {
       '@type': 'WebSite',
