@@ -1,15 +1,17 @@
-import { getGitHubBlobUrl } from '../../lib/repositoryIdentity.ts'
+import type { PluginSource } from '../../app/types/plugin.type.ts'
+import { getPluginComponentFileUrl } from '../../lib/pluginComponentUrl.ts'
 
 interface PluginListProps {
   title: string
   items?: string[] | Record<string, unknown>
   repoPath: string
   defaultBranch?: string
+  source?: string | PluginSource
 }
 
-export function PluginList({ title, items, repoPath, defaultBranch }: PluginListProps) {
+export function PluginList({ title, items, repoPath, defaultBranch, source }: PluginListProps) {
   const listItems = Array.isArray(items) ? items : []
-  if (!(listItems.length && defaultBranch)) return null
+  if (!listItems.length) return null
 
   return (
     <div>
@@ -19,18 +21,22 @@ export function PluginList({ title, items, repoPath, defaultBranch }: PluginList
       <dd>
         <ul className="list-inside list-disc space-y-0.5 text-muted-foreground text-sm">
           {listItems.map((item) => {
-            const fileUrl = getGitHubBlobUrl(repoPath, defaultBranch, item)
+            const fileUrl = getPluginComponentFileUrl(source, repoPath, defaultBranch, item)
             return (
               <li className="break-all" key={item}>
-                <a
-                  aria-label={`Open ${item} in a new tab`}
-                  className="underline-offset-4 transition-colors hover:text-primary hover:underline group-hover:text-primary"
-                  href={fileUrl}
-                  rel="noopener noreferrer"
-                  target="_blank"
-                >
-                  {item}
-                </a>
+                {fileUrl ? (
+                  <a
+                    aria-label={`Open ${item} in a new tab`}
+                    className="underline-offset-4 transition-colors hover:text-primary hover:underline group-hover:text-primary"
+                    href={fileUrl}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    {item}
+                  </a>
+                ) : (
+                  item
+                )}
               </li>
             )
           })}
