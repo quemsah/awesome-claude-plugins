@@ -3,7 +3,7 @@ import { trackEvent } from '../lib/analytics.ts'
 import { copyText } from '../lib/clipboard.ts'
 import { getPluginInstallCommand, isPluginInstallCommandVerified } from '../lib/installCommand.ts'
 
-export function useInstallCommand(pluginName?: string, pluginId?: string, marketplaceName?: string) {
+export function useInstallCommand(pluginName?: string, marketplaceName?: string) {
   const [isCopied, setIsCopied] = useState(false)
   const [copyError, setCopyError] = useState<string | null>(null)
   const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -17,8 +17,8 @@ export function useInstallCommand(pluginName?: string, pluginId?: string, market
     }
   }, [])
 
-  const installCommand = getPluginInstallCommand({ pluginName, pluginId, marketplaceName })
-  const isVerified = isPluginInstallCommandVerified(pluginId, marketplaceName)
+  const installCommand = getPluginInstallCommand({ pluginName, marketplaceName })
+  const isVerified = isPluginInstallCommandVerified(pluginName, marketplaceName)
 
   const handleCopyClick = async () => {
     if (!(installCommand && isVerified)) return
@@ -29,11 +29,7 @@ export function useInstallCommand(pluginName?: string, pluginId?: string, market
     if (copied) {
       setCopyError(null)
       setIsCopied(true)
-      if (installCommand.startsWith('/plugin marketplace add')) {
-        trackEvent('copy_marketplace_add')
-      } else {
-        trackEvent('copy_plugin_install')
-      }
+      trackEvent(installCommand.startsWith('/plugin marketplace add') ? 'copy_marketplace_add' : 'copy_plugin_install')
       clearTimeout(resetTimer.current)
       resetTimer.current = setTimeout(() => setIsCopied(false), 2_000)
     } else {

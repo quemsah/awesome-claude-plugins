@@ -6,6 +6,7 @@ import RepoStructuredData from '../../components/repo/RepoStructuredData.tsx'
 import { findCatalogRepo, getCatalogQualityForRepo, getRepoCanonicalPath } from '../../lib/catalog.ts'
 import { BASE_URL } from '../../lib/constants.ts'
 import { GITHUB_API_URL, GITHUB_RAW_URL } from '../../lib/github.ts'
+import { withSiteAlternates } from '../../lib/metadata.ts'
 import { createCatalogRepositorySnapshot } from '../../lib/repositorySnapshot.ts'
 import type { GitHubRepository } from '../../schemas/github.schema.ts'
 
@@ -34,12 +35,12 @@ export async function generateMetadata({ params }: RouteParams): Promise<Metadat
   return {
     title,
     description,
-    alternates: {
+    alternates: withSiteAlternates({
       canonical: `${BASE_URL}/${canonicalPath}`,
       types: {
         'text/markdown': `${BASE_URL}/${canonicalPath}.md`,
       },
-    },
+    }),
     robots:
       catalogQuality.publicationState === 'indexable'
         ? { index: true, follow: true }
