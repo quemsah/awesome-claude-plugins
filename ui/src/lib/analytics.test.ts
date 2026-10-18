@@ -1,6 +1,7 @@
 /** biome-ignore-all lint/style/useNamingConvention: Simple Analytics global is sa_event */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  flushPendingEvents,
   isAnalyticsActive,
   isPrivacyRestricted,
   shouldLoadAnalytics,
@@ -209,6 +210,26 @@ describe('analytics', () => {
       expect(saEventMock).toHaveBeenCalledWith('sort_change', { sort: 'stars-desc' })
     })
 
+    it('buffers an early event until the analytics script is ready', () => {
+      Object.defineProperty(globalThis, 'navigator', { value: { doNotTrack: '0' }, configurable: true })
+      Object.defineProperty(globalThis, 'window', { value: {}, configurable: true })
+      expect(trackEvent('copy_plugin_install')).toBe(false)
+
+      const saEvent = vi.fn()
+      Object.defineProperty(globalThis, 'window', { value: { sa_event: saEvent }, configurable: true })
+      flushPendingEvents()
+      expect(saEvent).toHaveBeenCalledWith('copy_plugin_install', undefined)
+    })
+
+    it('does not send events when window DNT is enabled independently', () => {
+      const saEvent = vi.fn()
+      Object.defineProperty(globalThis, 'navigator', { value: { doNotTrack: '0' }, configurable: true })
+      Object.defineProperty(globalThis, 'window', { value: { doNotTrack: '1', sa_event: saEvent }, configurable: true })
+      expect(isPrivacyRestricted()).toBe(true)
+      expect(trackEvent('copy_marketplace_add')).toBe(false)
+      flushPendingEvents()
+      expect(saEvent).not.toHaveBeenCalled()
+    })
     it('handles sa_event throwing an error without crashing', () => {
       const saEventMock = vi.fn().mockImplementation(() => {
         throw new Error('Script error')
