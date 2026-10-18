@@ -351,7 +351,12 @@ function decodeGraphQLMarketplaceBlob(blob: GitHubGraphQLMarketplaceBlob): Marke
   }
   try {
     const marketplace = parseMarketplace(value)
-    return { kind: 'found', pluginsCount: marketplace.plugins.length, pluginsJson: pluginSummariesJson(marketplace.plugins), marketplaceOid: blob.oid }
+    return {
+      kind: 'found',
+      pluginsCount: marketplace.plugins.length,
+      pluginsJson: pluginSummariesJson(marketplace.plugins),
+      marketplaceOid: blob.oid,
+    }
   } catch (error) {
     if (!(error instanceof MarketplaceFormatError)) throw error
     return {
@@ -1088,7 +1093,18 @@ async function enrichOne(
       await beginDeferredRetry(reader, marketplace)
       const retried = await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, RETRY_PASS_REST, log)
       if (!retried || isRetryLater(retried)) return
-      const target = persistEnrichment(db, runId, row, loaded, retried.pluginsCount, retried.marketplaceOid, retried.marketplaceEtag, now(), false, retried.pluginsJson)
+      const target = persistEnrichment(
+        db,
+        runId,
+        row,
+        loaded,
+        retried.pluginsCount,
+        retried.marketplaceOid,
+        retried.marketplaceEtag,
+        now(),
+        false,
+        retried.pluginsJson,
+      )
       completeEnrichment(counts, target, removedIds)
     })
     return
