@@ -26,6 +26,14 @@ export class PendingSearchUrls {
     return true
   }
 
+  /** A return to the visible URL still needs routing if a different navigation is in flight. */
+  hasPendingDifferentFrom(url: string): boolean {
+    for (const pendingUrl of this.pending.keys()) {
+      if (pendingUrl !== url) return true
+    }
+    return false
+  }
+
   clear(): void {
     this.pending.clear()
   }
