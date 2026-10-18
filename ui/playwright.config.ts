@@ -5,6 +5,7 @@ const appPort = process.env.PORT ?? '3001'
 const mockGithubPort = process.env.MOCK_GITHUB_PORT ?? '3100'
 const mockGithubUrl = `http://127.0.0.1:${mockGithubPort}`
 const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${appPort}`
+const appCommand = process.env.PLAYWRIGHT_PREBUILT === '1' ? 'npm run start' : 'npm run build && npm run start'
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -33,7 +34,7 @@ export default defineConfig({
             url: `${mockGithubUrl}/health`,
           },
           {
-            command: `cross-env-shell GITHUB_API_URL=${mockGithubUrl} GITHUB_RAW_URL=${mockGithubUrl} PORT=${appPort} "npm run start"`,
+            command: `cross-env-shell GITHUB_API_URL=${mockGithubUrl} GITHUB_RAW_URL=${mockGithubUrl} PORT=${appPort} "${appCommand}"`,
             reuseExistingServer: false,
             timeout: 120_000,
             url: baseUrl,
