@@ -49,8 +49,12 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   env: {
-    // biome-ignore lint/style/useNamingConvention: Next.js env keys must match the public environment variable name.
+    // biome-ignore lint/style/useNamingConvention: Next.js env keys must match the names already used by the application.
     NEXT_PUBLIC_RELEASE: release,
+    // biome-ignore lint/style/useNamingConvention: Next.js env keys must match the names already used by the application.
+    GITHUB_API_URL,
+    // biome-ignore lint/style/useNamingConvention: Next.js env keys must match the names already used by the application.
+    GITHUB_RAW_URL,
   },
   // Dev-only: `next dev` allow-lists the `localhost` hostname but not the `127.0.0.1` IP literal.
   allowedDevOrigins: ['127.0.0.1'],
@@ -82,10 +86,6 @@ const nextConfig: NextConfig = {
           { key: 'Permissions-Policy', value: 'camera=(), geolocation=(), microphone=()' },
           { key: 'Reporting-Endpoints', value: 'csp="/api/reports"' },
           {
-            key: 'Content-Security-Policy-Report-Only',
-            value: "require-trusted-types-for 'script'; trusted-types nextjs; report-to csp",
-          },
-          {
             key: 'Link',
             value:
               '</llms.txt>; rel="describedby"; type="text/plain", </sitemap.xml>; rel="sitemap"; type="application/xml", </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+json"',
@@ -95,7 +95,7 @@ const nextConfig: NextConfig = {
             // `script-src` still needs 'unsafe-inline' because Next.js streams the RSC payload
             // through inline scripts; switching to a nonce would opt every page out of static
             // rendering. The JSON-LD payloads that could be injected are escaped in `serializeJsonLd`.
-            value: `default-src 'self'; script-src ${scriptSource}; img-src 'self' data: https://queue.simpleanalyticscdn.com https://avatars.githubusercontent.com; connect-src ${connectSource}; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
+            value: `default-src 'self'; script-src ${scriptSource}; img-src 'self' data: https://queue.simpleanalyticscdn.com https://avatars.githubusercontent.com; connect-src ${connectSource}; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-to csp`,
           },
         ],
       },
