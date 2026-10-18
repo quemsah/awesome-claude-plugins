@@ -2,7 +2,7 @@ import { expect, type Page, test } from '@playwright/test'
 import { CATALOG_PAGE_SIZE } from '../../src/lib/catalogPagination.ts'
 
 const browseHeading = 'Browse Claude Code plugin repositories'
-const homeHeading = 'Awesome Claude Code Plugins'
+const homeHeading = 'Awesome Claude Plugins'
 const paginationName = 'Catalog pagination'
 const previousPageName = 'Previous page'
 const nextPageName = 'Next page'
@@ -11,8 +11,8 @@ const pageThreeCounterPattern = /^Page 3 of \d+$/
 const browsePageThreeUrlPattern = /\/browse\/3$/
 const browseCanonicalUrl = 'https://awesomeclaudeplugins.com/browse/2'
 const browsePageThreeCanonicalUrl = /awesomeclaudeplugins\.com\/browse\/3$/
-const browsePageTwoTitlePattern = /- Page 2 \| Awesome Claude Code Plugins$/
-const browsePageThreeTitlePattern = /- Page 3 \| Awesome Claude Code Plugins$/
+const browsePageTwoTitlePattern = /- Page 2 \| Awesome Claude Plugins$/
+const browsePageThreeTitlePattern = /- Page 3 \| Awesome Claude Plugins$/
 const detailsLinkName = /View details for /
 const indexFollowRobotsPattern = /(?:^|,\s*)index,\s*follow(?:\s*,|$)/
 

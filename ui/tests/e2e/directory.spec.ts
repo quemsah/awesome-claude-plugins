@@ -78,7 +78,7 @@ function statCardValue(page: Page, title: string) {
 test('header navigation, external actions, and theme selection work across routes', async ({ page }) => {
   await page.goto('/')
 
-  await expect(page.getByRole('heading', { name: 'Awesome Claude Code Plugins' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Awesome Claude Plugins' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Claude Code documentation' })).toHaveAttribute(
     'href',
     'https://code.claude.com/docs/en/plugins'
@@ -104,7 +104,7 @@ test('header navigation, external actions, and theme selection work across route
 
   await page.locator('a[aria-label="Search repositories"]').click()
   await page.waitForURL('/#search')
-  await expect(page.getByRole('heading', { name: 'Awesome Claude Code Plugins' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Awesome Claude Plugins' })).toBeVisible()
   await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toBeFocused()
 })
 
@@ -530,7 +530,7 @@ test('about page exposes static project cards and header navigation', async ({ p
 
   await page.locator('a[aria-label="Search repositories"]').click()
   await page.waitForURL('/#search')
-  await expect(page.getByRole('heading', { name: 'Awesome Claude Code Plugins' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Awesome Claude Plugins' })).toBeVisible()
   await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toBeFocused()
 })
 
