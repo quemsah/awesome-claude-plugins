@@ -17,6 +17,7 @@ import {
 import { buildSearchUrl, type PendingCatalogLoad, parseSortOption } from '../../lib/searchState.ts'
 import type { SortOption } from '../../lib/sortOptions.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
+import { PendingSearchUrls } from './pendingSearchUrls.ts'
 import { RepoList } from './RepoList.tsx'
 import { SearchControls } from './SearchControls.tsx'
 
@@ -63,7 +64,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   // read "nothing in flight", abort the running replacement and append onto the list it was replacing.
   const inFlightCatalogRequest = useRef<CatalogRequestKind | null>(null)
   const pendingScrollRestore = useRef<{ attempts: number; scrollY: number; url: string } | null>(null)
-  const pendingSearchUrls = useRef(new Set<string>())
+  const pendingSearchUrls = useRef(new PendingSearchUrls())
 
   const updateSearchUrl = useCallback(
     (nextSearchTerm: string, nextSortOption: SortOption, mode: 'push' | 'replace' = 'push') => {
@@ -74,7 +75,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
       })
 
       if (nextUrl !== `${pathname}${currentSearch}`) {
-        pendingSearchUrls.current.add(nextUrl)
+        pendingSearchUrls.current.track(nextUrl)
         router[mode](nextUrl, { scroll: false })
       }
       window.sessionStorage.setItem('last-search-url', nextUrl)
@@ -223,8 +224,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
 
   useEffect(() => {
     const currentUrl = `${pathname}${searchParams.size > 0 ? `?${searchParams}` : ''}`
-    if (!pendingSearchUrls.current.delete(currentUrl)) {
-      pendingSearchUrls.current.clear()
+    if (!pendingSearchUrls.current.consume(currentUrl)) {
       setSearchTerm(searchParams.get('q') ?? '')
       setSortOption(parseSortOption(searchParams.get('sort')))
     }
