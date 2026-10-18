@@ -8,7 +8,7 @@ export function GET() {
       version: '1.0',
       skills: [
         {
-          name: 'awesome-claude-code-plugins-catalog',
+          name: 'awesome-claude-plugins-catalog',
           description: 'Discover Claude Code plugin repositories and retrieve their marketplace install commands.',
           url: `${BASE_URL}/SKILL.md`,
         },

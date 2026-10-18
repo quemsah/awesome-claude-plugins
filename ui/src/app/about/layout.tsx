@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description:
     'A directory of Claude Code plugins and tools, inspired by the awesome list movement. Plugin data is collected from GitHub when the crawler runs.',
   openGraph: {
-    title: 'About | Awesome Claude Code Plugins',
+    title: 'About | Awesome Claude Plugins',
     description:
       'A directory of Claude Code plugins and tools, inspired by the awesome list movement. Plugin data is collected from GitHub when the crawler runs.',
     url: `${BASE_URL}/about`,
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
         url: DEFAULT_OG_IMAGE,
         width: 1200,
         height: 630,
-        alt: 'Awesome Claude Code Plugins Directory',
+        alt: 'Awesome Claude Plugins Directory',
       },
     ],
   },
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'About | Awesome Claude Code Plugins',
+    title: 'About | Awesome Claude Plugins',
     description:
       'A directory of Claude Code plugins and tools, inspired by the awesome list movement. Plugin data is collected from GitHub when the crawler runs.',
     images: [DEFAULT_OG_IMAGE],

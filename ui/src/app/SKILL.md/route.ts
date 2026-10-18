@@ -4,7 +4,7 @@ import { renderCatalogApiContract, renderCatalogResourceLinks } from '../../lib/
 export const dynamic = 'force-static'
 
 export function GET() {
-  const content = `# Awesome Claude Code Plugins Catalog
+  const content = `# Awesome Claude Plugins Catalog
 
 Discover public GitHub repositories related to Claude Code plugins, MCP servers, and agent skills.
 
