@@ -27,15 +27,15 @@ export default function StatsStructuredData({ startDate, endDate }: StatsStructu
       license: 'https://creativecommons.org/publicdomain/zero/1.0/',
       isAccessibleForFree: true,
       creator: {
-        '@type': 'Person',
-        name: 'Evgenii',
-        url: 'https://github.com/quemsah',
+        '@type': 'Organization',
+        name: 'Awesome Claude Plugins Team',
+        url: BASE_URL,
       },
     },
     publisher: {
-      '@type': 'Person',
-      name: 'Evgenii',
-      url: 'https://github.com/quemsah',
+      '@type': 'Organization',
+      name: 'Awesome Claude Plugins Team',
+      url: BASE_URL,
     },
   }
 
