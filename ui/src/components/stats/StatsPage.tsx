@@ -279,7 +279,7 @@ export function StatsPage({ stats }: StatsPageProps) {
                   {chartData.map((item) => (
                     <tr className="border-b" key={item.date}>
                       <td className="p-2">{item.formattedDate}</td>
-                      <td className="p-2">{item.size.toLocaleString()}</td>
+                      <td className="p-2">{item.size.toLocaleString('en-US')}</td>
                       <td className="p-2">{item.snapshotType}</td>
                     </tr>
                   ))}
