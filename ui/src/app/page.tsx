@@ -19,6 +19,9 @@ export async function generateMetadata({ searchParams }: HomeProps): Promise<Met
   return {
     alternates: withSiteAlternates({
       canonical: `${BASE_URL}/`,
+      types: {
+        'text/markdown': `${BASE_URL}/index.md`,
+      },
     }),
     ...(hasSearchParams
       ? {
