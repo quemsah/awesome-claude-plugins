@@ -10,7 +10,6 @@ const mdserveCanonicalPattern = /\/jfernandez\/mdserve$/
 const repoCanonicalPattern = /\/ykdojo\/claude-code-tips$/
 const repoMarkdownAlternatePattern = /\/ykdojo\/claude-code-tips\.md$/
 const repoOpenGraphImagePattern = /\/og\/ykdojo\/claude-code-tips$/
-const installButtonPattern = /install/i
 
 test('repo detail page serves catalog repository data in its HTML without contacting GitHub', async ({ page }) => {
   const html = await (await page.request.get('/ykdojo/claude-code-tips')).text()
@@ -46,12 +45,17 @@ test('repo detail page refreshes repository and marketplace data in the browser'
   )
   expect(JSON.stringify(jsonLd)).not.toContain('"Unknown"')
   const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Example Plugin@1.2.3' }) })
-  await expect(plugin.getByText('/plugin install example-plugin@example-plugin')).toBeVisible()
+  await expect(plugin.getByText('/plugin install example-plugin@ykdojo')).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./commands/example.md in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/ykdojo/claude-code-tips/blob/main/./commands/example.md'
+  )
+  await expect(plugin.getByRole('link', { name: 'Open ./agents/reviewer.md in a new tab' })).toBeVisible()
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
-  await expect.poll(() => copiedText(page)).toBe('/plugin install example-plugin@example-plugin')
+  await expect.poll(() => copiedText(page)).toBe('/plugin install example-plugin@ykdojo')
 })
 
-test('repo detail page uses the manifest marketplace name for fallback install commands', async ({ page }) => {
+test('repo detail page uses the official plugin and marketplace names for install commands', async ({ page }) => {
   await mockClipboard(page)
   await page.goto('/ykdojo/claude-code-tips')
 
@@ -59,24 +63,24 @@ test('repo detail page uses the manifest marketplace name for fallback install c
   await expect(plugin.getByText('/plugin install fallback-install-target@ykdojo')).toBeVisible()
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
   await expect.poll(() => copiedText(page)).toBe('/plugin install fallback-install-target@ykdojo')
-  await expect(plugin.getByRole('link', { name: 'Open source file plugins/fallback.json in a new tab' })).toHaveAttribute(
+  await expect(plugin.getByRole('link', { name: 'Open source repository elsewhere/shared-plugins in a new tab' })).toHaveAttribute(
     'href',
-    'https://github.com/elsewhere/shared-plugins/blob/main/plugins/fallback.json'
+    'https://github.com/elsewhere/shared-plugins/tree/0123456789abcdef0123456789abcdef01234567'
   )
 })
 
-test('repo detail page renders plugins without a name or identifier without an install command', async ({ page }) => {
+test('repo detail page skips invalid marketplace entries and keeps valid plugins', async ({ page }) => {
   await page.goto('/ykdojo/claude-code-tips')
 
-  const plugin = page.locator('article').filter({ hasText: 'A plugin without a name or identifier' })
-  await expect(plugin.getByRole('button', { name: installButtonPattern })).toBeHidden()
+  await expect(page.getByRole('heading', { name: 'Example Plugin@1.2.3' })).toBeVisible()
+  await expect(page.getByText('A plugin without a name or identifier')).toHaveCount(0)
 })
 
-test('repo detail page accepts marketplace manifests served as a plugin array', async ({ page }) => {
+test('repo detail page installs a marketplace entry under the marketplace name', async ({ page }) => {
   await page.goto('/mksglu/context-mode')
 
   await expect(page.getByRole('heading', { name: 'Example Plugin@1.2.3' })).toBeVisible()
-  await expect(page.getByText('/plugin install example-plugin@example-plugin')).toBeVisible()
+  await expect(page.getByText('/plugin install example-plugin@context-mode')).toBeVisible()
 })
 
 test('repo detail page renders an empty plugin state when the manifest is missing', async ({ page }) => {

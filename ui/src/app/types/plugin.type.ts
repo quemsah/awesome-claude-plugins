@@ -8,6 +8,7 @@ const PluginPathSchema = z
   .min(1)
   .max(512)
   .refine((value) => !(value.includes('..') || CONTROL_CHARACTER_PATTERN.test(value)), 'Must be a safe repository path')
+const PluginPathOrArraySchema = z.union([PluginPathSchema, z.array(PluginPathSchema).max(100)])
 const GitHubRepoPathSchema = z.string().regex(GITHUB_REPO_PATH_PATTERN, 'Must be a GitHub repository path')
 const PluginIdSchema = z.string().regex(/^[A-Za-z0-9._-]+$/, 'Must be a safe plugin identifier')
 const MarketplaceNameSchema = PluginIdSchema
@@ -65,9 +66,9 @@ export type Plugin = {
   license?: string
   keywords?: string[]
   strict?: boolean
-  commands?: string[] | Record<string, unknown>
-  agents?: string[] | Record<string, unknown>
-  mcpServers?: string[] | Record<string, unknown>
+  commands?: string | string[] | Record<string, unknown>
+  agents?: string | string[] | Record<string, unknown>
+  mcpServers?: string | string[] | Record<string, unknown>
   homepage?: string
   tags?: string[]
 }
@@ -107,9 +108,9 @@ export const PluginSchema: z.ZodType<Plugin> = z
     license: z.string().max(160).optional(),
     keywords: z.array(z.string().min(1).max(100)).max(50).optional(),
     strict: z.boolean().optional(),
-    commands: z.union([z.array(PluginPathSchema).max(100), z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
-    agents: z.union([z.array(PluginPathSchema).max(100), z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
-    mcpServers: z.union([z.array(PluginPathSchema).max(100), z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
+    commands: z.union([PluginPathOrArraySchema, z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
+    agents: z.union([PluginPathOrArraySchema, z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
+    mcpServers: z.union([PluginPathOrArraySchema, z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
     homepage: SafeUrlSchema(2_048).optional(),
     tags: z.array(z.string().min(1).max(100)).max(50).optional(),
   })
@@ -146,15 +147,18 @@ export const MarketplacePluginsSchema = z.unknown().transform((value, context): 
   }
 
   return marketplace.plugins.flatMap((entry) => {
-    const parsed = PluginSchema.safeParse(entry)
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
+    const candidate = entry as Record<string, unknown>
+    const plugin: Record<string, unknown> = {
+      ...candidate,
+      id: candidate.name,
+      name: typeof candidate.displayName === 'string' ? candidate.displayName : candidate.name,
+    }
+    const parsed = PluginSchema.safeParse(plugin)
     if (parsed.success) return [parsed.data]
 
-    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
-      const candidate = entry as Record<string, unknown>
-      const corePlugin = PluginSchema.safeParse({ name: candidate.name, source: candidate.source })
-      return corePlugin.success ? [corePlugin.data] : []
-    }
-    return []
+    const corePlugin = PluginSchema.safeParse({ name: plugin.name, id: plugin.id, source: plugin.source })
+    return corePlugin.success ? [corePlugin.data] : []
   })
 })
 

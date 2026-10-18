@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "name": "official-entry-shapes",
+  "expected": {
+    "valid": true,
+    "pluginsCount": 1,
+    "pluginNames": ["external-reviewer"],
+    "reason": "plugins[1] has no source and plugins[2] has an invalid GitHub repository; the official contract skips each invalid entry without rejecting the marketplace.",
+    "plugin": {
+      "id": "external-reviewer",
+      "name": "Review Assistant",
+      "source": {
+        "source": "github",
+        "repo": "example-owner/plugin-tools",
+        "ref": "v1.2.3",
+        "sha": "0123456789abcdef0123456789abcdef01234567"
+      },
+      "commands": "./commands/review.md",
+      "agents": ["./agents/reviewer.md", "./agents/tester.md"]
+    },
+    "installCommand": "/plugin install external-reviewer@community-catalog"
+  },
+  "input": {
+    "name": "community-catalog",
+    "owner": { "name": "fixture-maintainer" },
+    "plugins": [
+      {
+        "name": "external-reviewer",
+        "displayName": "Review Assistant",
+        "source": {
+          "source": "github",
+          "repo": "example-owner/plugin-tools",
+          "ref": "v1.2.3",
+          "sha": "0123456789abcdef0123456789abcdef01234567"
+        },
+        "commands": "./commands/review.md",
+        "agents": ["./agents/reviewer.md", "./agents/tester.md"],
+        "mcpServers": {
+          "reviewer": { "command": "node", "args": ["./servers/reviewer.mjs"] }
+        },
+        "hooks": {
+          "PreToolUse": [
+            { "matcher": "Bash", "hooks": [{ "type": "command", "command": "./hooks/check.sh" }] }
+          ]
+        }
+      },
+      { "name": "missing-source", "displayName": "Missing Source" },
+      { "name": "invalid-repository", "source": { "source": "github", "repo": "not-a-repository" } }
+    ]
+  }
+}

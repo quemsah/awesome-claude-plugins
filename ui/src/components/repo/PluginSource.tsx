@@ -14,11 +14,16 @@ interface PluginSourceProps {
 export function PluginSource({ source, repoPath, defaultBranch }: PluginSourceProps) {
   if (!source) return null
 
-  const sourcePath = typeof source === 'string' ? source : (source.path ?? source.url ?? source.source)
+  const githubRepo = typeof source !== 'string' && source.source === 'github' ? source.repo : undefined
+  const sourcePath = typeof source === 'string' ? source : (source.path ?? source.url ?? githubRepo ?? source.source)
   const sourceRepo = typeof source === 'string' ? null : source.repo
   const sourceUrlValue = typeof source === 'string' ? null : source.url
   const targetRepo = typeof source === 'string' ? repoPath : sourceRepo
-  const branch = typeof source === 'string' ? defaultBranch : (source.branch ?? source.ref ?? source.commit ?? 'HEAD')
+  const branch = typeof source === 'string' ? defaultBranch : (source.sha ?? source.ref ?? source.branch ?? source.commit ?? 'HEAD')
+  const githubRepoUrl =
+    githubRepo && typeof source !== 'string'
+      ? `https://github.com/${encodeGitHubPath(githubRepo)}${source.sha || source.ref || source.branch ? `/tree/${encodeGitHubPath(branch ?? 'HEAD')}` : ''}`
+      : null
   const sourceStringUrl =
     typeof source === 'string' && source.startsWith('github:')
       ? GITHUB_REPO_PATH_PATTERN.test(source.slice('github:'.length))
@@ -30,19 +35,20 @@ export function PluginSource({ source, repoPath, defaultBranch }: PluginSourcePr
   const sourceUrl =
     typeof source === 'string'
       ? sourceStringUrl
-      : sourceUrlValue
-        ? source.path
-          ? GITHUB_REPO_PATH_PATTERN.test(sourceUrlValue)
-            ? getGitHubBlobUrl(sourceUrlValue, branch ?? 'HEAD', source.path)
-            : // A manifest may name another host outright, so only the segments added here are encoded:
-              // the base is already a complete URL, and re-encoding it would double its own `%` escapes.
-              `${sourceUrlValue.replace(GIT_SUFFIX_PATTERN, '')}/blob/${encodeGitHubPath(branch ?? 'HEAD')}/${encodeGitHubPath(source.path)}`
-          : GITHUB_REPO_PATH_PATTERN.test(sourceUrlValue)
-            ? `https://github.com/${sourceUrlValue}`
-            : sourceUrlValue
-        : targetRepo && branch
-          ? getGitHubBlobUrl(targetRepo, branch, sourcePath)
-          : null
+      : (githubRepoUrl ??
+        (sourceUrlValue
+          ? source.path
+            ? GITHUB_REPO_PATH_PATTERN.test(sourceUrlValue)
+              ? getGitHubBlobUrl(sourceUrlValue, branch ?? 'HEAD', source.path)
+              : // A manifest may name another host outright, so only the segments added here are encoded:
+                // the base is already a complete URL, and re-encoding it would double its own `%` escapes.
+                `${sourceUrlValue.replace(GIT_SUFFIX_PATTERN, '')}/blob/${encodeGitHubPath(branch ?? 'HEAD')}/${encodeGitHubPath(source.path)}`
+            : GITHUB_REPO_PATH_PATTERN.test(sourceUrlValue)
+              ? `https://github.com/${sourceUrlValue}`
+              : sourceUrlValue
+          : targetRepo && branch
+            ? getGitHubBlobUrl(targetRepo, branch, sourcePath)
+            : null))
 
   if (!sourceUrl) return null
 
@@ -51,7 +57,7 @@ export function PluginSource({ source, repoPath, defaultBranch }: PluginSourcePr
       <dt className="mb-0.5 font-medium text-sm">Source</dt>
       <dd className="break-all text-muted-foreground text-sm">
         <a
-          aria-label={`Open source file ${sourcePath} in a new tab`}
+          aria-label={`Open source ${githubRepoUrl ? 'repository' : 'file'} ${sourcePath} in a new tab`}
           className="underline-offset-4 transition-colors hover:text-primary hover:underline group-hover:text-primary"
           href={sourceUrl}
           rel="noopener noreferrer"
