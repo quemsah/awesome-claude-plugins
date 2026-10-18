@@ -44,7 +44,7 @@ export function isPluginInstallCommandVerified(pluginId?: string, marketplaceNam
  * Generates a `/plugin install` command from verified manifest semantics.
  *
  * Priority:
- * 1. `pluginName` + `pluginId` → `/plugin install {name}@{id}`
+ * 1. `pluginId` + `marketplaceName` → `/plugin install {pluginId}@{marketplaceName}`
  * 2. `pluginName` + `marketplaceName` → `/plugin install {name}@{marketplaceName}`
  * 3. `pluginId` only → `/plugin install {id}`
  * 4. `pluginName` only → `/plugin install {name}` (unverified)
@@ -63,20 +63,13 @@ export function getPluginInstallCommand({ pluginName, pluginId, marketplaceName 
     return null
   }
 
-  if (normalizedName && normalizedPluginId) {
-    return `/plugin install ${normalizedName}@${normalizedPluginId}`
+  const installName = normalizedPluginId || normalizedName
+  if (installName && normalizedMarketplaceName) {
+    return `/plugin install ${installName}@${normalizedMarketplaceName}`
   }
 
-  if (normalizedName && normalizedMarketplaceName) {
-    return `/plugin install ${normalizedName}@${normalizedMarketplaceName}`
-  }
-
-  if (normalizedPluginId) {
-    return `/plugin install ${normalizedPluginId}`
-  }
-
-  if (normalizedName) {
-    return `/plugin install ${normalizedName}`
+  if (installName) {
+    return `/plugin install ${installName}`
   }
 
   return null

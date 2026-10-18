@@ -31,23 +31,30 @@ function buildRepository(owner, name, overrides = {}) {
 }
 
 const examplePlugin = {
-  name: 'Example Plugin',
-  id: 'example-plugin',
+  name: 'example-plugin',
+  displayName: 'Example Plugin',
   description: 'A plugin rendered from mocked marketplace data',
   version: '1.2.3',
   category: 'Testing',
-  source: '.claude-plugin/plugin.json',
+  source: './.claude-plugin/plugin.json',
   author: { name: 'Example Maintainer', email: 'maintainer@example.dev' },
   keywords: ['testing', 'automation'],
-  commands: ['commands/example.md'],
-  agents: ['agents/reviewer.md'],
-  mcpServers: ['mcp/server.json'],
+  commands: './commands/example.md',
+  agents: ['./agents/reviewer.md'],
+  mcpServers: { testing: { command: 'node', args: ['./mcp/server.mjs'] } },
+  hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: './hooks/check.sh' }] }] },
 }
 
 const fallbackPlugin = {
-  name: 'Fallback Install Target',
-  description: 'A plugin whose source points at another repository',
-  source: { source: 'plugins/fallback.json', repo: 'elsewhere/shared-plugins', branch: 'main' },
+  name: 'fallback-install-target',
+  displayName: 'Fallback Install Target',
+  description: 'A plugin sourced from another GitHub repository',
+  source: {
+    source: 'github',
+    repo: 'elsewhere/shared-plugins',
+    ref: 'main',
+    sha: '0123456789abcdef0123456789abcdef01234567',
+  },
   author: { email: 'fallback@example.dev' },
 }
 
@@ -61,10 +68,16 @@ const unnamedPlugin = {
  */
 const fixtures = {
   'ykdojo/claude-code-tips': {
-    marketplace: { status: 200, body: { name: 'ykdojo', plugins: [examplePlugin, fallbackPlugin, unnamedPlugin] } },
+    marketplace: {
+      status: 200,
+      body: { name: 'ykdojo', owner: { name: 'ykdojo' }, plugins: [examplePlugin, fallbackPlugin, unnamedPlugin] },
+    },
   },
   'mksglu/context-mode': {
-    marketplace: { status: 200, body: [examplePlugin] },
+    marketplace: {
+      status: 200,
+      body: { name: 'context-mode', owner: { name: 'mksglu' }, plugins: [examplePlugin] },
+    },
   },
   'ZeframLou/call-me': {
     marketplace: { status: 404, body: { message: 'Not Found' } },

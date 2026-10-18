@@ -50,6 +50,12 @@ describe('install command verification', () => {
     expect(isPluginInstallCommandVerified('')).toBe(false)
   })
 
+  it('uses the official marketplace entry name before the display name', () => {
+    expect(
+      getPluginInstallCommand({ pluginName: 'Review Assistant', pluginId: 'external-reviewer', marketplaceName: 'community-catalog' })
+    ).toBe('/plugin install external-reviewer@community-catalog')
+  })
+
   it('uses a marketplace name when pluginId is absent', () => {
     expect(isPluginInstallCommandVerified(undefined, 'ykdojo')).toBe(true)
     expect(getPluginInstallCommand({ pluginName: 'fallback-install-target', marketplaceName: 'ykdojo' })).toBe(

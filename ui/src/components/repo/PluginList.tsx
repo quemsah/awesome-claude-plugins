@@ -2,13 +2,13 @@ import { getGitHubBlobUrl } from '../../lib/repositoryIdentity.ts'
 
 interface PluginListProps {
   title: string
-  items?: string[] | Record<string, unknown>
+  items?: string | string[] | Record<string, unknown>
   repoPath: string
   defaultBranch?: string
 }
 
 export function PluginList({ title, items, repoPath, defaultBranch }: PluginListProps) {
-  const listItems = Array.isArray(items) ? items : []
+  const listItems = typeof items === 'string' ? [items] : Array.isArray(items) ? items : []
   if (!(listItems.length && defaultBranch)) return null
 
   return (
