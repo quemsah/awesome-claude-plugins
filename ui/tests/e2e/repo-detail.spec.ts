@@ -141,7 +141,9 @@ test('repo detail page renders component names from object maps without treating
   await expect(plugin.getByText('deploy', { exact: true })).toBeVisible()
   await expect(plugin.getByText('reviewer', { exact: true })).toBeVisible()
   await expect(plugin.getByText('firebase', { exact: true })).toBeVisible()
-  await expect(plugin.getByRole('link', { name: /Open deploy|Open reviewer|Open firebase/ })).toHaveCount(0)
+  for (const component of ['deploy', 'reviewer', 'firebase']) {
+    await expect(plugin.getByRole('link', { name: `Open ${component} in a new tab` })).toHaveCount(0)
+  }
 })
 
 test('repo detail page renders an empty plugin state when the manifest is missing', async ({ page }) => {
