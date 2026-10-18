@@ -1910,9 +1910,7 @@ it('stores invalid marketplace state on the actual ID after earlier batched cano
 
   await enrichRepositories(db, client, 'crawl-1')
 
-  expect(
-    db.prepare('SELECT id, html_url, marketplace_failed_oid FROM repositories ORDER BY id').all(),
-  ).toEqual([
+  expect(db.prepare('SELECT id, html_url, marketplace_failed_oid FROM repositories ORDER BY id').all()).toEqual([
     { id: firstId, html_url: 'https://github.com/team/renamed', marketplace_failed_oid: null },
     { id: secondId, html_url: 'https://github.com/team/old', marketplace_failed_oid: invalidOid },
   ])
