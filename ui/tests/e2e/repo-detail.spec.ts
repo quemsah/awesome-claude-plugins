@@ -46,9 +46,9 @@ test('repo detail page refreshes repository and marketplace data in the browser'
   )
   expect(JSON.stringify(jsonLd)).not.toContain('"Unknown"')
   const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Example Plugin@1.2.3' }) })
-  await expect(plugin.getByText('/plugin install example-plugin@example-plugin')).toBeVisible()
+  await expect(plugin.getByText('/plugin install example-plugin@ykdojo')).toBeVisible()
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
-  await expect.poll(() => copiedText(page)).toBe('/plugin install example-plugin@example-plugin')
+  await expect.poll(() => copiedText(page)).toBe('/plugin install example-plugin@ykdojo')
 })
 
 test('repo detail page uses the manifest marketplace name for fallback install commands', async ({ page }) => {
@@ -76,7 +76,7 @@ test('repo detail page accepts marketplace manifests served as a plugin array', 
   await page.goto('/mksglu/context-mode')
 
   await expect(page.getByRole('heading', { name: 'Example Plugin@1.2.3' })).toBeVisible()
-  await expect(page.getByText('/plugin install example-plugin@example-plugin')).toBeVisible()
+  await expect(page.getByText('/plugin install example-plugin')).toBeVisible()
 })
 
 test('repo detail page renders an empty plugin state when the manifest is missing', async ({ page }) => {

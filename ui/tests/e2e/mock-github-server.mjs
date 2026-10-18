@@ -32,7 +32,7 @@ function buildRepository(owner, name, overrides = {}) {
 
 const examplePlugin = {
   name: 'Example Plugin',
-  id: 'example-plugin',
+  id: 'different-plugin-id',
   description: 'A plugin rendered from mocked marketplace data',
   version: '1.2.3',
   category: 'Testing',
