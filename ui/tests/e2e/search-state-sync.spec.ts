@@ -1,5 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
 
+const rscUrlPattern = /_rsc=/
+
 async function chooseSortOption(page: Page, optionName: 'Stars' | 'Forks' | 'Plugins') {
   await page.getByRole('combobox', { name: 'Sort by' }).click()
   await page.getByRole('option', { name: optionName }).click()
@@ -53,10 +55,9 @@ test('url, sort control, and catalog results stay aligned when sort is chosen mi
   await expectStable(screenState, alignedState, 2_000)
 })
 
-
 test('reversing sort before an earlier URL navigation settles restores the correct address', async ({ page }) => {
   await page.goto('/')
-  await page.route(/_rsc=/, async (route) => {
+  await page.route(rscUrlPattern, async (route) => {
     if (new URL(route.request().url()).searchParams.get('sort') === 'forks-desc') {
       await new Promise((resolve) => setTimeout(resolve, 900))
     }
@@ -77,7 +78,7 @@ test('reversing sort before an earlier URL navigation settles restores the corre
 
 test('a header link clears an abandoned search navigation and queued input', async ({ page }) => {
   await page.goto('/?q=previous')
-  await page.route(/_rsc=/, async (route) => {
+  await page.route(rscUrlPattern, async (route) => {
     if (new URL(route.request().url()).searchParams.get('q') === 'replacement') {
       await new Promise((resolve) => setTimeout(resolve, 900))
     }
