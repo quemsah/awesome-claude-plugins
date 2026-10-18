@@ -5,3 +5,6 @@ coverage/
 *.sqlite-*
 test/.scratch-*/
 temp/*
+
+.DS_Store
+*.tsbuildinfo

@@ -1,4 +1,3 @@
-import { resolve } from 'node:path'
 import { defineConfig } from 'vitest/config'
 
 const realCatalogTests = ['src/app/api/catalog/contract.test.ts', 'src/lib/markdownPaths.test.ts', 'src/schemas/catalogData.test.ts']
@@ -12,7 +11,7 @@ export default defineConfig({
           name: 'unit',
           include: ['src/**/*.test.ts'],
           exclude: realCatalogTests,
-          alias: { '../data/repos.json': resolve('src/test/fixtures/repos.json') },
+          setupFiles: ['src/test/setupSmallCatalog.ts'],
         },
       },
       {
