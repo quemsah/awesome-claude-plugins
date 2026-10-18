@@ -8,5 +8,10 @@ type CatalogGlobal = typeof globalThis & { [CATALOG_KEY]?: readonly Repo[] }
 
 export function getCatalog(): readonly Repo[] {
   const root = globalThis as CatalogGlobal
-  return (root[CATALOG_KEY] ??= JSON.parse(readFileSync(join(process.cwd(), 'src/data/repos.json'), 'utf8')) as Repo[])
+  const cachedCatalog = root[CATALOG_KEY]
+  if (cachedCatalog !== undefined) return cachedCatalog
+
+  const catalog = JSON.parse(readFileSync(join(process.cwd(), 'src/data/repos.json'), 'utf8')) as Repo[]
+  root[CATALOG_KEY] = catalog
+  return catalog
 }
