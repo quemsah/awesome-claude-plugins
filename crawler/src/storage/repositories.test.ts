@@ -176,6 +176,7 @@ it('publishes only complete canonical GitHub rows with the ten public columns', 
       owner_url: 'https://github.com/example',
       repo_name: 'repo',
       plugins_count: 3,
+      plugins_json: null,
     },
   ])
   expect(incomplete).toBeGreaterThan(valid)
@@ -204,6 +205,7 @@ it('publishes canonical enriched rows with unknown plugin counts without leaking
       owner_url: 'https://github.com/example',
       repo_name: 'repo',
       plugins_count: null,
+      plugins_json: null,
     },
   ])
   expect(db.prepare('SELECT description FROM repositories WHERE id = ?').get(id)).toEqual({ description: '123' })
