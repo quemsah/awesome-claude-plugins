@@ -123,7 +123,8 @@ function getSearchCache(): Map<string, SearchCacheEntry> {
 
 function countCachedRecords(cache: Map<string, SearchCacheEntry>): number {
   return [...cache.values()].reduce(
-    (total, entry) => total + entry.records.length + [...(entry.sorted?.values() ?? [])].reduce((count, records) => count + records.length, 0),
+    (total, entry) =>
+      total + entry.records.length + [...(entry.sorted?.values() ?? [])].reduce((count, records) => count + records.length, 0),
     0
   )
 }
@@ -168,7 +169,10 @@ export function searchCatalogRepos(query: string, sortOption: SortOption, page =
     repos = catalogReposBySort[sortOption].slice(page * pageSize, (page + 1) * pageSize)
   } else {
     const cacheEntry = getSearchCache().get(normalizedQuery)
-    const sortedMatches = (cacheEntry && (cacheEntry.sorted ??= new Map<SortOption, ScoredCatalogRepo[]>())) ?? new Map<SortOption, ScoredCatalogRepo[]>()
+    const sortedMatches = cacheEntry?.sorted ?? new Map<SortOption, ScoredCatalogRepo[]>()
+    if (cacheEntry && !cacheEntry.sorted) {
+      cacheEntry.sorted = sortedMatches
+    }
     let sorted = sortedMatches.get(sortOption)
     if (!sorted) {
       sorted = [...matchingRepos].sort((left, right) => compareCatalogRepos(left.repo, right.repo, sortOption) || left.score - right.score)
