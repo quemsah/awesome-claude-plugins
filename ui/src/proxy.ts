@@ -23,7 +23,7 @@ export function proxy(request: NextRequest) {
 
   if (pathname.toLowerCase().endsWith('.md')) {
     const segments = requestedPath.slice(0, -3).split('/').filter(Boolean)
-    if (segments.length !== 2) {
+    if (segments.length !== 2 || RESERVED_REPOSITORY_ROOTS.has(segments[0]?.toLowerCase() ?? '')) {
       return NextResponse.next()
     }
 
