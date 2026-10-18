@@ -1,3 +1,5 @@
+/** biome-ignore-all lint/style/useNamingConvention: Catalog fixtures use the public snake_case field names. */
+
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { generateMetadata } from './page.tsx'
 
