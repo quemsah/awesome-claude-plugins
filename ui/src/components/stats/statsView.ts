@@ -1,5 +1,30 @@
 import type { StatsItem } from '../../schemas/stats.schema.ts'
 
+export function getTimeRangeLabel(timeRange: string): string {
+  const labels: Record<string, string> = {
+    '7days': 'Last 7 days',
+    '30days': 'Last 30 days',
+    all: 'All time',
+  }
+  return labels[timeRange] ?? 'the selected period'
+}
+
+export function collapseDailySnapshots(stats: StatsItem[]): StatsItem[] {
+  const dailySnapshots = new Map<string, StatsItem>()
+
+  for (const snapshot of stats) {
+    const timestamp = new Date(snapshot.date)
+    const day = timestamp.toISOString().slice(0, 10)
+    const existing = dailySnapshots.get(day)
+
+    if (!existing || timestamp.getTime() >= new Date(existing.date).getTime()) {
+      dailySnapshots.set(day, snapshot)
+    }
+  }
+
+  return [...dailySnapshots.values()].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+}
+
 export function filterStatsByTimeRange(stats: StatsItem[], timeRange: string): StatsItem[] {
   if (timeRange === 'all') {
     return stats
@@ -12,6 +37,8 @@ export function filterStatsByTimeRange(stats: StatsItem[], timeRange: string): S
     cutoffDate.setDate(now.getDate() - 7)
   } else if (timeRange === '30days') {
     cutoffDate.setDate(now.getDate() - 30)
+  } else {
+    return stats
   }
 
   return stats.filter((item) => new Date(item.date) >= cutoffDate)

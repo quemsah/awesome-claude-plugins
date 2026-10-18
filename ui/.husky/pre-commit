@@ -1,1 +1,10 @@
-npm --prefix ui run lint
+npm --prefix ui run lint || exit $?
+
+# Do not require crawler dependencies for UI-only commits.
+if git diff --cached --name-only -- crawler/ | grep -q .; then
+  if [ ! -x crawler/node_modules/.bin/biome ]; then
+    echo 'Crawler dependencies are missing. Run: npm --prefix crawler ci' >&2
+    exit 1
+  fi
+  npm --prefix crawler run lint || exit $?
+fi
