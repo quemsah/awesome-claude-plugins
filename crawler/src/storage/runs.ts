@@ -220,20 +220,27 @@ export function recoverStoppedCrawl(db: Database.Database, runId: string, at: st
   })()
 }
 
-export function recordRunError(db: Database.Database, error: RunErrorInput): void {
-  assertCategory(error.error_type, 'error_type')
-  if (!['search', 'enrich', 'publish', 'notify', 'crawl'].includes(error.phase)) throw new Error('Invalid error phase')
-  if (!Number.isSafeInteger(error.retry_count) || error.retry_count < 0) throw new Error('retry_count must be nonnegative')
-  db.prepare(`
+export function prepareRunErrorWriter(db: Database.Database) {
+  const insert = db.prepare(`
     INSERT INTO run_errors (run_id, phase, query_family, repository_id, range_start, range_end, error_type, retry_count, occurred_at)
     VALUES (@run_id, @phase, @query_family, @repository_id, @range_start, @range_end, @error_type, @retry_count, @occurred_at)
-  `).run({
-    ...error,
-    query_family: error.query_family ?? null,
-    repository_id: error.repository_id ?? null,
-    range_start: error.range_start ?? null,
-    range_end: error.range_end ?? null,
-  })
+  `)
+  return (error: RunErrorInput): void => {
+    assertCategory(error.error_type, 'error_type')
+    if (!['search', 'enrich', 'publish', 'notify', 'crawl'].includes(error.phase)) throw new Error('Invalid error phase')
+    if (!Number.isSafeInteger(error.retry_count) || error.retry_count < 0) throw new Error('retry_count must be nonnegative')
+    insert.run({
+      ...error,
+      query_family: error.query_family ?? null,
+      repository_id: error.repository_id ?? null,
+      range_start: error.range_start ?? null,
+      range_end: error.range_end ?? null,
+    })
+  }
+}
+
+export function recordRunError(db: Database.Database, error: RunErrorInput): void {
+  prepareRunErrorWriter(db)(error)
 }
 
 export function listRunErrors(db: Database.Database, runId: string): RunErrorRow[] {

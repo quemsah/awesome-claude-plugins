@@ -15,11 +15,11 @@ export default function NotFound() {
         <CardContent className="space-y-4 text-center">
           <p className="text-muted-foreground">Sorry, we couldn't find the page you're looking for.</p>
           <div className="flex justify-center">
-            <Link href="/">
-              <Button aria-label="Go to home page" className="w-auto">
+            <Button asChild className="w-auto">
+              <Link aria-label="Go to home page" href="/">
                 Go Home
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </div>
         </CardContent>
       </Card>

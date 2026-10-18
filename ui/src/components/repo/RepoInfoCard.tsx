@@ -92,23 +92,23 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
         <div className="mb-6 flex flex-wrap gap-3 sm:gap-4">
           <Badge className="gap-2 text-sm" variant="secondary">
             <Star aria-hidden="true" className="h-5 w-5" />
-            <span className="font-semibold">{repo.stargazers_count?.toLocaleString() ?? 0}</span>
+            <span className="font-semibold">{repo.stargazers_count?.toLocaleString('en-US') ?? 0}</span>
             <span>stars</span>
           </Badge>
           <Badge className="gap-2 text-sm" variant="secondary">
             <GitFork aria-hidden="true" className="h-5 w-5" />
-            <span className="font-semibold">{repo.forks_count?.toLocaleString() ?? 0}</span>
+            <span className="font-semibold">{repo.forks_count?.toLocaleString('en-US') ?? 0}</span>
             <span>forks</span>
           </Badge>
           <Badge className="gap-2 text-sm" variant="secondary">
             <Eye aria-hidden="true" className="h-5 w-5" />
-            <span className="font-semibold">{repo.subscribers_count?.toLocaleString() ?? 0}</span>
+            <span className="font-semibold">{repo.subscribers_count?.toLocaleString('en-US') ?? 0}</span>
             <span>watchers/subscribers</span>
           </Badge>
           {repo.open_issues_count !== null && (
             <Badge className="gap-2 text-sm" variant="secondary">
               <CircleDot aria-hidden="true" className="h-5 w-5" />
-              <span className="font-semibold">{repo.open_issues_count.toLocaleString()}</span>
+              <span className="font-semibold">{repo.open_issues_count.toLocaleString('en-US')}</span>
               <span>issues</span>
             </Badge>
           )}
