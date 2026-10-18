@@ -17,6 +17,36 @@ const catalogRepos: readonly CatalogRepo[] = (reposData as readonly Repo[]).filt
   (repo): repo is CatalogRepo => repo.owner != null && repo.repo_name != null
 )
 const canonicalCatalogRepos = getUniqueCatalogRepos(catalogRepos)
+const canonicalCatalogRepoSet = new Set(canonicalCatalogRepos)
+const indexableCatalogRepos = canonicalCatalogRepos.filter((repo) => getCatalogQuality(repo, true).publicationState === 'indexable')
+const catalogReposByPath = new Map<string, CatalogRepo>()
+for (const repo of catalogRepos) {
+  const path = `${repo.owner}/${repo.repo_name}`.toLowerCase()
+  if (!catalogReposByPath.has(path)) {
+    catalogReposByPath.set(path, repo)
+  }
+}
+
+function compareCatalogRepos(left: CatalogRepo, right: CatalogRepo, sortOption: SortOption): number {
+  const descriptionSignal = (repo: CatalogRepo) => (repo.description?.trim() ? 1 : 0)
+  switch (sortOption) {
+    case 'forks-desc':
+      return (right.forks_count ?? 0) - (left.forks_count ?? 0)
+    case 'plugins-desc': {
+      const pluginSignal = (repo: CatalogRepo) => (repo.plugins_count ?? 0) * Math.log10((repo.stargazers_count ?? 0) + 10)
+      return pluginSignal(right) - pluginSignal(left) || (right.plugins_count ?? 0) - (left.plugins_count ?? 0)
+    }
+    default:
+      return (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0) || descriptionSignal(right) - descriptionSignal(left)
+  }
+}
+
+const catalogReposBySort: Record<SortOption, readonly CatalogRepo[]> = {
+  'stars-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'stars-desc')),
+  'forks-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'forks-desc')),
+  'plugins-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'plugins-desc')),
+}
+const catalogPluginsCount = canonicalCatalogRepos.reduce((total, repo) => total + (repo.plugins_count ?? 0), 0)
 
 export type CatalogSearchResult = {
   hasMore: boolean
@@ -41,7 +71,7 @@ export function getCanonicalCatalogRepos(): readonly CatalogRepo[] {
 }
 
 export function getIndexableCatalogRepos(): readonly CatalogRepo[] {
-  return canonicalCatalogRepos.filter((repo) => getCatalogQuality(repo, true).publicationState === 'indexable')
+  return indexableCatalogRepos
 }
 
 /** Pages the browse route serves: it paginates the whole canonical catalog, which is larger than the indexable subset. */
@@ -50,7 +80,7 @@ export function getBrowsePageCount(): number {
 }
 
 export function getCatalogQualityForRepo(repo: CatalogRepo): CatalogQuality {
-  return getCatalogQuality(repo, canonicalCatalogRepos.includes(repo))
+  return getCatalogQuality(repo, canonicalCatalogRepoSet.has(repo))
 }
 
 function getUniqueCatalogRepos(repos: readonly CatalogRepo[]): readonly CatalogRepo[] {
@@ -66,7 +96,7 @@ function getUniqueCatalogRepos(repos: readonly CatalogRepo[]): readonly CatalogR
 }
 
 type ScoredCatalogRepo = { repo: CatalogRepo; score: number }
-type SearchCacheEntry = { expiresAt: number; records: ScoredCatalogRepo[] }
+type SearchCacheEntry = { expiresAt: number; records: ScoredCatalogRepo[]; sorted?: Map<SortOption, ScoredCatalogRepo[]> }
 
 // Same freshness window the catalog api already publishes to clients.
 const SEARCH_CACHE_TTL_MS = 60_000
@@ -92,7 +122,11 @@ function getSearchCache(): Map<string, SearchCacheEntry> {
 }
 
 function countCachedRecords(cache: Map<string, SearchCacheEntry>): number {
-  return [...cache.values()].reduce((total, entry) => total + entry.records.length, 0)
+  return [...cache.values()].reduce(
+    (total, entry) =>
+      total + entry.records.length + [...(entry.sorted?.values() ?? [])].reduce((count, records) => count + records.length, 0),
+    0
+  )
 }
 
 /**
@@ -129,44 +163,45 @@ function getScoredMatches(normalizedQuery: string, repos: readonly CatalogRepo[]
 
 export function searchCatalogRepos(query: string, sortOption: SortOption, page = 0, pageSize = CATALOG_PAGE_SIZE): CatalogSearchResult {
   const normalizedQuery = normalizeSearchQuery(query)
-  const matchingRepos = getScoredMatches(normalizedQuery, getCanonicalCatalogRepos())
-  const sortedRepos = [...matchingRepos].sort((left, right) => {
-    const leftRepo = left.repo
-    const rightRepo = right.repo
-    const descriptionSignal = (repo: CatalogRepo) => (repo.description?.trim() ? 1 : 0)
-    let sortResult: number
-    switch (sortOption) {
-      case 'forks-desc':
-        sortResult = (rightRepo.forks_count ?? 0) - (leftRepo.forks_count ?? 0)
-        break
-      case 'plugins-desc': {
-        const pluginSignal = (repo: CatalogRepo) => {
-          const pluginCount = repo.plugins_count ?? 0
-          const stars = repo.stargazers_count ?? 0
-          return pluginCount * Math.log10(stars + 10)
-        }
-        sortResult = pluginSignal(rightRepo) - pluginSignal(leftRepo) || (rightRepo.plugins_count ?? 0) - (leftRepo.plugins_count ?? 0)
-        break
-      }
-      default:
-        sortResult =
-          (rightRepo.stargazers_count ?? 0) - (leftRepo.stargazers_count ?? 0) || descriptionSignal(rightRepo) - descriptionSignal(leftRepo)
+  const matchingRepos = normalizedQuery ? getScoredMatches(normalizedQuery, canonicalCatalogRepos) : undefined
+  let repos: CatalogRepo[]
+  if (!matchingRepos) {
+    repos = catalogReposBySort[sortOption].slice(page * pageSize, (page + 1) * pageSize)
+  } else {
+    const cacheEntry = getSearchCache().get(normalizedQuery)
+    const sortedMatches = cacheEntry?.sorted ?? new Map<SortOption, ScoredCatalogRepo[]>()
+    if (cacheEntry && !cacheEntry.sorted) {
+      cacheEntry.sorted = sortedMatches
     }
-    return sortResult || (normalizedQuery ? left.score - right.score : 0)
-  })
+    let sorted = sortedMatches.get(sortOption)
+    if (!sorted) {
+      sorted = [...matchingRepos].sort((left, right) => compareCatalogRepos(left.repo, right.repo, sortOption) || left.score - right.score)
+      sortedMatches.set(sortOption, sorted)
+      const cache = getSearchCache()
+      let cachedRecords = countCachedRecords(cache)
+      while (cache.size > SEARCH_CACHE_MAX_ENTRIES || cachedRecords > SEARCH_CACHE_MAX_RECORDS) {
+        const oldest = cache.keys().next()
+        if (oldest.done) break
+        cache.delete(oldest.value)
+        cachedRecords = countCachedRecords(cache)
+      }
+    }
+    repos = sorted.slice(page * pageSize, (page + 1) * pageSize).map((result) => result.repo)
+  }
   const start = page * pageSize
+  const total = matchingRepos?.length ?? canonicalCatalogRepos.length
+  const pluginsCount = matchingRepos?.reduce((sum, result) => sum + (result.repo.plugins_count ?? 0), 0) ?? catalogPluginsCount
 
   return {
-    hasMore: start + pageSize < matchingRepos.length,
-    pluginsCount: matchingRepos.reduce((total, result) => total + (result.repo.plugins_count ?? 0), 0),
-    repos: sortedRepos.slice(start, start + pageSize).map((result) => result.repo),
-    total: matchingRepos.length,
+    hasMore: start + pageSize < total,
+    pluginsCount,
+    repos,
+    total,
   }
 }
 
 export function findCatalogRepo(repoPath: string) {
-  const normalizedPath = repoPath.toLowerCase()
-  return getCatalogRepos().find((repo) => `${repo.owner}/${repo.repo_name}`.toLowerCase() === normalizedPath)
+  return catalogReposByPath.get(repoPath.toLowerCase())
 }
 
 export function getCatalogLastModified() {
