@@ -264,14 +264,14 @@
     "id": 6
   },
   {
-    "html_url": "https://github.com/fixture-org/claudde-plugin-00",
+    "html_url": "https://github.com/fixture-org/claude-plugin-00",
     "stargazers_count": 100,
     "forks_count": 0,
     "subscribers_count": 1,
     "description": "Claude plugin fixture repository 00 with enough searchable documentation.",
     "owner": "fixture-org",
     "owner_url": "https://github.com/fixture-org",
-    "repo_name": "claudde-plugin-00",
+    "repo_name": "claude-plugin-00",
     "plugins_count": 0,
     "id": 900000
   },
@@ -874,5 +874,17 @@
     "repo_name": "CLAUDE-PLUGIN-00",
     "plugins_count": 0,
     "id": 900050
+  },
+  {
+    "html_url": "https://github.com/ykdojo/claude-code-tips",
+    "stargazers_count": 250,
+    "forks_count": 12,
+    "subscribers_count": 3,
+    "description": "Tips and practical advice for using Claude Code.",
+    "owner": "ykdojo",
+    "owner_url": "https://github.com/ykdojo",
+    "repo_name": "claude-code-tips",
+    "plugins_count": 1,
+    "id": 900100
   }
 ]
