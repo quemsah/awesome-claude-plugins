@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { TelegramNotificationError, TelegramNotifier, type TelegramSummary } from './telegram.js'
+import { TelegramNotificationError, TelegramNotifier, type TelegramSummary, truncateTelegramMessage } from './telegram.js'
 
 const token = '12345:private-bot-secret'
 const summary: TelegramSummary = {
@@ -381,4 +381,30 @@ it('treats shutdown during the final Telegram 429 JSON parse as termination', as
   })
 
   await expect(notifier.notifyStart(summary)).rejects.toMatchObject({ category: 'terminated' })
+})
+
+describe('truncateTelegramMessage and payload safety', () => {
+  it('preserves text that is within the 4096 character limit', () => {
+    const text = 'short message'
+    expect(truncateTelegramMessage(text)).toBe(text)
+  })
+
+  it('safely truncates messages exceeding 4096 characters with an indicator', () => {
+    const oversized = 'a'.repeat(5000)
+    const truncated = truncateTelegramMessage(oversized)
+    expect(truncated.length).toBe(4096)
+    expect(truncated.endsWith('\n... (truncated)')).toBe(true)
+  })
+
+  it('delivers oversized notification payloads truncated within 4096 without throwing configuration error', async () => {
+    const test = harness([Response.json({ ok: true })])
+    const hugeSummary: TelegramSummary = {
+      ...summary,
+      problematicRanges: Array.from({ length: 300 }, (_, i) => `range-${i}:${'x'.repeat(20)}`),
+    }
+    await test.notifier.notifyDryRun(hugeSummary)
+    expect(test.requests).toHaveLength(1)
+    const text = body(test.requests[0]).text
+    expect(text.length).toBeLessThanOrEqual(4096)
+  })
 })

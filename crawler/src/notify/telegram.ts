@@ -203,6 +203,14 @@ function summaryText(summary: TelegramSummary): string {
   return [...lines, `problematic size ranges: ${rangeList}`].join('\n')
 }
 
+const MAX_MESSAGE_LENGTH = 4096
+const TRUNCATION_INDICATOR = '\n... (truncated)'
+
+export function truncateTelegramMessage(text: string): string {
+  if (text.length <= MAX_MESSAGE_LENGTH) return text
+  return `${text.slice(0, MAX_MESSAGE_LENGTH - TRUNCATION_INDICATOR.length)}${TRUNCATION_INDICATOR}`
+}
+
 /** On delivery failure, callers log { level: 'error', phase: 'notify', category, status }; they must not roll back the confirmed Git commit. */
 export class TelegramNotifier {
   readonly #botToken: string
@@ -312,9 +320,9 @@ export class TelegramNotifier {
   }
 
   private async send(text: string): Promise<void> {
-    if (text.length > 4096) throw new TelegramNotificationError('configuration')
+    const payload = truncateTelegramMessage(text)
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      if (await this.sendAttempt(text, attempt)) return
+      if (await this.sendAttempt(payload, attempt)) return
     }
   }
 }
