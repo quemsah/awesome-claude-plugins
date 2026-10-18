@@ -5,6 +5,7 @@ import { getRateLimitKey, RateLimiter } from '../../../lib/rateLimit.ts'
 import { parseSortOption } from '../../../lib/searchState.ts'
 
 const MAX_PAGE_SIZE = 100
+const DECIMAL_INTEGER_PATTERN = /^\d+$/
 const MAX_REQUESTS_PER_MINUTE = 100
 const rateLimiter = new RateLimiter(10_000, MAX_REQUESTS_PER_MINUTE, 60_000)
 
@@ -19,10 +20,14 @@ export function GET(request: Request) {
   const page = Number(pageValue)
   const pageSize = Number(pageSizeValue)
 
-  if (
-    !(/^\d+$/.test(pageValue) && Number.isSafeInteger(page) && page >= 0) ||
-    !(/^\d+$/.test(pageSizeValue) && Number.isSafeInteger(pageSize) && pageSize > 0 && pageSize <= MAX_PAGE_SIZE)
-  ) {
+  const validPage = DECIMAL_INTEGER_PATTERN.test(pageValue) && Number.isSafeInteger(page) && page >= 0
+  const validPageSize =
+    DECIMAL_INTEGER_PATTERN.test(pageSizeValue) &&
+    Number.isSafeInteger(pageSize) &&
+    pageSize > 0 &&
+    pageSize <= MAX_PAGE_SIZE
+
+  if (!validPage || !validPageSize) {
     return NextResponse.json({ message: 'Invalid pagination parameters' }, { status: 400 })
   }
 
