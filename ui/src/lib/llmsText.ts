@@ -56,7 +56,7 @@ export function getCatalogSummary(repos: readonly Repo[], stats: readonly StatsI
 export function buildLlmsText(summary: CatalogSummary): string {
   const updatedDate = summary.updatedAt ? new Date(summary.updatedAt).toISOString().split('T')[0] : 'unknown'
 
-  return `# Awesome Claude Code Plugins
+  return `# Awesome Claude Plugins
 
 > A searchable directory of GitHub repositories related to Claude Code plugins, MCP servers, and agent skills.
 
@@ -64,7 +64,7 @@ This website provides a generated catalog of GitHub repositories related to Clau
 
 ## About This Website
 
-- **Website Name**: Awesome Claude Code Plugins
+- **Website Name**: Awesome Claude Plugins
 - **Purpose**: Generated catalog of GitHub repositories related to Claude Code plugins, MCP servers, and agent skills
 - **Target Audience**: AI developers, plugin creators, and Claude AI users
 - **Unique Value**: Discover Claude-related repositories with repository metadata, plugin adoption counts, and historical catalog statistics

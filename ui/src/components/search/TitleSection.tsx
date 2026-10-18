@@ -7,7 +7,7 @@ export function TitleSection() {
 
   return (
     <div className="mb-4 space-y-4 text-center">
-      <h1 className="mb-2 text-balance font-bold text-2xl sm:text-3xl lg:text-4xl">Awesome Claude Code Plugins</h1>
+      <h1 className="mb-2 text-balance font-bold text-2xl sm:text-3xl lg:text-4xl">Awesome Claude Plugins</h1>
       <div className="mx-auto max-w-3xl space-y-2 text-muted-foreground text-xs sm:text-sm">
         <p>
           Catalog snapshot: {lastUpdated}.{' '}

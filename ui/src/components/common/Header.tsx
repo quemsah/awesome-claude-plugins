@@ -43,11 +43,11 @@ export function Header() {
         <nav aria-label="Main navigation">
           <div className="flex gap-3 sm:gap-4" style={{ alignItems: 'last baseline' }}>
             <Link
-              aria-label="Home — Awesome Claude Code Plugins"
+              aria-label="Home — Awesome Claude Plugins"
               className="hidden font-medium text-foreground text-lg transition-colors hover:text-primary md:block"
               href="/"
             >
-              Awesome Claude Code Plugins
+              Awesome Claude Plugins
             </Link>
 
             <Link
