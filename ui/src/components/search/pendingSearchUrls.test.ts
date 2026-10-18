@@ -26,6 +26,20 @@ describe('PendingSearchUrls', () => {
     expect(pending.consume('/?q=cl')).toBe(false)
   })
 
+  it('detects in-flight navigation to a different URL when returning to the visible URL', () => {
+    const pending = new PendingSearchUrls()
+    expect(pending.hasPendingDifferentFrom('/')).toBe(false)
+    pending.track('/?sort=forks-desc')
+    expect(pending.hasPendingDifferentFrom('/')).toBe(true)
+    expect(pending.hasPendingDifferentFrom('/?sort=forks-desc')).toBe(false)
+
+    // The browser may still show /, but the user's newer choice requires another router write.
+    pending.track('/')
+    expect(pending.consume('/?sort=forks-desc')).toBe(true)
+    expect(pending.consume('/')).toBe(true)
+    expect(pending.hasPendingDifferentFrom('/')).toBe(false)
+  })
+
   it('clears pending state on external navigation and browser history events', () => {
     const pending = new PendingSearchUrls()
     pending.track('/?q=cl')
