@@ -79,7 +79,7 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
               <a
                 aria-label={`View ${repo.owner.login}/${repo.name} on GitHub`}
                 href={repo.html_url}
-                  onClick={() => trackEvent('open_github')}
+                onClick={() => trackEvent('open_github')}
                 rel="noopener noreferrer"
                 target="_blank"
               >
