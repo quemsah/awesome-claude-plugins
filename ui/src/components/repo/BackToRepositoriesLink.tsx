@@ -5,12 +5,18 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 
 const INTERNAL_URL_ORIGIN = 'https://internal.invalid'
-const UNSAFE_INTERNAL_URL_CHARACTERS = /[\u0000-\u001f\u007f\\]/
+function containsUnsafeUrlCharacters(url: string): boolean {
+  for (const char of url) {
+    const code = char.charCodeAt(0)
+    if (code < 0x20 || code === 0x7f || char === '\\') return true
+  }
+  return false
+}
 
 export function resolveSafeInternalUrl(storedUrl: string | null | undefined): string {
   // URL parsers can turn backslashes and control characters into an external authority.
   // Check the parsed origin instead of trusting a raw string prefix.
-  if (typeof storedUrl !== 'string' || !storedUrl.startsWith('/') || UNSAFE_INTERNAL_URL_CHARACTERS.test(storedUrl)) {
+  if (typeof storedUrl !== 'string' || !storedUrl.startsWith('/') || containsUnsafeUrlCharacters(storedUrl)) {
     return '/'
   }
 
