@@ -3,7 +3,7 @@ import { BASE_URL } from '../../lib/constants.ts'
 
 export const metadata = {
   title: 'Privacy',
-  description: 'Privacy information for Awesome Claude Code Plugins.',
+  description: 'Privacy information for Awesome Claude Plugins.',
   alternates: {
     canonical: `${BASE_URL}/privacy`,
   },
@@ -22,7 +22,7 @@ export default function PrivacyPage() {
           <section>
             <h2 className="mb-2 font-semibold text-foreground text-xl">Catalog data</h2>
             <p>
-              Awesome Claude Code Plugins displays public GitHub repository metadata and plugin marketplace information. Repository details
+              Awesome Claude Plugins displays public GitHub repository metadata and plugin marketplace information. Repository details
               are requested from GitHub when you open a repository page.
             </p>
           </section>

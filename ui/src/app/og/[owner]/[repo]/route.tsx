@@ -29,7 +29,7 @@ export async function GET(_: Request, { params }: RouteContext) {
         width: '100%',
       }}
     >
-      <div style={{ color: '#b8b8b8', fontSize: 32 }}>Awesome Claude Code Plugins</div>
+      <div style={{ color: '#b8b8b8', fontSize: 32 }}>Awesome Claude Plugins</div>
       <div style={{ fontSize: 64, fontWeight: 700, marginTop: 28, textAlign: 'center' }}>
         {`${catalogRepo.owner}/${catalogRepo.repo_name}`}
       </div>

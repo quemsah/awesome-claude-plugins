@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: 'Repositories Statistics',
   description: 'Explore Claude Code plugin adoption statistics, repository growth trends and usage patterns across GitHub',
   openGraph: {
-    title: 'Repositories Statistics | Awesome Claude Code Plugins',
+    title: 'Repositories Statistics | Awesome Claude Plugins',
     description: 'Explore Claude Code plugin adoption statistics, repository growth trends and usage patterns across GitHub',
     url: `${BASE_URL}/stats`,
     type: 'website',
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Repositories Statistics | Awesome Claude Code Plugins',
+    title: 'Repositories Statistics | Awesome Claude Plugins',
     description: 'Explore Claude Code plugin adoption statistics, repository growth trends and usage patterns across GitHub',
     images: [DEFAULT_OG_IMAGE],
   },
