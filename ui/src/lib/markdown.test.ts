@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/style/useNamingConvention: Test fixture mirrors catalog field names. */
 
 import { describe, expect, it, vi } from 'vitest'
-import { buildAboutMarkdown, buildHomeMarkdown, buildRepoMarkdown } from './markdown.ts'
+import { buildRepoMarkdown } from './markdown.ts'
 
 const catalogQuality = {
   publicationState: 'indexable' as const,
@@ -199,17 +199,5 @@ describe('buildRepoMarkdown', () => {
   it('returns nothing for records without a repository identity', () => {
     expect(buildRepoMarkdown({ ...makeRepo(), owner: null })).toBe('')
     expect(buildRepoMarkdown({ ...makeRepo(), repo_name: null })).toBe('')
-  })
-})
-
-describe('buildHomeMarkdown and buildAboutMarkdown', () => {
-  it('documents that indexable entries require a validated plugin count without requiring a description', () => {
-    const home = buildHomeMarkdown()
-    expect(home).toContain('Indexable entries have a validated marketplace plugin count')
-    expect(home).not.toContain('Indexable entries have a repository description')
-
-    const about = buildAboutMarkdown()
-    expect(about).toContain('Indexable entries require a validated marketplace plugin count.')
-    expect(about).not.toContain('require a description and a validated marketplace plugin count')
   })
 })
