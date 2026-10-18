@@ -4,11 +4,23 @@ import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 
+const INTERNAL_URL_ORIGIN = 'https://internal.invalid'
+const UNSAFE_INTERNAL_URL_CHARACTERS = /[\u0000-\u001f\u007f\\]/
+
 export function resolveSafeInternalUrl(storedUrl: string | null | undefined): string {
-  if (typeof storedUrl === 'string' && storedUrl.startsWith('/') && !storedUrl.startsWith('//') && !storedUrl.startsWith('/\\')) {
-    return storedUrl
+  // URL parsers can turn backslashes and control characters into an external authority.
+  // Check the parsed origin instead of trusting a raw string prefix.
+  if (typeof storedUrl !== 'string' || !storedUrl.startsWith('/') || UNSAFE_INTERNAL_URL_CHARACTERS.test(storedUrl)) {
+    return '/'
   }
-  return '/'
+
+  try {
+    const parsed = new URL(storedUrl, INTERNAL_URL_ORIGIN)
+    if (parsed.origin !== INTERNAL_URL_ORIGIN) return '/'
+    return parsed.pathname + parsed.search + parsed.hash
+  } catch {
+    return '/'
+  }
 }
 
 export function BackToRepositoriesLink({ className = '' }: { className?: string }) {
