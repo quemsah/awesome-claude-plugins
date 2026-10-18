@@ -346,8 +346,8 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     <>
       <SearchControls
         filteredPluginCount={pluginsCount}
-        navigationVersion={navigationVersion}
         filteredRepoCount={total}
+        navigationVersion={navigationVersion}
         onSearchChange={handleSearchChange}
         onSortChange={handleSortChange}
         searchTerm={searchTerm}
