@@ -101,3 +101,19 @@ test('a header link clears an abandoned search navigation and queued input', asy
   await expect.poll(screenState).toEqual(expected)
   await expectStable(screenState, expected, 1_500)
 })
+
+test('navigating away before the input debounce fires clears an uncommitted search draft', async ({ page }) => {
+  await page.goto('/?sort=forks-desc')
+  const searchbox = page.getByRole('searchbox', { name: 'Search repositories' })
+  await searchbox.fill('not-submitted')
+  await page.getByRole('link', { name: 'Search repositories' }).click()
+
+  const screenState = async () => ({
+    queryParam: new URL(page.url()).searchParams.get('q'),
+    sortParam: new URL(page.url()).searchParams.get('sort'),
+    searchInput: await searchbox.inputValue(),
+  })
+  const expected = { queryParam: null, sortParam: null, searchInput: '' }
+  await expect.poll(screenState, { timeout: 10_000 }).toEqual(expected)
+  await expectStable(screenState, expected, 1_000)
+})
