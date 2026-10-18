@@ -16,6 +16,7 @@ const repos: PublishableRepository[] = [
     owner_url: 'https://github.com/owner',
     repo_name: 'first',
     plugins_count: 0,
+    catalog_updated_at: '2026-01-01T00:00:00.000Z',
   },
   {
     id: 2,
@@ -28,6 +29,7 @@ const repos: PublishableRepository[] = [
     owner_url: 'https://github.com/owner',
     repo_name: 'second',
     plugins_count: 0,
+    catalog_updated_at: '2026-01-01T00:00:00.000Z',
   },
 ]
 
