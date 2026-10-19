@@ -2,6 +2,7 @@ import type { PluginSource as PluginSourceType } from '../../app/types/plugin.ty
 import { encodeGitHubPath, getGitHubBlobUrl } from '../../lib/repositoryIdentity.ts'
 
 const GIT_SUFFIX_PATTERN = /\.git$/i
+const TRAILING_SLASH_PATTERN = /\/+$/
 const GITHUB_REPO_PATH_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
 const SAFE_SOURCE_PATH_PATTERN = /^(?!.*\.\.)(?!.*[\r\n]).+$/
 const RESERVED_SOURCE_TYPES = new Set(['github', 'url', 'git-subdir', 'npm'])
@@ -18,7 +19,7 @@ function getRepositoryPathUrl(sourceUrl: string, ref: string, path: string, kind
     const url = new URL(fullUrl)
     if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) return null
 
-    const baseUrl = `${url.origin}${url.pathname.replace(/\/+$/, '').replace(GIT_SUFFIX_PATTERN, '')}`
+    const baseUrl = `${url.origin}${url.pathname.replace(TRAILING_SLASH_PATTERN, '').replace(GIT_SUFFIX_PATTERN, '')}`
     const segments = `${encodeGitHubPath(ref)}/${encodeGitHubPath(path)}`
     const hostname = url.hostname.toLowerCase()
 
