@@ -9,7 +9,7 @@ const RESERVED_SOURCE_TYPES = new Set(['github', 'url', 'git-subdir', 'npm'])
 type RepositoryPathKind = 'blob' | 'tree'
 
 /**
- * Convert a git clone URL to a browser URL. For unknown Git hosts, link to the
+ * Convert a git clone URL to a browser URL. For other Git hosts, link to the
  * repository rather than guessing a GitHub-specific route that may return 404.
  */
 function getRepositoryPathUrl(sourceUrl: string, ref: string, path: string, kind: RepositoryPathKind): string | null {
@@ -24,12 +24,6 @@ function getRepositoryPathUrl(sourceUrl: string, ref: string, path: string, kind
 
     if (hostname === 'github.com' || hostname === 'www.github.com') {
       return `${baseUrl}/${kind}/${segments}`
-    }
-    if (hostname === 'gitlab.com' || hostname === 'www.gitlab.com') {
-      return `${baseUrl}/-/${kind}/${segments}`
-    }
-    if (hostname === 'bitbucket.org' || hostname === 'www.bitbucket.org') {
-      return `${baseUrl}/src/${segments}`
     }
     return baseUrl
   } catch {
