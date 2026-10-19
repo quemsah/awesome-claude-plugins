@@ -3,6 +3,7 @@
 import { ExternalLink, Search } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { getGitHubRepoUrl, isGitHubSegment } from '../../lib/repositoryIdentity.ts'
 import { Button } from '../ui/button.tsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card.tsx'
 
@@ -16,8 +17,9 @@ export function NotFoundView(props: NotFoundViewProps) {
   const pathname = usePathname() || ''
   const segments = pathname.split('/').filter(Boolean)
 
-  const detectedIsRepo = segments.length === 2 && !['stats', 'about', 'privacy'].includes(segments[0])
-  const isRepo = props.isRepo ?? detectedIsRepo
+  const detectedIsRepo =
+    segments.length === 2 && !['stats', 'about', 'privacy'].includes(segments[0]) && segments.every(isGitHubSegment)
+  const isRepo = detectedIsRepo && (props.isRepo ?? true)
 
   const owner = props.owner ?? (isRepo && segments.length >= 2 ? segments[0] : '')
   const repoName = props.repoName ?? (isRepo && segments.length >= 2 ? segments[1] : '')
@@ -35,7 +37,7 @@ export function NotFoundView(props: NotFoundViewProps) {
         <CardContent className="space-y-4 text-center">
           <p className="text-muted-foreground">
             {isRepo
-              ? 'This repository is no longer in the catalog. It may have been renamed, moved, or deleted.'
+              ? "We couldn't find this repository in our catalog. It may have been removed, renamed, or not indexed yet."
               : "Sorry, we couldn't find the page you're looking for."}
           </p>
 
@@ -50,7 +52,7 @@ export function NotFoundView(props: NotFoundViewProps) {
                 </Button>
                 {repoPath ? (
                   <Button asChild className="w-full sm:w-auto" variant="outline">
-                    <a href={`https://github.com/${repoPath}`} rel="noopener noreferrer" target="_blank">
+                    <a href={getGitHubRepoUrl(owner, repoName)} rel="noopener noreferrer" target="_blank">
                       <ExternalLink className="mr-2 h-4 w-4" />
                       Check on GitHub
                     </a>

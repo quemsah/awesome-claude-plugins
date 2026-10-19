@@ -29,6 +29,8 @@ test('repo detail page refreshes repository and marketplace data in the browser'
   await expect(page.getByRole('heading', { name: 'claude-code-tips' })).toBeVisible()
   await expect(page.getByText('A mocked Claude Code plugin repository')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Visit repository homepage' })).toBeVisible()
+  await expect(page.getByText('Last pushed')).toBeVisible()
+  await expect(page.getByText('Last commit')).toHaveCount(0)
   await expect(page.locator('[data-slot="badge"]').filter({ hasText: 'issues' })).toHaveCount(1)
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', repoCanonicalPattern)
   await expect(page.locator('link[rel="alternate"][type="text/markdown"]')).toHaveAttribute('href', repoMarkdownAlternatePattern)
@@ -92,7 +94,18 @@ test('repo detail page surfaces a recoverable error when the manifest fails to l
 
   await expect(page.getByRole('heading', { name: 'kaito' })).toBeVisible()
   await expect(page.getByText(marketplaceErrorText)).toBeVisible()
+  await expect(page.getByText('request limit')).toHaveCount(0)
   await expect(page.getByText(noPluginsText)).toBeHidden()
+  await expect(page.getByRole('link', { name: 'View marketplace.json' })).toBeVisible()
+})
+
+test('manifest error identifies an HTTP 429 rate limit', async ({ page }) => {
+  await page.route('**/kaito-project/kaito/HEAD/.claude-plugin/marketplace.json', (route) =>
+    route.fulfill({ status: 429, headers: { 'access-control-allow-origin': '*' }, body: 'Rate limited' })
+  )
+  await page.goto('/kaito-project/kaito')
+
+  await expect(page.getByText('Failed to load marketplace manifest due to a request limit.')).toBeVisible()
   await expect(page.getByRole('link', { name: 'View marketplace.json' })).toBeVisible()
 })
 
@@ -121,4 +134,17 @@ test('repo detail page rejects paths outside the catalog', async ({ page }) => {
   await page.goto('/missing/repo')
 
   await expect(page.getByRole('heading', { name: '404' })).toBeVisible()
+  await expect(page.getByText('Repository not found')).toBeVisible()
+  await expect(page.getByText(/not indexed yet/)).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Search for "repo"' })).toHaveAttribute('href', '/?q=repo')
+  await expect(page.getByRole('link', { name: 'Check on GitHub' })).toHaveAttribute('href', 'https://github.com/missing/repo')
+})
+
+test('unrecognized multi-segment paths render a generic 404', async ({ page }) => {
+  await page.goto('/missing/repo/extra')
+
+  await expect(page.getByRole('heading', { name: '404' })).toBeVisible()
+  await expect(page.getByText('Page not found')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Check on GitHub' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Go home' })).toBeVisible()
 })

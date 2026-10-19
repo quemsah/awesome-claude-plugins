@@ -1,4 +1,4 @@
-import { CircleDot, Code, ExternalLink, Eye, FileText, GitCommit, GitFork, Star } from 'lucide-react'
+import { CircleDot, Code, ExternalLink, Eye, FileText, GitBranch, GitFork, Star } from 'lucide-react'
 import Image from 'next/image'
 import { formatDate as formatDateUtil } from '../../lib/utils.ts'
 import type { GitHubRepository } from '../../schemas/github.schema.ts'
@@ -25,7 +25,7 @@ interface RepoInfoCardProps {
 export function RepoInfoCard({ repo }: RepoInfoCardProps) {
   const homepageUrl = getSafeHomepageUrl(repo.homepage)
   const formatDate = (dateString: string) => formatDateUtil(new Date(dateString))
-  const lastCommitDate = repo.pushed_at ?? repo.updated_at
+  const lastPushedDate = repo.pushed_at
 
   return (
     <Card className="p-4 sm:p-8">
@@ -118,13 +118,13 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
           </div>
         )}
 
-        {lastCommitDate !== null && (
+        {lastPushedDate !== null && (
           <div className="mb-6 rounded-lg border border-border bg-muted/40 p-4 sm:p-5">
             <span className="flex items-center gap-2 font-medium text-muted-foreground text-sm">
-              <GitCommit aria-hidden="true" className="h-4 w-4 text-primary" />
-              Last commit
+              <GitBranch aria-hidden="true" className="h-4 w-4 text-primary" />
+              Last pushed
             </span>
-            <p className="mt-1 font-bold text-2xl text-foreground sm:text-3xl">{formatDate(lastCommitDate)}</p>
+            <p className="mt-1 font-bold text-2xl text-foreground sm:text-3xl">{formatDate(lastPushedDate)}</p>
           </div>
         )}
 

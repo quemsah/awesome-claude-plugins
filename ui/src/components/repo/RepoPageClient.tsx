@@ -25,6 +25,9 @@ const CATALOG_SNAPSHOT_NOTICES: Record<CatalogSnapshotReason, string> = {
 
 /** Raw serves `HEAD` as the repository default branch, so the manifest needs no live metadata. */
 const MARKETPLACE_REF = 'HEAD'
+const MARKETPLACE_LOAD_ERROR = 'Failed to load marketplace manifest. Try again or open the manifest file directly.'
+const MARKETPLACE_RATE_LIMIT_ERROR =
+  'Failed to load marketplace manifest due to a request limit. Try again later or open the manifest file directly.'
 
 type RepoPageClientProps = {
   apiBaseUrl: string
@@ -75,9 +78,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
         if (!response.ok) {
           if (!cancelled) {
             setPluginsStatus('error')
-            setPluginsError(
-              'Failed to load marketplace manifest. GitHub API may be rate limiting requests. Please try again later or inspect the manifest file directly on GitHub.'
-            )
+            setPluginsError(response.status === 429 ? MARKETPLACE_RATE_LIMIT_ERROR : MARKETPLACE_LOAD_ERROR)
             setPluginsLoading(false)
           }
           return
@@ -111,9 +112,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
       } catch (_error) {
         if (!cancelled) {
           setPluginsStatus('error')
-          setPluginsError(
-            'Failed to load marketplace manifest. GitHub API may be rate limiting requests. Please try again later or inspect the manifest file directly on GitHub.'
-          )
+          setPluginsError(MARKETPLACE_LOAD_ERROR)
           setPluginsLoading(false)
         }
       }
