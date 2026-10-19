@@ -11,6 +11,17 @@ const repoCanonicalPattern = /\/ykdojo\/claude-code-tips$/
 const repoMarkdownAlternatePattern = /\/ykdojo\/claude-code-tips\.md$/
 const repoOpenGraphImagePattern = /\/og\/ykdojo\/claude-code-tips$/
 const installButtonPattern = /install/i
+const mockGithubApiUrl = `http://127.0.0.1:${process.env.MOCK_GITHUB_PORT ?? '3100'}`
+
+// Next.js may serialize the public GitHub API origin into the server-rendered page.
+// Keep browser-side repository requests deterministic regardless of that runtime prop.
+test.beforeEach(async ({ page }) => {
+  await page.route('https://api.github.com/repos/**', async (route) => {
+    const requestedUrl = new URL(route.request().url())
+    const response = await route.fetch({ url: `${mockGithubApiUrl}${requestedUrl.pathname}${requestedUrl.search}` })
+    await route.fulfill({ response })
+  })
+})
 
 test('repo detail page serves catalog repository data in its HTML without contacting GitHub', async ({ page }) => {
   const html = await (await page.request.get('/ykdojo/claude-code-tips')).text()
