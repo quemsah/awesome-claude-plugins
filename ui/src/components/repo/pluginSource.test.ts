@@ -31,9 +31,7 @@ describe('PluginSource', () => {
   })
 
   it('opens repository root when github source has no ref', () => {
-    expect(getSourceLink({ source: 'github', repo: 'other-owner/other-repo' }).props.href).toBe(
-      'https://github.com/other-owner/other-repo'
-    )
+    expect(getSourceLink({ source: 'github', repo: 'other-owner/other-repo' }).props.href).toBe('https://github.com/other-owner/other-repo')
   })
 
   it('prefers a pinned sha over a moving ref or branch for github sources', () => {
@@ -45,9 +43,7 @@ describe('PluginSource', () => {
       commit: '0123456789abcdef0123456789abcdef01234567',
       sha: 'abcdef0123456789abcdef0123456789abcdef01',
     }
-    expect(getSourceLink(source).props.href).toBe(
-      'https://github.com/other-owner/other-repo/tree/abcdef0123456789abcdef0123456789abcdef01'
-    )
+    expect(getSourceLink(source).props.href).toBe('https://github.com/other-owner/other-repo/tree/abcdef0123456789abcdef0123456789abcdef01')
   })
 
   it('renders a direct URL source object', () => {
@@ -71,12 +67,14 @@ describe('PluginSource', () => {
   })
 
   it('links to the repository root for unknown Git hosts instead of a made-up tree route', () => {
-    expect(getSourceLink({
-      source: 'git-subdir',
-      url: 'https://git.example.org/team/repo.git',
-      path: 'plugins/my-plugin',
-      ref: 'main',
-    }).props.href).toBe('https://git.example.org/team/repo')
+    expect(
+      getSourceLink({
+        source: 'git-subdir',
+        url: 'https://git.example.org/team/repo.git',
+        path: 'plugins/my-plugin',
+        ref: 'main',
+      }).props.href
+    ).toBe('https://git.example.org/team/repo')
   })
 
   it('preserves legacy path-source objects with a separate repo', () => {
@@ -87,18 +85,22 @@ describe('PluginSource', () => {
   })
 
   it('preserves legacy URL+path objects with GitHub blob links', () => {
-    expect(getSourceLink({
-      source: 'plugins/special.json',
-      url: 'https://github.com/group/repo.git',
-      path: 'plugins/special.json',
-      ref: 'main',
-    }).props.href).toBe('https://github.com/group/repo/blob/main/plugins/special.json')
+    expect(
+      getSourceLink({
+        source: 'plugins/special.json',
+        url: 'https://github.com/group/repo.git',
+        path: 'plugins/special.json',
+        ref: 'main',
+      }).props.href
+    ).toBe('https://github.com/group/repo/blob/main/plugins/special.json')
   })
 
   it('returns null for unsupported source object types even if they have repository metadata', () => {
-    expect(PluginSource({
-      source: { source: 'npm', repo: 'elsewhere/shared-plugins' } as unknown as PluginSourceType,
-      repoPath: 'owner/repo',
-    })).toBeNull()
+    expect(
+      PluginSource({
+        source: { source: 'npm', repo: 'elsewhere/shared-plugins' } as unknown as PluginSourceType,
+        repoPath: 'owner/repo',
+      })
+    ).toBeNull()
   })
 })
