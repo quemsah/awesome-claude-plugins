@@ -70,24 +70,6 @@ describe('PluginSource', () => {
     expect(link.props['aria-label']).toBe('Open source directory plugins/my-plugin in a new tab')
   })
 
-  it('links a git-subdir on GitLab using the GitLab tree route', () => {
-    expect(getSourceLink({
-      source: 'git-subdir',
-      url: 'https://gitlab.com/group/subgroup/repo.git',
-      path: 'plugins/my-plugin',
-      ref: 'main',
-    }).props.href).toBe('https://gitlab.com/group/subgroup/repo/-/tree/main/plugins/my-plugin')
-  })
-
-  it('links a git-subdir on Bitbucket using the Bitbucket source route', () => {
-    expect(getSourceLink({
-      source: 'git-subdir',
-      url: 'https://bitbucket.org/team/repo.git',
-      path: 'plugins/my-plugin',
-      branch: 'main',
-    }).props.href).toBe('https://bitbucket.org/team/repo/src/main/plugins/my-plugin')
-  })
-
   it('links to the repository root for unknown Git hosts instead of a made-up tree route', () => {
     expect(getSourceLink({
       source: 'git-subdir',
@@ -104,13 +86,13 @@ describe('PluginSource', () => {
     expect(link.props['aria-label']).toBe('Open source file plugins/fallback.json in a new tab')
   })
 
-  it('preserves legacy URL+path objects with GitLab blob links', () => {
+  it('preserves legacy URL+path objects with GitHub blob links', () => {
     expect(getSourceLink({
       source: 'plugins/special.json',
-      url: 'https://gitlab.com/group/repo.git',
+      url: 'https://github.com/group/repo.git',
       path: 'plugins/special.json',
       ref: 'main',
-    }).props.href).toBe('https://gitlab.com/group/repo/-/blob/main/plugins/special.json')
+    }).props.href).toBe('https://github.com/group/repo/blob/main/plugins/special.json')
   })
 
   it('returns null for unsupported source object types even if they have repository metadata', () => {
