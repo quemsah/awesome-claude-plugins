@@ -135,7 +135,7 @@ test('repo detail page rejects paths outside the catalog', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: '404' })).toBeVisible()
   await expect(page.getByText('Repository not found')).toBeVisible()
-  await expect(page.getByText(/not indexed yet/)).toBeVisible()
+  await expect(page.getByText("We couldn't find this repository in our catalog. It may have been removed, renamed, or not indexed yet.")).toBeVisible()
   await expect(page.getByRole('link', { name: 'Search for "repo"' })).toHaveAttribute('href', '/?q=repo')
   await expect(page.getByRole('link', { name: 'Check on GitHub' })).toHaveAttribute('href', 'https://github.com/missing/repo')
 })
