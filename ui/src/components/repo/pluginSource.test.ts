@@ -113,9 +113,9 @@ describe('PluginSource', () => {
     }).props.href).toBe('https://gitlab.com/group/repo/-/blob/main/plugins/special.json')
   })
 
-  it('returns null for unsupported source object types', () => {
+  it('returns null for unsupported source object types even if they have repository metadata', () => {
     expect(PluginSource({
-      source: { source: 'npm' } as unknown as PluginSourceType,
+      source: { source: 'npm', repo: 'elsewhere/shared-plugins' } as unknown as PluginSourceType,
       repoPath: 'owner/repo',
     })).toBeNull()
   })
