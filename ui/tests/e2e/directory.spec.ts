@@ -95,7 +95,7 @@ test('header navigation, external actions, and theme selection work across route
 
   await page.getByRole('link', { name: 'View statistics' }).click()
   await expect(page).toHaveURL(statsUrl)
-  await expect(page.getByRole('heading', { name: 'Repositories Statistics' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Repository statistics' })).toBeVisible()
   await expect(page.getByRole('button', { name: darkThemeButtonName })).toBeVisible()
 
   await page.getByRole('link', { name: 'About project' }).click()
@@ -492,13 +492,13 @@ test('stats page filters chart ranges and trend state', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-09-21T12:00:00Z'))
   await page.goto('/stats')
 
-  const averageDailyIncrease = statCardValue(page, 'Avg Daily Increase')
+  const averageDailyIncrease = statCardValue(page, 'Avg daily increase')
   const allTimeAverage = (await averageDailyIncrease.textContent()) ?? ''
 
-  await expect(page.getByRole('heading', { name: 'Repositories Statistics' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Repository statistics' })).toBeVisible()
   await expect(page.getByText(allTimeChartText)).toBeVisible()
-  await expect(page.getByText('Total Repositories')).toBeVisible()
-  await expect(page.getByText('Avg Daily Increase')).toBeVisible()
+  await expect(page.getByText('Total repositories')).toBeVisible()
+  await expect(page.getByText('Avg daily increase')).toBeVisible()
   await expect(page.getByRole('application', { name: 'Repository growth over time' })).toBeVisible()
 
   await page.getByRole('combobox').click()
@@ -525,7 +525,7 @@ test('about page exposes static project cards and header navigation', async ({ p
   await page.goto('/about')
 
   await expect(page.getByRole('heading', { name: 'About This Project' })).toBeVisible()
-  await expect(page.getByText('Automated Discovery')).toBeVisible()
+  await expect(page.getByText('Automated discovery')).toBeVisible()
   await expect(page.getByText('Why?')).toBeVisible()
 
   await page.locator('a[aria-label="Search repositories"]').click()

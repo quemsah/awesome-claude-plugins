@@ -15,7 +15,7 @@ export function validateReadme(text: string, repositories: readonly PublishableR
     lines[1] !== '' ||
     lines[2] !== `> Last updated: ${day}.${month}.${date.getUTCFullYear()} with ${draft.size} total repositories indexed.` ||
     lines[3] !== '' ||
-    lines[4] !== '| # | Repo Name | Description | Stars | Subs | Plugins |' ||
+    lines[4] !== '| # | Repo Name | Description | Stars | Watchers | Plugins |' ||
     lines[5] !== '|---|-----------|-------------|-------|-------------|---------|' ||
     !text.endsWith('\n')
   ) {

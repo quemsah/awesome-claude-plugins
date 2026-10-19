@@ -160,7 +160,7 @@ export function StatsPage({ stats }: StatsPageProps) {
             <span className="font-medium text-sm">Trend:</span>
             <span className={`font-bold ${trendData.growth >= 0 ? 'text-success' : 'text-danger'}`}>
               {trendData.growth >= 0 ? '+' : ''}
-              {trendData.growth} ({trendData.percentage}%)
+              {trendData.growth.toLocaleString('en-US')} ({trendData.percentage}%)
             </span>
           </div>
         )}
@@ -177,23 +177,25 @@ export function StatsPage({ stats }: StatsPageProps) {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="font-medium text-sm">
-              <h2>Total Repositories</h2>
+              <h2>Total repositories</h2>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="font-bold text-2xl">{chartData.length > 0 ? chartData[chartData.length - 1].size : 0}</div>
+            <div className="font-bold text-2xl">
+              {chartData.length > 0 ? chartData[chartData.length - 1].size.toLocaleString('en-US') : 0}
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="font-medium text-sm">
-              <h2>Avg Daily Increase</h2>
+              <h2>Avg daily increase</h2>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="font-bold text-2xl">
               {trendData.averageDailyIncrease >= 0 ? '+' : ''}
-              {trendData.averageDailyIncrease}
+              {trendData.averageDailyIncrease.toLocaleString('en-US')}
             </div>
           </CardContent>
         </Card>
@@ -202,7 +204,7 @@ export function StatsPage({ stats }: StatsPageProps) {
       <Card>
         <CardHeader>
           <CardTitle>
-            <h2>Repository Count Over Time</h2>
+            <h2>Repository count over time</h2>
           </CardTitle>
           <CardDescription>
             {activeRangeLabel} - Daily repository count from {chartData.length > 0 ? chartData[0].formattedDate : ''} to{' '}
@@ -215,7 +217,7 @@ export function StatsPage({ stats }: StatsPageProps) {
             className="h-100"
             config={{
               size: {
-                label: 'Repository Count',
+                label: 'Repository count',
               },
             }}
             ref={chartRef}
@@ -251,7 +253,7 @@ export function StatsPage({ stats }: StatsPageProps) {
                 dataKey="size"
                 fill="url(#fillSize)"
                 fillOpacity={0.4}
-                name="Repository Count"
+                name="Repository count"
                 stackId="a"
                 stroke="var(--chart-1)"
                 type="monotone"

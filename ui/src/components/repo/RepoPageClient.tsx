@@ -25,6 +25,9 @@ const CATALOG_SNAPSHOT_NOTICES: Record<CatalogSnapshotReason, string> = {
 
 /** Raw serves `HEAD` as the repository default branch, so the manifest needs no live metadata. */
 const MARKETPLACE_REF = 'HEAD'
+const MARKETPLACE_LOAD_ERROR = 'Failed to load marketplace manifest. Try again or open the manifest file directly.'
+const MARKETPLACE_RATE_LIMIT_ERROR =
+  'Failed to load marketplace manifest due to a request limit. Try again later or open the manifest file directly.'
 
 type RepoPageClientProps = {
   apiBaseUrl: string
@@ -77,7 +80,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
         if (!response.ok) {
           if (!cancelled) {
             setPluginsStatus('error')
-            setPluginsError('Failed to load marketplace manifest.')
+            setPluginsError(response.status === 429 ? MARKETPLACE_RATE_LIMIT_ERROR : MARKETPLACE_LOAD_ERROR)
             setPluginsLoading(false)
           }
           return
@@ -115,7 +118,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
       } catch (_error) {
         if (!cancelled) {
           setPluginsStatus('error')
-          setPluginsError('Failed to load marketplace manifest.')
+          setPluginsError(MARKETPLACE_LOAD_ERROR)
           setPluginsLoading(false)
         }
       }
@@ -150,7 +153,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
         <Card className="mt-8 p-6">
           <CardHeader className="mb-4 p-0">
             <CardTitle className="text-2xl">
-              <h2>Available Plugins</h2>
+              <h2>Available plugins</h2>
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
