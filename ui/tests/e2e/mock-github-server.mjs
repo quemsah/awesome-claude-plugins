@@ -32,7 +32,7 @@ function buildRepository(owner, name, overrides = {}) {
 
 const examplePlugin = {
   name: 'Example Plugin',
-  id: 'example-plugin',
+  id: 'different-plugin-id',
   description: 'A plugin rendered from mocked marketplace data',
   version: '1.2.3',
   category: 'Testing',
@@ -47,8 +47,14 @@ const examplePlugin = {
 const fallbackPlugin = {
   name: 'Fallback Install Target',
   description: 'A plugin whose source points at another repository',
-  source: { source: 'github', repo: 'elsewhere/shared-plugins', ref: 'main' },
+  source: { source: 'plugins/fallback.json', repo: 'elsewhere/shared-plugins', branch: 'main' },
   author: { email: 'fallback@example.dev' },
+}
+
+const githubSourcePlugin = {
+  name: 'GitHub Source Plugin',
+  description: 'A plugin sourced from a GitHub repository',
+  source: { source: 'github', repo: 'elsewhere/shared-plugins', ref: 'main' },
 }
 
 const unnamedPlugin = {
@@ -61,7 +67,7 @@ const unnamedPlugin = {
  */
 const fixtures = {
   'ykdojo/claude-code-tips': {
-    marketplace: { status: 200, body: { name: 'ykdojo', plugins: [examplePlugin, fallbackPlugin, unnamedPlugin] } },
+    marketplace: { status: 200, body: { name: 'ykdojo', plugins: [examplePlugin, fallbackPlugin, githubSourcePlugin, unnamedPlugin] } },
   },
   'mksglu/context-mode': {
     marketplace: { status: 200, body: [examplePlugin] },

@@ -46,9 +46,9 @@ test('repo detail page refreshes repository and marketplace data in the browser'
   )
   expect(JSON.stringify(jsonLd)).not.toContain('"Unknown"')
   const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Example Plugin@1.2.3' }) })
-  await expect(plugin.getByText('/plugin install example-plugin@example-plugin')).toBeVisible()
+  await expect(plugin.getByText('/plugin install example-plugin@ykdojo')).toBeVisible()
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
-  await expect.poll(() => copiedText(page)).toBe('/plugin install example-plugin@example-plugin')
+  await expect.poll(() => copiedText(page)).toBe('/plugin install example-plugin@ykdojo')
 })
 
 test('repo detail page uses the manifest marketplace name for fallback install commands', async ({ page }) => {
@@ -59,6 +59,16 @@ test('repo detail page uses the manifest marketplace name for fallback install c
   await expect(plugin.getByText('/plugin install fallback-install-target@ykdojo')).toBeVisible()
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
   await expect.poll(() => copiedText(page)).toBe('/plugin install fallback-install-target@ykdojo')
+  await expect(plugin.getByRole('link', { name: 'Open source file plugins/fallback.json in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/elsewhere/shared-plugins/blob/main/plugins/fallback.json'
+  )
+})
+
+test('repo detail page renders a GitHub source object as a repository link', async ({ page }) => {
+  await page.goto('/ykdojo/claude-code-tips')
+
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'GitHub Source Plugin' }) })
   await expect(plugin.getByRole('link', { name: 'Open source repository elsewhere/shared-plugins in a new tab' })).toHaveAttribute(
     'href',
     'https://github.com/elsewhere/shared-plugins/tree/main'
@@ -76,7 +86,74 @@ test('repo detail page accepts marketplace manifests served as a plugin array', 
   await page.goto('/mksglu/context-mode')
 
   await expect(page.getByRole('heading', { name: 'Example Plugin@1.2.3' })).toBeVisible()
-  await expect(page.getByText('/plugin install example-plugin@example-plugin')).toBeVisible()
+  await expect(page.getByText('/plugin install example-plugin')).toBeVisible()
+})
+
+test('repo detail page keeps valid plugins and string component paths from a partly invalid manifest', async ({ page }) => {
+  await page.route('**/ykdojo/claude-code-tips/HEAD/.claude-plugin/marketplace.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        name: 'ykdojo',
+        plugins: [
+          {
+            name: 'String Component Plugin',
+            source: './plugins/string-component-plugin',
+            commands: './commands/run.md',
+            agents: './agents/reviewer.md',
+            mcpServers: './mcp.json',
+          },
+          { name: 'Invalid Plugin', source: '../outside' },
+        ],
+      }),
+    })
+  )
+
+  await page.goto('/ykdojo/claude-code-tips')
+
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'String Component Plugin' }) })
+  await expect(plugin).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./commands/run.md in a new tab' })).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./agents/reviewer.md in a new tab' })).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./mcp.json in a new tab' })).toBeVisible()
+  await expect(page.getByText('1 invalid plugin entry was skipped.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Marketplace manifest contains invalid data.')).toBeHidden()
+})
+
+test('repo detail page renders component names from object maps without treating values as file links', async ({ page }) => {
+  await page.route('**/ykdojo/claude-code-tips/HEAD/.claude-plugin/marketplace.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        name: 'ykdojo',
+        plugins: [
+          {
+            name: 'Mapped Components Plugin',
+            source: './plugins/mapped-components',
+            commands: { deploy: './commands/deploy.md' },
+            agents: { reviewer: { description: 'Reviews code' } },
+            mcpServers: { firebase: { command: 'npx', args: ['-y', 'firebase-tools'] } },
+          },
+        ],
+      }),
+    })
+  )
+
+  await page.goto('/ykdojo/claude-code-tips')
+
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Mapped Components Plugin' }) })
+  await expect(plugin).toBeVisible()
+  await expect(plugin.getByText('Commands (1)')).toBeVisible()
+  await expect(plugin.getByText('Agents (1)')).toBeVisible()
+  await expect(plugin.getByText('MCP Servers (1)')).toBeVisible()
+  await expect(plugin.getByText('deploy', { exact: true })).toBeVisible()
+  await expect(plugin.getByText('reviewer', { exact: true })).toBeVisible()
+  await expect(plugin.getByText('firebase', { exact: true })).toBeVisible()
+  for (const component of ['deploy', 'reviewer', 'firebase']) {
+    await expect(plugin.getByRole('link', { name: `Open ${component} in a new tab` })).toHaveCount(0)
+  }
 })
 
 test('repo detail page renders an empty plugin state when the manifest is missing', async ({ page }) => {
