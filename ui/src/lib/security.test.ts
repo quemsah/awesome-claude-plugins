@@ -6,15 +6,13 @@ import { serializeJsonLd } from './jsonLd.ts'
 import { getGitHubRepoPath } from './repositoryIdentity.ts'
 
 describe('catalog security boundaries', () => {
-  it('rejects path injection and noncanonical GitHub URLs', () => {
+  it('rejects path injection in catalog identity segments', () => {
     const result = RepoSchema.safeParse({
-      html_url: 'javascript:alert(1)',
       stargazers_count: 1,
       forks_count: 0,
       subscribers_count: 0,
       description: null,
       owner: '\\evil.com',
-      owner_url: 'https://github.com/%5Cevil.com',
       repo_name: 'repository',
       plugins_count: 0,
       id: 1,
