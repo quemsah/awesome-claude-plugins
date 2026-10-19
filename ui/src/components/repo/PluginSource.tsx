@@ -4,6 +4,7 @@ import { encodeGitHubPath, getGitHubBlobUrl } from '../../lib/repositoryIdentity
 const GIT_SUFFIX_PATTERN = /\.git$/i
 const GITHUB_REPO_PATH_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
 const SAFE_SOURCE_PATH_PATTERN = /^(?!.*\.\.)(?!.*[\r\n]).+$/
+const RESERVED_SOURCE_TYPES = new Set(['github', 'url', 'git-subdir', 'npm'])
 
 type RepositoryPathKind = 'blob' | 'tree'
 
@@ -72,7 +73,7 @@ export function PluginSource({ source, repoPath, defaultBranch }: PluginSourcePr
   } else if (sourceType === 'git-subdir' && source.url && source.path) {
     sourceUrl = getRepositoryPathUrl(source.url, branch, source.path, 'tree')
     ariaLabel = `Open source directory ${source.path} in a new tab`
-  } else if (sourceType && SAFE_SOURCE_PATH_PATTERN.test(sourceType)) {
+  } else if (sourceType && !RESERVED_SOURCE_TYPES.has(sourceType) && SAFE_SOURCE_PATH_PATTERN.test(sourceType)) {
     // Legacy marketplace manifests used a file path as the "source" discriminator.
     // Continue rendering those links without treating supported type names as paths.
     if (source.url && source.path) {
