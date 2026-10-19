@@ -12,6 +12,20 @@ const repoMarkdownAlternatePattern = /\/ykdojo\/claude-code-tips\.md$/
 const repoOpenGraphImagePattern = /\/og\/ykdojo\/claude-code-tips$/
 const installButtonPattern = /install/i
 
+/**
+ * Repository pages can embed a browser API origin during Next.js prerendering.
+ * Redirect those client requests to the mock GitHub server regardless of the
+ * origin embedded in the page, without bypassing the real UI fetch behavior.
+ */
+test.beforeEach(async ({ page }) => {
+  await page.route('**/repos/*/*', async (route) => {
+    const requestedUrl = new URL(route.request().url())
+    const mockOrigin = `http://127.0.0.1:${process.env.MOCK_GITHUB_PORT ?? '3100'}`
+    const response = await route.fetch({ url: `${mockOrigin}${requestedUrl.pathname}${requestedUrl.search}` })
+    await route.fulfill({ response })
+  })
+})
+
 test('repo detail page serves catalog repository data in its HTML without contacting GitHub', async ({ page }) => {
   const html = await (await page.request.get('/ykdojo/claude-code-tips')).text()
 
