@@ -66,7 +66,7 @@ function NotFoundContent({ repository }: { repository: MissingRepository | null 
         {repository ? (
           <RepositoryNotFoundLinks {...repository} />
         ) : (
-          <Button aria-label="Go to home page" asChild className="w-auto">
+          <Button asChild className="w-auto">
             <Link href="/">Go home</Link>
           </Button>
         )}
