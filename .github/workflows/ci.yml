@@ -124,8 +124,6 @@ jobs:
         working-directory: ui
         env:
           PLAYWRIGHT_PREBUILT: '1'
-          GITHUB_API_URL: http://127.0.0.1:3100
-          GITHUB_RAW_URL: http://127.0.0.1:3100
 
       - name: Upload Playwright failure artifacts
         if: failure()
