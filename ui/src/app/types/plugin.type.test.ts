@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getMarketplaceName, MarketplacePluginsSchema } from './plugin.type.ts'
+import { getMarketplaceDescription, getMarketplaceName, MarketplacePluginsSchema } from './plugin.type.ts'
 
 describe('MarketplacePluginsSchema', () => {
   it('reads supported plugin fields for display', () => {
@@ -161,5 +161,66 @@ describe('MarketplacePluginsSchema', () => {
       expect(result.data.invalidPluginCount).toBe(1)
       expect(result.data.issues).toEqual(expect.arrayContaining([expect.objectContaining({ path: ['plugins', 1, 'source'] })]))
     }
+  })
+})
+
+describe('getMarketplaceDescription', () => {
+  it('extracts top-level description when present and strong', () => {
+    const payload = {
+      name: 'marketplace',
+      description: 'A curated marketplace of powerful developer plugins for Claude Code workflows.',
+      plugins: [],
+    }
+    expect(getMarketplaceDescription(payload)).toBe(payload.description)
+  })
+
+  it('extracts nested marketplace description', () => {
+    const payload = {
+      marketplace: {
+        name: 'nested',
+        description: 'Nested marketplace description that is long enough to meet requirements.',
+        plugins: [],
+      },
+    }
+    expect(getMarketplaceDescription(payload)).toBe(payload.marketplace.description)
+  })
+
+  it('prefers strong plugin description over short top-level description', () => {
+    const pluginDescription = 'A dedicated plugin description that is at least forty characters long.'
+    const payload = {
+      name: 'marketplace',
+      description: 'Short',
+      plugins: [{ name: 'plugin', description: pluginDescription, source: './' }],
+    }
+    expect(getMarketplaceDescription(payload)).toBe(pluginDescription)
+  })
+
+  it('extracts plugin description when top-level description is missing', () => {
+    const pluginDescription = 'A dedicated plugin description that is at least forty characters long.'
+    const payload = {
+      name: 'marketplace',
+      plugins: [{ name: 'plugin', description: pluginDescription, source: './' }],
+    }
+    expect(getMarketplaceDescription(payload)).toBe(pluginDescription)
+  })
+
+  it('extracts description from a single plugin payload', () => {
+    const payload = {
+      name: 'single-plugin',
+      description: 'Single plugin standalone manifest description meeting forty characters.',
+      source: './',
+    }
+    expect(getMarketplaceDescription(payload)).toBe(payload.description)
+  })
+
+  it('extracts short description when no strong description is available', () => {
+    expect(getMarketplaceDescription({ name: 'marketplace', description: 'Short' })).toBe('Short')
+    expect(getMarketplaceDescription({ plugins: [{ name: 'plugin', description: 'Short', source: './' }] })).toBe('Short')
+  })
+
+  it('returns undefined when no description is present', () => {
+    expect(getMarketplaceDescription(null)).toBeUndefined()
+    expect(getMarketplaceDescription({})).toBeUndefined()
+    expect(getMarketplaceDescription({ name: 'marketplace', plugins: [{ name: 'plugin', source: './' }] })).toBeUndefined()
   })
 })
