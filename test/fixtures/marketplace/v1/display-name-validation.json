@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "display-name-validation",
+  "expected": {
+    "valid": true,
+    "pluginsCount": 4,
+    "pluginNames": ["empty-label", "blank-label", "long-label", "valid-label"],
+    "pluginDisplayNames": ["empty-label", "blank-label", "long-label", "Human readable label"],
+    "reason": "Invalid optional display names fall back to the valid canonical plugin name, while a valid display label is preserved."
+  },
+  "input": {
+    "name": "display-name-validation",
+    "owner": { "name": "fixture-maintainer" },
+    "plugins": [
+      { "name": "empty-label", "displayName": "", "source": "./plugins/empty-label" },
+      { "name": "blank-label", "displayName": "   ", "source": "./plugins/blank-label" },
+      { "name": "long-label", "displayName": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "source": "./plugins/long-label" },
+      { "name": "valid-label", "displayName": "Human readable label", "source": "./plugins/valid-label" }
+    ]
+  }
+}

@@ -16,6 +16,7 @@ type MarketplaceContractFixture = {
     valid: boolean
     pluginsCount: number | null
     pluginNames?: string[]
+    pluginDisplayNames?: string[]
     plugin?: Record<string, unknown>
     installCommand?: string
     reason?: string
@@ -29,6 +30,8 @@ it.each(fixtures)('matches marketplace contract v$version for $name: $expected.r
   if (result.success) {
     expect(result.data.plugins.length).toBe(fixture.expected.pluginsCount)
     if (fixture.expected.pluginNames) expect(result.data.plugins.map((plugin) => plugin.id)).toEqual(fixture.expected.pluginNames)
+    if (fixture.expected.pluginDisplayNames)
+      expect(result.data.plugins.map((plugin) => plugin.name)).toEqual(fixture.expected.pluginDisplayNames)
     if (fixture.expected.plugin) {
       const expected = { ...fixture.expected.plugin }
       if (typeof expected.commands === 'string') expected.commands = [expected.commands]

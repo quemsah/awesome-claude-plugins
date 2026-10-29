@@ -199,7 +199,14 @@ export const MarketplacePluginsSchema: z.ZodMiniType<MarketplacePluginsResult> =
   }
   value.plugins.forEach((entry, index) => {
     const candidate = isRecord(entry)
-      ? { ...entry, id: entry.name, name: typeof entry.displayName === 'string' ? entry.displayName : entry.name }
+      ? {
+          ...entry,
+          id: entry.name,
+          name:
+            typeof entry.displayName === 'string' && entry.displayName.trim().length > 0 && entry.displayName.length <= 160
+              ? entry.displayName
+              : entry.name,
+        }
       : entry
     const parsed = PluginSchema.safeParse(candidate)
     if (parsed.success && isMarketplacePlugin(entry)) {
