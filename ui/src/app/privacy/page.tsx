@@ -57,7 +57,7 @@ export default function PrivacyPage() {
               </li>
               <li>
                 <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground text-xs">open_github</code>: recorded when
-                clicking external links to GitHub repositories.
+                clicking GitHub links, including repository and owner-profile links.
               </li>
               <li>
                 <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground text-xs">search_no_results</code>: recorded when a
