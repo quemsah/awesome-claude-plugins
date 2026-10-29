@@ -242,7 +242,6 @@ function persistEnrichment(
       marketplace_oid: marketplaceOid,
       repository_etag: loaded.repositoryEtag,
       marketplace_etag: marketplaceEtag,
-
     }
     if (writes) writes.updateEnriched(rebound.id, fields, at)
     else updateEnriched(db, rebound.id, fields, at)
@@ -1363,7 +1362,6 @@ async function enrichOne(
     false,
     marketplace.pluginsJson,
     writes,
-
   )
   completeEnrichment(counts, target, removedIds)
 }
@@ -1508,7 +1506,6 @@ async function enrichGraphQLOne(
     marketplace.clearMarketplaceEtag ?? false,
     marketplace.pluginsJson,
     writes,
-
   )
   completeEnrichment(counts, target, removedIds)
 }

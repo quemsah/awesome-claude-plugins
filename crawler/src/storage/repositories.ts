@@ -124,7 +124,6 @@ export function prepareEnrichedUpdate(db: Database.Database) {
     }
 
     const result = update.run({
-
       ...fields,
       github_node_id: fields.github_node_id ?? null,
       marketplace_oid: fields.marketplace_oid ?? null,
