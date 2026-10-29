@@ -3,6 +3,7 @@
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { optionalSessionStorage } from '../../lib/optionalSessionStorage.ts'
 
 const INTERNAL_URL_ORIGIN = 'https://internal.invalid'
 function containsUnsafeUrlCharacters(url: string): boolean {
@@ -34,7 +35,7 @@ export function BackToRepositoriesLink({ className = '' }: { className?: string 
 
   useEffect(() => {
     try {
-      const storedSearchUrl = window.sessionStorage.getItem('last-search-url')
+      const storedSearchUrl = optionalSessionStorage.getItem('last-search-url')
       const safeUrl = resolveSafeInternalUrl(storedSearchUrl)
       if (safeUrl !== '/') {
         setHref(safeUrl)
