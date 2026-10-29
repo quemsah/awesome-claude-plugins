@@ -257,3 +257,19 @@ export function getMarketplaceName(value: unknown): string | undefined {
   const parsedName = MarketplaceNameSchema.safeParse(marketplace.name)
   return parsedName.success ? parsedName.data : undefined
 }
+
+/** Prefer the marketplace's own summary. A single plugin may represent a whole repository,
+ * but a description picked from an arbitrary plugin in a multi-plugin catalog is misleading.
+ */
+export function getMarketplaceDescription(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined
+
+  const clean = (candidate: unknown): string | undefined =>
+    typeof candidate === 'string' && candidate.trim() ? candidate.trim() : undefined
+  const ownDescription = clean(value.description) ?? (isRecord(value.marketplace) ? clean(value.marketplace.description) : undefined)
+  if (ownDescription) return ownDescription
+
+  const parsed = MarketplacePluginsSchema.safeParse(value)
+  if (!parsed.success || parsed.data.plugins.length !== 1) return undefined
+  return clean(parsed.data.plugins[0]?.description)
+}
