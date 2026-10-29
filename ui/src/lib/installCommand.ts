@@ -26,18 +26,13 @@ export function normalizePluginName(pluginName?: string): string {
 /**
  * Determines whether a plugin install command is verified.
  *
- * A non-empty plugin identifier takes precedence. When it is absent, a validated
- * marketplace name can verify the generated install target.
+ * A marketplace-backed command is verified only when both names are valid.
  */
-export function isPluginInstallCommandVerified(pluginId?: string, marketplaceName?: string): boolean {
-  const normalizedPluginId = typeof pluginId === 'string' ? pluginId.trim() : ''
+export function isPluginInstallCommandVerified(pluginName?: string, marketplaceName?: string): boolean {
+  const normalizedPluginName = normalizePluginName(pluginName)
   const normalizedMarketplaceName = typeof marketplaceName === 'string' ? marketplaceName.trim() : ''
 
-  return Boolean(
-    normalizedPluginId
-      ? PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedPluginId)
-      : normalizedMarketplaceName && PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedMarketplaceName)
-  )
+  return Boolean(normalizedPluginName && normalizedMarketplaceName && PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedMarketplaceName))
 }
 
 /**
@@ -49,16 +44,14 @@ export function isPluginInstallCommandVerified(pluginId?: string, marketplaceNam
  * 3. `pluginId` only → `/plugin install {id}`
  * 4. `pluginName` only → `/plugin install {name}` (unverified)
  *
- * Returns `null` when no identifier is provided or a supplied identifier is unsafe.
+ * Returns `null` when the plugin name is invalid or the supplied marketplace name is unsafe.
  */
 export function getPluginInstallCommand({ pluginName, pluginId, marketplaceName }: PluginInstallCommandInput): string | null {
   const normalizedName = normalizePluginName(pluginName)
   const normalizedPluginId = typeof pluginId === 'string' ? pluginId.trim() : undefined
+  if (normalizedPluginId && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedPluginId)) return null
   const normalizedMarketplaceName = typeof marketplaceName === 'string' ? marketplaceName.trim() : undefined
 
-  if (normalizedPluginId && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedPluginId)) {
-    return null
-  }
   if (normalizedMarketplaceName && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedMarketplaceName)) {
     return null
   }

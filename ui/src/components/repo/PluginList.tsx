@@ -8,8 +8,10 @@ interface PluginListProps {
 }
 
 export function PluginList({ title, items, repoPath, defaultBranch }: PluginListProps) {
-  const listItems = typeof items === 'string' ? [items] : Array.isArray(items) ? items : []
-  if (!(listItems.length && defaultBranch)) return null
+  // Array entries are repository paths; object-map keys are component names, not necessarily paths.
+  const isPathList = typeof items === 'string' || Array.isArray(items)
+  const listItems = typeof items === 'string' ? [items] : Array.isArray(items) ? items : Object.keys(items ?? {})
+  if (listItems.length === 0 || (isPathList && !defaultBranch)) return null
 
   return (
     <div>
@@ -18,22 +20,23 @@ export function PluginList({ title, items, repoPath, defaultBranch }: PluginList
       </dt>
       <dd>
         <ul className="list-inside list-disc space-y-0.5 text-muted-foreground text-sm">
-          {listItems.map((item) => {
-            const fileUrl = getGitHubBlobUrl(repoPath, defaultBranch, item)
-            return (
-              <li className="break-all" key={item}>
+          {listItems.map((item) => (
+            <li className="break-all" key={item}>
+              {isPathList && defaultBranch ? (
                 <a
                   aria-label={`Open ${item} in a new tab`}
                   className="underline-offset-4 transition-colors hover:text-primary hover:underline group-hover:text-primary"
-                  href={fileUrl}
+                  href={getGitHubBlobUrl(repoPath, defaultBranch, item)}
                   rel="noopener noreferrer"
                   target="_blank"
                 >
                   {item}
                 </a>
-              </li>
-            )
-          })}
+              ) : (
+                <span>{item}</span>
+              )}
+            </li>
+          ))}
         </ul>
       </dd>
     </div>

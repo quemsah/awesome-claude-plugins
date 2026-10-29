@@ -27,14 +27,18 @@ it.each(fixtures)('matches marketplace contract v$version for $name: $expected.r
   const result = MarketplacePluginsSchema.safeParse(fixture.input)
   expect(result.success).toBe(fixture.expected.valid)
   if (result.success) {
-    expect(result.data.length).toBe(fixture.expected.pluginsCount)
-    if (fixture.expected.pluginNames) expect(result.data.map((plugin) => plugin.id)).toEqual(fixture.expected.pluginNames)
-    if (fixture.expected.plugin) expect(result.data[0]).toMatchObject(fixture.expected.plugin)
+    expect(result.data.plugins.length).toBe(fixture.expected.pluginsCount)
+    if (fixture.expected.pluginNames) expect(result.data.plugins.map((plugin) => plugin.id)).toEqual(fixture.expected.pluginNames)
+    if (fixture.expected.plugin) {
+      const expected = { ...fixture.expected.plugin }
+      if (typeof expected.commands === 'string') expected.commands = [expected.commands]
+      expect(result.data.plugins[0]).toMatchObject(expected)
+    }
     if (fixture.expected.installCommand) {
       expect(
         getPluginInstallCommand({
-          pluginName: result.data[0]?.name,
-          pluginId: result.data[0]?.id,
+          pluginName: result.data.plugins[0]?.name,
+          pluginId: result.data.plugins[0]?.id,
           marketplaceName: getMarketplaceName(fixture.input),
         })
       ).toBe(fixture.expected.installCommand)

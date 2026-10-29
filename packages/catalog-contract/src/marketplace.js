@@ -7,7 +7,7 @@ function isRecord(value) {
 }
 
 function isSafePath(value) {
-  return typeof value === 'string' && value.length > 0 && value.length <= 512 && !value.includes('..') && !/[\r\n]/.test(value)
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= 512 && !value.includes('..') && !/[\r\n]/.test(value)
 }
 
 function isSafeSourceUrl(value) {
@@ -27,6 +27,8 @@ function isValidSource(value) {
   if (!isRecord(value) || !isSafePath(value.source)) return false
 
   return (
+    (value.source !== 'github' || typeof value.repo === 'string') &&
+    (value.source !== 'url' || typeof value.url === 'string') &&
     (value.repo === undefined || (typeof value.repo === 'string' && GITHUB_REPO_PATH_PATTERN.test(value.repo))) &&
     (value.url === undefined || isSafeSourceUrl(value.url)) &&
     (value.path === undefined || isSafePath(value.path)) &&
@@ -39,13 +41,13 @@ function isValidSource(value) {
 
 export function isMarketplacePlugin(value) {
   return (
-    isRecord(value) && typeof value.name === 'string' && value.name.length > 0 && value.name.length <= 160 && isValidSource(value.source)
+    isRecord(value) && typeof value.name === 'string' && value.name.trim().length > 0 && value.name.length <= 160 && isValidSource(value.source)
   )
 }
 
 export const MarketplaceRootSchema = z
   .object({
-    name: z.string().min(1),
+    name: z.string().trim().min(1),
     owner: z.object({ name: z.string().min(1) }).passthrough(),
     plugins: z.array(z.unknown()),
   })
