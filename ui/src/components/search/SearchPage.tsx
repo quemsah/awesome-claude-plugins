@@ -2,7 +2,6 @@
 
 'use client'
 
-import { optionalSessionStorage } from '../../lib/optionalSessionStorage.ts'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDebouncedCallback } from 'use-debounce'
@@ -15,6 +14,7 @@ import {
   readScrollPosition,
   saveScrollPosition,
 } from '../../lib/catalogScroll.ts'
+import { optionalSessionStorage } from '../../lib/optionalSessionStorage.ts'
 import { buildSearchUrl, type PendingCatalogLoad, parseSortOption } from '../../lib/searchState.ts'
 import type { SortOption } from '../../lib/sortOptions.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
