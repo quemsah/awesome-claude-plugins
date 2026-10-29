@@ -3,11 +3,11 @@
   "version": "2.0.0",
   "private": true,
   "engines": {
-    "node": ">=24 <25"
+    "node": ">=24.22.1 <25"
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "build:analyze": "cross-env ANALYZE=true next build --webpack",
     "start": "next start",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",

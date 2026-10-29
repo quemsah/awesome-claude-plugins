@@ -203,6 +203,15 @@ function summaryText(summary: TelegramSummary): string {
   return [...lines, `problematic size ranges: ${rangeList}`].join('\n')
 }
 
+const MAX_MESSAGE_LENGTH = 4096
+const TRUNCATION_INDICATOR = '\n... (truncated)'
+
+export function truncateTelegramMessage(text: string, maxLength = MAX_MESSAGE_LENGTH): string {
+  if (text.length <= maxLength) return text
+  if (maxLength <= TRUNCATION_INDICATOR.length) return text.slice(0, maxLength)
+  return text.slice(0, maxLength - TRUNCATION_INDICATOR.length) + TRUNCATION_INDICATOR
+}
+
 /** On delivery failure, callers log { level: 'error', phase: 'notify', category, status }; they must not roll back the confirmed Git commit. */
 export class TelegramNotifier {
   readonly #botToken: string
@@ -234,12 +243,12 @@ export class TelegramNotifier {
     if (typeof summary?.reason !== 'string' || !failureCategoryPattern.test(summary.reason)) {
       return Promise.reject(new TelegramNotificationError('configuration'))
     }
-    return this.send(`Crawl failed\n${summaryText(summary)}\nreason: ${summary.reason}`)
+    return this.send(`Crawl failed\n${summaryText(summary)}`, `\nreason: ${summary.reason}`)
   }
 
   notifySuccess(summary: TelegramSummary & { confirmedGitSha: string }): Promise<void> {
     if (!shaPattern.test(summary.confirmedGitSha)) return Promise.reject(new TelegramNotificationError('configuration'))
-    return this.send(`Publication succeeded\n${summaryText(summary)}\nconfirmed Git SHA: ${summary.confirmedGitSha}`)
+    return this.send(`Publication succeeded\n${summaryText(summary)}`, `\nconfirmed Git SHA: ${summary.confirmedGitSha}`)
   }
 
   private async request(text: string, attempt: number): Promise<Response | null> {
@@ -311,10 +320,11 @@ export class TelegramNotifier {
     if (!payload.ok) throw new TelegramNotificationError('rejected', status)
   }
 
-  private async send(text: string): Promise<void> {
-    if (text.length > 4096) throw new TelegramNotificationError('configuration')
+  private async send(text: string, requiredSuffix = ''): Promise<void> {
+    // Reserve space for the validated failure reason or confirmed SHA before cutting optional details.
+    const payload = truncateTelegramMessage(text, MAX_MESSAGE_LENGTH - requiredSuffix.length) + requiredSuffix
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      if (await this.sendAttempt(text, attempt)) return
+      if (await this.sendAttempt(payload, attempt)) return
     }
   }
 }

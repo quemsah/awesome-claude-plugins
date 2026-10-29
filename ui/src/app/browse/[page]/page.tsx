@@ -5,6 +5,7 @@ import { RepoCard } from '../../../components/search/RepoCard.tsx'
 import { getBrowsePageCount, searchCatalogRepos } from '../../../lib/catalog.ts'
 import { CATALOG_PAGE_SIZE } from '../../../lib/catalogPagination.ts'
 import { BASE_URL } from '../../../lib/constants.ts'
+import { withSiteAlternates } from '../../../lib/metadata.ts'
 
 const PAGE_NUMBER_PATTERN = /^[1-9]\d*$/
 type BrowsePageProps = {
@@ -20,18 +21,18 @@ export async function generateMetadata({ params }: BrowsePageProps): Promise<Met
 
   if (page === 1) {
     return {
-      alternates: {
+      alternates: withSiteAlternates({
         canonical: `${BASE_URL}/`,
-      },
+      }),
     }
   }
 
   return {
     title: `Browse Claude Code Plugin Repositories - Page ${page}`,
     description: `Browse page ${page} of the Awesome Claude Plugins catalog.`,
-    alternates: {
+    alternates: withSiteAlternates({
       canonical: `${BASE_URL}/browse/${page}`,
-    },
+    }),
   }
 }
 

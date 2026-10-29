@@ -861,3 +861,22 @@ it.each([401, 422])('never treats a %i response as a recoverable range failure',
   expect(attempts).toBe(1)
   expect(errors(db)).toEqual([])
 })
+
+it('rolls back all repository writes when one discovered search page fails', async () => {
+  const db = database()
+  db.exec(`
+    CREATE TRIGGER reject_discovery BEFORE INSERT ON repositories
+    WHEN NEW.html_url = 'https://github.com/owner/fail'
+    BEGIN SELECT RAISE(ABORT, 'blocked discovery row'); END;
+  `)
+
+  await expect(
+    discover(
+      db,
+      reader(async () => page([item('https://github.com/owner/first'), item('https://github.com/owner/fail')])),
+      'run-1',
+      [firstRange],
+    ),
+  ).rejects.toThrow('blocked discovery row')
+  expect(db.prepare('SELECT html_url FROM repositories').all()).toEqual([])
+})
