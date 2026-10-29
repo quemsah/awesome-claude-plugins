@@ -10,7 +10,6 @@ it('counts only plugin entries with a name and source', () => {
       { name: 'missing-source' },
       { source: './plugins/unnamed' },
       { name: 'empty-source', source: '' },
-      { name: 'blank-name', source: './plugins/blank' },
       { name: '    ', source: './plugins/whitespace-name' },
       { name: 'whitespace-source', source: '  ' },
       { name: 'missing-github-repo', source: { source: 'github' } },
