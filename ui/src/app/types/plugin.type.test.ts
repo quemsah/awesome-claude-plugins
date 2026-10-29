@@ -167,7 +167,9 @@ describe('MarketplacePluginsSchema', () => {
 describe('getMarketplaceDescription', () => {
   const summary = 'A useful description for a single plugin marketplace repository.'
   it('prefers a marketplace-level description, including short summaries', () => {
-    expect(getMarketplaceDescription({ name: 'market', description: 'Short', plugins: [{ name: 'a', description: summary }] })).toBe('Short')
+    expect(getMarketplaceDescription({ name: 'market', description: 'Short', plugins: [{ name: 'a', description: summary }] })).toBe(
+      'Short'
+    )
     expect(getMarketplaceDescription({ marketplace: { description: summary, plugins: [] } })).toBe(summary)
   })
   it('uses a single valid plugin description when marketplace metadata is absent', () => {
@@ -175,10 +177,14 @@ describe('getMarketplaceDescription', () => {
     expect(getMarketplaceDescription({ name: 'only-plugin', source: './', description: summary })).toBe(summary)
   })
   it('does not pick an arbitrary plugin from multi-plugin marketplaces', () => {
-    expect(getMarketplaceDescription({ plugins: [
-      { name: 'one', source: './one', description: summary },
-      { name: 'two', source: './two', description: 'Another unrelated plugin description.' },
-    ] })).toBeUndefined()
+    expect(
+      getMarketplaceDescription({
+        plugins: [
+          { name: 'one', source: './one', description: summary },
+          { name: 'two', source: './two', description: 'Another unrelated plugin description.' },
+        ],
+      })
+    ).toBeUndefined()
   })
   it('does not use invalid or missing descriptions', () => {
     expect(getMarketplaceDescription(null)).toBeUndefined()
