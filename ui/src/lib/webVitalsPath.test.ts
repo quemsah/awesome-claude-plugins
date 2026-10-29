@@ -35,6 +35,14 @@ describe('toRouteTemplate', () => {
     expect(toRouteTemplate('/obra/superpowers/skills')).toBe(UNMATCHED_ROUTE)
   })
 
+  it('collapses reserved roots to the unmatched route', () => {
+    expect(toRouteTemplate('/.well-known/security.txt')).toBe(UNMATCHED_ROUTE)
+    expect(toRouteTemplate('/api/reports')).toBe(UNMATCHED_ROUTE)
+    expect(toRouteTemplate('/api/vitals')).toBe(UNMATCHED_ROUTE)
+    expect(toRouteTemplate('/sitemap/1')).toBe(UNMATCHED_ROUTE)
+    expect(toRouteTemplate('/_next/data')).toBe(UNMATCHED_ROUTE)
+  })
+
   it('bounds every result to the known route templates', () => {
     const craftedPaths = [
       '/../../../../etc/passwd',

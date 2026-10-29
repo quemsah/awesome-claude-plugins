@@ -13,6 +13,7 @@ jobs:
   changes:
     name: changed paths
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     permissions:
       contents: read
@@ -24,11 +25,13 @@ jobs:
 
     steps:
       - name: Clone repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Detect affected areas
         id: filter
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
         with:
           filters: |
             app:
@@ -50,18 +53,21 @@ jobs:
     needs: changes
     if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     permissions:
       contents: read
 
     steps:
       - name: Clone repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24'
+          node-version-file: ui/.nvmrc
           cache: 'npm'
           cache-dependency-path: ui/package-lock.json
 
@@ -81,17 +87,47 @@ jobs:
         run: npm run test:unit
         working-directory: ui
 
+      - name: Cache Next.js build cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ui/.next/cache
+          key: ${{ runner.os }}-next-${{ hashFiles('ui/package-lock.json') }}-${{ hashFiles('ui/src/**', 'ui/next.config.ts', 'ui/postcss.config.mjs', 'ui/tailwind.config.ts') }}
+          restore-keys: |
+            ${{ runner.os }}-next-${{ hashFiles('ui/package-lock.json') }}-
+
+      - name: Build Next.js app
+        run: npm run build
+        working-directory: ui
+        env:
+          GITHUB_API_URL: http://127.0.0.1:3100
+          GITHUB_RAW_URL: http://127.0.0.1:3100
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('ui/package-lock.json') }}
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
         working-directory: ui
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+
+      - name: Ensure Playwright system dependencies
+        run: npx playwright install-deps chromium
+        working-directory: ui
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
 
       - name: Run browser e2e tests
         run: npm run test:e2e
         working-directory: ui
+        env:
+          PLAYWRIGHT_PREBUILT: '1'
 
       - name: Upload Playwright failure artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: playwright-failure-${{ github.run_id }}
           path: |
@@ -105,18 +141,21 @@ jobs:
     needs: changes
     if: needs.changes.outputs.crawler == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     permissions:
       contents: read
 
     steps:
       - name: Clone repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24'
+          node-version-file: crawler/.nvmrc
           cache: 'npm'
           cache-dependency-path: crawler/package-lock.json
 
