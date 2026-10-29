@@ -299,11 +299,11 @@ async function resumePendingCommit(
   owner: string,
   now: () => Date,
 ): Promise<string | { snapshot: ReturnType<typeof checkedSnapshot> }> {
-  const snapshot = checkedSnapshot(db, runId)
-  if (run.pending_commit_sha && snapshot.pending === run.pending_commit_sha && (await reachable(git, run.pending_commit_sha))) {
+  if (run.pending_commit_sha && (await reachable(git, run.pending_commit_sha))) {
     recordPublication(db, runId, draft, run.pending_commit_sha, owner, now().toISOString())
     return run.pending_commit_sha
   }
+  const snapshot = checkedSnapshot(db, runId)
   if (snapshot.pending) {
     if (snapshot.pending !== run.pending_commit_sha) throw new PublicationError('git_indeterminate')
     const result = await update(git, snapshot.pending)
