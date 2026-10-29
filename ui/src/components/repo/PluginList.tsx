@@ -10,7 +10,8 @@ interface PluginListProps {
 }
 
 export function PluginList({ title, items, repoPath, defaultBranch, source }: PluginListProps) {
-  const listItems = Array.isArray(items) ? items : []
+  const isPathList = Array.isArray(items)
+  const listItems = isPathList ? items : Object.keys(items ?? {})
   if (!listItems.length) return null
 
   return (
@@ -21,7 +22,7 @@ export function PluginList({ title, items, repoPath, defaultBranch, source }: Pl
       <dd>
         <ul className="list-inside list-disc space-y-0.5 text-muted-foreground text-sm">
           {listItems.map((item) => {
-            const fileUrl = getPluginComponentFileUrl(source, repoPath, defaultBranch, item)
+            const fileUrl = isPathList ? getPluginComponentFileUrl(source, repoPath, defaultBranch, item) : null
             return (
               <li className="break-all" key={item}>
                 {fileUrl ? (
@@ -40,6 +41,7 @@ export function PluginList({ title, items, repoPath, defaultBranch, source }: Pl
               </li>
             )
           })}
+
         </ul>
       </dd>
     </div>

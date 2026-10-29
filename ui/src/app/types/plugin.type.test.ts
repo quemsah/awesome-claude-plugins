@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { getMarketplaceName, MarketplacePluginsSchema } from './plugin.type.ts'
+import { getMarketplaceDescription, getMarketplaceName, MarketplacePluginsSchema } from './plugin.type.ts'
 
 describe('MarketplacePluginsSchema', () => {
   it('reads supported plugin fields for display', () => {
     const payload = { name: 'catalog', plugins: [{ name: 'plugin', source: './plugins/plugin' }] }
     const result = MarketplacePluginsSchema.safeParse(payload)
     expect(result.success).toBe(true)
-    if (result.success) expect(result.data).toHaveLength(1)
+    if (result.success) expect(result.data.plugins).toHaveLength(1)
     expect(getMarketplaceName(payload)).toBe('catalog')
   })
 
@@ -37,7 +37,7 @@ describe('MarketplacePluginsSchema', () => {
 
     expect(result.success).toBe(true)
     if (result.success) {
-      expect(result.data[0]?.source).toEqual({
+      expect(result.data.plugins[0]?.source).toEqual({
         source: 'git-subdir',
         url: 'https://github.com/example-owner/example-repo.git',
         path: 'plugins/official-plugin',
@@ -47,15 +47,20 @@ describe('MarketplacePluginsSchema', () => {
     }
   })
 
-  it('rejects source URLs with embedded credentials', () => {
+  it('skips source URLs with embedded credentials and reports their validation issue', () => {
     const result = MarketplacePluginsSchema.safeParse({
       plugins: [{ name: 'unsafe-plugin', source: { source: 'url', url: 'https://user:pass@example.com/plugin.git' } }],
     })
 
-    expect(result.success).toBe(false)
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.plugins).toEqual([])
+      expect(result.data.invalidPluginCount).toBe(1)
+      expect(result.data.issues).toEqual(expect.arrayContaining([expect.objectContaining({ path: ['plugins', 0, 'source'] })]))
+    }
   })
 
-  it('rejects traversal in source object fallback paths', () => {
+  it('skips traversal in source object fallback paths and reports the validation issue', () => {
     const result = MarketplacePluginsSchema.safeParse({
       plugins: [
         {
@@ -65,7 +70,12 @@ describe('MarketplacePluginsSchema', () => {
       ],
     })
 
-    expect(result.success).toBe(false)
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.plugins).toEqual([])
+      expect(result.data.invalidPluginCount).toBe(1)
+      expect(result.data.issues).toEqual(expect.arrayContaining([expect.objectContaining({ path: ['plugins', 0, 'source', 'source'] })]))
+    }
   })
 
   it('accepts common marketplace wrappers and a single plugin entry', () => {
@@ -82,16 +92,16 @@ describe('MarketplacePluginsSchema', () => {
       source: './plugins/single-plugin',
     })
 
-    expect(wrapped.success && wrapped.data[0]?.name).toBe('wrapped-plugin')
-    expect(repositories.success && repositories.data[0]?.name).toBe('repository-plugin')
-    expect(single.success && single.data[0]?.name).toBe('single-plugin')
+    expect(wrapped.success && wrapped.data.plugins[0]?.name).toBe('wrapped-plugin')
+    expect(repositories.success && repositories.data.plugins[0]?.name).toBe('repository-plugin')
+    expect(single.success && single.data.plugins[0]?.name).toBe('single-plugin')
   })
 
   it('treats skill-only metadata as an empty plugin list', () => {
     const result = MarketplacePluginsSchema.safeParse({ skills: { pgns: { name: 'pgns' } }, strict: false })
 
     expect(result.success).toBe(true)
-    if (result.success) expect(result.data).toEqual([])
+    if (result.success) expect(result.data.plugins).toEqual([])
   })
 
   it('accepts MCP server maps and non-standard author email values', () => {
@@ -100,6 +110,7 @@ describe('MarketplacePluginsSchema', () => {
         {
           name: 'firebase',
           author: { name: 'Firebase', email: 'support at firebase' },
+          commands: { deploy: './commands/deploy.md' },
           mcpServers: { firebase: { command: 'npx' } },
           source: './',
         },
@@ -108,8 +119,75 @@ describe('MarketplacePluginsSchema', () => {
 
     expect(result.success).toBe(true)
     if (result.success) {
-      expect(result.data[0]?.name).toBe('firebase')
-      expect(result.data[0]?.mcpServers).toBeUndefined()
+      expect(result.data.plugins[0]?.name).toBe('firebase')
+      expect(result.data.plugins[0]?.commands).toEqual({ deploy: './commands/deploy.md' })
+      expect(result.data.plugins[0]?.mcpServers).toEqual({ firebase: { command: 'npx' } })
     }
+  })
+
+  it('normalizes string component paths and keeps object component maps', () => {
+    const result = MarketplacePluginsSchema.safeParse({
+      plugins: [
+        {
+          name: 'manifest-shapes',
+          commands: './commands/run.md',
+          agents: './agents/reviewer.md',
+          mcpServers: './mcp.json',
+        },
+      ],
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.plugins[0]).toMatchObject({
+        commands: ['./commands/run.md'],
+        agents: ['./agents/reviewer.md'],
+        mcpServers: ['./mcp.json'],
+      })
+    }
+  })
+
+  it('keeps valid plugin entries when another entry is invalid and reports it', () => {
+    const result = MarketplacePluginsSchema.safeParse({
+      plugins: [
+        { name: 'valid-plugin', source: './plugins/valid-plugin' },
+        { name: 'invalid-plugin', source: '../outside' },
+      ],
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.plugins.map((plugin) => plugin.name)).toEqual(['valid-plugin'])
+      expect(result.data.invalidPluginCount).toBe(1)
+      expect(result.data.issues).toEqual(expect.arrayContaining([expect.objectContaining({ path: ['plugins', 1, 'source'] })]))
+    }
+  })
+})
+
+describe('getMarketplaceDescription', () => {
+  const summary = 'A useful description for a single plugin marketplace repository.'
+  it('prefers a marketplace-level description, including short summaries', () => {
+    expect(getMarketplaceDescription({ name: 'market', description: 'Short', plugins: [{ name: 'a', description: summary }] })).toBe(
+      'Short'
+    )
+    expect(getMarketplaceDescription({ marketplace: { description: summary, plugins: [] } })).toBe(summary)
+  })
+  it('uses a single valid plugin description when marketplace metadata is absent', () => {
+    expect(getMarketplaceDescription({ plugins: [{ name: 'only-plugin', source: './', description: summary }] })).toBe(summary)
+    expect(getMarketplaceDescription({ name: 'only-plugin', source: './', description: summary })).toBe(summary)
+  })
+  it('does not pick an arbitrary plugin from multi-plugin marketplaces', () => {
+    expect(
+      getMarketplaceDescription({
+        plugins: [
+          { name: 'one', source: './one', description: summary },
+          { name: 'two', source: './two', description: 'Another unrelated plugin description.' },
+        ],
+      })
+    ).toBeUndefined()
+  })
+  it('does not use invalid or missing descriptions', () => {
+    expect(getMarketplaceDescription(null)).toBeUndefined()
+    expect(getMarketplaceDescription({ plugins: [{ name: 'plugin', source: './' }] })).toBeUndefined()
   })
 })

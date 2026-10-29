@@ -1,11 +1,12 @@
 import type { Metadata } from 'next'
 import { BASE_URL, DEFAULT_OG_IMAGE } from '../../lib/constants.ts'
+import { withSiteAlternates } from '../../lib/metadata.ts'
 
 export const metadata: Metadata = {
-  title: 'Repositories Statistics',
+  title: 'Repository statistics',
   description: 'Explore Claude Code plugin adoption statistics, repository growth trends and usage patterns across GitHub',
   openGraph: {
-    title: 'Repositories Statistics | Awesome Claude Plugins',
+    title: 'Repository statistics | Awesome Claude Plugins',
     description: 'Explore Claude Code plugin adoption statistics, repository growth trends and usage patterns across GitHub',
     url: `${BASE_URL}/stats`,
     type: 'website',
@@ -14,19 +15,19 @@ export const metadata: Metadata = {
         url: DEFAULT_OG_IMAGE,
         width: 1200,
         height: 630,
-        alt: 'Claude Code Plugin Statistics',
+        alt: 'Awesome Claude Code Plugin Statistics',
       },
     ],
   },
-  alternates: {
+  alternates: withSiteAlternates({
     canonical: `${BASE_URL}/stats`,
     types: {
       'text/markdown': `${BASE_URL}/stats.md`,
     },
-  },
+  }),
   twitter: {
     card: 'summary_large_image',
-    title: 'Repositories Statistics | Awesome Claude Plugins',
+    title: 'Repository statistics | Awesome Claude Plugins',
     description: 'Explore Claude Code plugin adoption statistics, repository growth trends and usage patterns across GitHub',
     images: [DEFAULT_OG_IMAGE],
   },
