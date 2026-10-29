@@ -5,7 +5,7 @@ import { type DiscoveryQueryFamily, discoverySearchFamilies } from '../github/se
 import type { SizeRange } from '../github/sizeRanges.js'
 import type { Log } from '../logging.js'
 import { listCachedDiscoveryRanges, replaceCachedDiscoveryRanges } from '../storage/discoveryRanges.js'
-import { upsertDiscovery } from '../storage/repositories.js'
+import { createDiscoveryWriter } from '../storage/repositories.js'
 import { recordRunError, runWhileActive } from '../storage/runs.js'
 
 export type { SizeRange } from '../github/sizeRanges.js'
@@ -46,6 +46,8 @@ type CoverageState = {
   leaves: SizeRange[]
   log?: Log
 }
+
+type DiscoveryWriter = ReturnType<typeof createDiscoveryWriter>
 
 function warn(
   db: Database.Database,
@@ -127,30 +129,27 @@ async function searchPage(
 
 function processItems(
   db: Database.Database,
-  lookup: Database.Statement,
+  writeDiscovery: DiscoveryWriter,
   result: Awaited<ReturnType<GitHubReader['searchCode']>>,
   state: RangeState,
 ): void {
-  for (const { path, repository } of result.items) {
-    if (state.queryFamily === 'marketplace_path_literal' && path !== '.claude-plugin/marketplace.json') {
-      continue
+  runWhileActive(db, state.runId, () => {
+    for (const { path, repository } of result.items) {
+      if (state.queryFamily === 'marketplace_path_literal' && path !== '.claude-plugin/marketplace.json') continue
+      if (repository.private === true) continue
+      const url = repository.html_url
+      if (!parseRepositoryUrl(url)) {
+        warn(db, state, 'invalid-url', 0, { repositoryUrl: url })
+        continue
+      }
+      const countKey = url.toLowerCase()
+      if (state.countedUrls.has(countKey)) continue
+      const { existing } = writeDiscovery(url, repository.description, state.now(), repository.node_id)
+      state.countedUrls.add(countKey)
+      if (existing) state.summary.existingUrls++
+      else state.summary.newUrls++
     }
-    if (repository.private === true) continue
-    const url = repository.html_url
-    if (!parseRepositoryUrl(url)) {
-      warn(db, state, 'invalid-url', 0, { repositoryUrl: url })
-      continue
-    }
-    const countKey = url.toLowerCase()
-    if (state.countedUrls.has(countKey)) continue
-    const existing = Boolean(lookup.get(url))
-    runWhileActive(db, state.runId, () => {
-      upsertDiscovery(db, url, repository.description, state.now(), repository.node_id)
-    })
-    state.countedUrls.add(countKey)
-    if (existing) state.summary.existingUrls++
-    else state.summary.newUrls++
-  }
+  })
 }
 
 function adjustSuccessfulRanges(summary: DiscoverySummary, queryFamily: DiscoveryQueryFamily, change: 1 | -1): void {
@@ -174,7 +173,7 @@ async function splitRange(
   reader: GitHubReader,
   runId: string,
   queryFamily: DiscoveryQueryFamily,
-  lookup: Database.Statement,
+  writeDiscovery: DiscoveryWriter,
   [min, max]: SizeRange,
   summary: DiscoverySummary,
   now: () => string,
@@ -186,8 +185,8 @@ async function splitRange(
   if (countedAsSuccessful) adjustSuccessfulRanges(summary, queryFamily, -1)
   onProgress?.()
   const middle = Math.floor((min + max) / 2)
-  await searchRange(db, reader, runId, queryFamily, lookup, [min, middle], summary, now, coverage, onProgress, countedUrls)
-  await searchRange(db, reader, runId, queryFamily, lookup, [middle + 1, max], summary, now, coverage, onProgress, countedUrls)
+  await searchRange(db, reader, runId, queryFamily, writeDiscovery, [min, middle], summary, now, coverage, onProgress, countedUrls)
+  await searchRange(db, reader, runId, queryFamily, writeDiscovery, [middle + 1, max], summary, now, coverage, onProgress, countedUrls)
 }
 
 async function splitSaturatedRange(
@@ -195,7 +194,7 @@ async function splitSaturatedRange(
   reader: GitHubReader,
   runId: string,
   queryFamily: DiscoveryQueryFamily,
-  lookup: Database.Statement,
+  writeDiscovery: DiscoveryWriter,
   range: SizeRange,
   summary: DiscoverySummary,
   now: () => string,
@@ -212,8 +211,8 @@ async function splitSaturatedRange(
   const fullLastPage = page === 10 && result.items.length === 100
   if (!saturatedRange && !fullLastPage) return false
   if (result.incomplete_results) warn(db, state, 'incomplete-results')
-  if (fullLastPage) processItems(db, lookup, result, state)
-  await splitRange(db, reader, runId, queryFamily, lookup, range, summary, now, onProgress, countedUrls, page > 1, coverage)
+  if (fullLastPage) processItems(db, writeDiscovery, result, state)
+  await splitRange(db, reader, runId, queryFamily, writeDiscovery, range, summary, now, onProgress, countedUrls, page > 1, coverage)
   return true
 }
 
@@ -260,7 +259,7 @@ async function recoverIncompleteRange(
   reader: GitHubReader,
   runId: string,
   queryFamily: DiscoveryQueryFamily,
-  lookup: Database.Statement,
+  writeDiscovery: DiscoveryWriter,
   range: SizeRange,
   summary: DiscoverySummary,
   now: () => string,
@@ -279,7 +278,7 @@ async function recoverIncompleteRange(
     coverage.complete = false
     return true
   }
-  await splitRange(db, reader, runId, queryFamily, lookup, range, summary, now, onProgress, countedUrls, page > 1, coverage)
+  await splitRange(db, reader, runId, queryFamily, writeDiscovery, range, summary, now, onProgress, countedUrls, page > 1, coverage)
   return true
 }
 
@@ -293,7 +292,7 @@ async function loadSearchRangePage(
   reader: GitHubReader,
   runId: string,
   queryFamily: DiscoveryQueryFamily,
-  lookup: Database.Statement,
+  writeDiscovery: DiscoveryWriter,
   range: SizeRange,
   summary: DiscoverySummary,
   now: () => string,
@@ -316,7 +315,7 @@ async function loadSearchRangePage(
       reader,
       runId,
       queryFamily,
-      lookup,
+      writeDiscovery,
       range,
       summary,
       now,
@@ -336,7 +335,7 @@ async function loadSearchRangePage(
       reader,
       runId,
       queryFamily,
-      lookup,
+      writeDiscovery,
       range,
       summary,
       now,
@@ -358,7 +357,7 @@ async function searchRange(
   reader: GitHubReader,
   runId: string,
   queryFamily: DiscoveryQueryFamily,
-  lookup: Database.Statement,
+  writeDiscovery: DiscoveryWriter,
   range: SizeRange,
   summary: DiscoverySummary,
   now: () => string,
@@ -393,7 +392,7 @@ async function searchRange(
       reader,
       runId,
       queryFamily,
-      lookup,
+      writeDiscovery,
       range,
       summary,
       now,
@@ -415,7 +414,7 @@ async function searchRange(
     state.totalCount = result.total_count
     state.found = found + result.items.length
     recordPageWarnings(db, result, page, state)
-    processItems(db, lookup, result, state)
+    processItems(db, writeDiscovery, result, state)
     lastTotalCount = result.total_count
     if (result.items.length < 100 && found + result.items.length < result.total_count) sawShortPage = true
     found += result.items.length
@@ -424,7 +423,7 @@ async function searchRange(
   if (sawShortPage && found < lastTotalCount) {
     warn(db, state, 'short-page')
     if (min < max) {
-      await splitRange(db, reader, runId, queryFamily, lookup, range, summary, now, onProgress, countedUrls, true, coverage)
+      await splitRange(db, reader, runId, queryFamily, writeDiscovery, range, summary, now, onProgress, countedUrls, true, coverage)
       onProgress?.()
       return
     }
@@ -456,7 +455,7 @@ export async function discover(
       marketplace_path_literal: { successfulRanges: 0, warningCount: 0 },
     },
   }
-  const lookup = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE LIMIT 1')
+  const writeDiscovery = createDiscoveryWriter(db)
   const countedUrls = new Set<string>()
 
   for (const family of discoverySearchFamilies) {
@@ -464,7 +463,7 @@ export async function discover(
       const cachedRanges = listCachedDiscoveryRanges(db, family.queryFamily, rootRange) ?? [rootRange]
       const coverage: CoverageState = { complete: true, leaves: [], log }
       for (const range of cachedRanges) {
-        await searchRange(db, reader, runId, family.queryFamily, lookup, range, summary, now, coverage, onProgress, countedUrls)
+        await searchRange(db, reader, runId, family.queryFamily, writeDiscovery, range, summary, now, coverage, onProgress, countedUrls)
       }
       if (coverage.complete) {
         runWhileActive(db, runId, () => replaceCachedDiscoveryRanges(db, family.queryFamily, rootRange, coverage.leaves))

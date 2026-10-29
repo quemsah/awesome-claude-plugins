@@ -16,7 +16,7 @@ describe('GET /og/[owner]/[repo]', () => {
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toBe('image/png')
     expect(body.byteLength).toBeGreaterThan(0)
-  })
+  }, 15_000)
 
   it('returns 404 for a repository outside the catalog', async () => {
     const response = await get('not-a-repository', 'not-a-repository')

@@ -499,13 +499,24 @@ describe('GitHubClient', () => {
     expect(test.requests).toHaveLength(1)
   })
 
-  it('filters empty and non-object marketplace entries', async () => {
+  it('filters marketplace entries without a name and source', async () => {
     const test = harness([
-      manifest({ name: 'catalog', owner: { name: 'maintainer' }, plugins: [{ name: 'valid' }, {}, null, 'unexpected entry'] }),
+      manifest({
+        name: 'catalog',
+        owner: { name: 'maintainer' },
+        plugins: [
+          { arbitrary: true },
+          { name: 'missing-source' },
+          { source: './plugins/unnamed' },
+          { name: 'valid', source: './plugins/valid' },
+          null,
+          'unexpected entry',
+        ],
+      }),
     ])
     const result = await test.client.getMarketplace('acme', 'catalog')
     expect(result.kind).toBe('found')
-    if (result.kind === 'found') expect(result.data.plugins).toEqual([{ name: 'valid' }])
+    if (result.kind === 'found') expect(result.data.plugins).toEqual([{ name: 'valid', source: './plugins/valid' }])
   })
 
   it.each([

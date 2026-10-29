@@ -16,7 +16,7 @@ Search and sort the [repository catalog](${BASE_URL}/), or follow the [catalog b
 
 ## Inclusion and quality
 
-Entries are discovered from public GitHub data. Indexable entries have a repository description and a validated marketplace plugin count; entries missing those signals remain available for review but are not promoted in search engines. Stars, forks, and plugin counts are descriptive signals, not endorsements.
+Entries are discovered from public GitHub data. Indexable entries have a validated marketplace plugin count; entries missing those signals remain available for review but are not promoted in search engines. Stars, forks, and plugin counts are descriptive signals, not endorsements.
 
 ## Corrections and source
 
@@ -35,7 +35,7 @@ export function buildAboutMarkdown(): string {
 
 Awesome Claude Plugins is a daily-updated directory of Claude Code plugins and tools, inspired by the "awesome" list movement.
 
-Repositories are discovered from public GitHub data and refreshed daily. Indexable entries require a description and a validated marketplace plugin count. Plugin counts reflect manifests we can validate, not endorsements. Review code, licenses, and maintenance before installing.
+Repositories are discovered from public GitHub data and refreshed daily. Indexable entries require a validated marketplace plugin count. Plugin counts reflect manifests we can validate, not endorsements. Review code, licenses, and maintenance before installing.
 
 ## Provenance and corrections
 
