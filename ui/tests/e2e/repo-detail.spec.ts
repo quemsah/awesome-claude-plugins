@@ -10,7 +10,6 @@ const mdserveCanonicalPattern = /\/jfernandez\/mdserve$/
 const repoCanonicalPattern = /\/ykdojo\/claude-code-tips$/
 const repoMarkdownAlternatePattern = /\/ykdojo\/claude-code-tips\.md$/
 const repoOpenGraphImagePattern = /\/og\/ykdojo\/claude-code-tips$/
-const installButtonPattern = /install/i
 const mockGithubApiUrl = `http://127.0.0.1:${process.env.MOCK_GITHUB_PORT ?? '3100'}`
 
 // Next.js may serialize the public GitHub API origin into the server-rendered page.
@@ -72,7 +71,7 @@ test('repo detail page refreshes repository and marketplace data in the browser'
     ])
   )
   expect(JSON.stringify(jsonLd)).not.toContain('"Unknown"')
-  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Example Plugin@1.2.3' }) })
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'example-plugin@1.2.3' }) })
   await expect(plugin.getByText('/plugin install example-plugin@ykdojo')).toBeVisible()
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
   await expect.poll(() => copiedText(page)).toBe('/plugin install example-plugin@ykdojo')
@@ -82,7 +81,7 @@ test('repo detail page uses the manifest marketplace name for fallback install c
   await mockClipboard(page)
   await page.goto('/ykdojo/claude-code-tips')
 
-  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Fallback Install Target' }) })
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'fallback-install-target' }) })
   await expect(plugin.getByText('/plugin install fallback-install-target@ykdojo')).toBeVisible()
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
   await expect.poll(() => copiedText(page)).toBe('/plugin install fallback-install-target@ykdojo')
@@ -102,18 +101,25 @@ test('repo detail page renders a GitHub source object as a repository link', asy
   )
 })
 
-test('repo detail page renders plugins without a name or identifier without an install command', async ({ page }) => {
+test('repo detail page skips entries without valid plugin identifiers', async ({ page }) => {
   await page.goto('/ykdojo/claude-code-tips')
 
-  const plugin = page.locator('article').filter({ hasText: 'A plugin without a name or identifier' })
-  await expect(plugin.getByRole('button', { name: installButtonPattern })).toBeHidden()
+  await expect(page.getByText('A plugin without a name or identifier')).toHaveCount(0)
+  await expect(page.getByText('1 invalid plugin entry was skipped.', { exact: true })).toBeVisible()
 })
 
-test('repo detail page accepts marketplace manifests served as a plugin array', async ({ page }) => {
+test('repo detail page rejects marketplace manifests served as a plugin array', async ({ page }) => {
+  await page.route('**/mksglu/context-mode/HEAD/.claude-plugin/marketplace.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{ name: 'example-plugin', source: './plugins/example-plugin' }]),
+    })
+  )
   await page.goto('/mksglu/context-mode')
 
-  await expect(page.getByRole('heading', { name: 'Example Plugin@1.2.3' })).toBeVisible()
-  await expect(page.getByText('/plugin install example-plugin')).toBeVisible()
+  await expect(page.getByText('Marketplace manifest contains invalid data.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Example Plugin@1.2.3' })).toHaveCount(0)
 })
 
 test('repo detail page keeps valid plugins and string component paths from a partly invalid manifest', async ({ page }) => {
@@ -123,9 +129,10 @@ test('repo detail page keeps valid plugins and string component paths from a par
       contentType: 'application/json',
       body: JSON.stringify({
         name: 'ykdojo',
+        owner: { name: 'ykdojo' },
         plugins: [
           {
-            name: 'String Component Plugin',
+            name: 'string-component-plugin',
             source: './plugins/string-component-plugin',
             commands: './commands/run.md',
             agents: './agents/reviewer.md',
@@ -139,7 +146,7 @@ test('repo detail page keeps valid plugins and string component paths from a par
 
   await page.goto('/ykdojo/claude-code-tips')
 
-  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'String Component Plugin' }) })
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'string-component-plugin' }) })
   await expect(plugin).toBeVisible()
   await expect(plugin.getByRole('link', { name: 'Open ./commands/run.md in a new tab' })).toBeVisible()
   await expect(plugin.getByRole('link', { name: 'Open ./agents/reviewer.md in a new tab' })).toBeVisible()
@@ -155,9 +162,10 @@ test('repo detail page renders component names from object maps without treating
       contentType: 'application/json',
       body: JSON.stringify({
         name: 'ykdojo',
+        owner: { name: 'ykdojo' },
         plugins: [
           {
-            name: 'Mapped Components Plugin',
+            name: 'mapped-components-plugin',
             source: './plugins/mapped-components',
             commands: { deploy: './commands/deploy.md' },
             agents: { reviewer: { description: 'Reviews code' } },
@@ -170,7 +178,7 @@ test('repo detail page renders component names from object maps without treating
 
   await page.goto('/ykdojo/claude-code-tips')
 
-  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Mapped Components Plugin' }) })
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'mapped-components-plugin' }) })
   await expect(plugin).toBeVisible()
   await expect(plugin.getByText('Commands (1)')).toBeVisible()
   await expect(plugin.getByText('Agents (1)')).toBeVisible()

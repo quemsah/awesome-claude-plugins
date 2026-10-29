@@ -32,21 +32,32 @@ function isSafeSourceUrl(value: unknown): value is string {
   }
 }
 
-function isValidSource(value: unknown): boolean {
-  if (isSafePath(value)) return true
-  if (!isRecord(value) || !isSafePath(value.source)) return false
+function hasValidSourceKind(source: string, value: Record<string, unknown>): boolean {
+  return (source !== 'github' || typeof value.repo === 'string') && (source !== 'url' || typeof value.url === 'string')
+}
 
+function hasSafeSourceLocation(value: Record<string, unknown>): boolean {
   return (
-    (value.source !== 'github' || typeof value.repo === 'string') &&
-    (value.source !== 'url' || typeof value.url === 'string') &&
     (value.repo === undefined || (typeof value.repo === 'string' && GITHUB_REPO_PATH_PATTERN.test(value.repo))) &&
     (value.url === undefined || isSafeSourceUrl(value.url)) &&
     (value.path === undefined || isSafePath(value.path)) &&
     (value.branch === undefined || isSafePath(value.branch)) &&
-    (value.ref === undefined || isSafePath(value.ref)) &&
+    (value.ref === undefined || isSafePath(value.ref))
+  )
+}
+
+function hasSafeSourceRevision(value: Record<string, unknown>): boolean {
+  return (
     (value.commit === undefined || (typeof value.commit === 'string' && /^[A-Fa-f0-9]{7,64}$/.test(value.commit))) &&
     (value.sha === undefined || (typeof value.sha === 'string' && /^[A-Fa-f0-9]{7,64}$/.test(value.sha)))
   )
+}
+
+function isValidSource(value: unknown): boolean {
+  if (isSafePath(value)) return true
+  if (!isRecord(value) || !isSafePath(value.source)) return false
+
+  return hasValidSourceKind(value.source, value) && hasSafeSourceLocation(value) && hasSafeSourceRevision(value)
 }
 
 function isPluginEntry(value: unknown): value is Record<string, unknown> {
