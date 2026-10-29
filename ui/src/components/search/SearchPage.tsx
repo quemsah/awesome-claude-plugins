@@ -15,6 +15,7 @@ import {
   readScrollPosition,
   saveScrollPosition,
 } from '../../lib/catalogScroll.ts'
+import { optionalSessionStorage } from '../../lib/optionalSessionStorage.ts'
 import { buildSearchUrl, type PendingCatalogLoad, parseSortOption } from '../../lib/searchState.ts'
 import type { SortOption } from '../../lib/sortOptions.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
@@ -93,7 +94,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         pendingSearchUrls.current.track(nextUrl)
         router[mode](nextUrl, { scroll: false })
       }
-      window.sessionStorage.setItem('last-search-url', nextUrl)
+      optionalSessionStorage.setItem('last-search-url', nextUrl)
     },
     [pathname, router, searchParams]
   )
@@ -235,7 +236,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   }, [failedLoad, loadMore])
 
   useEffect(() => {
-    window.sessionStorage.setItem('last-search-url', `${window.location.pathname}${window.location.search}`)
+    optionalSessionStorage.setItem('last-search-url', `${window.location.pathname}${window.location.search}`)
   }, [])
 
   useEffect(() => {
@@ -248,7 +249,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
       setSearchTerm(searchParams.get('q') ?? '')
       setSortOption(parseSortOption(searchParams.get('sort')))
     }
-    window.sessionStorage.setItem('last-search-url', currentUrl)
+    optionalSessionStorage.setItem('last-search-url', currentUrl)
   }, [pathname, searchParams])
 
   useEffect(() => {
@@ -266,7 +267,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   // here once the grid has been refilled is what puts the visitor back where they left off.
   useEffect(() => {
     const url = catalogScrollKey(window.location.pathname, window.location.search)
-    const scrollY = readScrollPosition(window.sessionStorage, url)
+    const scrollY = readScrollPosition(optionalSessionStorage, url)
     if (scrollY > 0) {
       pendingScrollRestore.current = { attempts: 0, scrollY, url }
     }
@@ -279,7 +280,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     const remember = () => {
       const { pathname, search } = window.location
       if (isCatalogListPath(pathname)) {
-        saveScrollPosition(window.sessionStorage, catalogScrollKey(pathname, search), window.scrollY)
+        saveScrollPosition(optionalSessionStorage, catalogScrollKey(pathname, search), window.scrollY)
       }
     }
 
@@ -356,7 +357,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     }
 
     window.scrollTo(0, pending.scrollY)
-    clearScrollPosition(window.sessionStorage, pending.url)
+    clearScrollPosition(optionalSessionStorage, pending.url)
     pendingScrollRestore.current = null
   }, [hasMore, loadMore, pendingLoad, searchTerm, sortOption])
 

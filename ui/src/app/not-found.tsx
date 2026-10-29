@@ -1,30 +1,7 @@
-import Link from 'next/link'
-import { Button } from '../components/ui/button.tsx'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card.tsx'
+import { NotFoundView } from '../components/common/NotFoundView.tsx'
 
 export default function NotFound() {
-  return (
-    <main className="flex min-h-dvh items-center justify-center p-4" id="main-content" tabIndex={-1}>
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="font-bold text-4xl text-muted-foreground">
-            <h1>404</h1>
-          </CardTitle>
-          <CardDescription className="text-lg">Page Not Found</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4 text-center">
-          <p className="text-muted-foreground">Sorry, we couldn't find the page you're looking for.</p>
-          <div className="flex justify-center">
-            <Button asChild className="w-auto">
-              <Link aria-label="Go to home page" href="/">
-                Go Home
-              </Link>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </main>
-  )
+  return <NotFoundView />
 }
 
 export const metadata = {

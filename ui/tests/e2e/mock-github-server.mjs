@@ -51,6 +51,12 @@ const fallbackPlugin = {
   author: { email: 'fallback@example.dev' },
 }
 
+const githubSourcePlugin = {
+  name: 'GitHub Source Plugin',
+  description: 'A plugin sourced from a GitHub repository',
+  source: { source: 'github', repo: 'elsewhere/shared-plugins', ref: 'main' },
+}
+
 const unnamedPlugin = {
   description: 'A plugin without a name or identifier',
 }
@@ -61,7 +67,7 @@ const unnamedPlugin = {
  */
 const fixtures = {
   'ykdojo/claude-code-tips': {
-    marketplace: { status: 200, body: { name: 'ykdojo', plugins: [examplePlugin, fallbackPlugin, unnamedPlugin] } },
+    marketplace: { status: 200, body: { name: 'ykdojo', plugins: [examplePlugin, fallbackPlugin, githubSourcePlugin, unnamedPlugin] } },
   },
   'mksglu/context-mode': {
     marketplace: { status: 200, body: [examplePlugin] },
