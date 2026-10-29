@@ -59,7 +59,8 @@ const fallbackPlugin = {
 }
 
 const githubSourcePlugin = {
-  name: 'GitHub Source Plugin',
+  name: 'github-source-plugin',
+  displayName: 'GitHub Source Plugin',
   description: 'A plugin sourced from a GitHub repository',
   source: { source: 'github', repo: 'elsewhere/shared-plugins', ref: 'main' },
 }

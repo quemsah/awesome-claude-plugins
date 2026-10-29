@@ -7,7 +7,7 @@ const PARSER_BLOB_SHA_BY_CACHE_VERSION: Readonly<Record<number, string>> = {
   3: '8b813b589fb7fe694d8f694bcb1b2311a22e3f26',
   4: '4ae2b4d6e549da696f9c1c2450ebc128b7cb05fc',
   5: 'f90f582605472db5adc2728dd789843fcc320471',
-  6: 'ac761405e5af00246800e561dbfbb58ba13a3ec9',
+  6: '42a1223f4233f4a0fa923d6f66eaefae25780706',
   7: '101a3a2da595897b0e96a1c869407a09758deeff',
 }
 

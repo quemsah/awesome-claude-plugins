@@ -110,6 +110,99 @@ test('repo detail page installs a marketplace entry under the marketplace name',
   await expect(page.getByText('/plugin install example-plugin@context-mode')).toBeVisible()
 })
 
+test('repo detail page renders a GitHub source object as a repository link', async ({ page }) => {
+  await page.goto('/ykdojo/claude-code-tips')
+
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'GitHub Source Plugin' }) })
+  await expect(plugin.getByRole('link', { name: 'Open source repository elsewhere/shared-plugins in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/elsewhere/shared-plugins/tree/main'
+  )
+})
+
+test('repo detail page rejects marketplace manifests served as a plugin array', async ({ page }) => {
+  await page.route('**/mksglu/context-mode/HEAD/.claude-plugin/marketplace.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{ name: 'example-plugin', source: './plugins/example-plugin' }]),
+    })
+  )
+  await page.goto('/mksglu/context-mode')
+
+  await expect(page.getByText('Marketplace manifest contains invalid data.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Example Plugin@1.2.3' })).toHaveCount(0)
+})
+
+test('repo detail page keeps valid plugins and string component paths from a partly invalid manifest', async ({ page }) => {
+  await page.route('**/ykdojo/claude-code-tips/HEAD/.claude-plugin/marketplace.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        name: 'ykdojo',
+        owner: { name: 'ykdojo' },
+        plugins: [
+          {
+            name: 'string-component-plugin',
+            source: './plugins/string-component-plugin',
+            commands: './commands/run.md',
+            agents: './agents/reviewer.md',
+            mcpServers: './mcp.json',
+          },
+          { name: 'Invalid Plugin', source: '../outside' },
+        ],
+      }),
+    })
+  )
+
+  await page.goto('/ykdojo/claude-code-tips')
+
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'string-component-plugin' }) })
+  await expect(plugin).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./commands/run.md in a new tab' })).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./agents/reviewer.md in a new tab' })).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./mcp.json in a new tab' })).toBeVisible()
+  await expect(page.getByText('1 invalid plugin entry was skipped.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Marketplace manifest contains invalid data.')).toBeHidden()
+})
+
+test('repo detail page renders component names from object maps without treating values as file links', async ({ page }) => {
+  await page.route('**/ykdojo/claude-code-tips/HEAD/.claude-plugin/marketplace.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        name: 'ykdojo',
+        owner: { name: 'ykdojo' },
+        plugins: [
+          {
+            name: 'mapped-components-plugin',
+            source: './plugins/mapped-components',
+            commands: { deploy: './commands/deploy.md' },
+            agents: { reviewer: { description: 'Reviews code' } },
+            mcpServers: { firebase: { command: 'npx', args: ['-y', 'firebase-tools'] } },
+          },
+        ],
+      }),
+    })
+  )
+
+  await page.goto('/ykdojo/claude-code-tips')
+
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'mapped-components-plugin' }) })
+  await expect(plugin).toBeVisible()
+  await expect(plugin.getByText('Commands (1)')).toBeVisible()
+  await expect(plugin.getByText('Agents (1)')).toBeVisible()
+  await expect(plugin.getByText('MCP Servers (1)')).toBeVisible()
+  await expect(plugin.getByText('deploy', { exact: true })).toBeVisible()
+  await expect(plugin.getByText('reviewer', { exact: true })).toBeVisible()
+  await expect(plugin.getByText('firebase', { exact: true })).toBeVisible()
+  for (const component of ['deploy', 'reviewer', 'firebase']) {
+    await expect(plugin.getByRole('link', { name: `Open ${component} in a new tab` })).toHaveCount(0)
+  }
+})
+
 test('repo detail page renders an empty plugin state when the manifest is missing', async ({ page }) => {
   await page.goto('/ZeframLou/call-me')
 
