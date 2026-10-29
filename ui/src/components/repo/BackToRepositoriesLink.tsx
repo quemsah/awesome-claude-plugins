@@ -2,8 +2,8 @@
 
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
-import { optionalSessionStorage } from '../../lib/optionalSessionStorage.ts'
 import { useEffect, useState } from 'react'
+import { optionalSessionStorage } from '../../lib/optionalSessionStorage.ts'
 
 const INTERNAL_URL_ORIGIN = 'https://internal.invalid'
 function containsUnsafeUrlCharacters(url: string): boolean {
