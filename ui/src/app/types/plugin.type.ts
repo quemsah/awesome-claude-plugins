@@ -6,6 +6,7 @@ const GITHUB_REPO_PATH_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
 const PluginPathSchema = z.string().check(
   z.minLength(1),
   z.maxLength(512),
+  z.refine((value) => value.trim().length > 0, { error: 'Must be a safe repository path' }),
   z.refine((value) => !(value.includes('..') || CONTROL_CHARACTER_PATTERN.test(value)), {
     error: 'Must be a safe repository path',
   })
@@ -16,6 +17,7 @@ const MarketplaceNameSchema = PluginIdSchema
 const SourceRefSchema = z.string().check(
   z.minLength(1),
   z.maxLength(512),
+  z.refine((value) => value.trim().length > 0, { error: 'Must be a safe source ref' }),
   z.refine((value) => !(value.includes('..') || CONTROL_CHARACTER_PATTERN.test(value)), {
     error: 'Must be a safe source ref',
   })
