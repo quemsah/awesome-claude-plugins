@@ -20,7 +20,7 @@ export function renderReadme(repositories: readonly PublishableRepository[], dra
     '',
     `> Last updated: ${day}.${month}.${year} with ${draft.size} total repositories indexed.`,
     '',
-    '| # | Repo Name | Description | Stars | Subs | Plugins |',
+    '| # | Repo Name | Description | Stars | Watchers | Plugins |',
     '|---|-----------|-------------|-------|-------------|---------|',
   ]
   const ranked = [...repositories]

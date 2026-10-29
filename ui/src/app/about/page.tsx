@@ -50,7 +50,7 @@ export default function AboutPage() {
             <CardHeader>
               <CardTitle className="flex items-center justify-center gap-2">
                 <Puzzle className="h-5 w-5 text-primary" />
-                <h2>Automated Discovery</h2>
+                <h2>Automated discovery</h2>
               </CardTitle>
             </CardHeader>
             <CardContent className="text-muted-foreground">

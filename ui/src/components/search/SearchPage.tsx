@@ -17,6 +17,7 @@ import {
 import { buildSearchUrl, type PendingCatalogLoad, parseSortOption } from '../../lib/searchState.ts'
 import type { SortOption } from '../../lib/sortOptions.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
+import { PendingSearchUrls } from './pendingSearchUrls.ts'
 import { RepoList } from './RepoList.tsx'
 import { SearchControls } from './SearchControls.tsx'
 
@@ -47,6 +48,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   const searchParams = useSearchParams()
   const [sortOption, setSortOption] = useState<SortOption>(parseSortOption(initialSortOption))
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm)
+  const [navigationVersion, setNavigationVersion] = useState(0)
   const [repos, setRepos] = useState<readonly Repo[]>(initialRepos)
   const [pluginsCount, setPluginsCount] = useState(initialPluginCount)
   const [total, setTotal] = useState(initialTotal)
@@ -63,6 +65,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   // read "nothing in flight", abort the running replacement and append onto the list it was replacing.
   const inFlightCatalogRequest = useRef<CatalogRequestKind | null>(null)
   const pendingScrollRestore = useRef<{ attempts: number; scrollY: number; url: string } | null>(null)
+  const pendingSearchUrls = useRef(new PendingSearchUrls())
 
   const updateSearchUrl = useCallback(
     (nextSearchTerm: string, nextSortOption: SortOption, mode: 'push' | 'replace' = 'push') => {
@@ -72,7 +75,9 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         sortOption: nextSortOption,
       })
 
-      if (nextUrl !== `${pathname}${currentSearch}`) {
+      // Even if the browser still shows this URL, an older in-flight router write may change it.
+      if (nextUrl !== `${pathname}${currentSearch}` || pendingSearchUrls.current.hasPendingDifferentFrom(nextUrl)) {
+        pendingSearchUrls.current.track(nextUrl)
         router[mode](nextUrl, { scroll: false })
       }
       window.sessionStorage.setItem('last-search-url', nextUrl)
@@ -220,11 +225,23 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   }, [])
 
   useEffect(() => {
-    const urlSearchTerm = searchParams.get('q') ?? ''
-    setSearchTerm(urlSearchTerm)
-    setSortOption(parseSortOption(searchParams.get('sort')))
-    window.sessionStorage.setItem('last-search-url', `${pathname}${searchParams.size > 0 ? `?${searchParams}` : ''}`)
+    const currentUrl = `${pathname}${searchParams.size > 0 ? `?${searchParams}` : ''}`
+    if (!pendingSearchUrls.current.consume(currentUrl)) {
+      setSearchTerm(searchParams.get('q') ?? '')
+      setSortOption(parseSortOption(searchParams.get('sort')))
+    }
+    window.sessionStorage.setItem('last-search-url', currentUrl)
   }, [pathname, searchParams])
+
+  useEffect(() => {
+    const onHistoryNavigation = () => {
+      pendingSearchUrls.current.clear()
+      debouncedReplaceSearchUrl.cancel()
+      setNavigationVersion((current) => current + 1)
+    }
+    window.addEventListener('popstate', onHistoryNavigation)
+    return () => window.removeEventListener('popstate', onHistoryNavigation)
+  }, [debouncedReplaceSearchUrl])
 
   // The browser restores the offset against the document it finds on arrival, and the remounted list
   // only holds the first catalog page, so any position past that page lands short. Re-applying it
@@ -248,10 +265,42 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
       }
     }
 
-    const onRequestStart = (event: Event) => {
-      if ((event.target as HTMLElement | null)?.closest('a[href]')) {
-        remember()
+    const onRequestStart = (event: MouseEvent) => {
+      const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null
+      if (!anchor) return
+      remember()
+
+      // Next.js Link navigation does not fire popstate. Clear our router markers before a separate
+      // same-origin navigation can commit a URL that happens to match an abandoned search write.
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey ||
+        anchor.hasAttribute('download') ||
+        (anchor.target !== '' && anchor.target !== '_self')
+      ) {
+        return
       }
+
+      let destination: URL
+      try {
+        destination = new URL(anchor.href)
+      } catch {
+        return
+      }
+      if (
+        destination.origin !== window.location.origin ||
+        `${destination.pathname}${destination.search}` === `${window.location.pathname}${window.location.search}`
+      ) {
+        return
+      }
+
+      pendingSearchUrls.current.clear()
+      debouncedReplaceSearchUrl.cancel()
+      setNavigationVersion((current) => current + 1)
     }
 
     document.addEventListener('click', onRequestStart, true)
@@ -260,7 +309,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
       document.removeEventListener('click', onRequestStart, true)
       window.removeEventListener('pagehide', remember)
     }
-  }, [])
+  }, [debouncedReplaceSearchUrl])
 
   useEffect(() => {
     const pending = pendingScrollRestore.current
@@ -298,6 +347,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
       <SearchControls
         filteredPluginCount={pluginsCount}
         filteredRepoCount={total}
+        navigationVersion={navigationVersion}
         onSearchChange={handleSearchChange}
         onSortChange={handleSortChange}
         searchTerm={searchTerm}

@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { buildCatalogRecords, diffCatalogRecords, fingerprintCatalog } from './indexnow-changes.mjs'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -46,25 +46,8 @@ async function sitemapUrls(url) {
 
 function readCurrentCatalog() {
   const repos = JSON.parse(readFileSync(new URL('../src/data/repos.json', import.meta.url), 'utf8'))
-  if (!Array.isArray(repos)) {
-    throw new Error('Catalog snapshot must be an array.')
-  }
-
-  const seenPaths = new Set()
-  const records = new Map()
-  for (const repo of repos) {
-    if (typeof repo.owner !== 'string' || typeof repo.repo_name !== 'string') continue
-
-    const key = `${repo.owner}/${repo.repo_name}`.toLowerCase()
-    if (seenPaths.has(key)) continue
-    seenPaths.add(key)
-    if (repo.plugins_count === null) continue
-
-    const url = new URL(`/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo_name)}`, SITE_URL).toString()
-    const fingerprint = createHash('sha256').update(JSON.stringify(repo)).digest('hex')
-    records.set(key, { fingerprint, url })
-  }
-  return records
+  if (!Array.isArray(repos)) throw new Error('Catalog snapshot must be an array.')
+  return { records: buildCatalogRecords(repos, SITE_URL), fingerprint: fingerprintCatalog(repos) }
 }
 
 function readBaseline() {
@@ -99,6 +82,36 @@ function writeBaseline(records, includedUrls = null) {
   mkdirSync(dirname(BASELINE_PATH), { recursive: true })
   writeFileSync(BASELINE_PATH, `${JSON.stringify({ version: 1, records: baselineRecords })}\n`)
   console.log(`Saved baseline for ${Object.keys(baselineRecords).length.toLocaleString()} indexable repositories.`)
+}
+
+async function waitForCatalogDeployment(fingerprint) {
+  const url = new URL('/api/catalog-version', SITE_URL)
+  let lastReason = 'not checked'
+  for (let attempt = 1; attempt <= MAX_READY_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: { 'Cache-Control': 'no-cache' },
+        signal: AbortSignal.timeout(10_000),
+      })
+      if (response.ok) {
+        const deployed = await response.json()
+        if (deployed?.sha256 === fingerprint) {
+          console.log('Live catalog fingerprint matches the checked-out snapshot.')
+          return
+        }
+        lastReason = 'deployed snapshot differs from checkout'
+      } else {
+        lastReason = `HTTP ${response.status}`
+      }
+    } catch (error) {
+      lastReason = error instanceof Error ? error.message : String(error)
+    }
+    if (attempt < MAX_READY_ATTEMPTS) {
+      console.log(`Waiting for the catalog deployment (${attempt}/${MAX_READY_ATTEMPTS}): ${lastReason}`)
+      await new Promise((resolve) => setTimeout(resolve, READY_RETRY_DELAY_MS))
+    }
+  }
+  throw new Error(`Catalog deployment was not ready: ${lastReason}. IndexNow baseline was not advanced.`)
 }
 
 async function waitForChangedPages(urls) {
@@ -167,23 +180,25 @@ async function submitUrls(urls) {
   }
 }
 
-const currentRecords = readCurrentCatalog()
+const { records: currentRecords, fingerprint: currentFingerprint } = readCurrentCatalog()
+// An HTTP 200 on a pre-existing page does not prove that new catalog data is live.
+// Wait until the deployed build exposes the exact snapshot we are submitting.
+await waitForCatalogDeployment(currentFingerprint)
+
 if (MODE === 'full') {
   const urls = await sitemapUrls(SITEMAP_URL)
   await submitUrls(urls)
   writeBaseline(currentRecords, new Set(urls))
 } else {
   const previousRecords = readBaseline()
-  const changedUrls = [...currentRecords].flatMap(([key, record]) => {
-    const previous = previousRecords.get(key)
-    return previous?.fingerprint === record.fingerprint && previous.url === record.url ? [] : [record.url]
-  })
-
-  if (changedUrls.length > 0) {
-    await waitForChangedPages(changedUrls)
-    await submitUrls(changedUrls)
+  const { changedUrls, retiredUrls } = diffCatalogRecords(previousRecords, currentRecords)
+  if (changedUrls.length > 0) await waitForChangedPages(changedUrls)
+  const urls = [...new Set([...changedUrls, ...retiredUrls])]
+  if (urls.length > 0) {
+    await submitUrls(urls)
+    console.log(`IndexNow delta: ${changedUrls.length} added/updated, ${retiredUrls.length} retired URLs.`)
   } else {
-    console.log('No changed indexable repository URLs.')
+    console.log('No changed or retired indexable repository URLs.')
   }
   writeBaseline(currentRecords)
 }

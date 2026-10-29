@@ -1,4 +1,4 @@
-import { CircleDot, Code, ExternalLink, Eye, FileText, GitFork, Star } from 'lucide-react'
+import { CircleDot, Code, ExternalLink, Eye, FileText, GitBranch, GitFork, Star } from 'lucide-react'
 import Image from 'next/image'
 import { formatDate as formatDateUtil } from '../../lib/utils.ts'
 import type { GitHubRepository } from '../../schemas/github.schema.ts'
@@ -25,13 +25,7 @@ interface RepoInfoCardProps {
 export function RepoInfoCard({ repo }: RepoInfoCardProps) {
   const homepageUrl = getSafeHomepageUrl(repo.homepage)
   const formatDate = (dateString: string) => formatDateUtil(new Date(dateString))
-
-  const formatSize = (size: number) => {
-    const kb = size
-    if (kb < 1024) return `${kb} KB`
-    const mb = kb / 1024
-    return `${mb.toFixed(1)} MB`
-  }
+  const lastPushedDate = repo.pushed_at
 
   return (
     <Card className="p-4 sm:p-8">
@@ -103,7 +97,7 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
           <Badge className="gap-2 text-sm" variant="secondary">
             <Eye aria-hidden="true" className="h-5 w-5" />
             <span className="font-semibold">{repo.subscribers_count?.toLocaleString('en-US') ?? 0}</span>
-            <span>watchers/subscribers</span>
+            <span>watchers</span>
           </Badge>
           {repo.open_issues_count !== null && (
             <Badge className="gap-2 text-sm" variant="secondary">
@@ -121,6 +115,16 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
                 {topic}
               </Badge>
             ))}
+          </div>
+        )}
+
+        {lastPushedDate !== null && (
+          <div className="mb-6 rounded-lg border border-border bg-muted/40 p-4 sm:p-5">
+            <span className="flex items-center gap-2 font-medium text-muted-foreground text-sm">
+              <GitBranch aria-hidden="true" className="h-4 w-4 text-primary" />
+              Last pushed
+            </span>
+            <p className="mt-1 font-bold text-2xl text-foreground sm:text-3xl">{formatDate(lastPushedDate)}</p>
           </div>
         )}
 
@@ -143,12 +147,6 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
               <dd className="text-foreground">{repo.license.name}</dd>
             </div>
           )}
-          {repo.size !== null && (
-            <div>
-              <dt className="font-medium text-muted-foreground text-sm">Size</dt>
-              <dd className="text-foreground">{formatSize(repo.size)}</dd>
-            </div>
-          )}
           {repo.created_at !== null && (
             <div>
               <dt className="font-medium text-muted-foreground text-sm">Created</dt>
@@ -157,14 +155,8 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
           )}
           {repo.updated_at !== null && (
             <div>
-              <dt className="font-medium text-muted-foreground text-sm">Last Updated</dt>
+              <dt className="font-medium text-muted-foreground text-sm">Last updated</dt>
               <dd className="text-foreground">{formatDate(repo.updated_at)}</dd>
-            </div>
-          )}
-          {repo.pushed_at !== null && (
-            <div>
-              <dt className="font-medium text-muted-foreground text-sm">Last Pushed</dt>
-              <dd className="text-foreground">{formatDate(repo.pushed_at)}</dd>
             </div>
           )}
         </dl>
