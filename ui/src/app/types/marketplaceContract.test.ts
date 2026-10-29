@@ -18,5 +18,5 @@ type MarketplaceContractFixture = {
 it.each(fixtures)('matches marketplace contract v$version for $name', (fixture) => {
   const result = MarketplacePluginsSchema.safeParse(fixture.input)
   expect(result.success).toBe(fixture.expected.valid)
-  if (result.success) expect(result.data.length).toBe(fixture.expected.pluginsCount)
+  if (result.success) expect(result.data.plugins.length).toBe(fixture.expected.pluginsCount)
 })

@@ -10,6 +10,7 @@
 const BROWSE_ROUTE = '/browse/[page]'
 const REPOSITORY_ROUTE = '/[owner]/[repo]'
 const STATIC_ROUTES = new Set(['/', '/about', '/privacy', '/stats'])
+const RESERVED_REPOSITORY_ROOTS = new Set(['.well-known', '_next', 'api', 'browse', 'sitemap'])
 
 export const UNMATCHED_ROUTE = 'other'
 
@@ -26,5 +27,13 @@ export function toRouteTemplate(pathname: string): string {
     return UNMATCHED_ROUTE
   }
 
-  return segments[0] === 'browse' ? BROWSE_ROUTE : REPOSITORY_ROUTE
+  if (segments[0] === 'browse') {
+    return BROWSE_ROUTE
+  }
+
+  if (RESERVED_REPOSITORY_ROOTS.has(segments[0].toLowerCase())) {
+    return UNMATCHED_ROUTE
+  }
+
+  return REPOSITORY_ROUTE
 }

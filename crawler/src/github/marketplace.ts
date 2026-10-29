@@ -1,4 +1,4 @@
-export const MARKETPLACE_INVALID_CONTENT_CACHE_VERSION = 5
+export const MARKETPLACE_INVALID_CONTENT_CACHE_VERSION = 6
 export const MARKETPLACE_PARSER_VERSION = 3
 
 export type Marketplace = { plugins: unknown[] }
@@ -17,7 +17,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 const GITHUB_REPO_PATH_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
 
 function isSafePath(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= 512 && !value.includes('..') && !/[\r\n]/.test(value)
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= 512 && !value.includes('..') && !/[\r\n]/.test(value)
 }
 
 function isSafeSourceUrl(value: unknown): value is string {
@@ -37,6 +37,8 @@ function isValidSource(value: unknown): boolean {
   if (!isRecord(value) || !isSafePath(value.source)) return false
 
   return (
+    (value.source !== 'github' || typeof value.repo === 'string') &&
+    (value.source !== 'url' || typeof value.url === 'string') &&
     (value.repo === undefined || (typeof value.repo === 'string' && GITHUB_REPO_PATH_PATTERN.test(value.repo))) &&
     (value.url === undefined || isSafeSourceUrl(value.url)) &&
     (value.path === undefined || isSafePath(value.path)) &&
@@ -48,14 +50,20 @@ function isValidSource(value: unknown): boolean {
 }
 
 function isPluginEntry(value: unknown): value is Record<string, unknown> {
-  return isRecord(value) && typeof value.name === 'string' && value.name.length > 0 && value.name.length <= 160 && isValidSource(value.source)
+  return (
+    isRecord(value) &&
+    typeof value.name === 'string' &&
+    value.name.trim().length > 0 &&
+    value.name.length <= 160 &&
+    isValidSource(value.source)
+  )
 }
 
 export function parseMarketplace(value: unknown): Marketplace {
   if (
     !isRecord(value) ||
     typeof value.name !== 'string' ||
-    value.name.length === 0 ||
+    value.name.trim().length === 0 ||
     !isRecord(value.owner) ||
     typeof value.owner.name !== 'string' ||
     value.owner.name.length === 0 ||

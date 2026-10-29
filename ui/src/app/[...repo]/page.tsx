@@ -1,11 +1,13 @@
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
+import { getMarketplaceDescription } from '../../app/types/plugin.type.ts'
 import { RepoPageClient } from '../../components/repo/RepoPageClient.tsx'
 import RepoStructuredData from '../../components/repo/RepoStructuredData.tsx'
 import { findCatalogRepo, getCatalogQualityForRepo, getRepoCanonicalPath } from '../../lib/catalog.ts'
 import { BASE_URL } from '../../lib/constants.ts'
 import { GITHUB_API_URL, GITHUB_RAW_URL } from '../../lib/github.ts'
+import { withSiteAlternates } from '../../lib/metadata.ts'
 import { createCatalogRepositorySnapshot } from '../../lib/repositorySnapshot.ts'
 import type { GitHubRepository } from '../../schemas/github.schema.ts'
 
@@ -14,6 +16,22 @@ type RouteParams = {
 }
 
 export const revalidate = 3_600
+
+async function fetchManifestDescription(owner: string, repoName: string): Promise<string | undefined> {
+  try {
+    // Keep metadata generation responsive even if raw.githubusercontent.com is slow.
+    // Cache successful responses to avoid repeated remote requests on every ISR render.
+    const response = await fetch(
+      `${GITHUB_RAW_URL}/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/HEAD/.claude-plugin/marketplace.json`,
+      { next: { revalidate: 86_400 }, signal: AbortSignal.timeout(1_500) }
+    )
+    if (!response.ok) return undefined
+    const payload: unknown = await response.json()
+    return getMarketplaceDescription(payload)
+  } catch {
+    return undefined
+  }
+}
 
 export async function generateMetadata({ params }: RouteParams): Promise<Metadata> {
   const { repo } = await params
@@ -27,19 +45,22 @@ export async function generateMetadata({ params }: RouteParams): Promise<Metadat
   }
 
   const canonicalPath = getRepoCanonicalPath(catalogRepo)
-  const catalogQuality = getCatalogQualityForRepo(catalogRepo)
+  const fallbackDescription = catalogRepo.description?.trim()
+    ? undefined
+    : await fetchManifestDescription(catalogRepo.owner, catalogRepo.repo_name)
+  const catalogQuality = getCatalogQualityForRepo(catalogRepo, fallbackDescription)
   const title = `${catalogRepo.owner}/${catalogRepo.repo_name}`
-  const description = catalogRepo.description ?? `Explore ${title} in the Awesome Claude Plugins directory.`
+  const description = catalogRepo.description?.trim() || fallbackDescription || `Explore ${title} in the Awesome Claude Plugins directory.`
 
   return {
     title,
     description,
-    alternates: {
+    alternates: withSiteAlternates({
       canonical: `${BASE_URL}/${canonicalPath}`,
       types: {
         'text/markdown': `${BASE_URL}/${canonicalPath}.md`,
       },
-    },
+    }),
     robots:
       catalogQuality.publicationState === 'indexable'
         ? { index: true, follow: true }

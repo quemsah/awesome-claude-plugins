@@ -1,40 +1,54 @@
-import { z } from 'zod'
+import * as z from 'zod/mini'
 
 const CONTROL_CHARACTER_PATTERN = /[\r\n]/
 const GITHUB_REPO_PATH_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
-const PluginPathSchema = z
-  .string()
-  .min(1)
-  .max(512)
-  .refine((value) => !(value.includes('..') || CONTROL_CHARACTER_PATTERN.test(value)), 'Must be a safe repository path')
-const GitHubRepoPathSchema = z.string().regex(GITHUB_REPO_PATH_PATTERN, 'Must be a GitHub repository path')
-const PluginIdSchema = z.string().regex(/^[A-Za-z0-9._-]+$/, 'Must be a safe plugin identifier')
+const PluginPathSchema = z.string().check(
+  z.minLength(1),
+  z.maxLength(512),
+  z.refine((value) => !(value.includes('..') || CONTROL_CHARACTER_PATTERN.test(value)), {
+    error: 'Must be a safe repository path',
+  })
+)
+const GitHubRepoPathSchema = z.string().check(z.regex(GITHUB_REPO_PATH_PATTERN, { error: 'Must be a GitHub repository path' }))
+const PluginIdSchema = z.string().check(z.regex(/^[A-Za-z0-9._-]+$/, { error: 'Must be a safe plugin identifier' }))
 const MarketplaceNameSchema = PluginIdSchema
-const SourceRefSchema = z
-  .string()
-  .min(1)
-  .max(512)
-  .refine((value) => !(value.includes('..') || CONTROL_CHARACTER_PATTERN.test(value)), 'Must be a safe source ref')
-const SourceShaSchema = z.string().regex(/^[A-Fa-f0-9]{7,64}$/, 'Must be a valid source commit')
-const EmailSchema = z
-  .string()
-  .max(254)
-  .refine((value) => !CONTROL_CHARACTER_PATTERN.test(value), 'Must be a safe author email')
+const SourceRefSchema = z.string().check(
+  z.minLength(1),
+  z.maxLength(512),
+  z.refine((value) => !(value.includes('..') || CONTROL_CHARACTER_PATTERN.test(value)), {
+    error: 'Must be a safe source ref',
+  })
+)
+const SourceShaSchema = z.string().check(z.regex(/^[A-Fa-f0-9]{7,64}$/, { error: 'Must be a valid source commit' }))
+const EmailSchema = z.string().check(
+  z.maxLength(254),
+  z.refine((value) => !CONTROL_CHARACTER_PATTERN.test(value), { error: 'Must be a safe author email' })
+)
 const SafeUrlSchema = (max: number) =>
-  z
-    .string()
-    .max(max)
-    .url()
-    .refine((value) => {
-      try {
-        const url = new URL(value)
-        return (url.protocol === 'http:' || url.protocol === 'https:') && !url.username && !url.password
-      } catch {
-        return false
-      }
-    }, 'Must be a safe HTTP(S) URL')
+  z.url().check(
+    z.maxLength(max),
+    z.refine(
+      (value) => {
+        try {
+          const url = new URL(value)
+          return (url.protocol === 'http:' || url.protocol === 'https:') && !url.username && !url.password
+        } catch {
+          return false
+        }
+      },
+      { error: 'Must be a safe HTTP(S) URL' }
+    )
+  )
 const SourceUrlSchema = SafeUrlSchema(512)
 const PluginSourceStringSchema = PluginPathSchema
+const PluginComponentSchema = z.union([
+  z.pipe(
+    PluginPathSchema,
+    z.transform((path) => [path])
+  ),
+  z.array(PluginPathSchema).check(z.maxLength(100)),
+  z.record(z.string(), z.unknown()),
+])
 
 export type PluginAuthor = {
   name?: string
@@ -71,48 +85,62 @@ export type Plugin = {
   tags?: string[]
 }
 
-export const PluginSchema: z.ZodType<Plugin> = z
+export type MarketplacePluginsResult = {
+  plugins: Plugin[]
+  invalidPluginCount: number
+  issues: z.core.$ZodIssue[]
+}
+
+function hasComponentEntries(value: string[] | Record<string, unknown> | undefined): boolean {
+  return Array.isArray(value) ? value.length > 0 : value !== undefined && Object.keys(value).length > 0
+}
+
+export const PluginSchema: z.ZodMiniType<Plugin> = z
   .object({
-    name: z.string().min(1).max(160).optional(),
-    description: z.string().max(4_000).optional(),
-    version: z.string().max(100).optional(),
-    id: PluginIdSchema.optional(),
-    source: z
-      .union([
+    name: z.optional(z.string().check(z.minLength(1), z.maxLength(160))),
+    description: z.optional(z.string().check(z.maxLength(4_000))),
+    version: z.optional(z.string().check(z.maxLength(100))),
+    id: z.optional(PluginIdSchema),
+    source: z.optional(
+      z.union([
         PluginSourceStringSchema,
         z.object({
           source: PluginPathSchema,
-          repo: GitHubRepoPathSchema.optional(),
-          url: z.union([SourceUrlSchema, GitHubRepoPathSchema]).optional(),
-          branch: SourceRefSchema.optional(),
-          path: PluginPathSchema.optional(),
-          ref: SourceRefSchema.optional(),
-          commit: SourceShaSchema.optional(),
-          sha: SourceShaSchema.optional(),
+          repo: z.optional(GitHubRepoPathSchema),
+          url: z.optional(z.union([SourceUrlSchema, GitHubRepoPathSchema])),
+          branch: z.optional(SourceRefSchema),
+          path: z.optional(PluginPathSchema),
+          ref: z.optional(SourceRefSchema),
+          commit: z.optional(SourceShaSchema),
+          sha: z.optional(SourceShaSchema),
         }),
       ])
-      .optional(),
-    category: z.string().max(100).optional(),
-    author: z
-      .union([
-        z.object({ name: z.string().max(160).optional(), email: EmailSchema.optional(), url: SafeUrlSchema(2_048).optional() }),
-        z
-          .string()
-          .min(1)
-          .max(160)
-          .transform((name) => ({ name })),
+    ),
+    category: z.optional(z.string().check(z.maxLength(100))),
+    author: z.optional(
+      z.union([
+        z.object({
+          name: z.optional(z.string().check(z.maxLength(160))),
+          email: z.optional(EmailSchema),
+          url: z.optional(SafeUrlSchema(2_048)),
+        }),
+        z.pipe(
+          z.string().check(z.minLength(1), z.maxLength(160)),
+          z.transform((name) => ({ name }))
+        ),
       ])
-      .optional(),
-    license: z.string().max(160).optional(),
-    keywords: z.array(z.string().min(1).max(100)).max(50).optional(),
-    strict: z.boolean().optional(),
-    commands: z.union([z.array(PluginPathSchema).max(100), z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
-    agents: z.union([z.array(PluginPathSchema).max(100), z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
-    mcpServers: z.union([z.array(PluginPathSchema).max(100), z.record(z.string(), z.unknown()).transform(() => undefined)]).optional(),
-    homepage: SafeUrlSchema(2_048).optional(),
-    tags: z.array(z.string().min(1).max(100)).max(50).optional(),
+    ),
+    license: z.optional(z.string().check(z.maxLength(160))),
+    keywords: z.optional(z.array(z.string().check(z.minLength(1), z.maxLength(100))).check(z.maxLength(50))),
+    strict: z.optional(z.boolean()),
+    commands: z.optional(PluginComponentSchema),
+    agents: z.optional(PluginComponentSchema),
+    mcpServers: z.optional(PluginComponentSchema),
+    homepage: z.optional(SafeUrlSchema(2_048)),
+    tags: z.optional(z.array(z.string().check(z.minLength(1), z.maxLength(100))).check(z.maxLength(50))),
   })
-  .superRefine((plugin, context) => {
+  .check((context) => {
+    const plugin = context.value
     if (
       !(
         plugin.name ||
@@ -123,14 +151,15 @@ export const PluginSchema: z.ZodType<Plugin> = z
         plugin.category ||
         plugin.homepage ||
         plugin.tags?.length ||
-        plugin.commands?.length ||
-        plugin.agents?.length ||
-        plugin.mcpServers?.length
+        hasComponentEntries(plugin.commands) ||
+        hasComponentEntries(plugin.agents) ||
+        hasComponentEntries(plugin.mcpServers)
       )
     ) {
-      context.addIssue({
+      context.issues.push({
         code: 'custom',
         message: 'Manifest entry does not contain plugin metadata',
+        input: plugin,
       })
     }
   })
@@ -140,36 +169,53 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isCountableMarketplacePlugin(value: unknown): value is Record<string, unknown> {
-  if (!isRecord(value) || typeof value.name !== 'string' || value.name.length === 0 || value.name.length > 160) return false
+  if (!isRecord(value) || typeof value.name !== 'string' || value.name.trim().length === 0 || value.name.length > 160) return false
 
   return (
-    (typeof value.source === 'string' && value.source.length > 0) ||
-    (isRecord(value.source) && typeof value.source.source === 'string' && value.source.source.length > 0)
+    (typeof value.source === 'string' && value.source.trim().length > 0) ||
+    (isRecord(value.source) &&
+      typeof value.source.source === 'string' &&
+      value.source.source.trim().length > 0 &&
+      (value.source.source !== 'github' || typeof value.source.repo === 'string') &&
+      (value.source.source !== 'url' || typeof value.source.url === 'string'))
   )
 }
 
-export const MarketplacePluginsSchema = z.unknown().transform((value, context): Plugin[] => {
+export const MarketplacePluginsSchema: z.ZodMiniType<MarketplacePluginsResult> = z.transform((value, context): MarketplacePluginsResult => {
+  const result: MarketplacePluginsResult = { plugins: [], invalidPluginCount: 0, issues: [] }
   if (
     !isRecord(value) ||
     typeof value.name !== 'string' ||
-    value.name.length === 0 ||
+    value.name.trim().length === 0 ||
     !isRecord(value.owner) ||
     typeof value.owner.name !== 'string' ||
     value.owner.name.length === 0 ||
     !Array.isArray(value.plugins)
   ) {
-    context.addIssue({ code: 'custom', message: 'Marketplace must have non-empty name, non-empty owner.name, and a plugins array' })
-    return []
+    context.issues.push({
+      code: 'custom',
+      message: 'Marketplace must have non-empty name, non-empty owner.name, and a plugins array',
+      input: value,
+    })
+    return result
   }
-
-  return value.plugins.flatMap((entry) => {
-    if (!isCountableMarketplacePlugin(entry)) return []
+  value.plugins.forEach((entry, index) => {
     const parsed = PluginSchema.safeParse(entry)
-    if (parsed.success) return [parsed.data]
-
-    const corePlugin = PluginSchema.safeParse({ name: entry.name, source: entry.source })
-    return corePlugin.success ? [corePlugin.data] : []
+    if (parsed.success && isCountableMarketplacePlugin(entry)) {
+      result.plugins.push(parsed.data)
+      return
+    }
+    if (!parsed.success && isCountableMarketplacePlugin(entry)) {
+      const core = PluginSchema.safeParse({ name: entry.name, source: entry.source })
+      if (core.success) {
+        result.plugins.push(core.data)
+        return
+      }
+    }
+    result.invalidPluginCount++
+    if (!parsed.success) result.issues.push(...parsed.error.issues.map((issue) => ({ ...issue, path: ['plugins', index, ...issue.path] })))
   })
+  return result
 })
 
 export function getMarketplaceName(value: unknown): string | undefined {
@@ -182,4 +228,21 @@ export function getMarketplaceName(value: unknown): string | undefined {
   }
 
   return undefined
+}
+
+/** Prefer the marketplace's own summary. A single plugin may represent a whole repository,
+ * but a description picked from an arbitrary plugin in a multi-plugin catalog is misleading.
+ */
+export function getMarketplaceDescription(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined
+
+  const clean = (candidate: unknown): string | undefined =>
+    typeof candidate === 'string' && candidate.trim() ? candidate.trim() : undefined
+  const ownDescription = clean(value.description) ?? (isRecord(value.marketplace) ? clean(value.marketplace.description) : undefined)
+  if (ownDescription) return ownDescription
+
+  const entries = Array.isArray(value.plugins) ? value.plugins : [value]
+  if (entries.length !== 1) return undefined
+  const parsed = PluginSchema.safeParse(entries[0])
+  return parsed.success ? clean(parsed.data.description) : undefined
 }
