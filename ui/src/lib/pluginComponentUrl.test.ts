@@ -71,6 +71,17 @@ describe('getPluginComponentFileUrl', () => {
         )
       ).toBe('https://github.com/external/plugin/blob/abcdef12/commands/run.md')
     })
+
+    it('prefers pinned commit over moving branch and ref', () => {
+      expect(
+        getPluginComponentFileUrl(
+          { source: 'github', repo: 'external/plugin', commit: 'abcdef12', branch: 'main', ref: 'develop' },
+          marketplaceRepo,
+          defaultBranch,
+          'commands/run.md'
+        )
+      ).toBe('https://github.com/external/plugin/blob/abcdef12/commands/run.md')
+    })
   })
 
   describe('git-subdir object sources', () => {
@@ -83,6 +94,28 @@ describe('getPluginComponentFileUrl', () => {
           'agents/helper.md'
         )
       ).toBe('https://github.com/external/monorepo/blob/develop/plugins/core/agents/helper.md')
+    })
+
+    it('resolves www.github.com URLs and canonicalizes the component link host', () => {
+      expect(
+        getPluginComponentFileUrl(
+          { source: 'git-subdir', url: 'https://www.github.com/external/monorepo.git', path: 'plugins/core' },
+          marketplaceRepo,
+          defaultBranch,
+          'agents/helper.md'
+        )
+      ).toBe('https://github.com/external/monorepo/blob/HEAD/plugins/core/agents/helper.md')
+    })
+
+    it('rejects lookalike GitHub hostnames', () => {
+      expect(
+        getPluginComponentFileUrl(
+          { source: 'git-subdir', url: 'https://www.github.com.evil.test/external/monorepo', path: 'plugins/core' },
+          marketplaceRepo,
+          defaultBranch,
+          'agents/helper.md'
+        )
+      ).toBeNull()
     })
 
     it('returns null if path is omitted in git-subdir', () => {

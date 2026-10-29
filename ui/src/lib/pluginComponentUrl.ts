@@ -33,7 +33,7 @@ function getGitHubRepository(value?: string): string | null {
     const [owner, repo, ...rest] = url.pathname.split('/').filter(Boolean)
     if (
       (url.protocol !== 'https:' && url.protocol !== 'http:') ||
-      url.hostname.toLowerCase() !== 'github.com' ||
+      !['github.com', 'www.github.com'].includes(url.hostname.toLowerCase()) ||
       url.username ||
       url.password ||
       url.search ||
@@ -72,7 +72,7 @@ interface PluginSourceTarget {
 }
 
 function resolvePluginRef(source: { sha?: string; ref?: string; branch?: string; commit?: string }): string {
-  return source.sha ?? source.ref ?? source.branch ?? source.commit ?? 'HEAD'
+  return source.sha ?? source.commit ?? source.ref ?? source.branch ?? 'HEAD'
 }
 
 function resolveStringSource(source: string, marketplaceRepo: string, marketplaceDefaultBranch?: string): PluginSourceTarget | null {
