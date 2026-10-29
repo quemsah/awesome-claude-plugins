@@ -41,7 +41,7 @@ jobs:
           node-version: '24'
 
       - name: Test IndexNow change detection
-        run: node --test scripts/indexnow-changes.test.mjs
+        run: node --test scripts/indexnow-*.test.mjs
         working-directory: ui
 
       - name: Restore and save IndexNow baseline

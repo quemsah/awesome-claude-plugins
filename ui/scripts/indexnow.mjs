@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildCatalogRecords, diffCatalogRecords, fingerprintCatalog } from './indexnow-changes.mjs'
+import { deserializeBaseline, sendIndexNowBatch, serializeBaseline } from './indexnow-state.mjs'
 
 const SITE_URL = process.env.INDEXNOW_SITE_URL ?? 'https://awesomeclaudeplugins.com'
 const SITEMAP_URL = new URL('/sitemap.xml', SITE_URL)
@@ -54,34 +55,14 @@ function readBaseline() {
   if (!existsSync(BASELINE_PATH)) {
     throw new Error('No successful IndexNow baseline exists. Run workflow_dispatch with mode=full on the default branch first.')
   }
-
-  const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'))
-  if (
-    baseline === null ||
-    typeof baseline !== 'object' ||
-    baseline.version !== 1 ||
-    baseline.records === null ||
-    typeof baseline.records !== 'object' ||
-    Array.isArray(baseline.records)
-  ) {
-    throw new Error(`Invalid IndexNow baseline at ${BASELINE_PATH}; run workflow_dispatch with mode=full to replace it.`)
-  }
-
-  const records = new Map()
-  for (const [key, record] of Object.entries(baseline.records)) {
-    if (typeof record?.fingerprint !== 'string' || typeof record?.url !== 'string') {
-      throw new Error(`Invalid IndexNow baseline record for ${key}; run workflow_dispatch with mode=full to replace it.`)
-    }
-    records.set(key, record)
-  }
-  return records
+  return deserializeBaseline(readFileSync(BASELINE_PATH, 'utf8'))
 }
 
 function writeBaseline(records, includedUrls = null) {
-  const baselineRecords = Object.fromEntries([...records].filter(([, record]) => includedUrls === null || includedUrls.has(record.url)))
   mkdirSync(dirname(BASELINE_PATH), { recursive: true })
-  writeFileSync(BASELINE_PATH, `${JSON.stringify({ version: 1, records: baselineRecords })}\n`)
-  console.log(`Saved baseline for ${Object.keys(baselineRecords).length.toLocaleString()} indexable repositories.`)
+  writeFileSync(BASELINE_PATH, serializeBaseline(records, includedUrls))
+  const count = [...records.values()].filter((record) => includedUrls === null || includedUrls.has(record.url)).length
+  console.log(`Saved baseline for ${count.toLocaleString()} indexable repositories.`)
 }
 
 async function waitForCatalogDeployment(fingerprint) {
@@ -160,22 +141,7 @@ async function waitForChangedPages(urls) {
 async function submitUrls(urls) {
   for (let offset = 0; offset < urls.length; offset += MAX_URLS_PER_REQUEST) {
     const urlList = urls.slice(offset, offset + MAX_URLS_PER_REQUEST)
-    const response = await fetch('https://api.indexnow.org/indexnow', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=utf-8' },
-      body: JSON.stringify({
-        host: new URL(SITE_URL).host,
-        key: INDEXNOW_KEY,
-        keyLocation: KEY_LOCATION,
-        urlList,
-      }),
-    })
-
-    if (!response.ok) {
-      const details = await response.text()
-      throw new Error(`IndexNow rejected the request: ${response.status} ${response.statusText}${details ? ` - ${details}` : ''}`)
-    }
-
+    await sendIndexNowBatch(urlList, { siteUrl: SITE_URL, key: INDEXNOW_KEY, keyLocation: KEY_LOCATION })
     console.log(`Submitted ${urlList.length} URL${urlList.length === 1 ? '' : 's'} to IndexNow.`)
   }
 }
