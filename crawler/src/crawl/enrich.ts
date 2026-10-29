@@ -11,11 +11,12 @@ import {
   deleteCanonicalRows,
   getRepositoryById,
   listForEnrichment,
+  prepareEnrichedUpdate,
   type RepositoryRow,
   rebindCanonicalUrl,
   updateEnriched,
 } from '../storage/repositories.js'
-import { advanceRunPhase, getRun, recordRunError, runWhileActive, startRunPhase } from '../storage/runs.js'
+import { advanceRunPhase, getRun, prepareRunErrorWriter, recordRunError, runWhileActive, startRunPhase } from '../storage/runs.js'
 
 export type EnrichmentCounts = {
   updated: number
@@ -27,6 +28,60 @@ export type EnrichmentCounts = {
   conclusive: number
   warnings: number
   knownInvalidSkipped?: number
+}
+
+type EnrichmentWriteBatch = {
+  operations: Array<() => void>
+  recordError: ReturnType<typeof prepareRunErrorWriter>
+  updateEnriched: ReturnType<typeof prepareEnrichedUpdate>
+  deleteRepository: Database.Statement
+  clearMarketplaceFailure: Database.Statement
+  clearMarketplaceEtag: Database.Statement
+  setMarketplaceFailure: Database.Statement
+  clearRepositoryIdentity: Database.Statement
+}
+
+function createEnrichmentWriteBatch(db: Database.Database): EnrichmentWriteBatch {
+  return {
+    operations: [],
+    recordError: prepareRunErrorWriter(db),
+    updateEnriched: prepareEnrichedUpdate(db),
+    deleteRepository: db.prepare('DELETE FROM repositories WHERE id = ?'),
+    clearMarketplaceFailure: db.prepare(
+      'UPDATE repositories SET marketplace_failed_oid = NULL, marketplace_failed_parser_version = NULL WHERE id = ?',
+    ),
+    clearMarketplaceEtag: db.prepare('UPDATE repositories SET marketplace_etag = NULL WHERE id = ?'),
+    setMarketplaceFailure: db.prepare(
+      'UPDATE repositories SET marketplace_failed_oid = ?, marketplace_failed_parser_version = ? WHERE id = ?',
+    ),
+    clearRepositoryIdentity: db.prepare(`
+      UPDATE repositories SET
+        owner = NULL,
+        owner_url = NULL,
+        repo_name = NULL,
+        github_node_id = COALESCE(?, github_node_id),
+        repository_etag = COALESCE(?, repository_etag),
+        updatedAt = ?
+      WHERE id = ?
+    `),
+  }
+}
+
+function persistEnrichmentWrite(
+  db: Database.Database,
+  runId: string,
+  batch: EnrichmentWriteBatch | undefined,
+  operation: () => void,
+): void {
+  if (batch) batch.operations.push(operation)
+  else runWhileActive(db, runId, operation)
+}
+
+function commitEnrichmentWriteBatch(db: Database.Database, runId: string, batch: EnrichmentWriteBatch): void {
+  if (batch.operations.length === 0) return
+  runWhileActive(db, runId, () => {
+    for (const operation of batch.operations) operation()
+  })
 }
 
 function wasReady(row: RepositoryRow): boolean {
@@ -103,9 +158,11 @@ function recordProblem(
   retryCount = 0,
   log?: Log,
   details: Record<string, unknown> = {},
+  writes?: EnrichmentWriteBatch,
 ): void {
-  runWhileActive(db, runId, () => {
-    recordRunError(db, {
+  persistEnrichmentWrite(db, runId, writes, () => {
+    const record = writes ? writes.recordError : (error: Parameters<typeof recordRunError>[1]) => recordRunError(db, error)
+    record({
       run_id: runId,
       phase: 'enrich',
       repository_id: row.id,
@@ -164,41 +221,56 @@ function persistEnrichment(
   at: string,
   clearMarketplaceEtag = false,
   pluginsJson: string | null = null,
+  writes?: EnrichmentWriteBatch,
 ): EnrichmentTarget {
-  return runWhileActive(db, runId, () => {
+  const persist = (): EnrichmentTarget => {
     const rebound = loaded.moved ? rebindCanonicalUrl(db, row.id, loaded.canonical.htmlUrl, at) : { id: row.id, removedId: null }
     const target = loaded.moved ? getRepositoryById(db, rebound.id) : null
     if (loaded.moved && !target) throw new Error('Canonical repository disappeared during rebind')
-    const ready = loaded.ready
-    updateEnriched(
-      db,
-      rebound.id,
-      {
-        stargazers_count: loaded.data.stargazers_count,
-        forks_count: loaded.data.forks_count,
-        subscribers_count: loaded.data.subscribers_count,
-        description: loaded.data.description,
-        owner: loaded.owner,
-        owner_url: loaded.ownerUrl,
-        repo_name: loaded.repo,
-        repo_updated: loaded.data.pushed_at,
-        plugins_count: pluginsCount,
-        plugins_json: pluginsJson,
-        github_node_id: loaded.githubNodeId,
-        marketplace_oid: marketplaceOid,
-        repository_etag: loaded.repositoryEtag,
-        marketplace_etag: marketplaceEtag,
-      },
-      at,
-    )
-    db.prepare('UPDATE repositories SET marketplace_failed_oid = NULL, marketplace_failed_parser_version = NULL WHERE id = ?').run(
-      rebound.id,
-    )
-    if (clearMarketplaceEtag) {
-      db.prepare('UPDATE repositories SET marketplace_etag = NULL WHERE id = ?').run(rebound.id)
+    const fields = {
+      stargazers_count: loaded.data.stargazers_count,
+      forks_count: loaded.data.forks_count,
+      subscribers_count: loaded.data.subscribers_count,
+      description: loaded.data.description,
+      owner: loaded.owner,
+      owner_url: loaded.ownerUrl,
+      repo_name: loaded.repo,
+      repo_updated: loaded.data.pushed_at,
+      plugins_count: pluginsCount,
+      plugins_json: pluginsJson,
+      github_node_id: loaded.githubNodeId,
+      marketplace_oid: marketplaceOid,
+      repository_etag: loaded.repositoryEtag,
+      marketplace_etag: marketplaceEtag,
+
     }
-    return { id: rebound.id, removedId: rebound.removedId, ready }
-  })
+    if (writes) writes.updateEnriched(rebound.id, fields, at)
+    else updateEnriched(db, rebound.id, fields, at)
+    if (writes) writes.clearMarketplaceFailure.run(rebound.id)
+    else
+      db.prepare('UPDATE repositories SET marketplace_failed_oid = NULL, marketplace_failed_parser_version = NULL WHERE id = ?').run(
+        rebound.id,
+      )
+    if (clearMarketplaceEtag) {
+      if (writes) writes.clearMarketplaceEtag.run(rebound.id)
+      else db.prepare('UPDATE repositories SET marketplace_etag = NULL WHERE id = ?').run(rebound.id)
+    }
+    return { id: rebound.id, removedId: rebound.removedId, ready: loaded.ready }
+  }
+
+  if (!writes) return runWhileActive(db, runId, persist)
+  const duplicate = loaded.moved
+    ? (db
+        .prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE AND id != ? ORDER BY id LIMIT 1')
+        .get(loaded.canonical.htmlUrl, row.id) as { id: number } | undefined)
+    : undefined
+  const result = {
+    id: duplicate ? Math.min(row.id, duplicate.id) : row.id,
+    removedId: duplicate ? Math.max(row.id, duplicate.id) : null,
+    ready: loaded.ready,
+  }
+  writes.operations.push(persist)
+  return result
 }
 
 function removeLoadedRepository(
@@ -209,12 +281,29 @@ function removeLoadedRepository(
   counts: EnrichmentCounts,
   removedIds: Set<number>,
   log?: Log,
+  writes?: EnrichmentWriteBatch,
 ): void {
-  const removedId = runWhileActive(db, runId, () => {
+  const remove = (): number | null => {
     if (loaded.moved) return deleteCanonicalRows(db, row.id, loaded.canonical.htmlUrl)
-    deleteById(db, row.id)
+    if (writes) writes.deleteRepository.run(row.id)
+    else deleteById(db, row.id)
     return null
-  })
+  }
+  let removedId: number | null
+  if (writes) {
+    removedId = loaded.moved
+      ? ((
+          db
+            .prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE AND id != ? ORDER BY id LIMIT 1')
+            .get(loaded.canonical.htmlUrl, row.id) as { id: number } | undefined
+        )?.id ?? null)
+      : null
+    writes.operations.push(() => {
+      remove()
+    })
+  } else {
+    removedId = runWhileActive(db, runId, remove)
+  }
   if (removedId !== null) removedIds.add(removedId)
   counts.deleted404++
   counts.conclusive++
@@ -388,34 +477,35 @@ function persistRepositoryMetadataOnMarketplaceError(
   loaded: LoadedRepository,
   removedIds: Set<number>,
   at: string,
+  writes?: EnrichmentWriteBatch,
 ): EnrichmentTarget {
-  return runWhileActive(db, runId, () => {
-    const duplicate = loaded.moved
+  const lookupDuplicate = () =>
+    loaded.moved
       ? (db
           .prepare('SELECT * FROM repositories WHERE html_url = ? COLLATE NOCASE AND id != ? ORDER BY id LIMIT 1')
           .get(loaded.canonical.htmlUrl, row.id) as RepositoryRow | undefined)
       : undefined
+  const persist = (): EnrichmentTarget => {
+    const duplicate = lookupDuplicate()
     const preserved = duplicate && marketplaceStateScore(duplicate) > marketplaceStateScore(row) ? duplicate : row
     const rebound = loaded.moved ? rebindCanonicalUrl(db, row.id, loaded.canonical.htmlUrl, at) : { id: row.id, removedId: null }
     if (!getRepositoryById(db, rebound.id)) throw new Error('Canonical repository disappeared during metadata update')
     if (!loaded.ready) {
-      db.prepare(`
-        UPDATE repositories SET
-          owner = NULL,
-          owner_url = NULL,
-          repo_name = NULL,
-          github_node_id = COALESCE(?, github_node_id),
-          repository_etag = COALESCE(?, repository_etag),
-          updatedAt = ?
-        WHERE id = ?
-      `).run(loaded.githubNodeId, loaded.repositoryEtag, at, rebound.id)
-      if (rebound.removedId !== null) removedIds.add(rebound.removedId)
-      return { id: rebound.id, removedId: rebound.removedId, ready: false }
-    }
-    updateEnriched(
-      db,
-      rebound.id,
-      {
+      if (writes) writes.clearRepositoryIdentity.run(loaded.githubNodeId, loaded.repositoryEtag, at, rebound.id)
+      else {
+        db.prepare(`
+          UPDATE repositories SET
+            owner = NULL,
+            owner_url = NULL,
+            repo_name = NULL,
+            github_node_id = COALESCE(?, github_node_id),
+            repository_etag = COALESCE(?, repository_etag),
+            updatedAt = ?
+          WHERE id = ?
+        `).run(loaded.githubNodeId, loaded.repositoryEtag, at, rebound.id)
+      }
+    } else {
+      const fields = {
         stargazers_count: loaded.data.stargazers_count,
         forks_count: loaded.data.forks_count,
         subscribers_count: loaded.data.subscribers_count,
@@ -431,12 +521,34 @@ function persistRepositoryMetadataOnMarketplaceError(
         repository_etag: loaded.repositoryEtag,
         marketplace_etag: preserved.marketplace_etag,
         marketplace_parser_version: preserved.marketplace_parser_version,
-      },
-      at,
-    )
-    if (rebound.removedId !== null) removedIds.add(rebound.removedId)
+      }
+      if (writes) writes.updateEnriched(rebound.id, fields, at)
+      else updateEnriched(db, rebound.id, fields, at)
+    }
     return { id: rebound.id, removedId: rebound.removedId, ready: loaded.ready }
+  }
+
+  if (!writes) {
+    const target = runWhileActive(db, runId, persist)
+    if (target.removedId !== null) removedIds.add(target.removedId)
+    return target
+  }
+  const duplicate = lookupDuplicate()
+  const planned = {
+    id: duplicate ? Math.min(row.id, duplicate.id) : row.id,
+    removedId: duplicate ? Math.max(row.id, duplicate.id) : null,
+    ready: loaded.ready,
+  }
+  if (planned.removedId !== null) removedIds.add(planned.removedId)
+  writes.operations.push(() => {
+    // A preceding operation in this batch may have rebound the canonical URL.
+    // Resolve dependent writes against the actual target, not the pre-batch snapshot.
+    const actual = persist()
+    planned.id = actual.id
+    planned.removedId = actual.removedId
+    if (actual.removedId !== null) removedIds.add(actual.removedId)
   })
+  return planned
 }
 
 function recordInvalidMarketplace(
@@ -454,24 +566,40 @@ function recordInvalidMarketplace(
   request: string | null,
   now: () => string,
   log?: Log,
+  writes?: EnrichmentWriteBatch,
 ): null {
-  const target = persistRepositoryMetadataOnMarketplaceError(db, runId, row, loaded, removedIds, now())
+  const target = persistRepositoryMetadataOnMarketplaceError(db, runId, row, loaded, removedIds, now(), writes)
   if (identity.cacheOid) {
-    runWhileActive(db, runId, () => {
-      db.prepare('UPDATE repositories SET marketplace_failed_oid = ?, marketplace_failed_parser_version = ? WHERE id = ?').run(
-        identity.cacheOid,
-        MARKETPLACE_INVALID_CONTENT_CACHE_VERSION,
-        target.id,
-      )
+    persistEnrichmentWrite(db, runId, writes, () => {
+      if (writes) writes.setMarketplaceFailure.run(identity.cacheOid, MARKETPLACE_INVALID_CONTENT_CACHE_VERSION, target.id)
+      else
+        db.prepare('UPDATE repositories SET marketplace_failed_oid = ?, marketplace_failed_parser_version = ? WHERE id = ?').run(
+          identity.cacheOid,
+          MARKETPLACE_INVALID_CONTENT_CACHE_VERSION,
+          target.id,
+        )
     })
   }
-  recordProblem(db, runId, counts, row, invalidContentCategory(failure), loaded.ready, true, now, retryCount, log, {
-    request,
-    status,
-    reason,
-    ...(identity.marketplaceOid ? { marketplaceOid: identity.marketplaceOid } : {}),
-    ...(identity.contentOid && identity.contentOid !== identity.marketplaceOid ? { contentOid: identity.contentOid } : {}),
-  })
+  recordProblem(
+    db,
+    runId,
+    counts,
+    row,
+    invalidContentCategory(failure),
+    loaded.ready,
+    true,
+    now,
+    retryCount,
+    log,
+    {
+      request,
+      status,
+      reason,
+      ...(identity.marketplaceOid ? { marketplaceOid: identity.marketplaceOid } : {}),
+      ...(identity.contentOid && identity.contentOid !== identity.marketplaceOid ? { contentOid: identity.contentOid } : {}),
+    },
+    writes,
+  )
   return null
 }
 
@@ -484,25 +612,41 @@ function recordKnownInvalidMarketplace(
   removedIds: Set<number>,
   now: () => string,
   log?: Log,
+  writes?: EnrichmentWriteBatch,
 ): null {
   const failedOid = row.marketplace_failed_oid
-  const target = persistRepositoryMetadataOnMarketplaceError(db, runId, row, loaded, removedIds, now())
+  const target = persistRepositoryMetadataOnMarketplaceError(db, runId, row, loaded, removedIds, now(), writes)
   if (failedOid) {
-    runWhileActive(db, runId, () => {
-      db.prepare('UPDATE repositories SET marketplace_failed_oid = ?, marketplace_failed_parser_version = ? WHERE id = ?').run(
-        failedOid,
-        MARKETPLACE_INVALID_CONTENT_CACHE_VERSION,
-        target.id,
-      )
+    persistEnrichmentWrite(db, runId, writes, () => {
+      if (writes) writes.setMarketplaceFailure.run(failedOid, MARKETPLACE_INVALID_CONTENT_CACHE_VERSION, target.id)
+      else
+        db.prepare('UPDATE repositories SET marketplace_failed_oid = ?, marketplace_failed_parser_version = ? WHERE id = ?').run(
+          failedOid,
+          MARKETPLACE_INVALID_CONTENT_CACHE_VERSION,
+          target.id,
+        )
     })
   }
   counts.knownInvalidSkipped = (counts.knownInvalidSkipped ?? 0) + 1
-  recordProblem(db, runId, counts, row, 'marketplace_known_invalid_content', loaded.ready, true, now, 0, log, {
-    request: null,
-    marketplaceOid: row.marketplace_failed_oid,
-    reason: `Skipped unchanged marketplace OID previously rejected by content cache version ${MARKETPLACE_INVALID_CONTENT_CACHE_VERSION}`,
-    skippedDownload: true,
-  })
+  recordProblem(
+    db,
+    runId,
+    counts,
+    row,
+    'marketplace_known_invalid_content',
+    loaded.ready,
+    true,
+    now,
+    0,
+    log,
+    {
+      request: null,
+      marketplaceOid: row.marketplace_failed_oid,
+      reason: `Skipped unchanged marketplace OID previously rejected by content cache version ${MARKETPLACE_INVALID_CONTENT_CACHE_VERSION}`,
+      skippedDownload: true,
+    },
+    writes,
+  )
   return null
 }
 
@@ -517,6 +661,7 @@ async function loadLegacyMarketplace(
   now: () => string,
   policy: RestAttemptPolicy,
   log?: Log,
+  writes?: EnrichmentWriteBatch,
 ): Promise<MarketplaceState | null | RetryLater> {
   const etag = row.marketplace_failed_oid === null && row.plugins_json !== null ? (row.marketplace_etag ?? undefined) : undefined
   let result: RepoResult<{ plugins: unknown[] }>
@@ -542,7 +687,7 @@ async function loadLegacyMarketplace(
     throw error
   }
   if (result.kind === 'not-found') {
-    removeLoadedRepository(db, runId, row, loaded, counts, removedIds, log)
+    removeLoadedRepository(db, runId, row, loaded, counts, removedIds, log, writes)
     return null
   }
   if (result.kind === 'temporary-error') {
@@ -566,6 +711,7 @@ async function loadLegacyMarketplace(
         failureReason: result.failureReason,
         retryable: result.retryable,
       },
+      writes,
     )
     return null
   }
@@ -585,11 +731,12 @@ async function loadLegacyMarketplace(
       `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/marketplace.json`,
       now,
       log,
+      writes,
     )
   }
   const pluginsCount = result.kind === 'not-modified' ? row.plugins_count : result.data.plugins.length
   if (pluginsCount === null) {
-    recordProblem(db, runId, counts, row, 'marketplace_not_modified_without_data', loaded.ready, false, now)
+    recordProblem(db, runId, counts, row, 'marketplace_not_modified_without_data', loaded.ready, false, now, 0, undefined, {}, writes)
     return null
   }
   return {
@@ -609,16 +756,30 @@ function acceptGraphQLNotModified(
   counts: EnrichmentCounts,
   now: () => string,
   log?: Log,
+  writes?: EnrichmentWriteBatch,
 ): row is RepositoryRow & { plugins_count: number } {
   if (changedOid) {
-    recordProblem(db, runId, counts, row, 'marketplace_not_modified_after_oid_change', loaded.ready, true, now, 0, log, {
-      request: `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/marketplace.json`,
-      oidChanged: true,
-    })
+    recordProblem(
+      db,
+      runId,
+      counts,
+      row,
+      'marketplace_not_modified_after_oid_change',
+      loaded.ready,
+      true,
+      now,
+      0,
+      log,
+      {
+        request: `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/marketplace.json`,
+        oidChanged: true,
+      },
+      writes,
+    )
     return false
   }
   if (row.plugins_count === null) {
-    recordProblem(db, runId, counts, row, 'marketplace_not_modified_without_data', loaded.ready, false, now)
+    recordProblem(db, runId, counts, row, 'marketplace_not_modified_without_data', loaded.ready, false, now, 0, undefined, {}, writes)
     return false
   }
   return true
@@ -635,17 +796,31 @@ function resolveGraphQLMarketplaceBlob(
   removedIds: Set<number>,
   now: () => string,
   log?: Log,
+  writes?: EnrichmentWriteBatch,
 ): MarketplaceState | null | undefined {
   let decoded: MarketplaceBlobDecode
   try {
     decoded = decodeGraphQLMarketplaceBlob(blob)
   } catch {
-    recordProblem(db, runId, counts, row, 'marketplace_parser_error', loaded.ready, true, now, 0, log, {
-      request: 'POST /graphql',
-      status: 200,
-      reason: 'Marketplace parser failure',
-      contentOid: blob.oid,
-    })
+    recordProblem(
+      db,
+      runId,
+      counts,
+      row,
+      'marketplace_parser_error',
+      loaded.ready,
+      true,
+      now,
+      0,
+      log,
+      {
+        request: 'POST /graphql',
+        status: 200,
+        reason: 'Marketplace parser failure',
+        contentOid: blob.oid,
+      },
+      writes,
+    )
     return null
   }
   if (decoded.kind === 'found') {
@@ -692,6 +867,7 @@ function resolveGraphQLMarketplaceBlob(
     'POST /graphql',
     now,
     log,
+    writes,
   )
 }
 
@@ -715,6 +891,7 @@ async function loadGraphQLMarketplaceViaRest(
   now: () => string,
   policy: RestAttemptPolicy,
   log?: Log,
+  writes?: EnrichmentWriteBatch,
 ): Promise<MarketplaceState | null | RetryLater> {
   const authoritativeMarketplaceOid = blob?.oid ?? currentMarketplaceOid
   const changedOid = row.marketplace_oid !== authoritativeMarketplaceOid
@@ -743,7 +920,7 @@ async function loadGraphQLMarketplaceViaRest(
     throw error
   }
   if (result.kind === 'not-found') {
-    removeLoadedRepository(db, runId, row, loaded, counts, removedIds, log)
+    removeLoadedRepository(db, runId, row, loaded, counts, removedIds, log, writes)
     return null
   }
   if (result.kind === 'temporary-error') {
@@ -768,6 +945,7 @@ async function loadGraphQLMarketplaceViaRest(
         retryable: result.retryable,
         marketplaceOid: currentMarketplaceOid,
       },
+      writes,
     )
     return null
   }
@@ -787,12 +965,13 @@ async function loadGraphQLMarketplaceViaRest(
       `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/marketplace.json`,
       now,
       log,
+      writes,
     )
   }
 
   const marketplaceEtag = result.etag ?? row.marketplace_etag
   if (result.kind === 'not-modified') {
-    if (!acceptGraphQLNotModified(db, runId, row, loaded, changedOid, counts, now, log)) return null
+    if (!acceptGraphQLNotModified(db, runId, row, loaded, changedOid, counts, now, log, writes)) return null
     return {
       pluginsCount: row.plugins_count,
       pluginsJson: row.plugins_json,
@@ -821,12 +1000,13 @@ async function loadGraphQLMarketplace(
   now: () => string,
   policy: RestAttemptPolicy,
   log?: Log,
+  writes?: EnrichmentWriteBatch,
 ): Promise<MarketplaceState | null | RetryLater> {
   if (
     row.marketplace_failed_oid === currentMarketplaceOid &&
     row.marketplace_failed_parser_version === MARKETPLACE_INVALID_CONTENT_CACHE_VERSION
   ) {
-    return recordKnownInvalidMarketplace(db, runId, counts, row, loaded, removedIds, now, log)
+    return recordKnownInvalidMarketplace(db, runId, counts, row, loaded, removedIds, now, log, writes)
   }
   if (!needsMarketplaceContent(row, currentMarketplaceOid)) {
     return {
@@ -837,10 +1017,36 @@ async function loadGraphQLMarketplace(
     }
   }
   if (blob) {
-    const resolved = resolveGraphQLMarketplaceBlob(db, runId, row, loaded, currentMarketplaceOid, blob, counts, removedIds, now, log)
+    const resolved = resolveGraphQLMarketplaceBlob(
+      db,
+      runId,
+      row,
+      loaded,
+      currentMarketplaceOid,
+      blob,
+      counts,
+      removedIds,
+      now,
+      log,
+      writes,
+    )
     if (resolved !== undefined) return resolved
   }
-  return loadGraphQLMarketplaceViaRest(db, reader, runId, row, loaded, currentMarketplaceOid, blob, counts, removedIds, now, policy, log)
+  return loadGraphQLMarketplaceViaRest(
+    db,
+    reader,
+    runId,
+    row,
+    loaded,
+    currentMarketplaceOid,
+    blob,
+    counts,
+    removedIds,
+    now,
+    policy,
+    log,
+    writes,
+  )
 }
 
 function loadCachedRepository(
@@ -918,6 +1124,7 @@ function removeMissingRepository(
   identity: NonNullable<ReturnType<typeof parseRepositoryUrl>>,
   counts: EnrichmentCounts,
   log?: Log,
+  writes?: EnrichmentWriteBatch,
 ): null {
   log?.({
     level: 'warn',
@@ -933,7 +1140,10 @@ function removeMissingRepository(
     status: 404,
     outcome: 'repository_removed',
   })
-  runWhileActive(db, runId, () => deleteById(db, row.id))
+  persistEnrichmentWrite(db, runId, writes, () => {
+    if (writes) writes.deleteRepository.run(row.id)
+    else deleteById(db, row.id)
+  })
   counts.deleted404++
   counts.conclusive++
   return null
@@ -979,6 +1189,7 @@ async function loadRepository(
   now: () => string,
   policy: RestAttemptPolicy,
   log?: Log,
+  writes?: EnrichmentWriteBatch,
 ): Promise<LoadedRepository | null | RetryLater> {
   let result: RepoResult<GitHubRepo>
   try {
@@ -989,7 +1200,7 @@ async function loadRepository(
     if (error instanceof GitHubFatalError) logRepositoryFatalError(error, runId, row, identity, log)
     throw error
   }
-  if (result.kind === 'not-found') return removeMissingRepository(db, runId, row, identity, counts, log)
+  if (result.kind === 'not-found') return removeMissingRepository(db, runId, row, identity, counts, log, writes)
   if (result.kind === 'temporary-error') {
     const deferred = deferTransient(result, policy)
     if (deferred) return deferred
@@ -1011,27 +1222,41 @@ async function loadRepository(
         failureReason: result.failureReason,
         retryable: result.retryable,
       },
+      writes,
     )
     return null
   }
   if (result.kind === 'invalid-content') {
-    recordProblem(db, runId, counts, row, 'repository_invalid_content', previouslyReady, true, now, totalRetryCount(result, policy), log, {
-      request: `GET /repos/${identity.owner}/${identity.repo}`,
-      status: result.status,
-      reason: result.reason,
-      failureReason: result.failureReason,
-      retryable: result.retryable,
-    })
+    recordProblem(
+      db,
+      runId,
+      counts,
+      row,
+      'repository_invalid_content',
+      previouslyReady,
+      true,
+      now,
+      totalRetryCount(result, policy),
+      log,
+      {
+        request: `GET /repos/${identity.owner}/${identity.repo}`,
+        status: result.status,
+        reason: result.reason,
+        failureReason: result.failureReason,
+        retryable: result.retryable,
+      },
+      writes,
+    )
     return null
   }
   if (result.kind === 'not-modified') {
     const cached = loadCachedRepository(row, identity, previouslyReady)
     if (cached) return cached
-    recordProblem(db, runId, counts, row, 'repository_not_modified_without_data', previouslyReady, false, now)
+    recordProblem(db, runId, counts, row, 'repository_not_modified_without_data', previouslyReady, false, now, 0, undefined, {}, writes)
     return null
   }
   const loaded = buildLoadedRepository(db, row, identity, previouslyReady, result)
-  if (!loaded) recordProblem(db, runId, counts, row, 'repository_identity_mismatch', previouslyReady, true, now)
+  if (!loaded) recordProblem(db, runId, counts, row, 'repository_identity_mismatch', previouslyReady, true, now, 0, undefined, {}, writes)
   return loaded
 }
 
@@ -1048,6 +1273,7 @@ async function enrichOne(
   onProgress?: () => void,
   log?: Log,
   marketplacePolicy?: RestAttemptPolicy,
+  writes?: EnrichmentWriteBatch,
 ): Promise<void> {
   if (removedIds.has(row.id)) return
   if (!row.html_url?.trim()) {
@@ -1064,8 +1290,9 @@ async function enrichOne(
         outcome: 'repository_removed',
       })
     }
-    runWhileActive(db, runId, () => {
-      deleteById(db, row.id)
+    persistEnrichmentWrite(db, runId, writes, () => {
+      if (writes) writes.deleteRepository.run(row.id)
+      else deleteById(db, row.id)
     })
     counts.deletedBlankUrl++
     return
@@ -1073,11 +1300,11 @@ async function enrichOne(
   const previouslyReady = wasReady(row)
   const identity = parseRepositoryUrl(row.html_url)
   if (!identity) {
-    recordProblem(db, runId, counts, row, 'invalid_repository_url', previouslyReady, true, now)
+    recordProblem(db, runId, counts, row, 'invalid_repository_url', previouslyReady, true, now, 0, undefined, {}, writes)
     return
   }
   onProgress?.()
-  const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts, now, policy, log)
+  const loaded = await loadRepository(db, reader, runId, row, identity, previouslyReady, counts, now, policy, log, writes)
   if (isRetryLater(loaded)) {
     queueRetry(retryQueue, row, async () => {
       if (removedIds.has(row.id)) return
@@ -1088,7 +1315,19 @@ async function enrichOne(
   }
   if (!loaded) return
   onProgress?.()
-  const marketplace = await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, marketplacePolicy ?? policy, log)
+  const marketplace = await loadLegacyMarketplace(
+    db,
+    reader,
+    runId,
+    row,
+    loaded,
+    counts,
+    removedIds,
+    now,
+    marketplacePolicy ?? policy,
+    log,
+    writes,
+  )
   if (isRetryLater(marketplace)) {
     queueRetry(retryQueue, row, async () => {
       if (removedIds.has(row.id)) return
@@ -1123,6 +1362,8 @@ async function enrichOne(
     now(),
     false,
     marketplace.pluginsJson,
+    writes,
+
   )
   completeEnrichment(counts, target, removedIds)
 }
@@ -1164,10 +1405,11 @@ async function enrichGraphQLOne(
   retryQueue: RetryQueue | undefined,
   onProgress?: () => void,
   log?: Log,
+  writes?: EnrichmentWriteBatch,
 ): Promise<void> {
   if (removedIds.has(row.id)) return
   if (data === null) {
-    await enrichOne(db, reader, runId, row, counts, removedIds, now, policy, retryQueue, onProgress, log)
+    await enrichOne(db, reader, runId, row, counts, removedIds, now, policy, retryQueue, onProgress, log, undefined, writes)
     return
   }
   if (data.private) {
@@ -1185,16 +1427,32 @@ async function enrichGraphQLOne(
       request: 'POST /graphql',
       outcome: 'repository_removed',
     })
-    runWhileActive(db, runId, () => deleteById(db, row.id))
+    persistEnrichmentWrite(db, runId, writes, () => {
+      if (writes) writes.deleteRepository.run(row.id)
+      else deleteById(db, row.id)
+    })
     counts.deleted404++
     counts.conclusive++
     return
   }
   const loaded = loadGraphQLRepository(db, row, data)
   if (!loaded) {
-    recordProblem(db, runId, counts, row, 'repository_identity_mismatch', wasReady(row), true, now, 0, log, {
-      request: 'POST /graphql',
-    })
+    recordProblem(
+      db,
+      runId,
+      counts,
+      row,
+      'repository_identity_mismatch',
+      wasReady(row),
+      true,
+      now,
+      0,
+      log,
+      {
+        request: 'POST /graphql',
+      },
+      writes,
+    )
     return
   }
   onProgress?.()
@@ -1212,8 +1470,9 @@ async function enrichGraphQLOne(
         now,
         policy,
         log,
+        writes,
       )
-    : await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, policy, log)
+    : await loadLegacyMarketplace(db, reader, runId, row, loaded, counts, removedIds, now, policy, log, writes)
   if (isRetryLater(marketplace)) {
     queueRetry(retryQueue, row, async () => {
       if (removedIds.has(row.id)) return
@@ -1248,6 +1507,8 @@ async function enrichGraphQLOne(
     now(),
     marketplace.clearMarketplaceEtag ?? false,
     marketplace.pluginsJson,
+    writes,
+
   )
   completeEnrichment(counts, target, removedIds)
 }
@@ -1543,6 +1804,7 @@ async function enrichGraphQLBatch(
 
   tuneGraphQLBatch(state, rows.length, latency, result.rateLimit.cost)
   const marketplaceBlobs = await loadGraphQLMarketplaceBlobs(runId, reader, rows, result.data, onProgress, log)
+  const writes = createEnrichmentWriteBatch(db)
   for (const [index, row] of rows.entries()) {
     const marketplaceBlob = row.github_node_id ? (marketplaceBlobs.get(row.github_node_id) ?? null) : null
     await enrichGraphQLOne(
@@ -1559,7 +1821,11 @@ async function enrichGraphQLBatch(
       retryQueue,
       onProgress,
       log,
+      writes,
     )
+  }
+  commitEnrichmentWriteBatch(db, runId, writes)
+  for (const row of rows) {
     if (!retryQueue?.deferredIds.has(row.id)) onRepositoryProcessed?.(row)
   }
 }

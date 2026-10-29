@@ -21,6 +21,16 @@ function pluginSignal(repo: CatalogRepo) {
 }
 
 describe('searchCatalogRepos', () => {
+  it('uses the small catalog fixture in unit tests', () => {
+    const repos = getCanonicalCatalogRepos()
+
+    expect(repos.length).toBeLessThan(100)
+    expect(repos).toEqual(expect.arrayContaining([expect.objectContaining({ owner: 'ykdojo', repo_name: 'claude-code-tips' })]))
+    expect(
+      repos.filter((repo) => repo.owner?.toLowerCase() === 'fixture-org' && repo.repo_name?.toLowerCase() === 'claude-plugin-00')
+    ).toHaveLength(1)
+  })
+
   it('keeps review-needed canonical records discoverable', () => {
     const results = searchCatalogRepos('lean-playground', 'stars-desc')
 

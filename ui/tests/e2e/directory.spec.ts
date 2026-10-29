@@ -1,4 +1,6 @@
-import { expect, type Page, test } from '@playwright/test'
+import { type APIRequestContext, expect, type Page, test } from '@playwright/test'
+import type { SortOption } from '../../src/lib/sortOptions.ts'
+import type { Repo } from '../../src/schemas/repo.schema.ts'
 import { copiedText, mockClipboard } from './helpers.ts'
 
 const pluginsAvailableText = /plugins available across/i
@@ -22,15 +24,22 @@ const indexFollowRobotsPattern = /(?:^|,\s*)index,\s*follow(?:\s*,|$)/
 const rootCanonicalPattern = /awesomeclaudeplugins\.com\/?$/
 const sortOptionForksRegex = /Forks/
 const sortOptionStarsRegex = /Stars/
-const detailsLabelRegex = /^View details for /
 
 async function chooseSortOption(page: Page, optionName: 'Stars' | 'Forks' | 'Plugins') {
   await page.getByRole('combobox', { name: 'Sort by' }).click()
   await page.getByRole('option', { name: optionName }).click()
 }
 
-async function expectFirstDetailsLink(page: Page, repoPath: string) {
-  await expect(page.getByRole('link', { name: detailsLinkName }).first()).toHaveAttribute('aria-label', `View details for ${repoPath}`)
+async function expectCatalogOrder(page: Page, request: APIRequestContext, sortOption: SortOption) {
+  const response = await request.get('/api/catalog', { params: { page: 0, sort: sortOption } })
+  expect(response.ok()).toBe(true)
+  const { repos } = (await response.json()) as { repos: Repo[] }
+  expect(repos.length).toBeGreaterThan(0)
+  const expectedPaths = repos.map((repo) => `/${repo.owner}/${repo.repo_name}`)
+
+  await expect
+    .poll(() => page.getByRole('link', { name: detailsLinkName }).evaluateAll((links) => links.map((link) => link.getAttribute('href'))))
+    .toEqual(expectedPaths)
 }
 
 /**
@@ -95,7 +104,7 @@ test('header navigation, external actions, and theme selection work across route
 
   await page.getByRole('link', { name: 'View statistics' }).click()
   await expect(page).toHaveURL(statsUrl)
-  await expect(page.getByRole('heading', { name: 'Repositories Statistics' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Repository statistics' })).toBeVisible()
   await expect(page.getByRole('button', { name: darkThemeButtonName })).toBeVisible()
 
   await page.getByRole('link', { name: 'About project' }).click()
@@ -108,7 +117,7 @@ test('header navigation, external actions, and theme selection work across route
   await expect(page.getByRole('searchbox', { name: 'Search repositories' })).toBeFocused()
 })
 
-test('home page search updates result counts, visible cards, and empty state', async ({ page }) => {
+test('home page search updates result counts, visible cards, and empty state', async ({ page, request }) => {
   await page.goto('/')
 
   await expect(page.getByText(pluginsAvailableText)).toBeVisible()
@@ -125,7 +134,7 @@ test('home page search updates result counts, visible cards, and empty state', a
   await page.getByRole('searchbox', { name: 'Search repositories' }).fill('')
   await expect(page).toHaveURL('/')
   await expect(page.getByText('No repositories match your search')).toBeHidden()
-  await expectFirstDetailsLink(page, 'obra/superpowers')
+  await expectCatalogOrder(page, request, 'stars-desc')
 })
 
 test('repository skeleton mirrors coarse-pointer touch target geometry', async ({ page }) => {
@@ -273,23 +282,18 @@ test('a completed sort announces that repository results were updated', async ({
   await expect(loadStatus).toHaveText('Repository results updated.')
 })
 
-test('home page sort modes update the visible repository ordering', async ({ page }) => {
+test('home page sort modes update the visible repository ordering', async ({ page, request }) => {
   await page.goto('/')
-
-  const firstDetailsLink = page.getByRole('link', { name: detailsLinkName }).first()
-  const defaultFirstRepository = await firstDetailsLink.getAttribute('aria-label')
-  if (!defaultFirstRepository) {
-    throw new Error('Expected the first repository card to expose an accessible details label')
-  }
+  await expectCatalogOrder(page, request, 'stars-desc')
 
   await chooseSortOption(page, 'Forks')
-  await expect(firstDetailsLink).not.toHaveAttribute('aria-label', defaultFirstRepository)
+  await expectCatalogOrder(page, request, 'forks-desc')
 
   await chooseSortOption(page, 'Plugins')
-  await expect(firstDetailsLink).toHaveAttribute('aria-label', detailsLabelRegex)
+  await expectCatalogOrder(page, request, 'plugins-desc')
 
   await chooseSortOption(page, 'Stars')
-  await expect(firstDetailsLink).toHaveAttribute('aria-label', defaultFirstRepository)
+  await expectCatalogOrder(page, request, 'stars-desc')
 })
 
 test('repository cards expose details, GitHub links, and copyable marketplace commands', async ({ page }) => {
@@ -492,13 +496,13 @@ test('stats page filters chart ranges and trend state', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-09-21T12:00:00Z'))
   await page.goto('/stats')
 
-  const averageDailyIncrease = statCardValue(page, 'Avg Daily Increase')
+  const averageDailyIncrease = statCardValue(page, 'Avg daily increase')
   const allTimeAverage = (await averageDailyIncrease.textContent()) ?? ''
 
-  await expect(page.getByRole('heading', { name: 'Repositories Statistics' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Repository statistics' })).toBeVisible()
   await expect(page.getByText(allTimeChartText)).toBeVisible()
-  await expect(page.getByText('Total Repositories')).toBeVisible()
-  await expect(page.getByText('Avg Daily Increase')).toBeVisible()
+  await expect(page.getByText('Total repositories')).toBeVisible()
+  await expect(page.getByText('Avg daily increase')).toBeVisible()
   await expect(page.getByRole('application', { name: 'Repository growth over time' })).toBeVisible()
 
   await page.getByRole('combobox').click()
@@ -525,7 +529,7 @@ test('about page exposes static project cards and header navigation', async ({ p
   await page.goto('/about')
 
   await expect(page.getByRole('heading', { name: 'About This Project' })).toBeVisible()
-  await expect(page.getByText('Automated Discovery')).toBeVisible()
+  await expect(page.getByText('Automated discovery')).toBeVisible()
   await expect(page.getByText('Why?')).toBeVisible()
 
   await page.locator('a[aria-label="Search repositories"]').click()
