@@ -2,7 +2,7 @@ import type Database from 'better-sqlite3'
 import type { PublishableRepository } from '../storage/repositories.js'
 import { assertValidStatsDraft, type StatsRecord } from './statsDraft.js'
 
-export function renderRepos(rows: readonly PublishableRepository[]): string {
+export function renderRepos(rows: readonly PublishableRepository[], options: { includeCatalogUpdatedAt?: boolean } = {}): string {
   const repositories = rows.map((row) =>
     JSON.stringify({
       stargazers_count: row.stargazers_count,
@@ -12,7 +12,7 @@ export function renderRepos(rows: readonly PublishableRepository[]): string {
       owner: row.owner,
       repo_name: row.repo_name,
       plugins_count: row.plugins_count,
-      catalog_updated_at: row.catalog_updated_at,
+      ...(options.includeCatalogUpdatedAt === false ? {} : { catalog_updated_at: row.catalog_updated_at }),
       id: row.id,
     }),
   )

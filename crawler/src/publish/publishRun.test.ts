@@ -3,7 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { afterEach, expect, it } from 'vitest'
+import { renderRepos } from '../output/catalogSnapshot.js'
 import { openDatabase } from '../storage/db.js'
+import { listPublishable } from '../storage/repositories.js'
 import { beginRun, completeRun, failRun, getRun } from '../storage/runs.js'
 import { type GitHubGit, GitHubGitConflictError, GitHubGitHttpError, GitHubGitTimeoutError, type GitSnapshotFiles } from './githubGit.js'
 import { PublicationError, prepareDraft, publishRun, readDraftSnapshot } from './publishRun.js'
@@ -254,6 +256,48 @@ it('still rejects catalog changes when a persisted draft uses the legacy three-f
   expect(git.events).toEqual([])
 })
 
+it('preserves an old catalog serialization through pending publication recovery and rejects changed content', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const draft = prepareDraft(db, 'r1', timestamp)
+  const files = readDraftSnapshot(db, 'r1')
+  const oldReposJson = renderRepos(listPublishable(db), { includeCatalogUpdatedAt: false })
+  const oldHash = createHash('sha256')
+    .update(JSON.stringify([files.readme, oldReposJson, files.statsJson, files.markdownPathsJson]), 'utf8')
+    .digest('hex')
+  db.prepare('UPDATE runs SET draft_hash = ? WHERE run_id = ?').run(oldHash, 'r1')
+  expect(prepareDraft(db, 'r1', new Date('2027-01-01'))).toEqual({ ...draft, hash: oldHash })
+  expect(readDraftSnapshot(db, 'r1').reposJson).toBe(oldReposJson)
+
+  db.exec(`CREATE TRIGGER reject_publication BEFORE UPDATE OF published_at ON runs BEGIN SELECT RAISE(ABORT, 'interrupted'); END`)
+  await expect(publishRun(db, git, 'r1', { writeEnabled: true })).rejects.toThrowError(PublicationError)
+  const pending = getRun(db, 'r1')?.pending_commit_sha
+  expect(pending).toBe(git.head)
+  expect(git.files[0].reposJson).toBe(oldReposJson)
+  expect(JSON.parse(git.files[0].reposJson)[0]).not.toHaveProperty('catalog_updated_at')
+
+  db.exec('DROP TRIGGER reject_publication')
+  expect(await publishRun(db, git, 'r1', { writeEnabled: true, recover: true })).toBe(pending)
+  expect(getRun(db, 'r1')).toMatchObject({ status: 'published', commit_sha: pending, pending_commit_sha: null })
+  expect(db.prepare("SELECT COUNT(*) AS count FROM stats WHERE run_id = 'r1'").get()).toEqual({ count: 1 })
+  expect(draft.hash).not.toBe(oldHash)
+})
+
+it('rejects genuine catalog changes when a persisted draft uses the pre-timestamp serialization', () => {
+  const db = fixture()
+  const draft = prepareDraft(db, 'r1', timestamp)
+  const files = readDraftSnapshot(db, 'r1')
+  const oldReposJson = renderRepos(listPublishable(db), { includeCatalogUpdatedAt: false })
+  const oldHash = createHash('sha256')
+    .update(JSON.stringify([files.readme, oldReposJson, files.statsJson, files.markdownPathsJson]), 'utf8')
+    .digest('hex')
+  db.prepare('UPDATE runs SET draft_hash = ? WHERE run_id = ?').run(oldHash, 'r1')
+  db.prepare('UPDATE repositories SET description = ? WHERE id = 18').run('genuinely changed')
+
+  expect(draft.hash).not.toBe(oldHash)
+  expect(() => readDraftSnapshot(db, 'r1')).toThrowError(expect.objectContaining({ category: 'snapshot_changed' }))
+})
+
 it('does not touch Git for a missing draft, changed catalog, corrupted hash, or historical id/date collision', async () => {
   const db = fixture()
   const git = new Branch()
@@ -354,7 +398,7 @@ it('reconciles a pending SHA behind a later unrelated branch commit after SQLite
   expect(publicationLease(db)).toBeUndefined()
 })
 
-it('reconciles an already visible pending commit after the catalog changes without a second Git write', async () => {
+it('rejects an already visible pending commit after the catalog changes', async () => {
   const db = fixture()
   const git = new Branch()
   const draft = prepareDraft(db, 'r1', timestamp)
@@ -368,13 +412,12 @@ it('reconciles an already visible pending commit after the catalog changes witho
   db.prepare('UPDATE repositories SET description = ? WHERE id = 18').run('New crawl changed this row')
   db.exec('DROP TRIGGER reject_publication')
   const before = git.events.length
-  expect(await publishRun(db, git, 'r1', { writeEnabled: true, recover: true })).toBe(pending)
-  expect(git.events.slice(before)).toEqual([`ANCESTRY ${pending}`])
+  await expect(publishRun(db, git, 'r1', { writeEnabled: true, recover: true })).rejects.toMatchObject({ category: 'snapshot_changed' })
+  expect(git.events.slice(before)).toEqual([])
   expect(git.patches).toBe(1)
-  expect(db.prepare("SELECT id, date, size, run_id FROM stats WHERE run_id = 'r1'").all()).toEqual([
-    { id: draft.id, date: draft.date, size: draft.size, run_id: 'r1' },
-  ])
-  expect(getRun(db, 'r1')).toMatchObject({ status: 'published', commit_sha: pending, pending_commit_sha: null })
+  expect(db.prepare("SELECT COUNT(*) AS count FROM stats WHERE run_id = 'r1'").get()).toEqual({ count: 0 })
+  expect(getRun(db, 'r1')).toMatchObject({ status: 'completed', pending_commit_sha: pending })
+  expect(draft.hash).toMatch(/^[0-9a-f]{64}$/)
 })
 
 it('does not write a stale pending commit when Git has not published it and SQLite has changed', async () => {
@@ -388,7 +431,7 @@ it('does not write a stale pending commit when Git has not published it and SQLi
   git.failure = null
   const before = git.events.length
   await expect(publishRun(db, git, 'r1', { writeEnabled: true, recover: true })).rejects.toMatchObject({ category: 'snapshot_changed' })
-  expect(git.events.slice(before)).toEqual([`ANCESTRY ${pending}`])
+  expect(git.events.slice(before)).toEqual([])
   expect(git.patches).toBe(0)
   expect(getRun(db, 'r1')?.pending_commit_sha).toBe(pending)
   expect(db.prepare("SELECT COUNT(*) AS count FROM stats WHERE run_id = 'r1'").get()).toEqual({ count: 0 })
