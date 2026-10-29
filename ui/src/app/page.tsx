@@ -5,6 +5,7 @@ import { TitleSection } from '../components/search/TitleSection.tsx'
 import { searchCatalogRepos } from '../lib/catalog.ts'
 import { CATALOG_PAGE_SIZE } from '../lib/catalogPagination.ts'
 import { BASE_URL } from '../lib/constants.ts'
+import { withSiteAlternates } from '../lib/metadata.ts'
 import { parseSortOption } from '../lib/searchState.ts'
 
 interface HomeProps {
@@ -16,9 +17,12 @@ export async function generateMetadata({ searchParams }: HomeProps): Promise<Met
   const hasSearchParams = params?.q !== undefined || params?.sort !== undefined
 
   return {
-    alternates: {
+    alternates: withSiteAlternates({
       canonical: `${BASE_URL}/`,
-    },
+      types: {
+        'text/markdown': `${BASE_URL}/index.md`,
+      },
+    }),
     ...(hasSearchParams
       ? {
           robots: {

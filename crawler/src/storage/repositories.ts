@@ -54,6 +54,30 @@ export type PublishableRepository = Pick<
   | 'catalog_updated_at'
 >
 
+export function createDiscoveryWriter(db: Database.Database) {
+  const find = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE ORDER BY id LIMIT 1')
+  const updateNodeId = db.prepare('UPDATE repositories SET github_node_id = ? WHERE id = ? AND github_node_id IS NOT ?')
+  const updateDescription = db.prepare(`
+    UPDATE repositories SET description = ?, updatedAt = ?
+    WHERE id = ? AND (owner IS NULL OR repo_name IS NULL OR owner_url IS NULL)
+  `)
+  const insert = db.prepare('INSERT INTO repositories (html_url, description, github_node_id, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)')
+
+  return (htmlUrl: string, description: string | null, at = new Date().toISOString(), githubNodeId?: string) => {
+    if (!htmlUrl.trim()) throw new Error('Discovery URL must not be blank')
+
+    const existing = find.get(htmlUrl) as { id: number } | undefined
+    if (existing) {
+      if (githubNodeId) updateNodeId.run(githubNodeId, existing.id, githubNodeId)
+      updateDescription.run(description, at, existing.id)
+      return { id: existing.id, existing: true }
+    }
+
+    const result = insert.run(htmlUrl, description, githubNodeId ?? null, at, at)
+    return { id: Number(result.lastInsertRowid), existing: false }
+  }
+}
+
 export function upsertDiscovery(
   db: Database.Database,
   htmlUrl: string,
@@ -61,61 +85,40 @@ export function upsertDiscovery(
   at = new Date().toISOString(),
   githubNodeId?: string,
 ): number {
-  if (!htmlUrl.trim()) throw new Error('Discovery URL must not be blank')
-
-  const existing = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE ORDER BY id LIMIT 1').get(htmlUrl) as
-    | { id: number }
-    | undefined
-  if (existing) {
-    if (githubNodeId) {
-      db.prepare('UPDATE repositories SET github_node_id = ? WHERE id = ? AND github_node_id IS NOT ?').run(
-        githubNodeId,
-        existing.id,
-        githubNodeId,
-      )
-    }
-    db.prepare(`
-      UPDATE repositories SET description = ?, updatedAt = ?
-      WHERE id = ? AND (owner IS NULL OR repo_name IS NULL OR owner_url IS NULL)
-    `).run(description, at, existing.id)
-    return existing.id
-  }
-
-  const result = db
-    .prepare('INSERT INTO repositories (html_url, description, github_node_id, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)')
-    .run(htmlUrl, description, githubNodeId ?? null, at, at)
-  return Number(result.lastInsertRowid)
+  return createDiscoveryWriter(db)(htmlUrl, description, at, githubNodeId).id
 }
 
-export function updateEnriched(db: Database.Database, id: number, fields: EnrichmentFields, at = new Date().toISOString()): boolean {
-  for (const field of ['stargazers_count', 'forks_count', 'subscribers_count', 'plugins_count'] as const) {
-    const count = fields[field]
-    if (count !== null && (!Number.isSafeInteger(count) || count < 0)) {
-      throw new Error(`${field} must be a nonnegative integer or null`)
-    }
-  }
+const enrichedUpdateSql = `
+  UPDATE repositories SET
+    stargazers_count = @stargazers_count,
+    forks_count = @forks_count,
+    subscribers_count = @subscribers_count,
+    description = @description,
+    owner = @owner,
+    owner_url = @owner_url,
+    repo_name = @repo_name,
+    repo_updated = @repo_updated,
+    plugins_count = @plugins_count,
+    github_node_id = COALESCE(@github_node_id, github_node_id),
+    marketplace_oid = COALESCE(@marketplace_oid, marketplace_oid),
+    repository_etag = COALESCE(@repository_etag, repository_etag),
+    marketplace_etag = COALESCE(@marketplace_etag, marketplace_etag),
+    marketplace_parser_version = COALESCE(@marketplace_parser_version, marketplace_parser_version),
+    updatedAt = @updatedAt
+  WHERE id = @id
+`
 
-  const result = db
-    .prepare(`
-    UPDATE repositories SET
-      stargazers_count = @stargazers_count,
-      forks_count = @forks_count,
-      subscribers_count = @subscribers_count,
-      description = @description,
-      owner = @owner,
-      owner_url = @owner_url,
-      repo_name = @repo_name,
-      repo_updated = @repo_updated,
-      plugins_count = @plugins_count,
-      github_node_id = COALESCE(@github_node_id, github_node_id),
-      marketplace_oid = COALESCE(@marketplace_oid, marketplace_oid),
-      repository_etag = COALESCE(@repository_etag, repository_etag),
-      marketplace_etag = COALESCE(@marketplace_etag, marketplace_etag),
-      marketplace_parser_version = COALESCE(@marketplace_parser_version, marketplace_parser_version),
-      updatedAt = @updatedAt
-    WHERE id = @id
-  `)
-    .run({
+export function prepareEnrichedUpdate(db: Database.Database) {
+  const update = db.prepare(enrichedUpdateSql)
+  return (id: number, fields: EnrichmentFields, at = new Date().toISOString()): boolean => {
+    for (const field of ['stargazers_count', 'forks_count', 'subscribers_count', 'plugins_count'] as const) {
+      const count = fields[field]
+      if (count !== null && (!Number.isSafeInteger(count) || count < 0)) {
+        throw new Error(`${field} must be a nonnegative integer or null`)
+      }
+    }
+
+    const result = update.run({
       ...fields,
       github_node_id: fields.github_node_id ?? null,
       marketplace_oid: fields.marketplace_oid ?? null,
@@ -125,7 +128,12 @@ export function updateEnriched(db: Database.Database, id: number, fields: Enrich
       id,
       updatedAt: at,
     })
-  return result.changes !== 0
+    return result.changes !== 0
+  }
+}
+
+export function updateEnriched(db: Database.Database, id: number, fields: EnrichmentFields, at = new Date().toISOString()): boolean {
+  return prepareEnrichedUpdate(db)(id, fields, at)
 }
 
 export function deleteById(db: Database.Database, id: number): boolean {

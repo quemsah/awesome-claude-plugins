@@ -30,7 +30,7 @@ it('initializes all tables and remains idempotent on reopen', () => {
     { name: 'settings' },
     { name: 'stats' },
   ])
-  expect(db.pragma('user_version', { simple: true })).toBe(13)
+  expect(db.pragma('user_version', { simple: true })).toBe(14)
   const columns = db.prepare('PRAGMA table_info(repositories)').all() as Array<{ name: string }>
   expect(columns.map((row) => row.name)).toEqual(
     expect.arrayContaining([
@@ -83,7 +83,7 @@ it('migrates populated v1 runs, imported IDs and historical stats atomically and
     `)
     initializeSchema(db)
     initializeSchema(db)
-    expect(db.pragma('user_version', { simple: true })).toBe(13)
+    expect(db.pragma('user_version', { simple: true })).toBe(14)
     expect(db.prepare('SELECT id, createdAt FROM repositories').all()).toEqual([{ id: 53000, createdAt: 'before' }])
     expect(db.prepare('SELECT catalog_updated_at FROM repositories WHERE id = 53000').get()).toMatchObject({
       catalog_updated_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
@@ -121,7 +121,7 @@ it('upgrades a populated v2 database without changing drafts or pending commit S
   `)
   old.close()
   const migrated = openDatabase(path)
-  expect(migrated.pragma('user_version', { simple: true })).toBe(13)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(14)
   expect(migrated.prepare("SELECT draft_hash, pending_commit_sha FROM runs WHERE run_id = 'pending'").get()).toEqual({
     draft_hash: 'a'.repeat(64),
     pending_commit_sha: 'b'.repeat(40),
@@ -151,7 +151,7 @@ it('upgrades main schema v5 while preserving its marketplace ETag', () => {
   db.close()
 
   const migrated = openDatabase(path)
-  expect(migrated.pragma('user_version', { simple: true })).toBe(13)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(14)
   expect(migrated.prepare('SELECT marketplace_etag FROM repositories').get()).toEqual({ marketplace_etag: 'W/"marketplace"' })
   expect((migrated.pragma('table_info(repositories)') as Array<{ name: string }>).map((column) => column.name)).toEqual(
     expect.arrayContaining([
@@ -231,7 +231,7 @@ it('deduplicates case-variant repository URLs without mixing identity or revivin
   db.close()
 
   const migrated = openDatabase(path)
-  expect(migrated.pragma('user_version', { simple: true })).toBe(13)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(14)
   expect(
     migrated
       .prepare(
@@ -287,7 +287,7 @@ it('invalidates cached marketplace counts when upgrading from v10', () => {
   db.close()
 
   const migrated = openDatabase(path)
-  expect(migrated.pragma('user_version', { simple: true })).toBe(13)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(14)
   expect(
     migrated
       .prepare('SELECT plugins_count, marketplace_oid, marketplace_etag FROM repositories WHERE html_url = ?')
@@ -298,6 +298,36 @@ it('invalidates cached marketplace counts when upgrading from v10', () => {
     marketplace_etag: null,
   })
   migrated.close()
+})
+
+it('invalidates cached marketplace counts when upgrading from v12', () => {
+  const db = database()
+  const path = db.name
+  db.prepare(`
+    INSERT INTO repositories (
+      html_url, plugins_count, marketplace_oid, marketplace_etag, createdAt, updatedAt
+    ) VALUES (
+      'https://github.com/acme/catalog', 3, 'marketplace-oid', 'W/"marketplace"', 'before', 'before'
+    )
+  `).run()
+  db.pragma('user_version = 12')
+  db.close()
+
+  const migrated = openDatabase(path)
+  try {
+    expect(migrated.pragma('user_version', { simple: true })).toBe(14)
+    expect(
+      migrated
+        .prepare('SELECT plugins_count, marketplace_oid, marketplace_etag FROM repositories WHERE html_url = ?')
+        .get('https://github.com/acme/catalog'),
+    ).toEqual({
+      plugins_count: null,
+      marketplace_oid: 'marketplace-oid',
+      marketplace_etag: null,
+    })
+  } finally {
+    migrated.close()
+  }
 })
 
 it.each([
@@ -317,7 +347,7 @@ it.each([
       ALTER TABLE repositories DROP COLUMN marketplace_failed_oid;
     `,
   ],
-])('upgrades the v9 schema from the %s to v12', (_lineage, schemaChanges) => {
+])('upgrades the v9 schema from the %s to v13', (_lineage, schemaChanges) => {
   const db = database()
   const path = db.name
   db.close()
@@ -338,7 +368,7 @@ it.each([
   legacy.close()
 
   const migrated = openDatabase(path)
-  expect(migrated.pragma('user_version', { simple: true })).toBe(13)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(14)
   const repositoryColumns = (migrated.pragma('table_info(repositories)') as Array<{ name: string }>).map((column) => column.name)
   expect(repositoryColumns).toEqual(expect.arrayContaining(['marketplace_failed_oid', 'marketplace_failed_parser_version']))
   const runColumns = (migrated.pragma('table_info(runs)') as Array<{ name: string }>).map((column) => column.name)
@@ -371,7 +401,7 @@ it('migrates v10 discovery ranges to the current family and leaves old errors un
 
   const migrated = openDatabase(path)
   try {
-    expect(migrated.pragma('user_version', { simple: true })).toBe(13)
+    expect(migrated.pragma('user_version', { simple: true })).toBe(14)
     expect(
       migrated
         .prepare('SELECT query_family, root_start, root_end, range_start, range_end FROM discovery_ranges ORDER BY range_start')

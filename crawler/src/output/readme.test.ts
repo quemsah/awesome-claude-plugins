@@ -24,7 +24,7 @@ it('escapes table-breaking description characters without altering input or inve
   expect(renderReadme(repositories, { id: 304, date: '2026-09-23T23:59:59.999Z', size: 2 })).toBe(
     '# Awesome Claude Code Plugins: Top 100 Repositories\n\n' +
       '> Last updated: 23.09.2026 with 2 total repositories indexed.\n\n' +
-      '| # | Repo Name | Description | Stars | Subs | Plugins |\n' +
+      '| # | Repo Name | Description | Stars | Watchers | Plugins |\n' +
       '|---|-----------|-------------|-------|-------------|---------|\n' +
       '| 1 | [repo-1](https://github.com/owner/repo-1) |  | 9 | 5 | 0 |\n' +
       '| 2 | [repo-2](https://github.com/owner/repo-2) | A &#124; slash &#92;&#124; *bold* [link](url) | 4 | 0 | 0 |\n',

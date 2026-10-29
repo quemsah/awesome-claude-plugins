@@ -15,7 +15,7 @@ export default function StatsStructuredData({ startDate, endDate }: StatsStructu
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'WebPage',
-    name: 'Repository Statistics | Awesome Claude Plugins',
+    name: 'Repository statistics | Awesome Claude Plugins',
     description: 'View statistics and trends about Claude Code plugin adoption across GitHub repositories',
     url: `${BASE_URL}/stats`,
     about: {

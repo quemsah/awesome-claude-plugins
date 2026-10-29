@@ -1,12 +1,13 @@
 import Link from 'next/link'
 import { BASE_URL } from '../../lib/constants.ts'
+import { withSiteAlternates } from '../../lib/metadata.ts'
 
 export const metadata = {
   title: 'Privacy',
   description: 'Privacy information for Awesome Claude Plugins.',
-  alternates: {
+  alternates: withSiteAlternates({
     canonical: `${BASE_URL}/privacy`,
-  },
+  }),
   robots: {
     index: true,
     follow: true,

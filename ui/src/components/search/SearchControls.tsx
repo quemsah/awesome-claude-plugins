@@ -1,7 +1,7 @@
 'use client'
 
 import { Search } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDebouncedCallback } from 'use-debounce'
 import type { SortOption } from '../../lib/sortOptions.ts'
 import { Input } from '../ui/input.tsx'
@@ -10,6 +10,7 @@ import { Sort } from './Sort.tsx'
 const pluralRules = new Intl.PluralRules('en')
 
 interface SearchControlsProps {
+  navigationVersion: number
   searchTerm: string
   onSearchChange: (value: string) => void
   sortOption: SortOption
@@ -19,6 +20,7 @@ interface SearchControlsProps {
 }
 
 export function SearchControls({
+  navigationVersion,
   searchTerm,
   onSearchChange,
   sortOption,
@@ -27,6 +29,7 @@ export function SearchControls({
   filteredRepoCount,
 }: SearchControlsProps) {
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm)
+  const lastNavigationVersion = useRef(navigationVersion)
 
   useEffect(() => {
     setLocalSearchTerm(searchTerm)
@@ -44,6 +47,15 @@ export function SearchControls({
   const debouncedSearch = useDebouncedCallback((value: string) => {
     onSearchChange(value)
   }, 250)
+
+  // A Home link or browser history navigation supersedes an uncommitted local keystroke.
+  // Otherwise the 250 ms callback can restore the query just cleared by the router.
+  useEffect(() => {
+    if (lastNavigationVersion.current === navigationVersion) return
+    lastNavigationVersion.current = navigationVersion
+    debouncedSearch.cancel()
+    setLocalSearchTerm(searchTerm)
+  }, [debouncedSearch, navigationVersion, searchTerm])
 
   const handleSearchChange = (value: string) => {
     setLocalSearchTerm(value)
@@ -74,7 +86,7 @@ export function SearchControls({
         </div>
       </div>
       <div aria-atomic="true" aria-live="polite" className="text-center text-muted-foreground text-sm md:text-right" role="status">
-        {`${filteredPluginCount} ${pluralize(filteredPluginCount, 'plugin', 'plugins')} available across ${filteredRepoCount} ${pluralize(filteredRepoCount, 'repository', 'repositories')}`}
+        {`${filteredPluginCount.toLocaleString('en-US')} ${pluralize(filteredPluginCount, 'plugin', 'plugins')} available across ${filteredRepoCount.toLocaleString('en-US')} ${pluralize(filteredRepoCount, 'repository', 'repositories')}`}
       </div>
     </section>
   )
