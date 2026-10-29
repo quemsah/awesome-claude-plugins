@@ -708,6 +708,60 @@ it('clears a stale REST ETag after accepting GraphQL marketplace content', async
   })
 })
 
+it('publishes bounded plugin summaries without splitting or preserving malformed surrogate pairs', async () => {
+  const db = database()
+  const nodeId = 'node-unicode-marketplace'
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), nodeId)
+  const oid = 'unicode-marketplace-oid'
+  const astral = String.fromCodePoint(0x1f600)
+  const pluginName = `${'n'.repeat(158)}${astral}${'x'.repeat(5)}`
+  const pluginDescription = `${'d'.repeat(298)}${astral}${'x'.repeat(5)}`
+  const manifest = {
+    name: 'catalog',
+    owner: { name: 'maintainer' },
+    plugins: [
+      { name: pluginName, description: pluginDescription, source: './plugins/demo' },
+      { name: '\ud800bad\udc00', description: '\udc00bad\ud800', source: './plugins/malformed' },
+    ],
+  }
+  const text = JSON.stringify(manifest)
+  const client = {
+    ...reader(),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [
+        {
+          ...githubRepo('team', 'repo'),
+          node_id: nodeId,
+          marketplace_oid: oid,
+          marketplace_byte_size: text.length,
+          marketplace_is_binary: false,
+        },
+      ],
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+    getMarketplaceBlobsByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [graphQLMarketplaceBlob(nodeId, oid, { text })],
+      rateLimit: { cost: 1, remaining: 4_998, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 2 },
+    }),
+  }
+
+  const counts = await enrichRepositories(db, client, 'crawl-1')
+  const published = listPublishable(db).find((repository) => repository.id === id)
+
+  expect(counts).toMatchObject({ newReady: 1, conclusive: 1, warnings: 0 })
+  expect(published?.plugins_json).toBe(
+    JSON.stringify([
+      { name: `${'n'.repeat(158)}${astral}`, description: `${'d'.repeat(298)}${astral}` },
+      { name: '\ufffdbad\ufffd', description: '\ufffdbad\ufffd' },
+    ]),
+  )
+  expect(JSON.parse(published?.plugins_json ?? '[]')).toHaveLength(2)
+  expect(published?.plugins_json).not.toContain('\\ud800')
+  expect(published?.plugins_json).not.toContain('\\udc00')
+})
+
 it('keeps a successful cached count when its old parser version is stale', async () => {
   const db = database()
   const nodeId = 'MDEwOlJlcG9zaXRvcnky'

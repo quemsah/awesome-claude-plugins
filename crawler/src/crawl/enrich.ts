@@ -333,6 +333,29 @@ const MARKETPLACE_CONTENT_BATCH_SIZE = 25
 const MARKETPLACE_CONTENT_MAX_BYTES = 750_000
 const MARKETPLACE_UNKNOWN_BYTES = 32_768
 
+function boundedDisplayText(value: string, maxLength: number): string {
+  const input = value.trim()
+  let output = ''
+  for (let index = 0; index < input.length && output.length < maxLength; index++) {
+    const code = input.charCodeAt(index)
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = input.charCodeAt(index + 1)
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        if (output.length + 2 > maxLength) break
+        output += input.slice(index, index + 2)
+        index++
+      } else {
+        output += '\ufffd'
+      }
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      output += '\ufffd'
+    } else {
+      output += input[index]
+    }
+  }
+  return output
+}
+
 const RETRY_LATER = Symbol('retry-later')
 type RetryLater = { kind: typeof RETRY_LATER; reason: GitHubRetryReason; retryAt?: number }
 type RestAttemptPolicy = {
@@ -421,8 +444,8 @@ function pluginSummariesJson(items: readonly unknown[]): string {
   for (const item of items) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) continue
     const record = item as Record<string, unknown>
-    const name = typeof record.name === 'string' ? record.name.trim().slice(0, 160) : ''
-    const description = typeof record.description === 'string' ? record.description.trim().slice(0, 300) : ''
+    const name = typeof record.name === 'string' ? boundedDisplayText(record.name, 160) : ''
+    const description = typeof record.description === 'string' ? boundedDisplayText(record.description, 300) : ''
     if (name || description) summaries.push({ ...(name ? { name } : {}), ...(description ? { description } : {}) })
     if (summaries.length >= 30) break
   }
