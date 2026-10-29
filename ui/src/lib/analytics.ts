@@ -19,6 +19,10 @@ export type AnalyticsEvent =
 
 export type AnalyticsMetadata = Record<string, string | number>
 
+// Simple Analytics otherwise includes UTM/ref query parameters, referrers, and a
+// page-load session ID in events. Keep them disabled to match the privacy policy.
+export const SIMPLE_ANALYTICS_IGNORED_METRICS = 'referrer,utm,session'
+
 export function shouldLoadAnalytics(railwayEnvironmentName: string | undefined): boolean {
   return railwayEnvironmentName === 'production'
 }

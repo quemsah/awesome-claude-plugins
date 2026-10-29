@@ -4,6 +4,7 @@ import {
   flushPendingEvents,
   isAnalyticsActive,
   isPrivacyRestricted,
+  SIMPLE_ANALYTICS_IGNORED_METRICS,
   shouldLoadAnalytics,
   trackCopyMarketplaceAdd,
   trackCopyPluginInstall,
@@ -20,6 +21,10 @@ describe('analytics', () => {
 
   beforeEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it('configures Simple Analytics to omit URL parameters and referrers from events', () => {
+    expect(SIMPLE_ANALYTICS_IGNORED_METRICS.split(',')).toEqual(['referrer', 'utm', 'session'])
   })
 
   afterEach(() => {
