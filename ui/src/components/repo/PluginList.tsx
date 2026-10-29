@@ -41,7 +41,6 @@ export function PluginList({ title, items, repoPath, defaultBranch, source }: Pl
               </li>
             )
           })}
-
         </ul>
       </dd>
     </div>
