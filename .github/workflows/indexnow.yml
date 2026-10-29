@@ -2,29 +2,60 @@ name: IndexNow
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Submit changed repository URLs, or the full live sitemap'
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
+          - changed
+  push:
+    branches: [main]
+    paths:
+      - ui/src/data/repos.json
   schedule:
-    - cron: '17 4 * * 1'
+    - cron: '17 4 * * *'
+
+concurrency:
+  group: indexnow-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   notify:
-    name: Submit canonical sitemap URLs
+    name: Submit changed repository URLs
     runs-on: ubuntu-latest
     permissions:
       contents: read
 
     steps:
       - name: Clone repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
 
-      - name: Submit sitemap URLs to IndexNow
+      - name: Test IndexNow change detection
+        run: node --test scripts/indexnow-*.test.mjs
+        working-directory: ui
+
+      - name: Restore and save IndexNow baseline
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: ${{ runner.temp }}/indexnow-state
+          key: indexnow-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            indexnow-${{ github.ref_name }}-
+
+      - name: Submit IndexNow URLs
         run: npm run indexnow
         working-directory: ui
         env:
           INDEXNOW_SITE_URL: ${{ vars.INDEXNOW_SITE_URL || 'https://awesomeclaudeplugins.com' }}
+          INDEXNOW_MODE: ${{ inputs.mode || 'changed' }}
+          INDEXNOW_BASELINE_PATH: ${{ runner.temp }}/indexnow-state/repos.json

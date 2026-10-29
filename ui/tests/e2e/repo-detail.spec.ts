@@ -11,6 +11,31 @@ const repoCanonicalPattern = /\/ykdojo\/claude-code-tips$/
 const repoMarkdownAlternatePattern = /\/ykdojo\/claude-code-tips\.md$/
 const repoOpenGraphImagePattern = /\/og\/ykdojo\/claude-code-tips$/
 const installButtonPattern = /install/i
+const mockGithubApiUrl = `http://127.0.0.1:${process.env.MOCK_GITHUB_PORT ?? '3100'}`
+
+// Next.js may serialize the public GitHub API origin into the server-rendered page.
+// Keep browser-side repository requests deterministic regardless of that runtime prop.
+test.beforeEach(async ({ page }) => {
+  await page.route('https://api.github.com/repos/**', async (route) => {
+    const requestedUrl = new URL(route.request().url())
+    const response = await route.fetch({ url: `${mockGithubApiUrl}${requestedUrl.pathname}${requestedUrl.search}` })
+    await route.fulfill({ response })
+  })
+})
+
+/**
+ * Repository pages can embed a browser API origin during Next.js prerendering.
+ * Redirect those client requests to the mock GitHub server regardless of the
+ * origin embedded in the page, without bypassing the real UI fetch behavior.
+ */
+test.beforeEach(async ({ page }) => {
+  await page.route('**/repos/*/*', async (route) => {
+    const requestedUrl = new URL(route.request().url())
+    const mockOrigin = `http://127.0.0.1:${process.env.MOCK_GITHUB_PORT ?? '3100'}`
+    const response = await route.fetch({ url: `${mockOrigin}${requestedUrl.pathname}${requestedUrl.search}` })
+    await route.fulfill({ response })
+  })
+})
 
 test('repo detail page serves catalog repository data in its HTML without contacting GitHub', async ({ page }) => {
   const html = await (await page.request.get('/ykdojo/claude-code-tips')).text()
@@ -29,6 +54,8 @@ test('repo detail page refreshes repository and marketplace data in the browser'
   await expect(page.getByRole('heading', { name: 'claude-code-tips' })).toBeVisible()
   await expect(page.getByText('A mocked Claude Code plugin repository')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Visit repository homepage' })).toBeVisible()
+  await expect(page.getByText('Last pushed')).toBeVisible()
+  await expect(page.getByText('Last commit')).toHaveCount(0)
   await expect(page.locator('[data-slot="badge"]').filter({ hasText: 'issues' })).toHaveCount(1)
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', repoCanonicalPattern)
   await expect(page.locator('link[rel="alternate"][type="text/markdown"]')).toHaveAttribute('href', repoMarkdownAlternatePattern)
@@ -46,9 +73,9 @@ test('repo detail page refreshes repository and marketplace data in the browser'
   )
   expect(JSON.stringify(jsonLd)).not.toContain('"Unknown"')
   const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Example Plugin@1.2.3' }) })
-  await expect(plugin.getByText('/plugin install example-plugin@example-plugin')).toBeVisible()
+  await expect(plugin.getByText('/plugin install example-plugin@ykdojo')).toBeVisible()
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
-  await expect.poll(() => copiedText(page)).toBe('/plugin install example-plugin@example-plugin')
+  await expect.poll(() => copiedText(page)).toBe('/plugin install example-plugin@ykdojo')
 })
 
 test('repo detail page uses the manifest marketplace name for fallback install commands', async ({ page }) => {
@@ -65,6 +92,16 @@ test('repo detail page uses the manifest marketplace name for fallback install c
   )
 })
 
+test('repo detail page renders a GitHub source object as a repository link', async ({ page }) => {
+  await page.goto('/ykdojo/claude-code-tips')
+
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'GitHub Source Plugin' }) })
+  await expect(plugin.getByRole('link', { name: 'Open source repository elsewhere/shared-plugins in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/elsewhere/shared-plugins/tree/main'
+  )
+})
+
 test('repo detail page renders plugins without a name or identifier without an install command', async ({ page }) => {
   await page.goto('/ykdojo/claude-code-tips')
 
@@ -76,7 +113,74 @@ test('repo detail page accepts marketplace manifests served as a plugin array', 
   await page.goto('/mksglu/context-mode')
 
   await expect(page.getByRole('heading', { name: 'Example Plugin@1.2.3' })).toBeVisible()
-  await expect(page.getByText('/plugin install example-plugin@example-plugin')).toBeVisible()
+  await expect(page.getByText('/plugin install example-plugin')).toBeVisible()
+})
+
+test('repo detail page keeps valid plugins and string component paths from a partly invalid manifest', async ({ page }) => {
+  await page.route('**/ykdojo/claude-code-tips/HEAD/.claude-plugin/marketplace.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        name: 'ykdojo',
+        plugins: [
+          {
+            name: 'String Component Plugin',
+            source: './plugins/string-component-plugin',
+            commands: './commands/run.md',
+            agents: './agents/reviewer.md',
+            mcpServers: './mcp.json',
+          },
+          { name: 'Invalid Plugin', source: '../outside' },
+        ],
+      }),
+    })
+  )
+
+  await page.goto('/ykdojo/claude-code-tips')
+
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'String Component Plugin' }) })
+  await expect(plugin).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./commands/run.md in a new tab' })).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./agents/reviewer.md in a new tab' })).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./mcp.json in a new tab' })).toBeVisible()
+  await expect(page.getByText('1 invalid plugin entry was skipped.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Marketplace manifest contains invalid data.')).toBeHidden()
+})
+
+test('repo detail page renders component names from object maps without treating values as file links', async ({ page }) => {
+  await page.route('**/ykdojo/claude-code-tips/HEAD/.claude-plugin/marketplace.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        name: 'ykdojo',
+        plugins: [
+          {
+            name: 'Mapped Components Plugin',
+            source: './plugins/mapped-components',
+            commands: { deploy: './commands/deploy.md' },
+            agents: { reviewer: { description: 'Reviews code' } },
+            mcpServers: { firebase: { command: 'npx', args: ['-y', 'firebase-tools'] } },
+          },
+        ],
+      }),
+    })
+  )
+
+  await page.goto('/ykdojo/claude-code-tips')
+
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Mapped Components Plugin' }) })
+  await expect(plugin).toBeVisible()
+  await expect(plugin.getByText('Commands (1)')).toBeVisible()
+  await expect(plugin.getByText('Agents (1)')).toBeVisible()
+  await expect(plugin.getByText('MCP Servers (1)')).toBeVisible()
+  await expect(plugin.getByText('deploy', { exact: true })).toBeVisible()
+  await expect(plugin.getByText('reviewer', { exact: true })).toBeVisible()
+  await expect(plugin.getByText('firebase', { exact: true })).toBeVisible()
+  for (const component of ['deploy', 'reviewer', 'firebase']) {
+    await expect(plugin.getByRole('link', { name: `Open ${component} in a new tab` })).toHaveCount(0)
+  }
 })
 
 test('repo detail page renders an empty plugin state when the manifest is missing', async ({ page }) => {
@@ -92,7 +196,18 @@ test('repo detail page surfaces a recoverable error when the manifest fails to l
 
   await expect(page.getByRole('heading', { name: 'kaito' })).toBeVisible()
   await expect(page.getByText(marketplaceErrorText)).toBeVisible()
+  await expect(page.getByText('request limit')).toHaveCount(0)
   await expect(page.getByText(noPluginsText)).toBeHidden()
+  await expect(page.getByRole('link', { name: 'View marketplace.json' })).toBeVisible()
+})
+
+test('manifest error identifies an HTTP 429 rate limit', async ({ page }) => {
+  await page.route('**/kaito-project/kaito/HEAD/.claude-plugin/marketplace.json', (route) =>
+    route.fulfill({ status: 429, headers: { 'access-control-allow-origin': '*' }, body: 'Rate limited' })
+  )
+  await page.goto('/kaito-project/kaito')
+
+  await expect(page.getByText('Failed to load marketplace manifest due to a request limit.')).toBeVisible()
   await expect(page.getByRole('link', { name: 'View marketplace.json' })).toBeVisible()
 })
 
@@ -121,4 +236,19 @@ test('repo detail page rejects paths outside the catalog', async ({ page }) => {
   await page.goto('/missing/repo')
 
   await expect(page.getByRole('heading', { name: '404' })).toBeVisible()
+  await expect(page.getByText('Repository not found')).toBeVisible()
+  await expect(
+    page.getByText("We couldn't find this repository in our catalog. It may have been removed, renamed, or not indexed yet.")
+  ).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Search for "repo"' })).toHaveAttribute('href', '/?q=repo')
+  await expect(page.getByRole('link', { name: 'Check on GitHub' })).toHaveAttribute('href', 'https://github.com/missing/repo')
+})
+
+test('unrecognized multi-segment paths render a generic 404', async ({ page }) => {
+  await page.goto('/missing/repo/extra')
+
+  await expect(page.getByRole('heading', { name: '404' })).toBeVisible()
+  await expect(page.getByText('Page not found')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Check on GitHub' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Go home' })).toBeVisible()
 })

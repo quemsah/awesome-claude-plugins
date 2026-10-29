@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { copyText } from '../lib/clipboard.ts'
 import { getPluginInstallCommand, isPluginInstallCommandVerified } from '../lib/installCommand.ts'
 
-export function useInstallCommand(pluginName?: string, pluginId?: string, marketplaceName?: string) {
+export function useInstallCommand(pluginName?: string, marketplaceName?: string) {
   const [isCopied, setIsCopied] = useState(false)
   const [copyError, setCopyError] = useState<string | null>(null)
   const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -16,8 +16,8 @@ export function useInstallCommand(pluginName?: string, pluginId?: string, market
     }
   }, [])
 
-  const installCommand = getPluginInstallCommand({ pluginName, pluginId, marketplaceName })
-  const isVerified = isPluginInstallCommandVerified(pluginId, marketplaceName)
+  const installCommand = getPluginInstallCommand({ pluginName, marketplaceName })
+  const isVerified = isPluginInstallCommandVerified(pluginName, marketplaceName)
 
   const handleCopyClick = async () => {
     if (!(installCommand && isVerified)) return
