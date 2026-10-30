@@ -456,3 +456,37 @@ it('configures SQLite durability and enforces foreign keys', () => {
     db.close()
   }
 })
+
+it('migrates populated v15 repository metadata to v16 without resetting first-seen dates', () => {
+  const db = new Database(':memory:')
+  try {
+    db.exec(`
+      CREATE TABLE repositories (
+        id INTEGER PRIMARY KEY,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        repo_updated TEXT,
+        catalog_updated_at TEXT
+      );
+      INSERT INTO repositories VALUES (1, '2024-01-01T00:00:00.000Z', '2024-01-02T00:00:00.000Z', '2024-01-03T00:00:00Z', '2024-01-04T00:00:00.000Z');
+      PRAGMA user_version = 15;
+    `)
+    initializeSchema(db)
+    expect(db.pragma('user_version', { simple: true })).toBe(16)
+    expect(db.prepare('SELECT createdAt, repo_updated, license, archived FROM repositories').get()).toEqual({
+      createdAt: '2024-01-01T00:00:00.000Z',
+      repo_updated: '2024-01-03T00:00:00Z',
+      license: null,
+      archived: null,
+    })
+    db.exec("UPDATE repositories SET archived = 1, license = 'MIT'")
+    expect(db.prepare('SELECT archived, license FROM repositories').get()).toEqual({ archived: 1, license: 'MIT' })
+    expect(db.prepare('SELECT catalog_updated_at FROM repositories').get()).not.toEqual({
+      catalog_updated_at: '2024-01-04T00:00:00.000Z',
+    })
+    initializeSchema(db)
+    expect(db.pragma('user_version', { simple: true })).toBe(16)
+  } finally {
+    db.close()
+  }
+})
