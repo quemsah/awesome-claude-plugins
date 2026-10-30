@@ -14,7 +14,7 @@ export type CatalogRecord = {
   plugins?: PluginSummary[]
   catalog_updated_at: string
   pushed_at?: string | null
-  created_at?: string | null
+  catalog_added_at?: string | null
   license?: string | null
   archived?: boolean | null
   id: number
@@ -35,7 +35,7 @@ export type Repo = {
   plugin_summaries?: PluginSummary[]
   catalog_updated_at?: string
   pushed_at?: string | null
-  created_at?: string | null
+  catalog_added_at?: string | null
   license?: string | null
   archived?: boolean | null
   id: number

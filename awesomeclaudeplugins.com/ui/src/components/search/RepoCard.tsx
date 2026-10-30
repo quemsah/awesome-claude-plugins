@@ -4,11 +4,11 @@ import { GitFork, Star } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { trackEvent } from '../../lib/analytics.ts'
-import { isArchivedRepo } from '../../lib/repoMetadata.ts'
 import { copyText } from '../../lib/clipboard.ts'
 import { getMarketplaceAddCommand } from '../../lib/installCommand.ts'
-import { formatRelativeTime } from '../../lib/utils.ts'
 import { getGitHubOwnerUrl, getGitHubRepoPath, getGitHubRepoUrl } from '../../lib/repositoryIdentity.ts'
+import { isArchivedRepo } from '../../lib/repoMetadata.ts'
+import { formatRelativeTime } from '../../lib/utils.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { ClaudeIcon } from '../common/ClaudeIcon.tsx'
 import { CopiedIcon } from '../common/CopiedIcon.tsx'
@@ -41,7 +41,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
   const hasValidRepoInfo = Boolean(marketplaceCommand)
   const archived = isArchivedRepo(repo)
   const updatedAge = formatRelativeTime(repo.pushed_at)
-  const addedAge = formatRelativeTime(repo.created_at)
+  const addedAge = formatRelativeTime(repo.catalog_added_at)
   const freshnessText = updatedAge ? `updated ${updatedAge}` : addedAge ? `added ${addedAge}` : null
 
   useEffect(() => {

@@ -7,8 +7,8 @@ import { CATALOG_PAGE_SIZE } from './catalogPagination.ts'
 import { type CatalogQuality, getCatalogQuality } from './catalogQuality.ts'
 import { getCatalog } from './catalogStore.ts'
 import { createFuseIndex } from './fuzzySearch.ts'
-import { getGitHubRepoPath } from './repositoryIdentity.ts'
 import { isArchivedRepo } from './repoMetadata.ts'
+import { getGitHubRepoPath } from './repositoryIdentity.ts'
 import { normalizeSearchQuery } from './searchQuery.ts'
 import type { SortOption } from './sortOptions.ts'
 
@@ -34,7 +34,8 @@ function sortDateValue(value: string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-function compareCatalogRepos(left: CatalogRepo, right: CatalogRepo, sortOption: SortOption): number {
+/** Keep archived repositories at the end of every search/browse ordering. */
+export function compareCatalogRepos(left: CatalogRepo, right: CatalogRepo, sortOption: SortOption): number {
   const archivedDiff = Number(isArchivedRepo(left)) - Number(isArchivedRepo(right))
   if (archivedDiff !== 0) return archivedDiff
   const descriptionSignal = (repo: CatalogRepo) => (repo.description?.trim() ? 1 : 0)
@@ -48,7 +49,9 @@ function compareCatalogRepos(left: CatalogRepo, right: CatalogRepo, sortOption: 
     case 'updated-desc':
       return sortDateValue(right.pushed_at) - sortDateValue(left.pushed_at) || (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0)
     case 'created-desc':
-      return sortDateValue(right.created_at) - sortDateValue(left.created_at) || (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0)
+      return (
+        sortDateValue(right.catalog_added_at) - sortDateValue(left.catalog_added_at) || (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0)
+      )
     default:
       return (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0) || descriptionSignal(right) - descriptionSignal(left)
   }
