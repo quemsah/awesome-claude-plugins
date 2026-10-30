@@ -11,6 +11,23 @@ const STATIC_MARKDOWN_PATHS: Readonly<Record<string, string>> = {
 const RESERVED_REPOSITORY_ROOTS = new Set(['.well-known', '_next', 'api', 'browse', 'sitemap'])
 const QUALITY_PARAMETER_PATTERN = /^q\s*=/i
 
+// Certain malformed requests contain encoded separators or Unicode lookalikes.
+// Reject them before Next.js tries to resolve them as route params.
+const INVALID_PATH_CHARACTER_PATTERN = /[\uFFFD\u2044\u2215\u29F8\uFF0F\\]/u
+const DOT_SEGMENT_PATTERN = /(?:^|\/)\.{2}(?:\/|$)/
+
+function hasMalformedPath(pathname: string): boolean {
+  if (INVALID_PATH_CHARACTER_PATTERN.test(pathname)) return true
+
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(pathname)
+  } catch {
+    return true
+  }
+  return INVALID_PATH_CHARACTER_PATTERN.test(decoded) || DOT_SEGMENT_PATTERN.test(decoded)
+}
+
 type MediaPreference = {
   quality: number
   specificity: number
@@ -18,6 +35,10 @@ type MediaPreference = {
 
 export function proxy(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl
+  if (hasMalformedPath(pathname)) {
+    return new NextResponse(null, { status: 404 })
+  }
+
   const requestedPath = pathname.slice(1)
   const accept = request.headers.get('accept')
 
