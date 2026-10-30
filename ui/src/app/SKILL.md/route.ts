@@ -68,6 +68,8 @@ git -C {absolute_local_path} status --porcelain --untracked-files=all --ignored
 
 Require the first command to equal the original audited full commit SHA and the second command to print nothing. If either check fails, stop; inspect and audit the changed files, then obtain renewed user approval before continuing.
 
+Local relative-path plugins load in place, and Claude Code does not install their Node.js dependencies into the checkout. Before enabling hooks or MCP servers, inspect the plugin's dependency manifest, lockfile, setup commands, and runtime paths; obtain explicit approval for dependency installation. Use the plugin's documented setup that keeps dependencies outside the audited checkout, for example in CLAUDE_PLUGIN_DATA, only after verifying that its runtime actually loads them there. Use locked versions and integrity checks, keep the checkout clean, and repeat the checks above after setup. If the plugin requires an in-checkout node_modules directory or has no compatible audited setup, stop and request a supported installation method rather than bypassing the clean-check requirement.
+
 If both checks pass, register the audited local checkout using its absolute path. Inside Claude Code (these slash commands are **not** shell commands), enter:
 
 \`\`\`text
@@ -76,6 +78,9 @@ If both checks pass, register the audited local checkout using its absolute path
 \`\`\`
 
 Use the actual plugin and marketplace identifiers from the inspected manifest. Stop if either cannot be verified.
+
+Keep this dedicated checkout unchanged while the plugin is enabled. Local source edits become active at the next session start or /reload-plugins, so repeat the commit and clean-status checks before every session start or reload. Do not load changed source or dependency artifacts without reviewing the changes and obtaining renewed approval. If those checks cannot be enforced, do not use this mutable local installation; use a protected immutable installation source instead. See the [plugin loading reference](https://code.claude.com/docs/en/plugins/loading) for local loading and dependency setup.
+
 ## Catalog API Specification
 
 ${renderCatalogApiContract()}

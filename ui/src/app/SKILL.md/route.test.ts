@@ -20,5 +20,12 @@ describe('/SKILL.md', () => {
     expect(guide).toContain('/plugin marketplace add {absolute_local_path}')
     expect(guide).not.toContain('/plugin marketplace add {owner}/{repo}')
     expect(guide).toContain('obtain explicit approval before installing or running anything')
+    expect(guide).toContain('Claude Code does not install their Node.js dependencies into the checkout')
+    expect(guide).toContain('its runtime actually loads them there')
+    expect(guide).toContain('stop and request a supported installation method rather than bypassing the clean-check requirement')
+    expect(guide).toContain('before every session start or reload')
+    expect(guide).toContain(
+      'Do not load changed source or dependency artifacts without reviewing the changes and obtaining renewed approval'
+    )
   })
 })
