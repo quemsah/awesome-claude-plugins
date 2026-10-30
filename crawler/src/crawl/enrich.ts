@@ -723,6 +723,27 @@ async function loadLegacyMarketplace(
       writes,
     )
   }
+  if (result.kind === 'not-modified' && row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION) {
+    recordProblem(
+      db,
+      runId,
+      counts,
+      row,
+      'marketplace_not_modified_with_stale_parser',
+      loaded.ready,
+      false,
+      now,
+      0,
+      log,
+      {
+        request: `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/marketplace.json`,
+        parserVersion: row.marketplace_parser_version,
+        expectedParserVersion: MARKETPLACE_PARSER_VERSION,
+      },
+      writes,
+    )
+    return null
+  }
   const pluginsCount = result.kind === 'not-modified' ? row.plugins_count : result.data.plugins.length
   if (pluginsCount === null) {
     recordProblem(db, runId, counts, row, 'marketplace_not_modified_without_data', loaded.ready, false, now, 0, undefined, {}, writes)
