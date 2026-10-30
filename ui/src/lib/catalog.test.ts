@@ -106,9 +106,7 @@ describe('formatCatalogRepo', () => {
   it('formats plugin names and descriptions when plugins array is provided', () => {
     const rawRepo: CatalogRepo = {
       id: 999,
-      html_url: 'https://github.com/example/repo',
       owner: 'example',
-      owner_url: 'https://github.com/example',
       repo_name: 'repo',
       description: 'Test repository',
       stargazers_count: 10,
@@ -125,9 +123,7 @@ describe('formatCatalogRepo', () => {
   it('normalizes single plugin metadata fields into plugins array', () => {
     const rawRepo: CatalogRepo = {
       id: 999,
-      html_url: 'https://github.com/example/repo',
       owner: 'example',
-      owner_url: 'https://github.com/example',
       repo_name: 'repo',
       description: 'Test repository',
       stargazers_count: 10,
@@ -145,9 +141,7 @@ describe('formatCatalogRepo', () => {
   it('leaves repos without plugin metadata unchanged without adding empty plugins', () => {
     const rawRepo: CatalogRepo = {
       id: 999,
-      html_url: 'https://github.com/example/repo',
       owner: 'example',
-      owner_url: 'https://github.com/example',
       repo_name: 'repo',
       description: 'Test repository',
       stargazers_count: 10,
