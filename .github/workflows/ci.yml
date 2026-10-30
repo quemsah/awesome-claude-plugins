@@ -3,7 +3,12 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - chore/site-directory-layout
+      - fix/report-12-marketplace-contract
+      - fix/report-13-catalog-contract
+      - fix/report-35-official-contract
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
