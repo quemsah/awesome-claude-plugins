@@ -220,16 +220,25 @@ it('publishes normalized GitHub freshness and first-seen date without changing l
   try {
     const id = upsertDiscovery(db, 'https://github.com/demo/metadata', null, '2024-01-02T00:00:00.000Z')
     updateEnriched(db, id, {
-      owner: 'demo', owner_url: 'https://github.com/demo', repo_name: 'metadata',
-      description: 'Recent', stargazers_count: 1, forks_count: 0, subscribers_count: 0,
-      plugins_count: 0, repo_updated: '2026-10-30T12:00:00Z', license: 'MIT', archived: 0,
+      owner: 'demo',
+      owner_url: 'https://github.com/demo',
+      repo_name: 'metadata',
+      description: 'Recent',
+      stargazers_count: 1,
+      forks_count: 0,
+      subscribers_count: 0,
+      plugins_count: 0,
+      repo_updated: '2026-10-30T12:00:00Z',
+      license: 'MIT',
+      archived: 0,
     })
     const rows = listPublishable(db)
     const normal = JSON.parse(renderRepos(rows))[0]
     expect(normal).toMatchObject({
       pushed_at: '2026-10-30T12:00:00.000Z',
       catalog_added_at: '2024-01-02T00:00:00.000Z',
-      license: 'MIT', archived: false,
+      license: 'MIT',
+      archived: false,
     })
     const legacy = JSON.parse(renderRepos(rows, { legacyUrls: true }))[0]
     expect(legacy.pushed_at).toBeUndefined()

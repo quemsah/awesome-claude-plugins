@@ -264,10 +264,14 @@ it('stores nullable GitHub metadata without changing the first discovery date', 
   )
   repositoryStorage.updateEnriched(db, id, { ...enriched, license: 'MIT', archived: 1 })
   expect(db.prepare('SELECT license, archived, createdAt FROM repositories WHERE id = ?').get(id)).toEqual({
-    license: 'MIT', archived: 1, createdAt: '2024-01-02T00:00:00.000Z',
+    license: 'MIT',
+    archived: 1,
+    createdAt: '2024-01-02T00:00:00.000Z',
   })
   repositoryStorage.updateEnriched(db, id, { ...enriched, license: null, archived: 0 })
   expect(db.prepare('SELECT license, archived, createdAt FROM repositories WHERE id = ?').get(id)).toEqual({
-    license: null, archived: 0, createdAt: '2024-01-02T00:00:00.000Z',
+    license: null,
+    archived: 0,
+    createdAt: '2024-01-02T00:00:00.000Z',
   })
 })

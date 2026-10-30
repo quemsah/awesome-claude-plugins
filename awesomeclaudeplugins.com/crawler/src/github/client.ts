@@ -242,10 +242,10 @@ function isGraphQLRepoPayload(value: unknown): value is GraphQLRepoPayload {
     count(value.forkCount),
     nonempty(value.pushedAt),
     typeof value.isPrivate === 'boolean',
-    (value.isArchived === undefined || typeof value.isArchived === 'boolean'),
-    (value.licenseInfo === undefined ||
+    value.isArchived === undefined || typeof value.isArchived === 'boolean',
+    value.licenseInfo === undefined ||
       value.licenseInfo === null ||
-      (record(value.licenseInfo) && (value.licenseInfo.spdxId === null || typeof value.licenseInfo.spdxId === 'string'))),
+      (record(value.licenseInfo) && (value.licenseInfo.spdxId === null || typeof value.licenseInfo.spdxId === 'string')),
     nonempty(value.owner.login),
     nonempty(value.owner.url),
     count(value.watchers.totalCount),
@@ -266,9 +266,7 @@ function parseGraphQLRepo(value: unknown): GitHubGraphQLRepo | null {
     subscribers_count: value.watchers.totalCount,
     pushed_at: value.pushedAt,
     ...(value.isArchived === undefined ? {} : { archived: value.isArchived }),
-    ...(value.licenseInfo === undefined
-      ? {}
-      : { license: value.licenseInfo === null ? null : { spdx_id: value.licenseInfo.spdxId } }),
+    ...(value.licenseInfo === undefined ? {} : { license: value.licenseInfo === null ? null : { spdx_id: value.licenseInfo.spdxId } }),
     private: value.isPrivate,
     owner: { login: value.owner.login, html_url: value.owner.url },
     marketplace_oid: value.object?.oid ?? null,

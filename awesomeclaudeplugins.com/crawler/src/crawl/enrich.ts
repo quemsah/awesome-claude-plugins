@@ -1296,7 +1296,7 @@ async function loadRepository(
     result = await reader.getRepository(
       identity.owner,
       identity.repo,
-      row.archived == null ? undefined : row.repository_etag ?? undefined,
+      row.archived == null ? undefined : (row.repository_etag ?? undefined),
       { maxAttempts: policy.maxAttempts },
     )
   } catch (error) {

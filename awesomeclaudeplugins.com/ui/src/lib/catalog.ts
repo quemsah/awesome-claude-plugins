@@ -48,11 +48,13 @@ export function compareCatalogRepos(left: CatalogRepo, right: CatalogRepo, sortO
     }
     case 'updated-desc':
       return (
-        sortDateValue(right.pushed_at) - sortDateValue(left.pushed_at) || (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0)
+        sortDateValue(right.pushed_at) - sortDateValue(left.pushed_at) ||
+        (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0)
       )
     case 'created-desc':
       return (
-        sortDateValue(right.catalog_added_at) - sortDateValue(left.catalog_added_at) || (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0)
+        sortDateValue(right.catalog_added_at) - sortDateValue(left.catalog_added_at) ||
+        (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0)
       )
     default:
       return (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0) || descriptionSignal(right) - descriptionSignal(left)

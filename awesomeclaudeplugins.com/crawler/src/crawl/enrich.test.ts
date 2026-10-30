@@ -2189,7 +2189,8 @@ it('enriches persisted license and archive data and uses immutable discovery tim
   expect(JSON.parse(renderRepos(listPublishable(db)))[0]).toMatchObject({
     pushed_at: '2026-09-22T12:00:00.000Z',
     catalog_added_at: '2025-01-02T03:04:05.000Z',
-    license: 'MIT', archived: true,
+    license: 'MIT',
+    archived: true,
   })
 })
 
@@ -2199,11 +2200,13 @@ it('backfills archived metadata without reusing a legacy REST ETag', async () =>
   ready(db, id)
   db.prepare('UPDATE repositories SET repository_etag = ? WHERE id = ?').run('"old-etag"', id)
   const getRepository = vi.fn(async (owner: string, name: string) => ({
-    kind: 'found' as const, data: { ...githubRepo(owner, name), archived: false, license: null },
+    kind: 'found' as const,
+    data: { ...githubRepo(owner, name), archived: false, license: null },
   }))
   await enrichRepositories(db, reader(getRepository), 'crawl-1')
   expect(getRepository).toHaveBeenCalledWith('team', 'repo', undefined, { maxAttempts: 1 })
   expect(db.prepare('SELECT archived, license FROM repositories WHERE id = ?').get(id)).toEqual({
-    archived: 0, license: null,
+    archived: 0,
+    license: null,
   })
 })

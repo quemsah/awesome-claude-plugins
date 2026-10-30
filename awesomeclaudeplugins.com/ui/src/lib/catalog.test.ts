@@ -1,13 +1,7 @@
 /** biome-ignore-all lint/style/useNamingConvention: Test assertion mirrors catalog field names. */
 
 import { describe, expect, it } from 'vitest'
-import {
-  type CatalogRepo,
-  compareCatalogRepos,
-  formatCatalogRepo,
-  getCanonicalCatalogRepos,
-  searchCatalogRepos,
-} from './catalog.ts'
+import { type CatalogRepo, compareCatalogRepos, formatCatalogRepo, getCanonicalCatalogRepos, searchCatalogRepos } from './catalog.ts'
 import { createFuseIndex } from './fuzzySearch.ts'
 import { isArchivedRepo } from './repoMetadata.ts'
 
@@ -177,8 +171,14 @@ describe('archived-aware sorting', () => {
 
 describe('metadata sorting on representative records', () => {
   const base = {
-    id: 1, owner: 'demo', repo_name: 'a', description: 'Active',
-    stargazers_count: 1, forks_count: 0, subscribers_count: 0, plugins_count: 1,
+    id: 1,
+    owner: 'demo',
+    repo_name: 'a',
+    description: 'Active',
+    stargazers_count: 1,
+    forks_count: 0,
+    subscribers_count: 0,
+    plugins_count: 1,
   } satisfies CatalogRepo
   it('sorts missing timestamps last', () => {
     const recent = { ...base, pushed_at: '2026-10-30T00:00:00.000Z' }
