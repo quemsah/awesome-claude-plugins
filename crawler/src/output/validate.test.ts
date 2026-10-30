@@ -33,9 +33,8 @@ it('reports issue count and paths for malformed records instead of silently drop
 it('uses the public plugin-summary contract when validating parsed snapshots', () => {
   const valid = { ...validRepo, plugins: [] }
   expect(() => validateSnapshot(JSON.stringify([valid]), JSON.stringify(validStats))).not.toThrow()
-  expect(() =>
-    validateSnapshot(JSON.stringify([{ ...validRepo, plugins: [{ description: 'bad' + String.fromCharCode(0xd800) }] }]), JSON.stringify(validStats)),
-  ).toThrow(/invalid public plugin summary/)
+  const malformed = [{ ...validRepo, plugins: [{ description: `bad${String.fromCharCode(0xd800)}` }] }]
+  expect(() => validateSnapshot(JSON.stringify(malformed), JSON.stringify(validStats))).toThrow(/invalid public plugin summary/)
 })
 
 it('keeps diagnostic paths but excludes arbitrary field names that could contain secrets', () => {
