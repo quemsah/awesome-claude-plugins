@@ -12,7 +12,10 @@
   "scripts": {
     "build:ui": "npm run build --workspace=awesome-claude-plugins",
     "start:ui": "npm run start --workspace=awesome-claude-plugins",
-    "build:crawler": "npm run build --workspace=catalog-crawler",
+    "build:crawler": "npm run build --workspace=catalog-crawler && npm run smoke:sqlite --workspace=catalog-crawler",
     "start:crawler": "npm run crawl --workspace=catalog-crawler"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true
   }
 }
