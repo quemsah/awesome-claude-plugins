@@ -10,6 +10,7 @@ import {
   type RepoResult,
 } from '../github/client.js'
 import { MARKETPLACE_INVALID_CONTENT_CACHE_VERSION } from '../github/marketplace.js'
+import { renderRepos } from '../output/catalogSnapshot.js'
 import { listPublishable, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
 import { beginRun, getRun, listRunErrors } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
@@ -760,6 +761,89 @@ it('publishes bounded plugin summaries without splitting or preserving malformed
   expect(JSON.parse(published?.plugins_json ?? '[]')).toHaveLength(2)
   expect(published?.plugins_json).not.toContain('\\ud800')
   expect(published?.plugins_json).not.toContain('\\udc00')
+})
+
+it.each([
+  ['malformed JSON', '{"plugins":['],
+  ['old unmatched surrogate', JSON.stringify([{ description: `old${'\ud800'}` }])],
+  ['oversized summary', JSON.stringify([{ description: 'd'.repeat(301) }])],
+  ['wrong summary shape', JSON.stringify([{ name: 42 }])],
+])('refreshes invalid cached plugin summaries after an unexpected 304 (%s)', async (_label, cachedSummary) => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old')
+  ready(db, id)
+  db.prepare('UPDATE repositories SET plugins_json = ?, marketplace_etag = ? WHERE id = ?').run(cachedSummary, '"stale"', id)
+  const getMarketplace = vi
+    .fn()
+    .mockResolvedValueOnce({ kind: 'not-modified' as const, etag: '"still-stale"' })
+    .mockResolvedValueOnce({
+      kind: 'found' as const,
+      data: { plugins: [{ name: 'repaired-plugin', description: 'Fresh summary' }] },
+      etag: '"fresh"',
+    })
+  const client = reader(undefined, getMarketplace)
+
+  const firstCounts = await enrichRepositories(db, client, 'crawl-1')
+  const firstSnapshot = renderRepos(listPublishable(db))
+  expect(getMarketplace).toHaveBeenNthCalledWith(1, 'team', 'repo', undefined, { maxAttempts: 1 })
+  expect(firstCounts).toMatchObject({ unchangedOnError: 1, warnings: 0 })
+  expect(JSON.parse(firstSnapshot)[0]).not.toHaveProperty('plugins')
+
+  await enrichRepositories(db, client, 'crawl-1')
+  expect(getMarketplace).toHaveBeenNthCalledWith(2, 'team', 'repo', undefined, { maxAttempts: 1 })
+  expect(JSON.parse(renderRepos(listPublishable(db)))[0].plugins).toEqual([{ name: 'repaired-plugin', description: 'Fresh summary' }])
+})
+
+it('refreshes invalid summaries on an unchanged GraphQL OID and repairs the published value', async () => {
+  const db = database()
+  const nodeId = 'node-invalid-cached-summary'
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), nodeId)
+  ready(db, id)
+  const oid = 'same-marketplace-oid'
+  db.prepare('UPDATE repositories SET marketplace_oid = ?, plugins_json = ? WHERE id = ?').run(
+    oid,
+    JSON.stringify([{ description: `old${'\ud800'}` }]),
+    id,
+  )
+  const blobText = JSON.stringify({
+    name: 'catalog',
+    owner: { name: 'maintainer' },
+    plugins: [{ name: 'fresh-plugin', source: './plugins/fresh', description: 'Valid again' }],
+  })
+  const getMarketplaceBlobsByNodeId = vi.fn(async () => ({
+    kind: 'found' as const,
+    data: [graphQLMarketplaceBlob(nodeId, oid, { text: blobText })],
+    rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+  }))
+  const getMarketplace = vi.fn(async () => ({
+    kind: 'temporary-error' as const,
+    status: 500,
+    reason: 'GraphQL should repair cache',
+    retryCount: 0,
+  }))
+  const client = {
+    ...reader(undefined, getMarketplace),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [
+        {
+          ...githubRepo('team', 'repo'),
+          node_id: nodeId,
+          marketplace_oid: oid,
+          marketplace_byte_size: blobText.length,
+          marketplace_is_binary: false,
+        },
+      ],
+      rateLimit: { cost: 1, remaining: 5_000, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 0 },
+    }),
+    getMarketplaceBlobsByNodeId,
+  }
+
+  await enrichRepositories(db, client, 'crawl-1')
+
+  expect(getMarketplaceBlobsByNodeId).toHaveBeenCalledWith([nodeId])
+  expect(getMarketplace).not.toHaveBeenCalled()
+  expect(JSON.parse(renderRepos(listPublishable(db)))[0].plugins).toEqual([{ name: 'fresh-plugin', description: 'Valid again' }])
 })
 
 it('keeps a successful cached count when its old parser version is stale', async () => {

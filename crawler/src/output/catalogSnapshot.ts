@@ -1,21 +1,25 @@
 import type Database from 'better-sqlite3'
+import { parsePluginSummariesJson } from '../github/pluginSummaries.js'
 import type { PublishableRepository } from '../storage/repositories.js'
 import { assertValidStatsDraft, type StatsRecord } from './statsDraft.js'
 
 export function renderRepos(rows: readonly PublishableRepository[]): string {
-  const repositories = rows.map((row) => ({
-    html_url: row.html_url,
-    stargazers_count: row.stargazers_count,
-    forks_count: row.forks_count,
-    subscribers_count: row.subscribers_count,
-    description: row.description,
-    owner: row.owner,
-    owner_url: row.owner_url,
-    repo_name: row.repo_name,
-    plugins_count: row.plugins_count,
-    ...(row.plugins_json ? { plugins: JSON.parse(row.plugins_json) as unknown } : {}),
-    id: row.id,
-  }))
+  const repositories = rows.map((row) => {
+    const plugins = parsePluginSummariesJson(row.plugins_json ?? null)
+    return {
+      html_url: row.html_url,
+      stargazers_count: row.stargazers_count,
+      forks_count: row.forks_count,
+      subscribers_count: row.subscribers_count,
+      description: row.description,
+      owner: row.owner,
+      owner_url: row.owner_url,
+      repo_name: row.repo_name,
+      plugins_count: row.plugins_count,
+      ...(plugins === null ? {} : { plugins }),
+      id: row.id,
+    }
+  })
   return `${JSON.stringify(repositories)}\n`
 }
 

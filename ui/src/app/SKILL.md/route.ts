@@ -59,7 +59,16 @@ If a marketplace entry fetches a plugin from a separate GitHub or git repository
 Explain the findings and security implications to the user and obtain explicit approval before installing or running anything.
 
 ### Step 5: Install after approval
-After explicit user approval, register the audited local checkout. Use its absolute path so the marketplace installed is the detached revision you inspected, not the repository's moving default branch. Inside Claude Code (these slash commands are **not** shell commands), enter:
+After explicit user approval, recheck the local checkout immediately before registering it and again immediately before installing the plugin. A detached HEAD alone does not protect against working-tree changes. At each point, run:
+
+\`\`\`sh
+git -C {absolute_local_path} rev-parse HEAD
+git -C {absolute_local_path} status --porcelain --untracked-files=all --ignored
+\`\`\`
+
+Require the first command to equal the original audited full commit SHA and the second command to print nothing. If either check fails, stop; inspect and audit the changed files, then obtain renewed user approval before continuing.
+
+If both checks pass, register the audited local checkout using its absolute path. Inside Claude Code (these slash commands are **not** shell commands), enter:
 
 \`\`\`text
 /plugin marketplace add {absolute_local_path}

@@ -3,6 +3,7 @@ import type { GitHubGraphQLMarketplaceBlob } from '../github/client.js'
 import { GitHubFatalError, type GitHubGraphQLRepo, type GitHubReader, type GitHubRepo, type RepoResult } from '../github/client.js'
 import { isValidGitHubPathSegment, parseGitHubOwnerUrl } from '../github/identifiers.js'
 import { MARKETPLACE_INVALID_CONTENT_CACHE_VERSION, MarketplaceFormatError, parseMarketplace } from '../github/marketplace.js'
+import { parsePluginSummariesJson, serializePluginSummaries } from '../github/pluginSummaries.js'
 import type { GitHubRetryReason } from '../github/rateBudget.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import type { Log } from '../logging.js'
@@ -333,29 +334,6 @@ const MARKETPLACE_CONTENT_BATCH_SIZE = 25
 const MARKETPLACE_CONTENT_MAX_BYTES = 750_000
 const MARKETPLACE_UNKNOWN_BYTES = 32_768
 
-function boundedDisplayText(value: string, maxLength: number): string {
-  const input = value.trim()
-  let output = ''
-  for (let index = 0; index < input.length && output.length < maxLength; index++) {
-    const code = input.charCodeAt(index)
-    if (code >= 0xd800 && code <= 0xdbff) {
-      const next = input.charCodeAt(index + 1)
-      if (next >= 0xdc00 && next <= 0xdfff) {
-        if (output.length + 2 > maxLength) break
-        output += input.slice(index, index + 2)
-        index++
-      } else {
-        output += '\ufffd'
-      }
-    } else if (code >= 0xdc00 && code <= 0xdfff) {
-      output += '\ufffd'
-    } else {
-      output += input[index]
-    }
-  }
-  return output
-}
-
 const RETRY_LATER = Symbol('retry-later')
 type RetryLater = { kind: typeof RETRY_LATER; reason: GitHubRetryReason; retryAt?: number }
 type RestAttemptPolicy = {
@@ -423,34 +401,22 @@ type MarketplaceState = {
 }
 
 function needsMarketplaceContent(row: RepositoryRow, currentMarketplaceOid: string): boolean {
+  const invalidCachedSummary = row.plugins_json !== null && parsePluginSummariesJson(row.plugins_json) === null
   if (
     row.marketplace_failed_oid === currentMarketplaceOid &&
-    row.marketplace_failed_parser_version === MARKETPLACE_INVALID_CONTENT_CACHE_VERSION
+    row.marketplace_failed_parser_version === MARKETPLACE_INVALID_CONTENT_CACHE_VERSION &&
+    !invalidCachedSummary
   ) {
     return false
   }
   if (row.marketplace_failed_oid === currentMarketplaceOid) return true
-  return row.marketplace_oid !== currentMarketplaceOid || row.plugins_count === null || row.plugins_json === null
+  return row.marketplace_oid !== currentMarketplaceOid || row.plugins_count === null || row.plugins_json === null || invalidCachedSummary
 }
 
 type MarketplaceBlobDecode =
   | { kind: 'found'; pluginsCount: number; pluginsJson: string; marketplaceOid: string }
   | { kind: 'unsupported' }
   | { kind: 'invalid-content'; failure: 'invalid-json' | 'invalid-manifest'; reason: string }
-
-/** Publish only bounded display metadata, never executable manifest fields. */
-function pluginSummariesJson(items: readonly unknown[]): string {
-  const summaries: Array<{ name?: string; description?: string }> = []
-  for (const item of items) {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) continue
-    const record = item as Record<string, unknown>
-    const name = typeof record.name === 'string' ? boundedDisplayText(record.name, 160) : ''
-    const description = typeof record.description === 'string' ? boundedDisplayText(record.description, 300) : ''
-    if (name || description) summaries.push({ ...(name ? { name } : {}), ...(description ? { description } : {}) })
-    if (summaries.length >= 30) break
-  }
-  return JSON.stringify(summaries)
-}
 
 function decodeGraphQLMarketplaceBlob(blob: GitHubGraphQLMarketplaceBlob): MarketplaceBlobDecode {
   if (blob.is_truncated || blob.is_binary !== false || blob.text === null) return { kind: 'unsupported' }
@@ -465,7 +431,7 @@ function decodeGraphQLMarketplaceBlob(blob: GitHubGraphQLMarketplaceBlob): Marke
     return {
       kind: 'found',
       pluginsCount: marketplace.plugins.length,
-      pluginsJson: pluginSummariesJson(marketplace.plugins),
+      pluginsJson: serializePluginSummaries(marketplace.plugins),
       marketplaceOid: blob.oid,
     }
   } catch (error) {
@@ -685,7 +651,8 @@ async function loadLegacyMarketplace(
   log?: Log,
   writes?: EnrichmentWriteBatch,
 ): Promise<MarketplaceState | null | RetryLater> {
-  const etag = row.marketplace_failed_oid === null && row.plugins_json !== null ? (row.marketplace_etag ?? undefined) : undefined
+  const cachedSummaryValid = parsePluginSummariesJson(row.plugins_json) !== null
+  const etag = row.marketplace_failed_oid === null && cachedSummaryValid ? (row.marketplace_etag ?? undefined) : undefined
   let result: RepoResult<{ plugins: unknown[] }>
   try {
     result = await reader.getMarketplace(loaded.owner, loaded.repo, etag, { maxAttempts: policy.maxAttempts })
@@ -757,13 +724,30 @@ async function loadLegacyMarketplace(
     )
   }
   const pluginsCount = result.kind === 'not-modified' ? row.plugins_count : result.data.plugins.length
+  if (result.kind === 'not-modified' && !cachedSummaryValid) {
+    recordProblem(
+      db,
+      runId,
+      counts,
+      row,
+      'marketplace_not_modified_without_valid_summary',
+      loaded.ready,
+      false,
+      now,
+      0,
+      undefined,
+      {},
+      writes,
+    )
+    return null
+  }
   if (pluginsCount === null) {
     recordProblem(db, runId, counts, row, 'marketplace_not_modified_without_data', loaded.ready, false, now, 0, undefined, {}, writes)
     return null
   }
   return {
     pluginsCount,
-    pluginsJson: result.kind === 'not-modified' ? row.plugins_json : pluginSummariesJson(result.data.plugins),
+    pluginsJson: result.kind === 'not-modified' ? row.plugins_json : serializePluginSummaries(result.data.plugins),
     marketplaceOid: row.marketplace_oid,
     marketplaceEtag: result.etag ?? row.marketplace_etag,
   }
@@ -894,7 +878,12 @@ function resolveGraphQLMarketplaceBlob(
 }
 
 function marketplaceRequestEtag(row: RepositoryRow, authoritativeMarketplaceOid: string, changedOid: boolean): string | undefined {
-  if (changedOid || row.plugins_count === null || row.plugins_json === null || row.marketplace_failed_oid === authoritativeMarketplaceOid) {
+  if (
+    changedOid ||
+    row.plugins_count === null ||
+    parsePluginSummariesJson(row.plugins_json) === null ||
+    row.marketplace_failed_oid === authoritativeMarketplaceOid
+  ) {
     return undefined
   }
   return row.marketplace_etag ?? undefined
@@ -993,6 +982,23 @@ async function loadGraphQLMarketplaceViaRest(
 
   const marketplaceEtag = result.etag ?? row.marketplace_etag
   if (result.kind === 'not-modified') {
+    if (parsePluginSummariesJson(row.plugins_json) === null) {
+      recordProblem(
+        db,
+        runId,
+        counts,
+        row,
+        'marketplace_not_modified_without_valid_summary',
+        loaded.ready,
+        false,
+        now,
+        0,
+        undefined,
+        {},
+        writes,
+      )
+      return null
+    }
     if (!acceptGraphQLNotModified(db, runId, row, loaded, changedOid, counts, now, log, writes)) return null
     return {
       pluginsCount: row.plugins_count,
@@ -1003,7 +1009,7 @@ async function loadGraphQLMarketplaceViaRest(
   }
   return {
     pluginsCount: result.data.plugins.length,
-    pluginsJson: pluginSummariesJson(result.data.plugins),
+    pluginsJson: serializePluginSummaries(result.data.plugins),
     marketplaceOid: null,
     marketplaceEtag,
   }
@@ -1026,7 +1032,8 @@ async function loadGraphQLMarketplace(
 ): Promise<MarketplaceState | null | RetryLater> {
   if (
     row.marketplace_failed_oid === currentMarketplaceOid &&
-    row.marketplace_failed_parser_version === MARKETPLACE_INVALID_CONTENT_CACHE_VERSION
+    row.marketplace_failed_parser_version === MARKETPLACE_INVALID_CONTENT_CACHE_VERSION &&
+    (row.plugins_json === null || parsePluginSummariesJson(row.plugins_json) !== null)
   ) {
     return recordKnownInvalidMarketplace(db, runId, counts, row, loaded, removedIds, now, log, writes)
   }

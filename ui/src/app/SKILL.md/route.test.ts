@@ -8,6 +8,13 @@ describe('/SKILL.md', () => {
 
     expect(guide).toContain('git -C {local_path} checkout --detach {commit}')
     expect(guide).toContain('Confirm `rev-parse HEAD` equals the requested full commit SHA')
+    expect(guide).toContain('git -C {absolute_local_path} status --porcelain --untracked-files=all --ignored')
+    expect(guide).toContain(
+      'recheck the local checkout immediately before registering it and again immediately before installing the plugin'
+    )
+    expect(guide).toContain(
+      'Require the first command to equal the original audited full commit SHA and the second command to print nothing'
+    )
     expect(guide).toContain('audit that plugin at its own full commit SHA')
     expect(guide).toContain('Stop if any installed source cannot be bound to the revision you audited')
     expect(guide).toContain('/plugin marketplace add {absolute_local_path}')
