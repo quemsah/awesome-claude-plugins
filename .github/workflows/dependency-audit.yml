@@ -10,6 +10,9 @@ on:
       - 'awesomeclaudeplugins.com/crawler/package.json'
       - 'awesomeclaudeplugins.com/shared/**/package.json'
       - '.github/workflows/dependency-audit.yml'
+  # Weekly on Mondays at 07:00 UTC, including weeks without dependency PRs.
+  schedule:
+    - cron: '0 7 * * 1'
   workflow_dispatch:
 
 permissions:
