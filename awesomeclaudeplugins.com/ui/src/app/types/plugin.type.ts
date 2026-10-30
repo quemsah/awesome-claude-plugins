@@ -46,18 +46,22 @@ const SafeUrlSchema = (max: number) =>
   )
 const SourceUrlSchema = SafeUrlSchema(512)
 const PluginSourceStringSchema = PluginPathSchema
+// Claude Code requires component paths to be explicitly relative to the plugin root.
+const PluginComponentPathSchema = PluginPathSchema.check(
+  z.refine((path) => path.startsWith('./'), { error: 'Component paths must start with "./"' })
+)
 const PluginComponentSchema = z.union([
   z.pipe(
-    PluginPathSchema,
+    PluginComponentPathSchema,
     z.transform((path) => [path])
   ),
-  z.array(PluginPathSchema).check(z.maxLength(100)),
+  z.array(PluginComponentPathSchema).check(z.maxLength(100)),
   z.record(z.string(), z.unknown()),
 ])
 
 // An MCP component can also be an HTTPS bundle URL; mixed lists include inline server maps.
 const McpLocationSchema = z.union([
-  PluginPathSchema.check(z.refine((path) => !MCP_PROTOCOL_PATTERN.test(path), { error: 'MCP paths must be relative' })),
+  PluginComponentPathSchema.check(z.refine((path) => !MCP_PROTOCOL_PATTERN.test(path), { error: 'MCP paths must be relative' })),
   z.string().check(
     z.maxLength(512),
     z.refine((url) => getMcpBundleUrl(url) !== null, { error: 'Must be a safe HTTPS MCP bundle URL' })
