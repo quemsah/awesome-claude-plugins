@@ -195,5 +195,6 @@ describe('metadata sorting on representative records', () => {
     const archived = { ...base, archived: true, stargazers_count: 1000 }
     expect(compareCatalogRepos(base, archived, 'stars-desc')).toBeLessThan(0)
     expect(compareCatalogRepos(base, archived, 'updated-desc')).toBeLessThan(0)
+    expect(isArchivedRepo({ ...base, description: '[Archived] stale text', archived: false })).toBe(false)
   })
 })

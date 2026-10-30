@@ -47,7 +47,9 @@ export function compareCatalogRepos(left: CatalogRepo, right: CatalogRepo, sortO
       return pluginSignal(right) - pluginSignal(left) || (right.plugins_count ?? 0) - (left.plugins_count ?? 0)
     }
     case 'updated-desc':
-      return sortDateValue(right.pushed_at) - sortDateValue(left.pushed_at) || (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0)
+      return (
+        sortDateValue(right.pushed_at) - sortDateValue(left.pushed_at) || (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0)
+      )
     case 'created-desc':
       return (
         sortDateValue(right.catalog_added_at) - sortDateValue(left.catalog_added_at) || (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0)

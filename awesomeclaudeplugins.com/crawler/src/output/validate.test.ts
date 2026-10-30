@@ -95,7 +95,13 @@ it('requires a canonical UTC timestamp for each repository catalog record', () =
 })
 
 it('accepts optional canonical UTC freshness metadata and rejects malformed dates', () => {
-  const valid = { ...validRepo, pushed_at: '2026-10-30T12:00:00.000Z', catalog_added_at: '2025-01-02T00:00:00.000Z', archived: false, license: 'MIT' }
+  const valid = {
+    ...validRepo,
+    pushed_at: '2026-10-30T12:00:00.000Z',
+    catalog_added_at: '2025-01-02T00:00:00.000Z',
+    archived: false,
+    license: 'MIT',
+  }
   expect(() => validateSnapshot(JSON.stringify([valid]), JSON.stringify(validStats))).not.toThrow()
   expect(() =>
     validateSnapshot(JSON.stringify([{ ...valid, pushed_at: '2026-10-30T12:00:00Z' }]), JSON.stringify(validStats)),
