@@ -78,16 +78,19 @@ describe('install command verification', () => {
 
 describe('MCP server component shapes', () => {
   it('requires ./-prefixed paths for commands, agents, and MCP servers', () => {
+    const plugin = { name: 'test-plugin', source: './plugins/test-plugin' }
     for (const field of ['commands', 'agents', 'mcpServers'] as const) {
-      expect(PluginSchema.safeParse({ name: 'test-plugin', source: './plugins/test-plugin', [field]: 'config/entry.md' }).success).toBe(false)
-      expect(PluginSchema.safeParse({ name: 'test-plugin', source: './plugins/test-plugin', [field]: './config/entry.md' }).success).toBe(true)
+      const invalid = PluginSchema.safeParse({ ...plugin, [field]: 'config/entry.md' })
+      const valid = PluginSchema.safeParse({ ...plugin, [field]: './config/entry.md' })
+      expect(invalid.success).toBe(false)
+      expect(valid.success).toBe(true)
     }
 
-    expect(PluginSchema.safeParse({
-      name: 'test-plugin',
-      source: './plugins/test-plugin',
+    const bundle = PluginSchema.safeParse({
+      ...plugin,
       mcpServers: ['https://example.com/reviewer.mcpb', './mcp.json'],
-    }).success).toBe(true)
+    })
+    expect(bundle.success).toBe(true)
   })
 
   it('keeps mixed relative paths, inline server maps, and HTTPS MCP bundles', () => {
