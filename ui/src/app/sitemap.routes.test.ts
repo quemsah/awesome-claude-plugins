@@ -38,6 +38,7 @@ describe('sitemap routes', () => {
     }
 
     expect(shardUrls).toEqual(buildSitemapEntries().map((entry) => entry.url))
+    expect(shardUrls.some((url) => new URL(url).pathname.startsWith('/browse/'))).toBe(false)
   })
 
   it('returns 404 for nonexistent and malformed shard ids', async () => {

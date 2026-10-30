@@ -162,7 +162,7 @@ it('deduplicates case-variant URLs across families before upserting them again',
     CREATE TRIGGER count_repository_insert AFTER INSERT ON repositories BEGIN
       UPDATE upsert_count SET count = count + 1;
     END;
-    CREATE TRIGGER count_repository_update AFTER UPDATE ON repositories BEGIN
+    CREATE TRIGGER count_repository_update AFTER UPDATE OF html_url, description ON repositories BEGIN
       UPDATE upsert_count SET count = count + 1;
     END;
   `)

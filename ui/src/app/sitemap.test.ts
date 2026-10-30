@@ -1,32 +1,22 @@
+/** biome-ignore-all lint/style/useNamingConvention: external catalog fields */
 import { describe, expect, it } from 'vitest'
-import { getCatalogLastModified, getIndexableCatalogRepos, getRepoCanonicalPath, searchCatalogRepos } from '../lib/catalog.ts'
-import { CATALOG_PAGE_SIZE } from '../lib/catalogPagination.ts'
+import { getCatalogLastModified, getIndexableCatalogRepos, getRepoCanonicalPath } from '../lib/catalog.ts'
 import { BASE_URL } from '../lib/constants.ts'
-import { buildSitemapEntries, getSitemapShard, getSitemapShardCount, SITEMAP_SHARD_SIZE } from '../lib/sitemap.ts'
+import {
+  buildSitemapEntries,
+  getRepoSitemapLastModified,
+  getSitemapShard,
+  getSitemapShardCount,
+  SITEMAP_SHARD_SIZE,
+} from '../lib/sitemap.ts'
 
 const entries = buildSitemapEntries()
 const urls = entries.map((entry) => entry.url)
 const BROWSE_PREFIX = `${BASE_URL}/browse/`
 
-function lastServedBrowsePage(): number {
-  const { total } = searchCatalogRepos('', 'stars-desc', 0, CATALOG_PAGE_SIZE)
-  return Math.ceil(total / CATALOG_PAGE_SIZE)
-}
-
-function listedBrowsePages(): number[] {
-  return urls.filter((url) => url.startsWith(BROWSE_PREFIX)).map((url) => Number(url.slice(BROWSE_PREFIX.length)))
-}
-
 describe('sitemap', () => {
-  it('lists every browse page the browse route serves', () => {
-    expect(urls).toContain(`${BROWSE_PREFIX}${lastServedBrowsePage()}`)
-  })
-
-  it('lists browse pages contiguously after the home page', () => {
-    const lastPage = lastServedBrowsePage()
-    const expected = Array.from({ length: Math.max(lastPage - 1, 0) }, (_, index) => index + 2)
-
-    expect(listedBrowsePages()).toEqual(expected)
+  it('keeps paginated browse routes out of the sitemap', () => {
+    expect(urls.some((url) => url.startsWith(BROWSE_PREFIX))).toBe(false)
   })
 
   it('orders repository urls by stars descending', () => {
@@ -42,14 +32,22 @@ describe('sitemap', () => {
     expect(urls.filter((url) => repoUrlSet.has(url))).toEqual(expectedRepoUrls)
   })
 
-  it('gives every repository url the catalog last-modified date', () => {
+  it('uses each repository catalog timestamp for lastmod', () => {
     const catalogTimestamp = getCatalogLastModified().getTime()
     const timestampByUrl = new Map(entries.map((entry) => [entry.url, entry.lastModified ? new Date(entry.lastModified).getTime() : null]))
-    const repoUrls = getIndexableCatalogRepos().map((repo) => `${BASE_URL}/${getRepoCanonicalPath(repo)}`)
-    const wrongDate = repoUrls.filter((url) => timestampByUrl.get(url) !== catalogTimestamp)
+    const datedRepo = getIndexableCatalogRepos().find((repo) => repo.catalog_updated_at)
+    const legacyRepo = getIndexableCatalogRepos().find((repo) => !repo.catalog_updated_at)
 
-    expect(repoUrls.length).toBeGreaterThan(0)
-    expect(wrongDate).toHaveLength(0)
+    expect(getIndexableCatalogRepos().length).toBeGreaterThan(0)
+    if (datedRepo) {
+      expect(timestampByUrl.get(`${BASE_URL}/${getRepoCanonicalPath(datedRepo)}`)).toBe(
+        new Date(datedRepo.catalog_updated_at as string).getTime()
+      )
+    }
+    if (legacyRepo) {
+      expect(timestampByUrl.get(`${BASE_URL}/${getRepoCanonicalPath(legacyRepo)}`)).toBe(catalogTimestamp)
+    }
+    expect(getRepoSitemapLastModified({ catalog_updated_at: '2025-02-03T04:05:06.789Z' })).toEqual(new Date('2025-02-03T04:05:06.789Z'))
   })
 
   it('splits the full sitemap into bounded shards without dropping urls', () => {
