@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/style/useNamingConvention: Test assertion mirrors catalog field names. */
 
 import { describe, expect, it } from 'vitest'
-import { type CatalogRepo, getCanonicalCatalogRepos, searchCatalogRepos } from './catalog.ts'
+import { type CatalogRepo, formatCatalogRepo, getCanonicalCatalogRepos, searchCatalogRepos } from './catalog.ts'
 import { createFuseIndex } from './fuzzySearch.ts'
 
 function repoKey(repo: CatalogRepo) {
@@ -99,5 +99,58 @@ describe('searchCatalogRepos', () => {
       }
       expect(sawTie).toBe(true)
     }
+  })
+})
+
+describe('formatCatalogRepo', () => {
+  it('formats plugin names and descriptions when plugins array is provided', () => {
+    const rawRepo: CatalogRepo = {
+      id: 999,
+      owner: 'example',
+      repo_name: 'repo',
+      description: 'Test repository',
+      stargazers_count: 10,
+      forks_count: 2,
+      subscribers_count: 1,
+      plugins_count: 1,
+      plugins: [{ name: 'my-plugin', description: 'Plugin description' }],
+    }
+
+    const formatted = formatCatalogRepo(rawRepo)
+    expect(formatted.plugins).toEqual([{ name: 'my-plugin', description: 'Plugin description' }])
+  })
+
+  it('normalizes single plugin metadata fields into plugins array', () => {
+    const rawRepo: CatalogRepo = {
+      id: 999,
+      owner: 'example',
+      repo_name: 'repo',
+      description: 'Test repository',
+      stargazers_count: 10,
+      forks_count: 2,
+      subscribers_count: 1,
+      plugins_count: 1,
+      plugin_name: 'single-plugin',
+      plugin_description: 'Single description',
+    }
+
+    const formatted = formatCatalogRepo(rawRepo)
+    expect(formatted.plugins).toEqual([{ name: 'single-plugin', description: 'Single description' }])
+  })
+
+  it('leaves repos without plugin metadata unchanged without adding empty plugins', () => {
+    const rawRepo: CatalogRepo = {
+      id: 999,
+      owner: 'example',
+      repo_name: 'repo',
+      description: 'Test repository',
+      stargazers_count: 10,
+      forks_count: 2,
+      subscribers_count: 1,
+      plugins_count: null,
+    }
+
+    const formatted = formatCatalogRepo(rawRepo)
+    expect(formatted.plugins).toBeUndefined()
   })
 })

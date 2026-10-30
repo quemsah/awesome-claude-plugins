@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { openDatabase } from '../storage/db.js'
-import { listPublishable } from '../storage/repositories.js'
+import { listPublishable, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
 import { renderMarkdownPaths, renderRepos, renderStats } from './catalogSnapshot.js'
 import { createStatsDraft } from './statsDraft.js'
 import { validateSnapshot } from './validate.js'
@@ -10,9 +10,9 @@ it('renders only canonical, fully enriched repositories in original id and publi
   try {
     const insert = db.prepare(`
       INSERT INTO repositories (id, html_url, stargazers_count, forks_count, subscribers_count,
-        description, owner, owner_url, repo_name, plugins_count, repo_updated, createdAt, updatedAt)
+        description, owner, owner_url, repo_name, plugins_count, repo_updated, catalog_updated_at, createdAt, updatedAt)
       VALUES (@id, @html_url, @stargazers_count, @forks_count, @subscribers_count,
-        @description, @owner, @owner_url, @repo_name, @plugins_count, @repo_updated, 'created', 'updated')
+        @description, @owner, @owner_url, @repo_name, @plugins_count, @repo_updated, @catalog_updated_at, 'created', 'updated')
     `)
     const row = {
       html_url: 'https://github.com/Owner/Repo',
@@ -25,6 +25,7 @@ it('renders only canonical, fully enriched repositories in original id and publi
       repo_name: 'Repo',
       plugins_count: null,
       repo_updated: '2025-01-01T00:00:00Z',
+      catalog_updated_at: '2025-02-03T04:05:06.789Z',
     }
     insert.run({ ...row, id: 39 })
     insert.run({
@@ -44,7 +45,11 @@ it('renders only canonical, fully enriched repositories in original id and publi
     const result = renderRepos(listPublishable(db))
     expect(result.endsWith('\n')).toBe(true)
     expect(result).toBe(
-      '[{"html_url":"https://github.com/owner/Repo-two","stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":null,"owner":"owner","owner_url":"https://github.com/owner","repo_name":"Repo-two","plugins_count":null,"id":5},{"html_url":"https://github.com/Owner/Repo","stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":"🍃 Привет","owner":"Owner","owner_url":"https://github.com/Owner","repo_name":"Repo","plugins_count":null,"id":39}]\n',
+      `[
+{"stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":null,"owner":"owner","repo_name":"Repo-two","plugins_count":null,"catalog_updated_at":"2025-02-03T04:05:06.789Z","id":5},
+{"stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":"🍃 Привет","owner":"Owner","repo_name":"Repo","plugins_count":null,"catalog_updated_at":"2025-02-03T04:05:06.789Z","id":39}
+]
+`,
     )
     expect(JSON.parse(result)).toHaveLength(listPublishable(db).length)
   } finally {
@@ -52,6 +57,30 @@ it('renders only canonical, fully enriched repositories in original id and publi
   }
 })
 
+it('publishes validated plugin names and descriptions collected from manifests', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const id = upsertDiscovery(db, 'https://github.com/example/plugins', null)
+    updateEnriched(db, id, {
+      owner: 'example',
+      repo_name: 'plugins',
+      owner_url: 'https://github.com/example',
+      description: null,
+      repo_updated: null,
+      stargazers_count: 3,
+      forks_count: 1,
+      subscribers_count: 0,
+      plugins_count: 1,
+      plugins_json: JSON.stringify([{ name: 'demo', description: 'Useful demonstration plugin' }]),
+    })
+    const snapshot = renderRepos(listPublishable(db))
+    expect(JSON.parse(snapshot)[0].plugins).toEqual([{ name: 'demo', description: 'Useful demonstration plugin' }])
+    const stats = '[{"id":1,"date":"2026-09-23T21:00:00.000Z","size":1}]'
+    expect(() => validateSnapshot(snapshot, stats, { expectedSize: 1 })).not.toThrow()
+  } finally {
+    db.close()
+  }
+})
 it('renders the markdown repository path sidecar from the publishable catalog', () => {
   const db = openDatabase(':memory:')
   try {

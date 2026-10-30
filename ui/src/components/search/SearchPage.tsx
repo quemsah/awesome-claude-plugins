@@ -5,6 +5,7 @@
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDebouncedCallback } from 'use-debounce'
+import { trackEvent } from '../../lib/analytics.ts'
 import { CATALOG_PAGE_SIZE } from '../../lib/catalogPagination.ts'
 import { type CatalogRequestKind, mayStartCatalogRequest } from '../../lib/catalogRequestSlot.ts'
 import {
@@ -58,6 +59,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   const [replaceCompletion, setReplaceCompletion] = useState(0)
   const [failedLoad, setFailedLoad] = useState<PendingCatalogLoad>(null)
   const [_replaceRetry, setReplaceRetry] = useState(0)
+  const lastNoResultsQuery = useRef<string | null>(null)
   const initialRequest = useRef(true)
   const nextPage = useRef(1)
   const loadingController = useRef<AbortController | null>(null)
@@ -67,6 +69,17 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   const inFlightCatalogRequest = useRef<CatalogRequestKind | null>(null)
   const pendingScrollRestore = useRef<{ attempts: number; scrollY: number; url: string } | null>(null)
   const pendingSearchUrls = useRef(new PendingSearchUrls())
+
+  const reportNoResults = useCallback((query: string, count: number) => {
+    const normalized = query.trim()
+    if (!normalized || count > 0) {
+      lastNoResultsQuery.current = null
+      return
+    }
+    if (lastNoResultsQuery.current === normalized) return
+    lastNoResultsQuery.current = normalized
+    trackEvent('search_no_results')
+  }, [])
 
   const updateSearchUrl = useCallback(
     (nextSearchTerm: string, nextSortOption: SortOption, mode: 'push' | 'replace' = 'push') => {
@@ -152,6 +165,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         setTotal(result.total)
         setHasMore(result.hasMore)
         setReplaceCompletion((current) => current + 1)
+        reportNoResults(searchTerm, result.total)
       } catch {
         if (!controller.signal.aborted) {
           setFailedLoad('replace')
@@ -170,7 +184,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
         loadingController.current = null
       }
     }
-  }, [_replaceRetry, searchTerm, sortOption])
+  }, [_replaceRetry, searchTerm, sortOption, reportNoResults])
 
   const loadMore = useCallback(async () => {
     if (failedLoad === 'replace' || !(hasMore && mayStartCatalogRequest(inFlightCatalogRequest.current, 'append'))) {
@@ -224,6 +238,10 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
   useEffect(() => {
     optionalSessionStorage.setItem('last-search-url', `${window.location.pathname}${window.location.search}`)
   }, [])
+
+  useEffect(() => {
+    reportNoResults(initialSearchTerm, initialTotal)
+  }, [initialSearchTerm, initialTotal, reportNoResults])
 
   useEffect(() => {
     const currentUrl = `${pathname}${searchParams.size > 0 ? `?${searchParams}` : ''}`

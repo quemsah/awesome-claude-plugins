@@ -29,4 +29,21 @@ describe('createFuseIndex', () => {
     expect(fuse.search('example')).toHaveLength(0)
     expect(fuse.search('owner-url-only')).toHaveLength(0)
   })
+
+  it('finds repositories by plugin summary names and descriptions', () => {
+    const repo = {
+      ...baseRepo,
+      plugins: [{ name: 'uniqueweatherplugin', description: 'satellite forecast automation' }],
+      plugin_summaries: [{ name: 'legacynameplugin', description: 'postal lookup workflow' }],
+      plugin_name: 'standaloneplugin',
+      plugin_description: 'unique documentation assistant',
+    }
+    const fuse = createFuseIndex([repo])
+    expect(fuse.search('uniqueweatherplugin')).toHaveLength(1)
+    expect(fuse.search('satellite forecast')).toHaveLength(1)
+    expect(fuse.search('legacynameplugin')).toHaveLength(1)
+    expect(fuse.search('postal lookup')).toHaveLength(1)
+    expect(fuse.search('standaloneplugin')).toHaveLength(1)
+    expect(fuse.search('documentation assistant')).toHaveLength(1)
+  })
 })
