@@ -16,7 +16,7 @@ const repoKeys = [
   'plugins',
   'id',
 ] as const
-const optionalRepoKeys = ['pushed_at', 'created_at', 'license', 'archived'] as const
+const optionalRepoKeys = ['pushed_at', 'catalog_added_at', 'license', 'archived'] as const
 const statsKeys = ['id', 'date', 'size'] as const
 const utcDate = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 

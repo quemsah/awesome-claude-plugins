@@ -5,6 +5,13 @@ import { assertValidStatsDraft, type StatsRecord } from './statsDraft.js'
 
 // Recovery hashes written before catalog timestamps must match the exact original
 // repos.json bytes, including canonical URLs, field order, and compact formatting.
+/** Convert real GitHub/first-seen dates into the strict public UTC representation. */
+function publicTimestamp(value: string | null | undefined): string | undefined {
+  if (!value) return undefined
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : undefined
+}
+
 export function renderRepos(
   rows: readonly PublishableRepository[],
   options: { includeCatalogUpdatedAt?: boolean; legacyUrls?: boolean } = {},
@@ -20,10 +27,10 @@ export function renderRepos(
       owner_url: row.owner_url,
       repo_name: row.repo_name,
       plugins_count: row.plugins_count,
-      ...(row.pushed_at !== undefined ? { pushed_at: row.pushed_at } : {}),
-      ...(row.created_at !== undefined ? { created_at: row.created_at } : {}),
-      ...(row.license !== undefined ? { license: row.license } : {}),
-      ...(row.archived !== undefined ? { archived: row.archived } : {}),
+      ...(options.includeCatalogUpdatedAt === false || !publicTimestamp(row.pushed_at) ? {} : { pushed_at: publicTimestamp(row.pushed_at) }),
+      ...(options.includeCatalogUpdatedAt === false || !publicTimestamp(row.catalog_added_at) ? {} : { catalog_added_at: publicTimestamp(row.catalog_added_at) }),
+      ...(options.includeCatalogUpdatedAt === false || !row.license ? {} : { license: row.license }),
+      ...(options.includeCatalogUpdatedAt === false || row.archived == null ? {} : { archived: row.archived === true || row.archived === 1 }),
       id: row.id,
     }))
     return `${JSON.stringify(legacyRepositories)}\n`

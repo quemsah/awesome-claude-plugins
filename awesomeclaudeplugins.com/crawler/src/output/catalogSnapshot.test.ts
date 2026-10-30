@@ -46,8 +46,8 @@ it('renders only canonical, fully enriched repositories in original id and publi
     expect(result.endsWith('\n')).toBe(true)
     expect(result).toBe(
       `[
-{"stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":null,"owner":"owner","repo_name":"Repo-two","plugins_count":null,"catalog_updated_at":"2025-02-03T04:05:06.789Z","id":5},
-{"stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":"🍃 Привет","owner":"Owner","repo_name":"Repo","plugins_count":null,"catalog_updated_at":"2025-02-03T04:05:06.789Z","id":39}
+{"stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":null,"owner":"owner","repo_name":"Repo-two","plugins_count":null,"catalog_updated_at":"2025-02-03T04:05:06.789Z","pushed_at":"2025-01-01T00:00:00.000Z","id":5},
+{"stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":"🍃 Привет","owner":"Owner","repo_name":"Repo","plugins_count":null,"catalog_updated_at":"2025-02-03T04:05:06.789Z","pushed_at":"2025-01-01T00:00:00.000Z","id":39}
 ]
 `,
     )
@@ -210,6 +210,33 @@ it.each([-1, 1.5, Number.NaN])('rejects an invalid draft size before generating 
   const db = openDatabase(':memory:')
   try {
     expect(() => renderStats(db, { id: 304, date: '2026-09-23T21:00:00.000Z', size })).toThrow(/draft size.*non-negative safe integer/i)
+  } finally {
+    db.close()
+  }
+})
+
+it('publishes normalized GitHub freshness and first-seen date without changing legacy output', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const id = upsertDiscovery(db, 'https://github.com/demo/metadata', null, '2024-01-02T00:00:00.000Z')
+    updateEnriched(db, id, {
+      owner: 'demo', owner_url: 'https://github.com/demo', repo_name: 'metadata',
+      description: 'Recent', stargazers_count: 1, forks_count: 0, subscribers_count: 0,
+      plugins_count: 0, repo_updated: '2026-10-30T12:00:00Z', license: 'MIT', archived: 0,
+    })
+    const rows = listPublishable(db)
+    const normal = JSON.parse(renderRepos(rows))[0]
+    expect(normal).toMatchObject({
+      pushed_at: '2026-10-30T12:00:00.000Z',
+      catalog_added_at: '2024-01-02T00:00:00.000Z',
+      license: 'MIT', archived: false,
+    })
+    const legacy = JSON.parse(renderRepos(rows, { legacyUrls: true }))[0]
+    expect(legacy.pushed_at).toBeUndefined()
+    expect(legacy.catalog_added_at).toBeUndefined()
+    expect(legacy.license).toBeUndefined()
+    const stats = '[{"id":1,"date":"2026-10-30T12:00:00.000Z","size":1}]'
+    expect(() => validateSnapshot(renderRepos(rows), stats)).not.toThrow()
   } finally {
     db.close()
   }

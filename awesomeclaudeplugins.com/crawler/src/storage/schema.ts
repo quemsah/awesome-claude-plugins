@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 15
+const schemaVersion = 16
 
 function createSchema(db: Database.Database): void {
   db.exec(`
@@ -363,6 +363,21 @@ function migrateTo15(db: Database.Database): void {
   db.pragma('user_version = 15')
 }
 
+/** Preserve existing discovery times while adding nullable GitHub metadata. */
+function migrateTo16(db: Database.Database): void {
+  if (!hasColumn(db, 'license')) db.exec('ALTER TABLE repositories ADD COLUMN license TEXT')
+  if (!hasColumn(db, 'archived')) db.exec('ALTER TABLE repositories ADD COLUMN archived INTEGER CHECK(archived IN (0, 1))')
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS repositories_metadata_timestamp_after_update
+    AFTER UPDATE OF repo_updated, license, archived ON repositories
+    WHEN OLD.repo_updated IS NOT NEW.repo_updated OR OLD.license IS NOT NEW.license OR OLD.archived IS NOT NEW.archived
+    BEGIN
+      UPDATE repositories SET catalog_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+    END;
+  `)
+  db.pragma('user_version = 16')
+}
+
 function migrateSchema(db: Database.Database, version: number): void {
   if (version === 0) createSchema(db)
   if (version < 2) migrateTo2(db)
@@ -379,6 +394,7 @@ function migrateSchema(db: Database.Database, version: number): void {
   if (version < 13) migrateTo13(db)
   if (version < 14) migrateTo14(db)
   if (version < 15) migrateTo15(db)
+  if (version < 16) migrateTo16(db)
 }
 
 export function initializeSchema(db: Database.Database): void {
