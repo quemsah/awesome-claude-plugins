@@ -49,6 +49,58 @@ describe('MarketplacePluginsSchema', () => {
     }
   })
 
+  it('preserves safe optional metadata when another optional field is malformed', () => {
+    const result = MarketplacePluginsSchema.safeParse({
+      name: 'catalog',
+      owner: { name: 'maintainer' },
+      plugins: [
+        {
+          name: 'partial-metadata',
+          source: './plugins/partial-metadata',
+          description: 'Still visible',
+          version: '1.0.0',
+          category: 'tools',
+          commands: './commands/run.md',
+          keywords: [42],
+        },
+      ],
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.invalidPluginCount).toBe(0)
+      expect(result.data.plugins).toEqual([
+        {
+          name: 'partial-metadata',
+          source: './plugins/partial-metadata',
+          description: 'Still visible',
+          version: '1.0.0',
+          category: 'tools',
+          commands: ['./commands/run.md'],
+        },
+      ])
+    }
+  })
+
+  it('rejects dot-segments in GitHub source repository identifiers', () => {
+    const result = MarketplacePluginsSchema.safeParse({
+      name: 'catalog',
+      owner: { name: 'maintainer' },
+      plugins: [
+        { name: 'parent-owner', source: { source: 'github', repo: '../plugins' } },
+        { name: 'parent-repo', source: { source: 'github', repo: 'owner/..' } },
+        { name: 'dot-owner', source: { source: 'github', repo: './plugins' } },
+        { name: 'valid', source: { source: 'github', repo: 'owner/plugins' } },
+      ],
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.plugins.map((plugin) => plugin.name)).toEqual(['valid'])
+      expect(result.data.invalidPluginCount).toBe(3)
+    }
+  })
+
   it('skips source URLs with embedded credentials and reports their validation issue', () => {
     const result = MarketplacePluginsSchema.safeParse({
       name: 'catalog',

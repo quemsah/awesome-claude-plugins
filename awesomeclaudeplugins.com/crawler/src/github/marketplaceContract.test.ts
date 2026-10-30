@@ -11,7 +11,7 @@ const fixtures = readdirSync(fixturesDirectory)
 type MarketplaceContractFixture = {
   name: string
   version: number
-  expected: { valid: boolean; pluginsCount: number | null }
+  expected: { valid: boolean; pluginsCount: number | null; pluginNames: string[] | null }
   input: unknown
 }
 
@@ -24,5 +24,8 @@ it.each(fixtures)('matches marketplace contract v$version for $name', (fixture) 
   }
 
   expect(result !== undefined).toBe(fixture.expected.valid)
-  if (result) expect(result.plugins.length).toBe(fixture.expected.pluginsCount)
+  if (result) {
+    expect(result.plugins.length).toBe(fixture.expected.pluginsCount)
+    expect(result.plugins.map((plugin) => plugin.name)).toEqual(fixture.expected.pluginNames)
+  }
 })

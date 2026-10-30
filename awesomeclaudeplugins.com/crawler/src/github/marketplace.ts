@@ -1,5 +1,5 @@
-export const MARKETPLACE_INVALID_CONTENT_CACHE_VERSION = 6
-export const MARKETPLACE_PARSER_VERSION = 3
+export const MARKETPLACE_INVALID_CONTENT_CACHE_VERSION = 7
+export const MARKETPLACE_PARSER_VERSION = 4
 
 export type Marketplace = { plugins: unknown[] }
 
@@ -14,7 +14,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-const GITHUB_REPO_PATH_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
+const GITHUB_REPO_PATH_PATTERN = /^(?!\.{1,2}\/)[A-Za-z0-9._-]+\/(?!\.{1,2}$)[A-Za-z0-9._-]+$/
 
 function isSafePath(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= 512 && !value.includes('..') && !/[\r\n]/.test(value)

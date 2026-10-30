@@ -1,15 +1,31 @@
 {
   "version": 1,
   "name": "canonical",
-  "expected": { "valid": true, "pluginsCount": 2 },
+  "expected": {
+    "valid": true,
+    "pluginsCount": 2,
+    "pluginNames": [
+      "local-plugin",
+      "remote-plugin"
+    ]
+  },
   "input": {
     "name": "catalog",
-    "owner": { "name": "maintainer" },
+    "owner": {
+      "name": "maintainer"
+    },
     "plugins": [
-      { "name": "local-plugin", "source": "./plugins/local-plugin" },
+      {
+        "name": "local-plugin",
+        "source": "./plugins/local-plugin"
+      },
       {
         "name": "remote-plugin",
-        "source": { "source": "git-subdir", "url": "https://github.com/example-owner/example-repo.git", "path": "plugins/remote-plugin" }
+        "source": {
+          "source": "git-subdir",
+          "url": "https://github.com/example-owner/example-repo.git",
+          "path": "plugins/remote-plugin"
+        }
       }
     ]
   }
