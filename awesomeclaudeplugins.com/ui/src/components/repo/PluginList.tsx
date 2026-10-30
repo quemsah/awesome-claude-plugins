@@ -15,7 +15,7 @@ type ListEntry = { label: string; isPath: boolean }
 /** Keep path entries linkable while rendering names from inline maps as plain text. */
 function getListEntries(items: PluginListProps['items']): ListEntry[] {
   const values = typeof items === 'string' ? [items] : Array.isArray(items) ? items : items ? [items] : []
-  return values.flatMap((value) =>
+  return values.flatMap((value): ListEntry[] =>
     typeof value === 'string'
       ? [{ label: value, isPath: true }]
       : Object.keys(value).map((label) => ({ label, isPath: false }))
