@@ -11,6 +11,8 @@ on:
       - 'awesomeclaudeplugins.com/shared/**/package.json'
       - '.github/workflows/dependency-audit.yml'
   workflow_dispatch:
+  push:
+    branches: [fix/workspace-dependency-audit]
 
 permissions:
   contents: read
@@ -54,3 +56,41 @@ jobs:
             }
           }
           NODE
+
+  # Temporary trusted-branch remediation step; remove after capturing the lockfile.
+  remediate_lockfile:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/workspace-dependency-audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout own trusted branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: awesomeclaudeplugins.com/ui/.nvmrc
+
+      - name: Upgrade advisories within supported semver and refresh lockfile
+        working-directory: awesomeclaudeplugins.com
+        run: |
+          npm install --ignore-scripts --workspace=awesome-claude-plugins next@16.4.3
+          npm install --ignore-scripts --save-dev --workspace=awesome-claude-plugins @next/bundle-analyzer@16.4.3
+          npm audit fix --package-lock-only --ignore-scripts
+          npm audit --omit=dev --audit-level=high
+          npm audit --audit-level=high
+          git diff --check
+
+      - name: Commit dependency remediation on own PR branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add awesomeclaudeplugins.com/ui/package.json awesomeclaudeplugins.com/package-lock.json
+          git diff --cached --stat
+          git diff --cached --quiet && exit 1
+          git commit -m "fix(deps): resolve audited Next.js and transitive advisories"
+          git push origin HEAD:fix/workspace-dependency-audit
