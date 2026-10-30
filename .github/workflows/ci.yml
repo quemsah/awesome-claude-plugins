@@ -3,7 +3,8 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # Stacked PR #378 targets #369; still run CI before its base moves to main.
+    branches: [main, fix/report-12-marketplace-contract]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
