@@ -19,7 +19,7 @@ type PluginCardProps = {
 
 export function PluginCard({ marketplaceName, plugin, repoPath, repo }: PluginCardProps) {
   return (
-    <Card className="group w-full transition-all duration-300 hover:border-primary/30 hover:bg-linear-to-tl hover:from-muted hover:to-background">
+    <Card className="group hover:border-primary/30 hover:from-muted hover:to-background w-full transition-all duration-300 hover:bg-linear-to-tl">
       <PluginHeader category={plugin.category} name={plugin.name} version={plugin.version} />
       {plugin.name ? <InstallCommand marketplaceName={marketplaceName} pluginId={plugin.id} pluginName={plugin.name} /> : null}
       <CardContent className="pt-1">

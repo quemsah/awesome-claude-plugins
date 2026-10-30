@@ -7,7 +7,7 @@ type BreadcrumbsProps = {
 
 export function Breadcrumbs({ items }: BreadcrumbsProps) {
   return (
-    <nav aria-label="Breadcrumb" className="mb-4 text-muted-foreground text-sm">
+    <nav aria-label="Breadcrumb" className="text-muted-foreground mb-4 text-sm">
       <ol className="flex flex-wrap items-center gap-x-2 gap-y-1">
         {items.map((item, index) => (
           <li className="flex items-center gap-2" key={item.url}>
@@ -15,7 +15,7 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
             {index === items.length - 1 ? (
               <span aria-current="page">{item.name}</span>
             ) : (
-              <Link className="underline-offset-4 hover:text-foreground hover:underline" href={new URL(item.url).pathname}>
+              <Link className="hover:text-foreground underline-offset-4 hover:underline" href={new URL(item.url).pathname}>
                 {item.name}
               </Link>
             )}

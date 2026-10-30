@@ -27,7 +27,7 @@ function getMissingRepository(pathname: string): MissingRepository | null {
 function NotFoundHeading({ isRepository }: { isRepository: boolean }) {
   return (
     <CardHeader className="text-center">
-      <CardTitle className="font-bold text-4xl text-muted-foreground">
+      <CardTitle className="text-muted-foreground text-4xl font-bold">
         <h1>404</h1>
       </CardTitle>
       <CardDescription className="text-lg">{isRepository ? 'Repository not found' : 'Page not found'}</CardDescription>
@@ -73,7 +73,7 @@ function NotFoundContent({ repository }: { repository: MissingRepository | null 
       </div>
       {repository ? (
         <div className="pt-2">
-          <Link className="text-muted-foreground text-sm underline underline-offset-4 hover:text-foreground" href="/">
+          <Link className="text-muted-foreground hover:text-foreground text-sm underline underline-offset-4" href="/">
             Browse catalog home
           </Link>
         </div>

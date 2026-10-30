@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 export function TimeFilter({ value, onTimeRangeChange }: { value: string; onTimeRangeChange: (range: string) => void }) {
   return (
     <div className="flex items-center gap-4">
-      <span className="font-medium text-sm">Time Range:</span>
+      <span className="text-sm font-medium">Time Range:</span>
       <Select
         onValueChange={(range: string) => {
           trackEvent('filter_change', { filter: range })

@@ -85,7 +85,7 @@ export function SearchControls({
           <Sort onSortChange={onSortChange} sortOption={sortOption} />
         </div>
       </div>
-      <div aria-atomic="true" aria-live="polite" className="text-center text-muted-foreground text-sm md:text-right" role="status">
+      <div aria-atomic="true" aria-live="polite" className="text-muted-foreground text-center text-sm md:text-right" role="status">
         {`${filteredPluginCount.toLocaleString('en-US')} ${pluralize(filteredPluginCount, 'plugin', 'plugins')} available across ${filteredRepoCount.toLocaleString('en-US')} ${pluralize(filteredRepoCount, 'repository', 'repositories')}`}
       </div>
     </section>

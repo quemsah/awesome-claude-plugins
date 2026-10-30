@@ -135,7 +135,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
   }, [owner, repoName, repoPath, rawBaseUrl, _retryCount])
 
   return (
-    <main className="min-h-dvh bg-background" id="main-content" tabIndex={-1}>
+    <main className="bg-background min-h-dvh" id="main-content" tabIndex={-1}>
       <div className="container mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <Breadcrumbs items={getRepoBreadcrumbs(displayedRepo)} />
         <Button asChild className="mb-6" variant="ghost">
@@ -175,11 +175,11 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
               </div>
             ) : null}
             {pluginsLoading && !pluginsStatus && !pluginsError ? (
-              <p className="py-4 text-center text-muted-foreground" role="status">
+              <p className="text-muted-foreground py-4 text-center" role="status">
                 Loading plugins...
               </p>
             ) : pluginsStatus === 'missing' ? (
-              <p className="py-4 text-center text-muted-foreground" role="status">
+              <p className="text-muted-foreground py-4 text-center" role="status">
                 No marketplace manifest was found in this repository.
               </p>
             ) : pluginsError ? (
@@ -206,7 +206,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
                 ))}
               </div>
             ) : (
-              <p className="py-4 text-center text-muted-foreground" role="status">
+              <p className="text-muted-foreground py-4 text-center" role="status">
                 No Claude Code plugins found in this repository.
               </p>
             )}
@@ -219,7 +219,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
               <h2>Evaluate before installing</h2>
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-0 pt-4 text-muted-foreground text-sm">
+          <CardContent className="text-muted-foreground p-0 pt-4 text-sm">
             <ol className="list-decimal space-y-2 pl-5">
               <li>Review the source repository, recent maintenance, and license on GitHub.</li>
               <li>Read the marketplace manifest and plugin source files before running commands.</li>

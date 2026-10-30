@@ -12,7 +12,7 @@ export function PluginHeader({ name, version, category }: PluginHeaderProps) {
     <CardHeader className="-space-y-2 pb-3">
       <div className="flex items-start justify-between">
         <div>
-          <CardTitle className="font-bold text-lg transition-colors duration-300 group-hover:text-primary">
+          <CardTitle className="group-hover:text-primary text-lg font-bold transition-colors duration-300">
             <h3>
               {name || 'Unnamed Plugin'}
               {version ? <span className="text-muted-foreground">@{version}</span> : null}

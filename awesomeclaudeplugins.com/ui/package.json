@@ -39,11 +39,11 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.6.3",
     "@next/bundle-analyzer": "^16.4.3",
-    "@playwright/test": "^1.62.1",
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4.3.0",
-    "@types/node": "^24.13.6",
+    "@types/node": "^24.19.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "cross-env": "^10.1.0",

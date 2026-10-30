@@ -109,13 +109,13 @@ export default function RootLayout({
         <Providers>
           <Header />
           <noscript>
-            <p className="border-b px-4 py-3 text-center text-muted-foreground text-sm">
+            <p className="text-muted-foreground border-b px-4 py-3 text-center text-sm">
               JavaScript is disabled. You can still browse the catalog, but search and sorting require JavaScript.
             </p>
           </noscript>
           {children}
-          <footer className="border-t px-4 py-6 text-center text-muted-foreground text-sm">
-            <Link className="underline-offset-4 hover:text-foreground hover:underline" href="/privacy">
+          <footer className="text-muted-foreground border-t px-4 py-6 text-center text-sm">
+            <Link className="hover:text-foreground underline-offset-4 hover:underline" href="/privacy">
               Privacy
             </Link>
           </footer>

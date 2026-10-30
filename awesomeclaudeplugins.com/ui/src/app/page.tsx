@@ -45,7 +45,7 @@ export default async function Home({ searchParams }: HomeProps) {
   const searchResult = searchCatalogRepos(initialSearchTerm, initialSortOption, 0, CATALOG_PAGE_SIZE)
 
   return (
-    <main className="min-h-dvh bg-background" id="main-content" tabIndex={-1}>
+    <main className="bg-background min-h-dvh" id="main-content" tabIndex={-1}>
       <StructuredData repos={searchResult.repos} />
       <div className="container mx-auto px-4 py-6 sm:px-6 sm:py-8">
         <TitleSection />

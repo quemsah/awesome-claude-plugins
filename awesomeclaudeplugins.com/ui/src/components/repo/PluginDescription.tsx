@@ -7,7 +7,7 @@ export function PluginDescription({ description }: PluginDescriptionProps) {
 
   return (
     <div>
-      <dt className="mb-0.5 font-medium text-sm">Description</dt>
+      <dt className="mb-0.5 text-sm font-medium">Description</dt>
       <dd className="text-muted-foreground text-sm">{description}</dd>
     </div>
   )

@@ -27,11 +27,11 @@ export function PluginList({ title, items, repoPath, defaultBranch, source }: Pl
 
   return (
     <div>
-      <dt className="mb-0.5 font-medium text-sm">
+      <dt className="mb-0.5 text-sm font-medium">
         {title} ({listItems.length})
       </dt>
       <dd>
-        <ul className="list-inside list-disc space-y-0.5 text-muted-foreground text-sm">
+        <ul className="text-muted-foreground list-inside list-disc space-y-0.5 text-sm">
           {listItems.map(({ label, isPath }, index) => {
             const fileUrl = isPath
               ? ((title === 'MCP Servers' ? getMcpBundleUrl(label) : null) ??
@@ -42,7 +42,7 @@ export function PluginList({ title, items, repoPath, defaultBranch, source }: Pl
                 {fileUrl ? (
                   <a
                     aria-label={`Open ${label} in a new tab`}
-                    className="underline-offset-4 transition-colors hover:text-primary hover:underline group-hover:text-primary"
+                    className="hover:text-primary group-hover:text-primary underline-offset-4 transition-colors hover:underline"
                     href={fileUrl}
                     rel="noopener noreferrer"
                     target="_blank"

@@ -17,9 +17,9 @@ export function InstallCommand({ marketplaceName, pluginName, pluginId }: Instal
 
   return (
     <div className="px-6 pb-4">
-      <div className="flex items-center gap-2 rounded-md border bg-muted/50 p-3">
-        <code className="grow break-all font-mono text-sm">{installCommand ?? 'Install command unavailable'}</code>
-        {installCommand && !isVerified && <span className="shrink-0 text-muted-foreground text-xs">unverified</span>}
+      <div className="bg-muted/50 flex items-center gap-2 rounded-md border p-3">
+        <code className="grow font-mono text-sm break-all">{installCommand ?? 'Install command unavailable'}</code>
+        {installCommand && !isVerified && <span className="text-muted-foreground shrink-0 text-xs">unverified</span>}
         <button
           aria-label={
             isCopied ? 'Installation command copied' : isDisabled ? 'Copy install command unavailable' : 'Copy installation command'
@@ -33,7 +33,7 @@ export function InstallCommand({ marketplaceName, pluginName, pluginId }: Instal
           {isCopied ? <CopiedIcon /> : <CopyIcon />}
         </button>
       </div>
-      <p aria-live="polite" className="mt-2 text-destructive text-xs" role={copyError ? 'alert' : undefined}>
+      <p aria-live="polite" className="text-destructive mt-2 text-xs" role={copyError ? 'alert' : undefined}>
         {copyError ?? (isCopied ? 'Install command copied.' : '')}
       </p>
     </div>
