@@ -41,6 +41,8 @@ it('initializes all tables and remains idempotent on reopen', () => {
       'marketplace_parser_version',
       'marketplace_failed_oid',
       'marketplace_failed_parser_version',
+      'catalog_updated_at',
+      'plugins_json',
     ]),
   )
   const runColumns = db.prepare('PRAGMA table_info(runs)').all() as Array<{ name: string }>
@@ -84,6 +86,9 @@ it('migrates populated v1 runs, imported IDs and historical stats atomically and
     initializeSchema(db)
     expect(db.pragma('user_version', { simple: true })).toBe(15)
     expect(db.prepare('SELECT id, createdAt FROM repositories').all()).toEqual([{ id: 53000, createdAt: 'before' }])
+    expect(db.prepare('SELECT catalog_updated_at FROM repositories WHERE id = 53000').get()).toMatchObject({
+      catalog_updated_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
+    })
     expect(db.prepare('SELECT id, date, size FROM stats').all()).toEqual([{ id: 264, date: '2024-01-01', size: 42 }])
     expect(db.prepare('SELECT run_id, warning_count, draft_date, draft_id, draft_size, draft_hash FROM runs').all()).toEqual([
       { run_id: 'old', warning_count: 3, draft_date: null, draft_id: null, draft_size: null, draft_hash: null },
