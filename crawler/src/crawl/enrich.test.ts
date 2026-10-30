@@ -1070,6 +1070,24 @@ it('reuses cached repository metadata after a conditional REST 304', async () =>
   expect(db.prepare('SELECT id FROM repositories WHERE id = ?').get(id)).toEqual({ id })
 })
 
+it('does not mark a stale legacy marketplace count as refreshed after an unexpected REST 304', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old')
+  ready(db, id)
+  db.prepare('UPDATE repositories SET marketplace_etag = ?, marketplace_parser_version = 1 WHERE id = ?').run('"old"', id)
+  const getMarketplace = vi.fn(async () => ({ kind: 'not-modified' as const, etag: '"old"' }))
+
+  const counts = await enrichRepositories(db, reader(undefined, getMarketplace), 'crawl-1')
+
+  expect(getMarketplace).toHaveBeenCalledWith('team', 'repo', undefined, { maxAttempts: 1 })
+  expect(counts).toMatchObject({ updated: 0, unchangedOnError: 1, warnings: 1, conclusive: 0 })
+  expect(db.prepare('SELECT plugins_count, marketplace_parser_version FROM repositories WHERE id = ?').get(id)).toEqual({
+    plugins_count: 3,
+    marketplace_parser_version: 1,
+  })
+  expect(listRunErrors(db, 'crawl-1').map(({ error_type }) => error_type)).toContain('marketplace_not_modified_with_stale_parser')
+})
+
 it('backfills a legacy row node ID through REST for GraphQL on the next crawl', async () => {
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old')
