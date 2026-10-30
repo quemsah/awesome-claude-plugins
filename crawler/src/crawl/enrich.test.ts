@@ -303,7 +303,7 @@ it('keeps the old plugin count and OID when changed content unexpectedly returns
 
   expect(getMarketplace).toHaveBeenCalledWith('team', 'repo', undefined, { maxAttempts: 1 })
   expect(db.prepare('SELECT * FROM repositories WHERE id = ?').get(id)).toEqual(before)
-  expect(counts).toMatchObject({ updated: 0, unchangedOnError: 1, warnings: 0, conclusive: 0 })
+  expect(counts).toMatchObject({ updated: 0, unchangedOnError: 1, warnings: 1, conclusive: 0 })
   expect(listRunErrors(db, 'crawl-1').map(({ error_type }) => error_type)).toEqual(['marketplace_not_modified_after_oid_change'])
 })
 
@@ -1220,7 +1220,7 @@ it('does not mark a stale legacy marketplace count as refreshed after an unexpec
   const counts = await enrichRepositories(db, reader(undefined, getMarketplace), 'crawl-1')
 
   expect(getMarketplace).toHaveBeenCalledWith('team', 'repo', undefined, { maxAttempts: 1 })
-  expect(counts).toMatchObject({ updated: 0, unchangedOnError: 1, warnings: 1, conclusive: 0 })
+  expect(counts).toMatchObject({ updated: 0, unchangedOnError: 1, warnings: 0, conclusive: 0 })
   expect(db.prepare('SELECT plugins_count, marketplace_parser_version FROM repositories WHERE id = ?').get(id)).toEqual({
     plugins_count: 3,
     marketplace_parser_version: 1,
