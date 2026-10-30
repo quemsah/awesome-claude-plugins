@@ -16,9 +16,7 @@ type ListEntry = { label: string; isPath: boolean }
 function getListEntries(items: PluginListProps['items']): ListEntry[] {
   const values = typeof items === 'string' ? [items] : Array.isArray(items) ? items : items ? [items] : []
   return values.flatMap((value): ListEntry[] =>
-    typeof value === 'string'
-      ? [{ label: value, isPath: true }]
-      : Object.keys(value).map((label) => ({ label, isPath: false }))
+    typeof value === 'string' ? [{ label: value, isPath: true }] : Object.keys(value).map((label) => ({ label, isPath: false }))
   )
 }
 
@@ -36,8 +34,8 @@ export function PluginList({ title, items, repoPath, defaultBranch, source }: Pl
         <ul className="list-inside list-disc space-y-0.5 text-muted-foreground text-sm">
           {listItems.map(({ label, isPath }, index) => {
             const fileUrl = isPath
-              ? (title === 'MCP Servers' ? getMcpBundleUrl(label) : null) ??
-                getPluginComponentFileUrl(source, repoPath, defaultBranch, label)
+              ? ((title === 'MCP Servers' ? getMcpBundleUrl(label) : null) ??
+                getPluginComponentFileUrl(source, repoPath, defaultBranch, label))
               : null
             return (
               <li className="break-all" key={`${index}-${label}`}>
