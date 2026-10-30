@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { GET, sanitizeOgDescription } from './route.tsx'
+import { sanitizeOgDescription } from '../../../../lib/ogText.ts'
+import { GET } from './route.tsx'
 
 const catalogOwner = 'ykdojo'
 const catalogRepo = 'claude-code-tips'
