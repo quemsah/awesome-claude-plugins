@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { trackEvent } from '../lib/analytics.ts'
 import { copyText } from '../lib/clipboard.ts'
 import { getPluginInstallCommand, isPluginInstallCommandVerified } from '../lib/installCommand.ts'
 
@@ -28,6 +29,7 @@ export function useInstallCommand(pluginName?: string, marketplaceName?: string,
     if (copied) {
       setCopyError(null)
       setIsCopied(true)
+      trackEvent('copy_plugin_install')
       clearTimeout(resetTimer.current)
       resetTimer.current = setTimeout(() => setIsCopied(false), 2_000)
     } else {
