@@ -1,4 +1,4 @@
-export { RepoSchema, ReposArraySchema } from './catalog.js'
+export { PluginSummarySchema, PublishedRepoSchema, PublishedReposArraySchema, RepoSchema, ReposArraySchema } from './catalog.js'
 export {
   encodeGitHubPath,
   GITHUB_SEGMENT_PATTERN,
