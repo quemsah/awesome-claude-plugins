@@ -31,8 +31,9 @@ export function GET(request: Request) {
   // `searchCatalogRepos` owns query normalization, including the length cap, so this route cannot
   // drift from the server initial render it pages alongside.
   const query = searchParams.get('q') ?? ''
+  const searchResult = searchCatalogRepos(query, parseSortOption(searchParams.get('sort')), page, pageSize)
 
-  return NextResponse.json(searchCatalogRepos(query, parseSortOption(searchParams.get('sort')), page, pageSize), {
+  return NextResponse.json(searchResult, {
     headers: {
       'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
     },

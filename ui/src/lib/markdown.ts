@@ -2,7 +2,7 @@ import type { Repo } from '../schemas/repo.schema.ts'
 import { getCatalogLastModified, getCatalogQualityForRepo } from './catalog.ts'
 import { BASE_URL, SOURCE_REPOSITORY_URL } from './constants.ts'
 import { getMarketplaceAddCommand } from './installCommand.ts'
-import { getGitHubRepoPath } from './repositoryIdentity.ts'
+import { getGitHubRepoPath, getGitHubRepoUrl } from './repositoryIdentity.ts'
 import { formatDate } from './utils.ts'
 
 export function buildHomeMarkdown(): string {
@@ -111,6 +111,7 @@ export function buildRepoMarkdown(repo: Repo): string {
 
   const repoPath = getGitHubRepoPath(repo.owner, repo.repo_name)
   const canonicalUrl = `${BASE_URL}/${repoPath}`
+  const repositoryUrl = getGitHubRepoUrl(repo.owner, repo.repo_name)
   const marketplaceCommand = getMarketplaceAddCommand(repo.owner, repo.repo_name)
   const description = repo.description?.trim() || MISSING_DESCRIPTION
   const descriptionBody = toMarkdownText(foldToSingleLine(description))
@@ -123,7 +124,7 @@ export function buildRepoMarkdown(repo: Repo): string {
     toYamlProperty('title', `${repo.owner}/${repo.repo_name}`),
     toYamlProperty('description', description),
     toYamlProperty('canonical_url', canonicalUrl),
-    toYamlProperty('repository_url', repo.html_url),
+    toYamlProperty('repository_url', repositoryUrl),
     toYamlProperty('stars', repo.stargazers_count ?? 0),
     toYamlProperty('forks', repo.forks_count ?? 0),
     toYamlProperty('plugins_count', repo.plugins_count),
@@ -143,7 +144,7 @@ ${descriptionBody}
 ## Repository
 
 - [Catalog detail page](${canonicalUrl})
-- [GitHub repository](${repo.html_url})
+- [GitHub repository](${repositoryUrl})
 - Stars: ${repo.stargazers_count ?? 0}
 - Forks: ${repo.forks_count ?? 0}
 - ${pluginCount}

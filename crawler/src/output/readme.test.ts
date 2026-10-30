@@ -13,6 +13,7 @@ function repo(id: number, stars: number, subscribers: number | null, description
     subscribers_count: subscribers,
     forks_count: 0,
     plugins_count: null,
+    catalog_updated_at: '2026-01-01T00:00:00.000Z',
     description,
   }
 }
@@ -182,6 +183,7 @@ it('renders all 100 legacy repository links without changing their URLs', () => 
       subscribers_count: 0,
       forks_count: 0,
       plugins_count: null,
+      catalog_updated_at: '2026-01-01T00:00:00.000Z',
       description: null,
     }
   })

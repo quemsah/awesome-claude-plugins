@@ -114,15 +114,18 @@ function snapshotHash(files: GitSnapshotFiles, includeMarkdownPaths: boolean): s
   return createHash('sha256').update(JSON.stringify(contents), 'utf8').digest('hex')
 }
 
-function snapshotHashMatches(savedHash: string, snapshot: { hash: string; legacyHash: string }): boolean {
-  return savedHash === snapshot.hash || savedHash === snapshot.legacyHash
+type RenderedSnapshot = { files: GitSnapshotFiles; hash: string; compatibility: { hash: string; files: GitSnapshotFiles }[] }
+
+function filesForDraftHash(savedHash: string, snapshot: RenderedSnapshot): GitSnapshotFiles | null {
+  if (savedHash === snapshot.hash) return snapshot.files
+  return snapshot.compatibility.find((candidate) => savedHash === candidate.hash)?.files ?? null
 }
 
 function renderFiles(
   db: Database.Database,
   draft: StatsRecord,
   repositories: readonly PublishableRepository[] = listPublishable(db),
-): { files: GitSnapshotFiles; hash: string; legacyHash: string } {
+): RenderedSnapshot {
   checkHistory(historicalStats(db), draft)
   let files: GitSnapshotFiles
   try {
@@ -141,12 +144,25 @@ function renderFiles(
     }
     throw new PublicationError('snapshot_invalid')
   }
+  const previousReposFiles = { ...files, reposJson: renderRepos(repositories, { includeCatalogUpdatedAt: false }) }
+  const legacyUrlFiles = { ...files, reposJson: renderRepos(repositories, { legacyUrls: true }) }
   return {
     files,
     hash: snapshotHash(files, true),
-    // Drafts prepared before markdown-paths.json became part of the snapshot used this three-file hash.
-    // Accept it only for recovery; the sidecar is deterministic from reposJson, which the legacy hash already pins.
-    legacyHash: snapshotHash(files, false),
+    compatibility: [
+      {
+        // The immediately preceding main branch published line-separated JSON without timestamps.
+        hash: snapshotHash(previousReposFiles, true),
+        files: previousReposFiles,
+      },
+      // Older drafts used a compact single-line JSON array with canonical URL fields.
+      { hash: snapshotHash(legacyUrlFiles, true), files: legacyUrlFiles },
+      // Some drafts preceded the markdown-paths.json sidecar; preserve the matching
+      // exact repos.json bytes for each historical serialization.
+      { hash: snapshotHash(files, false), files },
+      { hash: snapshotHash(previousReposFiles, false), files: previousReposFiles },
+      { hash: snapshotHash(legacyUrlFiles, false), files: legacyUrlFiles },
+    ],
   }
 }
 
@@ -172,7 +188,7 @@ export function prepareDraft(db: Database.Database, runId: string, now: Date): R
       }
       const snapshot = renderFiles(db, draft, repositories)
       if (draft.hash) {
-        if (!snapshotHashMatches(draft.hash, snapshot)) throw new PublicationError('snapshot_changed')
+        if (!filesForDraftHash(draft.hash, snapshot)) throw new PublicationError('snapshot_changed')
       } else {
         draft.hash = snapshot.hash
         try {
@@ -193,8 +209,9 @@ function checkedSnapshot(db: Database.Database, runId: string): { draft: RunDraf
       if (run?.status !== 'completed' || run.completed_at === null || run.last_error !== null) throw new PublicationError('invalid_run')
       const draft = savedDraft(run)
       const snapshot = renderFiles(db, draft)
-      if (!snapshotHashMatches(draft.hash, snapshot)) throw new PublicationError('snapshot_changed')
-      return { draft, files: snapshot.files, pending: run.pending_commit_sha }
+      const files = filesForDraftHash(draft.hash, snapshot)
+      if (!files) throw new PublicationError('snapshot_changed')
+      return { draft, files, pending: run.pending_commit_sha }
     })(),
   )
 }

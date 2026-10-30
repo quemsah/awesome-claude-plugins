@@ -7,10 +7,8 @@ import { createCatalogRepositorySnapshot } from './repositorySnapshot.ts'
 const catalogRepo = {
   description: 'Kubernetes AI Toolchain Operator',
   forks_count: 1683,
-  html_url: 'https://github.com/kaito-project/kaito',
   id: 4,
   owner: 'kaito-project',
-  owner_url: 'https://github.com/kaito-project',
   plugins_count: 1,
   repo_name: 'kaito',
   stargazers_count: 1013,

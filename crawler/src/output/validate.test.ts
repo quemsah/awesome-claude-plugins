@@ -2,15 +2,14 @@ import { expect, it } from 'vitest'
 import { validateSnapshot } from './validate.js'
 
 const validRepo = {
-  html_url: 'https://github.com/Owner/Repo',
   stargazers_count: 12,
   forks_count: 0,
   subscribers_count: 3,
   description: null,
   owner: 'Owner',
-  owner_url: 'https://github.com/Owner',
   repo_name: 'Repo',
   plugins_count: null,
+  catalog_updated_at: '2026-01-01T00:00:00.000Z',
   id: 7,
 }
 const validStats = [{ id: 5, date: '2026-01-01T00:00:00.000Z', size: 1 }]
@@ -25,11 +24,18 @@ it('accepts UTF-8 JSON preserving canonical case and null fields', () => {
 })
 
 it('reports issue count and paths for malformed records instead of silently dropping them', () => {
-  const malformed = { ...validRepo, html_url: 'https://github.com/Owner/Repo?token=a', stargazers_count: -1, plugins_count: 1.5 }
+  const malformed = { ...validRepo, owner: 'bad/owner', stargazers_count: -1, plugins_count: 1.5 }
   const extra = { ...validRepo, id: 8, repo_updated: 'internal' }
   expect(() => validateSnapshot(JSON.stringify([malformed, extra]), JSON.stringify(validStats))).toThrow(
-    /4 issues.*repos\[0\]\.html_url.*repos\[0\]\.stargazers_count.*repos\[0\]\.plugins_count.*repos\[1\]\.repo_updated/s,
+    /4 issues.*repos\[0\]\.owner.*repos\[0\]\.stargazers_count.*repos\[0\]\.plugins_count.*repos\[1\]\.repo_updated/s,
   )
+})
+
+it('uses the public plugin-summary contract when validating parsed snapshots', () => {
+  const valid = { ...validRepo, plugins: [] }
+  expect(() => validateSnapshot(JSON.stringify([valid]), JSON.stringify(validStats))).not.toThrow()
+  const malformed = [{ ...validRepo, plugins: [{ description: `bad${String.fromCharCode(0xd800)}` }] }]
+  expect(() => validateSnapshot(JSON.stringify(malformed), JSON.stringify(validStats))).toThrow(/invalid public plugin summary/)
 })
 
 it('keeps diagnostic paths but excludes arbitrary field names that could contain secrets', () => {
@@ -76,4 +82,14 @@ it('rejects inconsistent catalog size and a mismatching latest stats draft when 
 it('rejects malformed UTF-8 byte sequences and unpaired surrogate strings', () => {
   expect(() => validateSnapshot(Uint8Array.of(0xff), JSON.stringify(validStats))).toThrow(/repos.*UTF-8/i)
   expect(() => validateSnapshot(JSON.stringify([validRepo]), `[\ud800]`)).toThrow(/stats.*UTF-8/i)
+})
+
+it('requires a canonical UTC timestamp for each repository catalog record', () => {
+  expect(() =>
+    validateSnapshot(JSON.stringify([{ ...validRepo, catalog_updated_at: '2026-01-01T00:00:00Z' }]), JSON.stringify(validStats)),
+  ).toThrow(/catalog_updated_at.*valid ISO UTC timestamp/)
+  const { catalog_updated_at: _, ...missingTimestamp } = validRepo
+  expect(() => validateSnapshot(JSON.stringify([missingTimestamp]), JSON.stringify(validStats))).toThrow(
+    /catalog_updated_at.*required field/i,
+  )
 })
