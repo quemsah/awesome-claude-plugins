@@ -262,6 +262,9 @@ it('preserves an old catalog serialization when recovering an unpublished pendin
   const draft = prepareDraft(db, 'r1', timestamp)
   const files = readDraftSnapshot(db, 'r1')
   const oldReposJson = renderRepos(listPublishable(db), { includeCatalogUpdatedAt: false })
+  expect(oldReposJson).toBe(
+    '[{"html_url":"https://github.com/example/plugin","stargazers_count":42,"forks_count":2,"subscribers_count":3,"description":"Hello","owner":"example","owner_url":"https://github.com/example","repo_name":"plugin","plugins_count":1,"id":18}]\n',
+  )
   const oldHash = createHash('sha256')
     .update(JSON.stringify([files.readme, oldReposJson, files.statsJson, files.markdownPathsJson]), 'utf8')
     .digest('hex')
