@@ -8,8 +8,8 @@ export const runtime = 'nodejs'
 // Preserve language text while dropping only these decorative glyphs from the preview.
 export function sanitizeOgDescription(value: string): string {
   return value
-    .replaceAll(/[\p{So}\p{Sk}\uFE0e\uFE0f]/gu, ' ')
-    .replaceAll(/\u200d/gu, ' ')
+    .replaceAll(/[\p{So}\p{Sk}]/gu, ' ')
+    .replaceAll(/\uFE0e|\uFE0f|\u200d/gu, ' ')
     .replaceAll(/\s+/g, ' ')
     .trim()
 }
