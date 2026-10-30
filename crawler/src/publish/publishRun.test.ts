@@ -256,12 +256,32 @@ it('still rejects catalog changes when a persisted draft uses the legacy three-f
   expect(git.events).toEqual([])
 })
 
+it('recovers the previous eight-field multiline catalog serialization', async () => {
+  const db = fixture()
+  const git = new Branch()
+  prepareDraft(db, 'r1', timestamp)
+  const files = readDraftSnapshot(db, 'r1')
+  const previousReposJson = renderRepos(listPublishable(db), { includeCatalogUpdatedAt: false })
+  expect(previousReposJson.startsWith('[\\n{')).toBe(true)
+  expect(JSON.parse(previousReposJson)[0]).not.toHaveProperty('html_url')
+  expect(JSON.parse(previousReposJson)[0]).not.toHaveProperty('catalog_updated_at')
+
+  const previousHash = createHash('sha256')
+    .update(JSON.stringify([files.readme, previousReposJson, files.statsJson, files.markdownPathsJson]), 'utf8')
+    .digest('hex')
+  db.prepare('UPDATE runs SET draft_hash = ? WHERE run_id = ?').run(previousHash, 'r1')
+  expect(readDraftSnapshot(db, 'r1').reposJson).toBe(previousReposJson)
+
+  await publishRun(db, git, 'r1', { writeEnabled: true })
+  expect(git.files[0].reposJson).toBe(previousReposJson)
+})
+
 it('preserves an old catalog serialization when recovering an unpublished pending commit', async () => {
   const db = fixture()
   const git = new Branch()
   const draft = prepareDraft(db, 'r1', timestamp)
   const files = readDraftSnapshot(db, 'r1')
-  const oldReposJson = renderRepos(listPublishable(db), { includeCatalogUpdatedAt: false })
+  const oldReposJson = renderRepos(listPublishable(db), { legacyUrls: true })
   expect(oldReposJson).toBe(
     '[{"html_url":"https://github.com/example/plugin","stargazers_count":42,"forks_count":2,"subscribers_count":3,"description":"Hello","owner":"example","owner_url":"https://github.com/example","repo_name":"plugin","plugins_count":1,"id":18}]\n',
   )
@@ -288,7 +308,7 @@ it('reconciles a visible legacy-format pending commit after a later catalog muta
   const git = new Branch()
   prepareDraft(db, 'r1', timestamp)
   const files = readDraftSnapshot(db, 'r1')
-  const oldReposJson = renderRepos(listPublishable(db), { includeCatalogUpdatedAt: false })
+  const oldReposJson = renderRepos(listPublishable(db), { legacyUrls: true })
   const oldHash = createHash('sha256')
     .update(JSON.stringify([files.readme, oldReposJson, files.statsJson, files.markdownPathsJson]), 'utf8')
     .digest('hex')
