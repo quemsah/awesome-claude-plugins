@@ -6,21 +6,38 @@ import { serializeJsonLd } from './jsonLd.ts'
 import { getGitHubRepoPath } from './repositoryIdentity.ts'
 
 describe('catalog security boundaries', () => {
-  it('rejects path injection and noncanonical GitHub URLs', () => {
+  it('rejects path injection in catalog identity segments', () => {
     const result = RepoSchema.safeParse({
-      html_url: 'javascript:alert(1)',
       stargazers_count: 1,
       forks_count: 0,
       subscribers_count: 0,
       description: null,
       owner: '\\evil.com',
-      owner_url: 'https://github.com/%5Cevil.com',
       repo_name: 'repository',
       plugins_count: 0,
       id: 1,
     })
 
     expect(result.success).toBe(false)
+  })
+
+  it('rejects dot-only GitHub owner and repository segments', () => {
+    const validRepo = {
+      stargazers_count: 1,
+      forks_count: 0,
+      subscribers_count: 0,
+      description: null,
+      owner: 'owner',
+      repo_name: 'repository',
+      plugins_count: 0,
+      id: 1,
+    }
+    for (const segment of ['.', '..']) {
+      expect(RepoSchema.safeParse({ ...validRepo, owner: segment }).success).toBe(false)
+      expect(RepoSchema.safeParse({ ...validRepo, repo_name: segment }).success).toBe(false)
+    }
+    expect(RepoSchema.safeParse(validRepo).success).toBe(true)
+    expect(RepoSchema.safeParse({ ...validRepo, repo_name: '.github' }).success).toBe(true)
   })
 
   it('only generates catalog paths from encoded repository segments', () => {

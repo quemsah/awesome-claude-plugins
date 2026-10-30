@@ -4,13 +4,11 @@ import { describe, expect, it } from 'vitest'
 import { getCatalogQuality, getDescriptionQuality } from './catalogQuality.ts'
 
 const baseRepo = {
-  html_url: 'https://github.com/example/repository',
   stargazers_count: 10,
   forks_count: 1,
   subscribers_count: 1,
   description: 'A repository description that is long enough to be strong.',
   owner: 'example',
-  owner_url: 'https://github.com/example',
   repo_name: 'repository',
   plugins_count: 2,
   id: 1,

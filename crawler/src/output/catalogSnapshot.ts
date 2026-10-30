@@ -3,24 +3,23 @@ import { parsePluginSummariesJson } from '../github/pluginSummaries.js'
 import type { PublishableRepository } from '../storage/repositories.js'
 import { assertValidStatsDraft, type StatsRecord } from './statsDraft.js'
 
+/** Serialize only the eight public catalog fields, one repository per line for reviewable diffs. */
 export function renderRepos(rows: readonly PublishableRepository[]): string {
   const repositories = rows.map((row) => {
     const plugins = parsePluginSummariesJson(row.plugins_json ?? null)
-    return {
-      html_url: row.html_url,
+    return JSON.stringify({
       stargazers_count: row.stargazers_count,
       forks_count: row.forks_count,
       subscribers_count: row.subscribers_count,
       description: row.description,
       owner: row.owner,
-      owner_url: row.owner_url,
       repo_name: row.repo_name,
       plugins_count: row.plugins_count,
       ...(plugins === null ? {} : { plugins }),
       id: row.id,
-    }
+    })
   })
-  return `${JSON.stringify(repositories)}\n`
+  return `[\n${repositories.join(',\n')}\n]\n`
 }
 
 export function renderMarkdownPaths(repositories: readonly PublishableRepository[]): string {
