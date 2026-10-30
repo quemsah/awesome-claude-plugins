@@ -2,7 +2,25 @@ import type Database from 'better-sqlite3'
 import type { PublishableRepository } from '../storage/repositories.js'
 import { assertValidStatsDraft, type StatsRecord } from './statsDraft.js'
 
+// Recovery hashes written before catalog timestamps must match the exact original
+// repos.json bytes, including canonical URLs, field order, and compact formatting.
 export function renderRepos(rows: readonly PublishableRepository[], options: { includeCatalogUpdatedAt?: boolean } = {}): string {
+  if (options.includeCatalogUpdatedAt === false) {
+    const legacyRepositories = rows.map((row) => ({
+      html_url: row.html_url,
+      stargazers_count: row.stargazers_count,
+      forks_count: row.forks_count,
+      subscribers_count: row.subscribers_count,
+      description: row.description,
+      owner: row.owner,
+      owner_url: row.owner_url,
+      repo_name: row.repo_name,
+      plugins_count: row.plugins_count,
+      id: row.id,
+    }))
+    return `${JSON.stringify(legacyRepositories)}\n`
+  }
+
   const repositories = rows.map((row) =>
     JSON.stringify({
       stargazers_count: row.stargazers_count,
