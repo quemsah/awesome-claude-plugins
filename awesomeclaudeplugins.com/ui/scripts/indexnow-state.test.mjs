@@ -41,6 +41,7 @@ test('submits an IndexNow batch with the correct site and verification key', asy
   assert.equal(requests.length, 1)
   assert.equal(requests[0].endpoint, 'https://api.indexnow.org/indexnow')
   assert.equal(requests[0].options.method, 'POST')
+  assert.ok(requests[0].options.signal instanceof AbortSignal, 'HTTP submissions must be time-bounded')
   assert.deepEqual(JSON.parse(requests[0].options.body), {
     host: 'awesomeclaudeplugins.com',
     key: 'test-key',

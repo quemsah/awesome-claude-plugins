@@ -65,7 +65,7 @@ const githubSourcePlugin = {
   name: 'github-source-plugin',
   displayName: 'GitHub Source Plugin',
   description: 'A plugin sourced from a GitHub repository',
-  source: { source: 'github', repo: 'elsewhere/shared-plugins', ref: 'main', path: 'plugins/review' },
+  source: { source: 'git-subdir', url: 'https://github.com/elsewhere/shared-plugins.git', ref: 'main', path: 'plugins/review' },
   commands: './commands/review.md',
 }
 

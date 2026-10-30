@@ -4,7 +4,7 @@ import { getMcpBundleUrl } from '../../lib/mcpBundleUrl.ts'
 
 const CONTROL_CHARACTER_PATTERN = /[\r\n]/
 const MCP_PROTOCOL_PATTERN = /^[a-z][a-z0-9+.-]*:/i
-const GITHUB_REPO_PATH_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
+const GITHUB_REPO_PATH_PATTERN = /^(?!\.{1,2}\/)[A-Za-z0-9._-]+\/(?!\.{1,2}$)[A-Za-z0-9._-]+$/
 const PluginPathSchema = z.string().check(
   z.minLength(1),
   z.maxLength(512),
@@ -191,6 +191,35 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
+const OPTIONAL_PLUGIN_METADATA_FIELDS = [
+  'description',
+  'version',
+  'category',
+  'author',
+  'license',
+  'keywords',
+  'strict',
+  'commands',
+  'agents',
+  'mcpServers',
+  'homepage',
+  'tags',
+] as const satisfies readonly (keyof Plugin)[]
+
+/** Keep individually valid display metadata even if another optional field is malformed. */
+function recoverPluginWithValidMetadata(entry: Record<string, unknown>): Plugin | null {
+  const core = PluginSchema.safeParse({ name: entry.name, id: entry.id, source: entry.source })
+  if (!core.success) return null
+
+  let plugin = core.data
+  for (const field of OPTIONAL_PLUGIN_METADATA_FIELDS) {
+    if (!(field in entry)) continue
+    const withField = PluginSchema.safeParse({ ...plugin, [field]: entry[field] })
+    if (withField.success) plugin = withField.data
+  }
+  return plugin
+}
+
 export const MarketplacePluginsSchema: z.ZodMiniType<MarketplacePluginsResult> = z.transform((value, context): MarketplacePluginsResult => {
   const result: MarketplacePluginsResult = { plugins: [], invalidPluginCount: 0, issues: [] }
   try {
@@ -235,10 +264,10 @@ export const MarketplacePluginsSchema: z.ZodMiniType<MarketplacePluginsResult> =
       result.plugins.push(parsed.data)
       return
     }
-    if (!parsed.success && isMarketplacePlugin(entry)) {
-      const core = PluginSchema.safeParse({ name: candidate.name, id: candidate.id, source: candidate.source })
-      if (core.success) {
-        result.plugins.push(core.data)
+    if (!parsed.success && isMarketplacePlugin(entry) && isRecord(candidate)) {
+      const recovered = recoverPluginWithValidMetadata(candidate)
+      if (recovered) {
+        result.plugins.push(recovered)
         return
       }
     }

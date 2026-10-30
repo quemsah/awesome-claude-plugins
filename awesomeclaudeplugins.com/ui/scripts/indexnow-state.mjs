@@ -29,6 +29,7 @@ export function serializeBaseline(records, includedUrls = null) {
 export async function sendIndexNowBatch(urls, { siteUrl, key, keyLocation }, fetcher = fetch) {
   const response = await fetcher('https://api.indexnow.org/indexnow', {
     method: 'POST',
+    signal: AbortSignal.timeout(30_000),
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
     body: JSON.stringify({ host: new URL(siteUrl).host, key, keyLocation, urlList: urls }),
   })

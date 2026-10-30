@@ -146,6 +146,10 @@ test('repo detail page renders a GitHub source object as a repository link', asy
     'href',
     'https://github.com/elsewhere/shared-plugins/tree/main'
   )
+  await expect(plugin.getByRole('link', { name: 'Open source directory plugins/review in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/elsewhere/shared-plugins/tree/main/plugins/review'
+  )
   await expect(plugin.getByRole('link', { name: 'Open ./commands/review.md in a new tab' })).toHaveAttribute(
     'href',
     'https://github.com/elsewhere/shared-plugins/blob/main/plugins/review/commands/review.md'

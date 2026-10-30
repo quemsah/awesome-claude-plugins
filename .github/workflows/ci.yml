@@ -3,8 +3,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    # Stacked PR #378 targets #369; still run CI before its base moves to main.
-    branches: [main, chore/site-directory-layout, fix/report-12-marketplace-contract, fix/report-13-catalog-contract, fix/report-35-official-contract]
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -46,6 +45,9 @@ jobs:
               - 'awesomeclaudeplugins.com/crawler/**'
               - 'README.md'
               - 'awesomeclaudeplugins.com/ui/src/data/repos.json'
+              # Crawler's integration test still imports the UI stats schema.
+              - 'awesomeclaudeplugins.com/ui/src/schemas/**'
+              - 'awesomeclaudeplugins.com/ui/package.json'
               - 'awesomeclaudeplugins.com/shared/**'
               - 'awesomeclaudeplugins.com/package.json'
               - 'awesomeclaudeplugins.com/package-lock.json'
