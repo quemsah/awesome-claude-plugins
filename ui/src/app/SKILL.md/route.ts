@@ -63,10 +63,12 @@ After explicit user approval, recheck the local checkout immediately before regi
 
 \`\`\`sh
 git -C {absolute_local_path} rev-parse HEAD
-git -C {absolute_local_path} status --porcelain --untracked-files=all --ignored
+git -C {absolute_local_path} status --porcelain --untracked-files=all --ignored --ignore-submodules=none
 \`\`\`
 
 Require the first command to equal the original audited full commit SHA and the second command to print nothing. If either check fails, stop; inspect and audit the changed files, then obtain renewed user approval before continuing.
+
+If the repository uses submodules, require every nested submodule to be initialized at the commit recorded by its audited parent and audit its source too. Repeat the commit and clean-status checks inside every submodule, comparing its HEAD to that recorded commit and including ignored and untracked files. Stop if any submodule is missing, changed, or unaudited. These recursive checks also apply before every session start or reload.
 
 Local relative-path plugins load in place, and Claude Code does not install their Node.js dependencies into the checkout. Before enabling hooks or MCP servers, inspect the plugin's dependency manifest, lockfile, setup commands, and runtime paths; obtain explicit approval for dependency installation. Use the plugin's documented setup that keeps dependencies outside the audited checkout, for example in CLAUDE_PLUGIN_DATA, only after verifying that its runtime actually loads them there. Use locked versions and integrity checks, keep the checkout clean, and repeat the checks above after setup. If the plugin requires an in-checkout node_modules directory or has no compatible audited setup, stop and request a supported installation method rather than bypassing the clean-check requirement.
 

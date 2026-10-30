@@ -8,7 +8,9 @@ describe('/SKILL.md', () => {
 
     expect(guide).toContain('git -C {local_path} checkout --detach {commit}')
     expect(guide).toContain('Confirm `rev-parse HEAD` equals the requested full commit SHA')
-    expect(guide).toContain('git -C {absolute_local_path} status --porcelain --untracked-files=all --ignored')
+    expect(guide).toContain('git -C {absolute_local_path} status --porcelain --untracked-files=all --ignored --ignore-submodules=none')
+    expect(guide).toContain('Repeat the commit and clean-status checks inside every submodule')
+    expect(guide).toContain('Stop if any submodule is missing, changed, or unaudited')
     expect(guide).toContain(
       'recheck the local checkout immediately before registering it and again immediately before installing the plugin'
     )
