@@ -42,7 +42,8 @@ export function RepoCard({ repo, className }: RepoCardProps) {
   const archived = isArchivedRepo(repo)
   const updatedAge = formatRelativeTime(repo.pushed_at)
   const addedAge = formatRelativeTime(repo.catalog_added_at)
-  const freshnessText = updatedAge ? `updated ${updatedAge}` : addedAge ? `added ${addedAge}` : null
+  const updatedText = updatedAge ? `updated ${updatedAge}` : null
+  const addedText = addedAge ? `added ${addedAge}` : null
 
   useEffect(() => {
     isMounted.current = true
@@ -120,9 +121,10 @@ export function RepoCard({ repo, className }: RepoCardProps) {
         <div className="grow">
           <p className="text-muted-foreground mb-4 line-clamp-2 text-sm">{repo.description?.trim() || 'No description available.'}</p>
         </div>
-        {freshnessText || repo.license ? (
+        {updatedText || addedText || repo.license ? (
           <div className="text-muted-foreground mb-3 flex flex-wrap items-center gap-2 text-xs">
-            {freshnessText ? <span suppressHydrationWarning>{freshnessText}</span> : null}
+            {updatedText ? <span suppressHydrationWarning>{updatedText}</span> : null}
+            {addedText ? <span suppressHydrationWarning>{addedText}</span> : null}
             {repo.license ? <Badge variant="outline">{repo.license}</Badge> : null}
           </div>
         ) : null}

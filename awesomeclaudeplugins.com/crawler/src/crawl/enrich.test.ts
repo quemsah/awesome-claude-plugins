@@ -2192,3 +2192,18 @@ it('enriches persisted license and archive data and uses immutable discovery tim
     license: 'MIT', archived: true,
   })
 })
+
+it('backfills archived metadata without reusing a legacy REST ETag', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', null)
+  ready(db, id)
+  db.prepare('UPDATE repositories SET repository_etag = ? WHERE id = ?').run('"old-etag"', id)
+  const getRepository = vi.fn(async (owner: string, name: string) => ({
+    kind: 'found' as const, data: { ...githubRepo(owner, name), archived: false, license: null },
+  }))
+  await enrichRepositories(db, reader(getRepository), 'crawl-1')
+  expect(getRepository).toHaveBeenCalledWith('team', 'repo', undefined, { maxAttempts: 1 })
+  expect(db.prepare('SELECT archived, license FROM repositories WHERE id = ?').get(id)).toEqual({
+    archived: 0, license: null,
+  })
+})
