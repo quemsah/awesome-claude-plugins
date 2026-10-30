@@ -1,0 +1,65 @@
+name: Dependency security audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'awesomeclaudeplugins.com/package.json'
+      - 'awesomeclaudeplugins.com/package-lock.json'
+      - 'awesomeclaudeplugins.com/ui/package.json'
+      - 'awesomeclaudeplugins.com/crawler/package.json'
+      - 'awesomeclaudeplugins.com/shared/**/package.json'
+      - '.github/workflows/dependency-audit.yml'
+  # Weekly on Mondays at 07:00 UTC, including weeks without dependency PRs.
+  schedule:
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: awesomeclaudeplugins.com/ui/.nvmrc
+          cache: npm
+          cache-dependency-path: awesomeclaudeplugins.com/package-lock.json
+
+      - name: Audit production and complete dependency graphs
+        working-directory: awesomeclaudeplugins.com
+        shell: bash
+        run: |
+          npm audit --json > "$RUNNER_TEMP/audit-all.json" || true
+          npm audit --omit=dev --json > "$RUNNER_TEMP/audit-production.json" || true
+          node - "$RUNNER_TEMP/audit-all.json" "$RUNNER_TEMP/audit-production.json" <<'NODE'
+          const fs = require('node:fs')
+          for (const [label, file] of [['ALL', process.argv[2]], ['PRODUCTION', process.argv[3]]]) {
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'))
+            console.log(`AUDIT ${label}: ${JSON.stringify(data.metadata?.vulnerabilities ?? {})}`)
+            for (const [name, issue] of Object.entries(data.vulnerabilities ?? {})) {
+              const via = (issue.via ?? []).map((item) => typeof item === 'string'
+                ? item
+                : `${item.name}: ${item.title} (${item.url})`)
+              console.log(JSON.stringify({
+                name, severity: issue.severity, direct: issue.isDirect,
+                range: issue.range, via, fixAvailable: issue.fixAvailable,
+              }))
+            }
+          }
+          NODE
+
+      - name: Enforce no high or critical advisories in production or development
+        working-directory: awesomeclaudeplugins.com
+        run: |
+          npm audit --omit=dev --audit-level=high
+          npm audit --audit-level=high

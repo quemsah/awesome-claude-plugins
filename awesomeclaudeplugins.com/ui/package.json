@@ -20,6 +20,7 @@
     "prepare": "cd ../.. && husky awesomeclaudeplugins.com/ui/.husky"
   },
   "dependencies": {
+    "@awesome-claude-plugins/catalog-contract": "^0.1.0",
     "@radix-ui/react-avatar": "^1.2.6",
     "@radix-ui/react-dropdown-menu": "2.2.1",
     "@radix-ui/react-select": "^2.3.7",
@@ -28,19 +29,18 @@
     "clsx": "^2.1.1",
     "fuse.js": "7.5.0",
     "lucide-react": "^0.577.0",
-    "next": "16.3.6",
+    "next": "^16.4.3",
     "next-themes": "0.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "recharts": "3.10.1",
     "tailwind-merge": "^3.6.0",
     "use-debounce": "^10.1.1",
-    "zod": "^4.4.3",
-    "@awesome-claude-plugins/catalog-contract": "^0.1.0"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
-    "@next/bundle-analyzer": "16.3.6",
+    "@next/bundle-analyzer": "^16.4.3",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.3.0",
     "@types/node": "^24.13.6",
