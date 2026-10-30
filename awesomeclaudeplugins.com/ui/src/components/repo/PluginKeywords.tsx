@@ -9,7 +9,7 @@ export function PluginKeywords({ keywords }: PluginKeywordsProps) {
 
   return (
     <div>
-      <dt className="mb-0.5 font-medium text-sm">Keywords</dt>
+      <dt className="mb-0.5 text-sm font-medium">Keywords</dt>
       <dd className="flex flex-wrap gap-1.5">
         {keywords.map((keyword, index) => (
           <Badge className="px-1.5 py-0.5 text-xs" key={`${keyword}-${index}`} variant="outline">

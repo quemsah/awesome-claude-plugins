@@ -7,13 +7,13 @@ import { getAboutBreadcrumbs } from '../../lib/breadcrumbs.ts'
 
 export default function AboutPage() {
   return (
-    <main className="min-h-dvh bg-background" id="main-content" tabIndex={-1}>
+    <main className="bg-background min-h-dvh" id="main-content" tabIndex={-1}>
       <AboutStructuredData />
       <div className="container mx-auto max-w-4xl px-4 py-8">
         <Breadcrumbs items={getAboutBreadcrumbs()} />
         <div className="mb-6 space-y-4 text-center">
-          <h1 className="text-balance font-bold text-4xl text-foreground md:text-5xl">About This Project</h1>
-          <p className="mx-auto max-w-2xl text-pretty text-lg text-muted-foreground">
+          <h1 className="text-foreground text-4xl font-bold text-balance md:text-5xl">About This Project</h1>
+          <p className="text-muted-foreground mx-auto max-w-2xl text-lg text-pretty">
             A daily-updated directory of Claude Code plugins and tools, inspired by the "awesome" list movement. Just trying to keep up with
             the ecosystem.
           </p>
@@ -21,25 +21,25 @@ export default function AboutPage() {
         <Card className="mt-6">
           <CardHeader>
             <CardTitle className="flex items-center justify-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-primary" />
+              <ShieldCheck className="text-primary h-5 w-5" />
               <h2>How to read the directory</h2>
             </CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-4 text-muted-foreground sm:grid-cols-2">
+          <CardContent className="text-muted-foreground grid gap-4 sm:grid-cols-2">
             <p className="flex gap-2">
-              <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-primary" />
+              <CheckCircle2 className="text-primary mt-1 h-4 w-4 shrink-0" />
               Repositories are discovered from public GitHub data and refreshed daily.
             </p>
             <p className="flex gap-2">
-              <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-primary" />
+              <CheckCircle2 className="text-primary mt-1 h-4 w-4 shrink-0" />
               Plugin counts reflect marketplace manifests we can validate, not endorsements.
             </p>
             <p className="flex gap-2">
-              <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-primary" />
+              <CheckCircle2 className="text-primary mt-1 h-4 w-4 shrink-0" />
               Stars, forks, and metadata come from GitHub and may change over time.
             </p>
             <p className="flex gap-2">
-              <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-primary" />
+              <CheckCircle2 className="text-primary mt-1 h-4 w-4 shrink-0" />
               Review code, licenses, and maintenance before installing.
             </p>
           </CardContent>
@@ -49,7 +49,7 @@ export default function AboutPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center justify-center gap-2">
-                <Puzzle className="h-5 w-5 text-primary" />
+                <Puzzle className="text-primary h-5 w-5" />
                 <h2>Automated discovery</h2>
               </CardTitle>
             </CardHeader>
@@ -64,7 +64,7 @@ export default function AboutPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center justify-center gap-2">
-                <Globe className="h-5 w-5 text-primary" />
+                <Globe className="text-primary h-5 w-5" />
                 <h2>Why?</h2>
               </CardTitle>
             </CardHeader>
@@ -76,9 +76,9 @@ export default function AboutPage() {
             </CardContent>
           </Card>
         </div>
-        <p className="mt-6 text-center text-muted-foreground text-sm">
+        <p className="text-muted-foreground mt-6 text-center text-sm">
           For details on analytics, browser storage, and performance measurement, see our{' '}
-          <Link className="underline-offset-4 hover:text-foreground hover:underline" href="/privacy">
+          <Link className="hover:text-foreground underline-offset-4 hover:underline" href="/privacy">
             Privacy page
           </Link>
           .

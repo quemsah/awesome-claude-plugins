@@ -157,7 +157,7 @@ export function StatsPage({ stats }: StatsPageProps) {
         <TimeFilter onTimeRangeChange={setTimeRange} value={timeRange} />
         {!isEmptyRange && timeRange !== 'all' && trendData.periodDays > 0 && (
           <div className="flex items-center gap-2">
-            <span className="font-medium text-sm">Trend:</span>
+            <span className="text-sm font-medium">Trend:</span>
             <span className={`font-bold ${trendData.growth >= 0 ? 'text-success' : 'text-danger'}`}>
               {trendData.growth >= 0 ? '+' : ''}
               {trendData.growth.toLocaleString('en-US')} ({trendData.percentage}%)
@@ -167,33 +167,33 @@ export function StatsPage({ stats }: StatsPageProps) {
       </div>
 
       {isEmptyRange ? (
-        <div className="rounded-md border border-border bg-muted px-4 py-3 text-muted-foreground text-sm" role="status">
+        <div className="border-border bg-muted text-muted-foreground rounded-md border px-4 py-3 text-sm" role="status">
           No snapshots were recorded for {timeRangeLabels[timeRange] ?? 'the selected period'}. Showing the latest snapshot from{' '}
-          <span className="font-medium text-foreground">{latestSnapshotLabel}</span>.
+          <span className="text-foreground font-medium">{latestSnapshotLabel}</span>.
         </div>
       ) : null}
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="font-medium text-sm">
+            <CardTitle className="text-sm font-medium">
               <h2>Total repositories</h2>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="font-bold text-2xl">
+            <div className="text-2xl font-bold">
               {chartData.length > 0 ? chartData[chartData.length - 1].size.toLocaleString('en-US') : 0}
             </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="font-medium text-sm">
+            <CardTitle className="text-sm font-medium">
               <h2>Avg daily increase</h2>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="font-bold text-2xl">
+            <div className="text-2xl font-bold">
               {trendData.averageDailyIncrease >= 0 ? '+' : ''}
               {trendData.averageDailyIncrease.toLocaleString('en-US')}
             </div>
@@ -261,7 +261,7 @@ export function StatsPage({ stats }: StatsPageProps) {
             </AreaChart>
           </ChartContainer>
           <details className="mt-6">
-            <summary className="cursor-pointer font-medium text-sm">View chart data as a table</summary>
+            <summary className="cursor-pointer text-sm font-medium">View chart data as a table</summary>
             <div className="mt-3 overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <caption className="sr-only">Repository count over time</caption>

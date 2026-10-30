@@ -74,12 +74,12 @@ export function RepoCard({ repo, className }: RepoCardProps) {
 
   return (
     <Card
-      className={`group relative h-full transition-all duration-300 hover:border-primary/30 hover:bg-linear-to-tl hover:from-muted hover:to-background ${className}`}
+      className={`group hover:border-primary/30 hover:from-muted hover:to-background relative h-full transition-all duration-300 hover:bg-linear-to-tl ${className}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
       <CardHeader className="-space-y-2 pr-14 sm:pr-16">
-        <CardTitle className="text-base transition-colors duration-300 group-hover:text-primary sm:text-lg">
+        <CardTitle className="group-hover:text-primary text-base transition-colors duration-300 sm:text-lg">
           <h2>{repo.repo_name}</h2>
         </CardTitle>
         <Button asChild className="touch-target absolute top-4 right-4 h-8 w-8 sm:top-6 sm:right-6" size="icon" variant="outline">
@@ -96,7 +96,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
         <CardDescription className="text-muted-foreground text-sm">
           by{' '}
           <a
-            className="underline-offset-4 hover:text-primary hover:underline"
+            className="hover:text-primary underline-offset-4 hover:underline"
             href={getGitHubOwnerUrl(repo.owner ?? '')}
             onClick={() => trackEvent('open_github')}
             rel="noopener noreferrer"
@@ -108,7 +108,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
       </CardHeader>
       <CardContent className="flex h-full flex-col">
         <div className="grow">
-          <p className="mb-4 line-clamp-2 text-muted-foreground text-sm">{repo.description?.trim() || 'No description available.'}</p>
+          <p className="text-muted-foreground mb-4 line-clamp-2 text-sm">{repo.description?.trim() || 'No description available.'}</p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
@@ -141,8 +141,8 @@ export function RepoCard({ repo, className }: RepoCardProps) {
           </Button>
         </div>
         {hasValidRepoInfo ? (
-          <div className="mt-3 border-border border-t">
-            <div className="flex items-center gap-2 rounded-md bg-muted/50 p-2 text-xs">
+          <div className="border-border mt-3 border-t">
+            <div className="bg-muted/50 flex items-center gap-2 rounded-md p-2 text-xs">
               <code className="grow truncate font-mono" title={marketplaceCommand ?? undefined}>
                 {marketplaceCommand}
               </code>

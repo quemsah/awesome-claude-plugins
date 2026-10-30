@@ -36,6 +36,7 @@ function serverRender(query: string, page: number): CatalogPayload {
 
 // Building the Fuse index and sorting the catalog costs seconds per query, so these stay well
 // above the default 5s test timeout.
+// biome-ignore lint/correctness/usePlaywrightValidDescribeCallback: Vitest supports describe(name, options, factory) for suite timeouts.
 describe('/api/catalog parity with the server initial render', { timeout: 120_000 }, () => {
   it.each([
     ['hyphenated', 'claude-plugin'],

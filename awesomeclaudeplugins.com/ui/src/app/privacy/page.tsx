@@ -16,24 +16,24 @@ export const metadata = {
 
 export default function PrivacyPage() {
   return (
-    <main className="min-h-dvh bg-background" id="main-content" tabIndex={-1}>
-      <article className="container mx-auto max-w-3xl px-4 py-8 text-muted-foreground">
-        <h1 className="mb-6 font-bold text-3xl text-foreground">Privacy</h1>
+    <main className="bg-background min-h-dvh" id="main-content" tabIndex={-1}>
+      <article className="text-muted-foreground container mx-auto max-w-3xl px-4 py-8">
+        <h1 className="text-foreground mb-6 text-3xl font-bold">Privacy</h1>
         <div className="space-y-5">
           <section>
-            <h2 className="mb-2 font-semibold text-foreground text-xl">Catalog data</h2>
+            <h2 className="text-foreground mb-2 text-xl font-semibold">Catalog data</h2>
             <p>
               Awesome Claude Plugins displays public GitHub repository metadata and plugin marketplace information. Repository details are
               requested from GitHub when you open a repository page.
             </p>
           </section>
           <section>
-            <h2 className="mb-2 font-semibold text-foreground text-xl">Analytics</h2>
+            <h2 className="text-foreground mb-2 text-xl font-semibold">Analytics</h2>
             <p>
               In production, we use Simple Analytics to understand aggregate site usage. The analytics script honors Do Not Track and is not
               loaded when your browser enables Global Privacy Control. Read the{' '}
               <a
-                className="underline-offset-4 hover:text-foreground hover:underline"
+                className="hover:text-foreground underline-offset-4 hover:underline"
                 href="https://www.simpleanalytics.com/privacy"
                 rel="noopener noreferrer"
                 target="_blank"
@@ -48,27 +48,27 @@ export default function PrivacyPage() {
             </p>
             <ul className="mt-2 list-disc space-y-1 pl-5">
               <li>
-                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground text-xs">copy_marketplace_add</code>: recorded
+                <code className="bg-muted text-foreground rounded px-1.5 py-0.5 font-mono text-xs">copy_marketplace_add</code>: recorded
                 when copying a marketplace addition command.
               </li>
               <li>
-                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground text-xs">copy_plugin_install</code>: recorded when
+                <code className="bg-muted text-foreground rounded px-1.5 py-0.5 font-mono text-xs">copy_plugin_install</code>: recorded when
                 copying a plugin install command.
               </li>
               <li>
-                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground text-xs">open_github</code>: recorded when
+                <code className="bg-muted text-foreground rounded px-1.5 py-0.5 font-mono text-xs">open_github</code>: recorded when
                 clicking GitHub links, including repository and owner-profile links.
               </li>
               <li>
-                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground text-xs">search_no_results</code>: recorded when a
+                <code className="bg-muted text-foreground rounded px-1.5 py-0.5 font-mono text-xs">search_no_results</code>: recorded when a
                 search yields 0 results (search query terms are never collected).
               </li>
               <li>
-                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground text-xs">sort_change</code>: recorded when
+                <code className="bg-muted text-foreground rounded px-1.5 py-0.5 font-mono text-xs">sort_change</code>: recorded when
                 selecting a catalog sort option.
               </li>
               <li>
-                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground text-xs">filter_change</code>: recorded when
+                <code className="bg-muted text-foreground rounded px-1.5 py-0.5 font-mono text-xs">filter_change</code>: recorded when
                 selecting a time range or filter option.
               </li>
             </ul>
@@ -77,21 +77,21 @@ export default function PrivacyPage() {
             </p>
           </section>
           <section>
-            <h2 className="mb-2 font-semibold text-foreground text-xl">Browser storage</h2>
+            <h2 className="text-foreground mb-2 text-xl font-semibold">Browser storage</h2>
             <p>
               We store your theme preference in local storage and your most recent catalog search URL in session storage. Both are
               functional preferences and can be cleared in your browser settings.
             </p>
           </section>
           <section>
-            <h2 className="mb-2 font-semibold text-foreground text-xl">Security reports</h2>
+            <h2 className="text-foreground mb-2 text-xl font-semibold">Security reports</h2>
             <p>
               Browsers may send a Content Security Policy violation report when a page attempts to load a disallowed resource. We reduce the
               page path to a route template and use it with the violated policy directive to investigate site security.
             </p>
           </section>
           <section>
-            <h2 className="mb-2 font-semibold text-foreground text-xl">Performance measurement</h2>
+            <h2 className="text-foreground mb-2 text-xl font-semibold">Performance measurement</h2>
             <p>
               In production, we collect Core Web Vitals measurements (CLS, FCP, INP, LCP and TTFB) with their value, rating and navigation
               type, plus an optional release label. Your browser also sends the path of the page being measured, which we reduce to a route
@@ -100,10 +100,10 @@ export default function PrivacyPage() {
             </p>
           </section>
           <section>
-            <h2 className="mb-2 font-semibold text-foreground text-xl">Contact</h2>
+            <h2 className="text-foreground mb-2 text-xl font-semibold">Contact</h2>
             <p>
               Report a security issue through the{' '}
-              <Link className="underline-offset-4 hover:text-foreground hover:underline" href="/.well-known/security.txt">
+              <Link className="hover:text-foreground underline-offset-4 hover:underline" href="/.well-known/security.txt">
                 security contact policy
               </Link>
               .

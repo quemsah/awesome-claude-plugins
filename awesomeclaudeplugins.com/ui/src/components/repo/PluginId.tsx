@@ -7,8 +7,8 @@ export function PluginId({ id }: PluginIdProps) {
 
   return (
     <div>
-      <dt className="mb-0.5 font-medium text-sm">Plugin ID</dt>
-      <dd className="break-all text-muted-foreground text-sm">{id}</dd>
+      <dt className="mb-0.5 text-sm font-medium">Plugin ID</dt>
+      <dd className="text-muted-foreground text-sm break-all">{id}</dd>
     </div>
   )
 }

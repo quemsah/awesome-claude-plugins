@@ -51,10 +51,10 @@ export default async function BrowsePage({ params }: BrowsePageProps) {
   }
 
   return (
-    <main className="min-h-dvh bg-background" id="main-content" tabIndex={-1}>
+    <main className="bg-background min-h-dvh" id="main-content" tabIndex={-1}>
       <div className="container mx-auto px-4 py-6 sm:px-6 sm:py-8">
-        <h1 className="mb-2 font-bold text-3xl">Browse Claude Code plugin repositories</h1>
-        <p className="mb-6 text-muted-foreground">
+        <h1 className="mb-2 text-3xl font-bold">Browse Claude Code plugin repositories</h1>
+        <p className="text-muted-foreground mb-6">
           Page {page} of {getBrowsePageCount()}
         </p>
         <ul className="m-0 grid list-none grid-cols-1 gap-6 p-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -66,14 +66,14 @@ export default async function BrowsePage({ params }: BrowsePageProps) {
         </ul>
         <nav aria-label="Catalog pagination" className="mt-8 flex items-center justify-between">
           {page > 1 ? (
-            <Link className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline" href={`/browse/${page - 1}`}>
+            <Link className="text-muted-foreground hover:text-foreground underline-offset-4 hover:underline" href={`/browse/${page - 1}`}>
               Previous page
             </Link>
           ) : (
             <span />
           )}
           {result.hasMore ? (
-            <Link className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline" href={`/browse/${page + 1}`}>
+            <Link className="text-muted-foreground hover:text-foreground underline-offset-4 hover:underline" href={`/browse/${page + 1}`}>
               Next page
             </Link>
           ) : (

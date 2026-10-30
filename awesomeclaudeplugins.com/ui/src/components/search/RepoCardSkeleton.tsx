@@ -2,7 +2,7 @@ import { cn } from '../../lib/utils.ts'
 import { Card, CardContent, CardHeader } from '../ui/card.tsx'
 
 function Bar({ className }: { className?: string }) {
-  return <span aria-hidden="true" className={cn('block animate-pulse rounded-md bg-muted motion-reduce:animate-none', className)} />
+  return <span aria-hidden="true" className={cn('bg-muted block animate-pulse rounded-md motion-reduce:animate-none', className)} />
 }
 
 /**
@@ -43,8 +43,8 @@ export function RepoCardSkeleton() {
           </div>
           <Bar className="touch-target h-9 w-full sm:h-8 sm:w-20" />
         </div>
-        <div className="mt-3 border-border border-t">
-          <div className="flex items-center gap-2 rounded-md bg-muted/50 p-2 text-xs">
+        <div className="border-border mt-3 border-t">
+          <div className="bg-muted/50 flex items-center gap-2 rounded-md p-2 text-xs">
             <Bar className="h-4 grow" />
             <Bar className="touch-target h-8 w-8 shrink-0" />
           </div>

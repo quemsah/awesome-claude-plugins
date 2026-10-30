@@ -32,7 +32,7 @@ function findMarkdownPathCollisions(repoPaths: readonly string[]): string[] {
     }
   }
 
-  return [...collisions].sort()
+  return [...collisions].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))
 }
 
 function byPath(repoPaths: readonly string[]): string[] {

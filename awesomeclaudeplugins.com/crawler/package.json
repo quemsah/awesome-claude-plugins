@@ -25,10 +25,10 @@
     "@awesome-claude-plugins/catalog-contract": "^0.1.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
+    "@biomejs/biome": "2.6.3",
     "@octokit/openapi-types": "^29.0.1",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^24.13.6",
+    "@types/node": "^24.19.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
   }

@@ -20,7 +20,9 @@ describe('/api/catalog published contract', () => {
     const { body, response } = await get('')
 
     expect(response.headers.get('content-type')).toBe('application/json')
-    expect(Object.keys(body ?? {}).sort()).toEqual([...catalogApiContract.responseFields].sort())
+    expect(Object.keys(body ?? {}).sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))).toEqual(
+      [...catalogApiContract.responseFields].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))
+    )
     expect(body?.repos).toHaveLength(catalogApiContract.defaultPageSize)
   })
 

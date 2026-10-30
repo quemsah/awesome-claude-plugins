@@ -44,12 +44,12 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
               <AvatarFallback>{repo.owner.login.slice(0, 2).toUpperCase()}</AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <h1 className="wrap-break-word mb-2 text-balance font-bold text-2xl sm:text-3xl">{repo.name}</h1>
-              <CardDescription className="wrap-break-word text-base sm:text-lg">
+              <h1 className="mb-2 text-2xl font-bold text-balance wrap-break-word sm:text-3xl">{repo.name}</h1>
+              <CardDescription className="text-base wrap-break-word sm:text-lg">
                 by{' '}
                 <a
                   aria-label={`View ${repo.owner.login}'s GitHub profile`}
-                  className="underline-offset-4 hover:text-primary hover:underline"
+                  className="hover:text-primary underline-offset-4 hover:underline"
                   href={repo.owner.html_url}
                   onClick={() => trackEvent('open_github')}
                   rel="noopener noreferrer"
@@ -86,7 +86,7 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
       </CardHeader>
 
       <CardContent className="p-0">
-        {!!repo.description && <p className="mb-6 text-base text-muted-foreground sm:text-lg">{repo.description}</p>}
+        {!!repo.description && <p className="text-muted-foreground mb-6 text-base sm:text-lg">{repo.description}</p>}
 
         <div className="mb-6 flex flex-wrap gap-3 sm:gap-4">
           <Badge className="gap-2 text-sm" variant="secondary">
@@ -124,19 +124,19 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
         )}
 
         {lastPushedDate !== null && (
-          <div className="mb-6 rounded-lg border border-border bg-muted/40 p-4 sm:p-5">
-            <span className="flex items-center gap-2 font-medium text-muted-foreground text-sm">
-              <GitBranch aria-hidden="true" className="h-4 w-4 text-primary" />
+          <div className="border-border bg-muted/40 mb-6 rounded-lg border p-4 sm:p-5">
+            <span className="text-muted-foreground flex items-center gap-2 text-sm font-medium">
+              <GitBranch aria-hidden="true" className="text-primary h-4 w-4" />
               Last pushed
             </span>
-            <p className="mt-1 font-bold text-2xl text-foreground sm:text-3xl">{formatDate(lastPushedDate)}</p>
+            <p className="text-foreground mt-1 text-2xl font-bold sm:text-3xl">{formatDate(lastPushedDate)}</p>
           </div>
         )}
 
         <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {!!repo.language && (
             <div>
-              <dt className="flex items-center gap-2 font-medium text-muted-foreground text-sm">
+              <dt className="text-muted-foreground flex items-center gap-2 text-sm font-medium">
                 <Code className="h-4 w-4" />
                 Language
               </dt>
@@ -145,7 +145,7 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
           )}
           {!!repo.license && (
             <div>
-              <dt className="flex items-center gap-2 font-medium text-muted-foreground text-sm">
+              <dt className="text-muted-foreground flex items-center gap-2 text-sm font-medium">
                 <FileText className="h-4 w-4" />
                 License
               </dt>
@@ -154,13 +154,13 @@ export function RepoInfoCard({ repo }: RepoInfoCardProps) {
           )}
           {repo.created_at !== null && (
             <div>
-              <dt className="font-medium text-muted-foreground text-sm">Created</dt>
+              <dt className="text-muted-foreground text-sm font-medium">Created</dt>
               <dd className="text-foreground">{formatDate(repo.created_at)}</dd>
             </div>
           )}
           {repo.updated_at !== null && (
             <div>
-              <dt className="font-medium text-muted-foreground text-sm">Last updated</dt>
+              <dt className="text-muted-foreground text-sm font-medium">Last updated</dt>
               <dd className="text-foreground">{formatDate(repo.updated_at)}</dd>
             </div>
           )}

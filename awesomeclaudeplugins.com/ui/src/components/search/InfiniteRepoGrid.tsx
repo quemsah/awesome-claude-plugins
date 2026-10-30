@@ -233,14 +233,14 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad, repl
       {/* The footer below doubles as the pagination trigger, so a list that is already complete has no
           footer at all: without this line a replacement of it would be visible only to a screen reader. */}
       {pendingLoad === 'replace' && hasMore === false && (
-        <p className="py-8 text-center text-muted-foreground text-sm">{SEARCHING_LABEL}</p>
+        <p className="text-muted-foreground py-8 text-center text-sm">{SEARCHING_LABEL}</p>
       )}
 
       {hasMore === true && (
         // The trigger is also kept out of anchor selection: while a page is in flight this row sits at
         // the bottom of the viewport, and an anchor here would be held still by scrolling down onto it.
         <div
-          className="flex w-full flex-col items-center justify-center gap-2 py-8 text-muted-foreground text-sm [overflow-anchor:none]"
+          className="text-muted-foreground flex w-full flex-col items-center justify-center gap-2 py-8 text-sm [overflow-anchor:none]"
           ref={observerTarget}
         >
           {/* `invisible` rather than dropping the node: the row keeps its 28px, and a document that
@@ -250,14 +250,14 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad, repl
             {pendingLoad === 'replace' ? SEARCHING_LABEL : 'More repositories available'}
           </span>
           <button
-            className="rounded-md border px-4 py-2 font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            className="text-foreground hover:bg-muted rounded-md border px-4 py-2 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             disabled={isLoading}
             onClick={onLoadMore}
             type="button"
           >
             Load more
           </button>
-          <Link className="underline-offset-4 hover:text-foreground hover:underline" href="/browse/2">
+          <Link className="hover:text-foreground underline-offset-4 hover:underline" href="/browse/2">
             Browse catalog pages
           </Link>
         </div>

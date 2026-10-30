@@ -22,12 +22,12 @@ export default function StatsPageRoute() {
   const endDate = stats.length > 0 ? stats[stats.length - 1].date : undefined
 
   return (
-    <main className="min-h-dvh bg-background" id="main-content" tabIndex={-1}>
+    <main className="bg-background min-h-dvh" id="main-content" tabIndex={-1}>
       <StatsStructuredData endDate={endDate} startDate={startDate} />
       <div className="container mx-auto px-4 py-8">
         <Breadcrumbs items={getStatsBreadcrumbs()} />
         <div className="mb-8">
-          <h1 className="mb-2 font-bold text-3xl">Repository statistics</h1>
+          <h1 className="mb-2 text-3xl font-bold">Repository statistics</h1>
           <p className="text-muted-foreground">The growth of repositories over time</p>
         </div>
 

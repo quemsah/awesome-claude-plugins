@@ -84,11 +84,11 @@ export function PluginSource({ source, repoPath, defaultBranch }: PluginSourcePr
 
   return (
     <div>
-      <dt className="mb-0.5 font-medium text-sm">Source</dt>
-      <dd className="break-all text-muted-foreground text-sm">
+      <dt className="mb-0.5 text-sm font-medium">Source</dt>
+      <dd className="text-muted-foreground text-sm break-all">
         <a
           aria-label={ariaLabel}
-          className="underline-offset-4 transition-colors hover:text-primary hover:underline group-hover:text-primary"
+          className="hover:text-primary group-hover:text-primary underline-offset-4 transition-colors hover:underline"
           href={sourceUrl}
           rel="noopener noreferrer"
           target="_blank"
