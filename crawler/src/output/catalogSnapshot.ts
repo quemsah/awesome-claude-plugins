@@ -4,8 +4,8 @@ import { assertValidStatsDraft, type StatsRecord } from './statsDraft.js'
 
 // Recovery hashes written before catalog timestamps must match the exact original
 // repos.json bytes, including canonical URLs, field order, and compact formatting.
-export function renderRepos(rows: readonly PublishableRepository[], options: { includeCatalogUpdatedAt?: boolean } = {}): string {
-  if (options.includeCatalogUpdatedAt === false) {
+export function renderRepos(rows: readonly PublishableRepository[], options: { includeCatalogUpdatedAt?: boolean; legacyUrls?: boolean } = {}): string {
+  if (options.legacyUrls === true) {
     const legacyRepositories = rows.map((row) => ({
       html_url: row.html_url,
       stargazers_count: row.stargazers_count,
