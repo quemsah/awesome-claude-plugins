@@ -1,8 +1,8 @@
-import { isValidGitHubPathSegment } from '../github/identifiers.js'
-import { isPluginSummaries } from '../github/pluginSummaries.js'
+import { PublishedRepoSchema } from '@awesome-claude-plugins/catalog-contract'
 
 type Issue = { path: string; message: string }
 type SnapshotOptions = { expectedSize?: number; requireLatestSize?: boolean }
+type ContractIssue = { code: string; keys?: string[]; path: (string | number)[]; message: string }
 
 const repoKeys = [
   'stargazers_count',
@@ -13,9 +13,9 @@ const repoKeys = [
   'repo_name',
   'plugins_count',
   'catalog_updated_at',
+  'plugins',
   'id',
 ] as const
-const optionalRepoKeys = ['plugins'] as const
 const statsKeys = ['id', 'date', 'size'] as const
 const utcDate = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 
@@ -23,7 +23,7 @@ function safePath(path: string): string {
   if (path === 'expectedSize') return path
   const prefix = /^(repos|stats)(?:\[\d+\])?/.exec(path)?.[0] ?? 'snapshot'
   const field = path.slice(prefix.length)
-  const allowed = prefix.startsWith('repos') ? [...repoKeys, ...optionalRepoKeys] : statsKeys
+  const allowed = prefix.startsWith('repos') ? repoKeys : statsKeys
   return field.startsWith('.') && allowed.some((key) => field === `.${key}`) ? path : prefix
 }
 
@@ -97,39 +97,40 @@ function decode(value: string | Uint8Array, path: string, issues: Issue[]): unkn
   }
 }
 
-function validateRepoIdentity(item: Record<string, unknown>, path: string, issues: Issue[]): void {
-  const { owner, repo_name: name } = item
-  if (typeof owner !== 'string' || !isValidGitHubPathSegment(owner)) {
-    issues.push({ path: `${path}.owner`, message: 'must be a GitHub owner segment' })
-  }
-  if (typeof name !== 'string' || !isValidGitHubPathSegment(name)) {
-    issues.push({ path: `${path}.repo_name`, message: 'must be a GitHub repository segment' })
-  }
-}
-
-function validateRepoFields(item: Record<string, unknown>, path: string, issues: Issue[]): void {
-  for (const key of ['stargazers_count', 'forks_count', 'subscribers_count', 'plugins_count'] as const) {
-    count(item[key], `${path}.${key}`, issues, key === 'plugins_count')
-  }
-  if (item.description !== null && typeof item.description !== 'string') {
-    issues.push({ path: `${path}.description`, message: 'must be a string or null' })
-  }
-  if ('plugins' in item && !isPluginSummaries(item.plugins)) {
-    issues.push({ path: `${path}.plugins`, message: 'invalid public plugin summary' })
-  }
-  for (const key of ['description', 'owner', 'repo_name'] as const) {
-    if (typeof item[key] === 'string' && hasUnpairedSurrogate(item[key])) {
-      issues.push({ path: `${path}.${key}`, message: 'invalid UTF-8 (unpaired surrogate)' })
+function appendContractIssues(contractIssues: ContractIssue[], path: string, issues: Issue[]): void {
+  // Preserve the legacy validator order: extra keys are reported before field refinements.
+  for (const issue of contractIssues) {
+    if (issue.code === 'unrecognized_keys') {
+      for (const key of issue.keys ?? []) {
+        issues.push({ path: `${path}.${key}`, message: 'unexpected public field' })
+      }
     }
   }
-  const catalogUpdatedAt = item.catalog_updated_at
-  if (
-    typeof catalogUpdatedAt !== 'string' ||
-    !utcDate.test(catalogUpdatedAt) ||
-    Number.isNaN(Date.parse(catalogUpdatedAt)) ||
-    new Date(catalogUpdatedAt).toISOString() !== catalogUpdatedAt
-  ) {
-    issues.push({ path: `${path}.catalog_updated_at`, message: 'must be a valid ISO UTC timestamp' })
+  // Preserve the identity-first order of the original validator.
+  const fieldOrder = [
+    'owner',
+    'repo_name',
+    'stargazers_count',
+    'forks_count',
+    'subscribers_count',
+    'plugins_count',
+    'description',
+    'plugins',
+    'catalog_updated_at',
+  ]
+  const ordered = contractIssues
+    .filter((issue) => issue.path[0] !== 'id' && issue.code !== 'unrecognized_keys')
+    .sort((a, b) => fieldOrder.indexOf(String(a.path[0])) - fieldOrder.indexOf(String(b.path[0])))
+  for (const issue of ordered) {
+    const field = String(issue.path[0] ?? '')
+    const suffix = field === 'plugins' ? 'plugins' : issue.path.map(String).join('.')
+    const message =
+      field === 'plugins'
+        ? 'invalid public plugin summary'
+        : field === 'catalog_updated_at' && issue.code === 'invalid_type'
+          ? 'required field is missing'
+          : issue.message
+    issues.push({ path: suffix ? `${path}.${suffix}` : path, message })
   }
 }
 
@@ -138,9 +139,8 @@ function validateRepoItem(item: unknown, path: string, issues: Issue[], previous
     issues.push({ path, message: 'must be an object' })
     return previousId
   }
-  keys(item, 'plugins' in item ? [...repoKeys, ...optionalRepoKeys] : repoKeys, path, issues)
-  validateRepoIdentity(item, path, issues)
-  validateRepoFields(item, path, issues)
+  const parsed = PublishedRepoSchema.safeParse(item)
+  if (!parsed.success) appendContractIssues(parsed.error.issues as ContractIssue[], path, issues)
   const id = item.id
   if (!nonnegativeInteger(id) || id === 0 || id <= previousId) {
     issues.push({ path: `${path}.id`, message: 'must be a positive unique id in ascending order' })

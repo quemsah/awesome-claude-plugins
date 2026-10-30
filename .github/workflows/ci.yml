@@ -3,12 +3,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches:
-      - main
-      - chore/site-directory-layout
-      - fix/report-12-marketplace-contract
-      - fix/report-13-catalog-contract
-      - fix/report-35-official-contract
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -42,19 +37,21 @@ jobs:
             app:
               - 'awesomeclaudeplugins.com/ui/**'
               - 'awesomeclaudeplugins.com/shared/**'
-              - 'awesomeclaudeplugins.com/package*.json'
+              - 'awesomeclaudeplugins.com/package.json'
+              - 'awesomeclaudeplugins.com/package-lock.json'
+              - 'awesomeclaudeplugins.com/.npmrc'
               - '.github/workflows/ci.yml'
             crawler:
               - 'awesomeclaudeplugins.com/crawler/**'
               - 'README.md'
               - 'awesomeclaudeplugins.com/ui/src/data/repos.json'
+              # Crawler's integration test still imports the UI stats schema.
               - 'awesomeclaudeplugins.com/ui/src/schemas/**'
-              - 'awesomeclaudeplugins.com/ui/src/lib/repositoryIdentity.ts'
               - 'awesomeclaudeplugins.com/ui/package.json'
-              - 'awesomeclaudeplugins.com/ui/package-lock.json'
-              - 'awesomeclaudeplugins.com/ui/.npmrc'
               - 'awesomeclaudeplugins.com/shared/**'
-              - 'awesomeclaudeplugins.com/package*.json'
+              - 'awesomeclaudeplugins.com/package.json'
+              - 'awesomeclaudeplugins.com/package-lock.json'
+              - 'awesomeclaudeplugins.com/.npmrc'
               - '.github/workflows/ci.yml'
 
   app:
@@ -78,11 +75,11 @@ jobs:
         with:
           node-version-file: awesomeclaudeplugins.com/ui/.nvmrc
           cache: 'npm'
-          cache-dependency-path: awesomeclaudeplugins.com/ui/package-lock.json
+          cache-dependency-path: awesomeclaudeplugins.com/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
-        working-directory: awesomeclaudeplugins.com/ui
+      - name: Install app workspace dependencies
+        run: npm ci --workspace=awesome-claude-plugins --include-workspace-root=false
+        working-directory: awesomeclaudeplugins.com
 
       - name: Run typecheck
         run: npm run typecheck
@@ -100,9 +97,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: awesomeclaudeplugins.com/ui/.next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('awesomeclaudeplugins.com/ui/package-lock.json') }}-${{ hashFiles('awesomeclaudeplugins.com/ui/src/**', 'awesomeclaudeplugins.com/ui/next.config.ts', 'awesomeclaudeplugins.com/ui/postcss.config.mjs', 'awesomeclaudeplugins.com/ui/tailwind.config.ts') }}
+          key: ${{ runner.os }}-next-${{ hashFiles('awesomeclaudeplugins.com/package-lock.json') }}-${{ hashFiles('awesomeclaudeplugins.com/ui/src/**', 'awesomeclaudeplugins.com/ui/next.config.ts', 'awesomeclaudeplugins.com/ui/postcss.config.mjs', 'awesomeclaudeplugins.com/ui/tailwind.config.ts') }}
           restore-keys: |
-            ${{ runner.os }}-next-${{ hashFiles('awesomeclaudeplugins.com/ui/package-lock.json') }}-
+            ${{ runner.os }}-next-${{ hashFiles('awesomeclaudeplugins.com/package-lock.json') }}-
 
       - name: Build Next.js app
         run: npm run build
@@ -116,7 +113,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('awesomeclaudeplugins.com/ui/package-lock.json') }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles('awesomeclaudeplugins.com/package-lock.json') }}
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
@@ -166,11 +163,11 @@ jobs:
         with:
           node-version-file: awesomeclaudeplugins.com/crawler/.nvmrc
           cache: 'npm'
-          cache-dependency-path: awesomeclaudeplugins.com/crawler/package-lock.json
+          cache-dependency-path: awesomeclaudeplugins.com/package-lock.json
 
-      - name: Install crawler dependencies
-        run: npm ci
-        working-directory: awesomeclaudeplugins.com/crawler
+      - name: Install crawler workspace dependencies
+        run: npm ci --workspace=catalog-crawler --include-workspace-root=false
+        working-directory: awesomeclaudeplugins.com
 
       - name: Run crawler typecheck
         run: npm run typecheck
@@ -184,14 +181,10 @@ jobs:
         run: npm run test
         working-directory: awesomeclaudeplugins.com/crawler
 
-      - name: Install UI schema dependencies
-        run: npm ci
-        working-directory: awesomeclaudeplugins.com/ui
-
-      - name: Typecheck crawler UI integration
+      - name: Typecheck crawler shared contract integration
         run: npm run typecheck:integration
         working-directory: awesomeclaudeplugins.com/crawler
 
-      - name: Test crawler output with UI schemas
+      - name: Test crawler output with the shared catalog contract
         run: npm run test:integration
         working-directory: awesomeclaudeplugins.com/crawler

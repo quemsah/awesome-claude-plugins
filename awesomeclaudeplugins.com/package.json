@@ -1,0 +1,18 @@
+{
+  "name": "awesome-claude-plugins-workspaces",
+  "private": true,
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "workspaces": [
+    "ui",
+    "crawler",
+    "shared/*"
+  ],
+  "scripts": {
+    "build:ui": "npm run build --workspace=awesome-claude-plugins",
+    "start:ui": "npm run start --workspace=awesome-claude-plugins",
+    "build:crawler": "npm run build --workspace=catalog-crawler",
+    "start:crawler": "npm run crawl --workspace=catalog-crawler"
+  }
+}

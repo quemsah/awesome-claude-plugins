@@ -1,3 +1,4 @@
+import { parseMarketplace as parseSharedMarketplace } from '@awesome-claude-plugins/catalog-contract'
 import * as z from 'zod/mini'
 
 const CONTROL_CHARACTER_PATTERN = /[\r\n]/
@@ -170,19 +171,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-function isCountableMarketplacePlugin(value: unknown): value is Record<string, unknown> {
-  if (!isRecord(value) || typeof value.name !== 'string' || value.name.trim().length === 0 || value.name.length > 160) return false
-
-  return (
-    (typeof value.source === 'string' && value.source.trim().length > 0) ||
-    (isRecord(value.source) &&
-      typeof value.source.source === 'string' &&
-      value.source.source.trim().length > 0 &&
-      (value.source.source !== 'github' || typeof value.source.repo === 'string') &&
-      (value.source.source !== 'url' || typeof value.source.url === 'string'))
-  )
-}
-
 const OPTIONAL_PLUGIN_METADATA_FIELDS = [
   'description',
   'version',
@@ -199,7 +187,7 @@ const OPTIONAL_PLUGIN_METADATA_FIELDS = [
   'tags',
 ] as const satisfies readonly (keyof Plugin)[]
 
-/** Keep independently valid display metadata when one optional field is malformed. */
+/** Keep individually valid display metadata even if another optional field is malformed. */
 function recoverPluginWithValidMetadata(entry: Record<string, unknown>): Plugin | null {
   const core = PluginSchema.safeParse({ name: entry.name, source: entry.source })
   if (!core.success) return null
@@ -215,15 +203,12 @@ function recoverPluginWithValidMetadata(entry: Record<string, unknown>): Plugin 
 
 export const MarketplacePluginsSchema: z.ZodMiniType<MarketplacePluginsResult> = z.transform((value, context): MarketplacePluginsResult => {
   const result: MarketplacePluginsResult = { plugins: [], invalidPluginCount: 0, issues: [] }
-  if (
-    !isRecord(value) ||
-    typeof value.name !== 'string' ||
-    value.name.trim().length === 0 ||
-    !isRecord(value.owner) ||
-    typeof value.owner.name !== 'string' ||
-    value.owner.name.length === 0 ||
-    !Array.isArray(value.plugins)
-  ) {
+  let validEntries: Set<unknown>
+  try {
+    // The shared parser validates the root and filters invalid plugin sources once.
+    // Its z.unknown() plugin entries retain their original object identities.
+    validEntries = new Set(parseSharedMarketplace(value).plugins)
+  } catch {
     context.issues.push({
       code: 'custom',
       message: 'Marketplace must have non-empty name, non-empty owner.name, and a plugins array',
@@ -231,17 +216,22 @@ export const MarketplacePluginsSchema: z.ZodMiniType<MarketplacePluginsResult> =
     })
     return result
   }
-  value.plugins.forEach((entry, index) => {
+
+  // Safe after parseSharedMarketplace accepted the canonical root shape.
+  const entries = (value as { plugins: unknown[] }).plugins
+  entries.forEach((entry, index) => {
     const parsed = PluginSchema.safeParse(entry)
-    if (parsed.success && isCountableMarketplacePlugin(entry)) {
-      result.plugins.push(parsed.data)
-      return
-    }
-    if (!parsed.success && isCountableMarketplacePlugin(entry)) {
-      const recovered = recoverPluginWithValidMetadata(entry)
-      if (recovered) {
-        result.plugins.push(recovered)
+    if (validEntries.has(entry)) {
+      if (parsed.success) {
+        result.plugins.push(parsed.data)
         return
+      }
+      if (isRecord(entry)) {
+        const recovered = recoverPluginWithValidMetadata(entry)
+        if (recovered) {
+          result.plugins.push(recovered)
+          return
+        }
       }
     }
     result.invalidPluginCount++
