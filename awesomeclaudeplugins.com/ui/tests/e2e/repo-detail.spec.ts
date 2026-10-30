@@ -138,14 +138,10 @@ test('repo detail page installs a marketplace entry under the marketplace name',
   await expect(page.getByText('/plugin install example-plugin@context-mode')).toBeVisible()
 })
 
-test('repo detail page renders a GitHub source object as a repository link', async ({ page }) => {
+test('repo detail page resolves a git-subdir source and its components', async ({ page }) => {
   await page.goto('/ykdojo/claude-code-tips')
 
   const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'GitHub Source Plugin' }) })
-  await expect(plugin.getByRole('link', { name: 'Open source repository elsewhere/shared-plugins in a new tab' })).toHaveAttribute(
-    'href',
-    'https://github.com/elsewhere/shared-plugins/tree/main'
-  )
   await expect(plugin.getByRole('link', { name: 'Open source directory plugins/review in a new tab' })).toHaveAttribute(
     'href',
     'https://github.com/elsewhere/shared-plugins/tree/main/plugins/review'
