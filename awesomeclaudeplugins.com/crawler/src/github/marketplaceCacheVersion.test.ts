@@ -23,7 +23,7 @@ it('requires an invalid-content cache version bump when marketplace parsing sema
   expect(Number.isSafeInteger(MARKETPLACE_INVALID_CONTENT_CACHE_VERSION)).toBe(true)
   expect(MARKETPLACE_INVALID_CONTENT_CACHE_VERSION).toBeGreaterThanOrEqual(1)
 
-  const parserPath = new URL('../../../packages/catalog-contract/src/marketplace.js', import.meta.url)
+  const parserPath = new URL('../../../shared/catalog-contract/src/marketplace.js', import.meta.url)
   const actualSha = gitBlobSha(readFileSync(parserPath))
   const expectedSha = PARSER_BLOB_SHA_BY_CACHE_VERSION[MARKETPLACE_INVALID_CONTENT_CACHE_VERSION]
 
