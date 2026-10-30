@@ -1,19 +1,19 @@
-import { RepoSchema } from '@awesome-claude-plugins/catalog-contract'
+import { PublishedRepoSchema } from '@awesome-claude-plugins/catalog-contract'
 
 type Issue = { path: string; message: string }
 type SnapshotOptions = { expectedSize?: number; requireLatestSize?: boolean }
 type ContractIssue = { code: string; keys?: string[]; path: (string | number)[]; message: string }
 
 const repoKeys = [
-  'html_url',
   'stargazers_count',
   'forks_count',
   'subscribers_count',
   'description',
   'owner',
-  'owner_url',
   'repo_name',
   'plugins_count',
+  'catalog_updated_at',
+  'plugins',
   'id',
 ] as const
 const statsKeys = ['id', 'date', 'size'] as const
@@ -106,10 +106,21 @@ function appendContractIssues(contractIssues: ContractIssue[], path: string, iss
       }
     }
   }
-  for (const issue of contractIssues) {
-    if (issue.path[0] === 'id' || issue.code === 'unrecognized_keys') continue
-    const suffix = issue.path.map(String).join('.')
-    issues.push({ path: suffix ? `${path}.${suffix}` : path, message: issue.message })
+  // Preserve the identity-first order of the original validator.
+  const fieldOrder = ['owner', 'repo_name', 'stargazers_count', 'forks_count', 'subscribers_count', 'plugins_count', 'description', 'plugins', 'catalog_updated_at']
+  const ordered = contractIssues
+    .filter((issue) => issue.path[0] !== 'id' && issue.code !== 'unrecognized_keys')
+    .sort((a, b) => fieldOrder.indexOf(String(a.path[0])) - fieldOrder.indexOf(String(b.path[0])))
+  for (const issue of ordered) {
+    const field = String(issue.path[0] ?? '')
+    const suffix = field === 'plugins' ? 'plugins' : issue.path.map(String).join('.')
+    const message =
+      field === 'plugins'
+        ? 'invalid public plugin summary'
+        : field === 'catalog_updated_at' && issue.code === 'invalid_type'
+          ? 'required field is missing'
+          : issue.message
+    issues.push({ path: suffix ? `${path}.${suffix}` : path, message })
   }
 }
 
@@ -118,7 +129,7 @@ function validateRepoItem(item: unknown, path: string, issues: Issue[], previous
     issues.push({ path, message: 'must be an object' })
     return previousId
   }
-  const parsed = RepoSchema.safeParse(item)
+  const parsed = PublishedRepoSchema.safeParse(item)
   if (!parsed.success) appendContractIssues(parsed.error.issues as ContractIssue[], path, issues)
   const id = item.id
   if (!nonnegativeInteger(id) || id === 0 || id <= previousId) {
