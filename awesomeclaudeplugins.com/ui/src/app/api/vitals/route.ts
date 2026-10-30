@@ -64,7 +64,15 @@ async function parsePayload(request: Request): Promise<unknown> {
 
 function isWebVital(
   value: unknown
-): value is { name: string; lcpElement?: string | null; navigationType?: string; path?: string; rating: string; release?: string; value: number } {
+): value is {
+  name: string
+  lcpElement?: string | null
+  navigationType?: string
+  path?: string
+  rating: string
+  release?: string
+  value: number
+} {
   if (!(isRecord(value) && 'name' in value && 'rating' in value && 'value' in value)) {
     return false
   }
@@ -73,7 +81,8 @@ function isWebVital(
     typeof value.name === 'string' &&
     VALID_METRICS.has(value.name) &&
     (value.lcpElement === undefined ||
-      (value.name === 'LCP' && (value.lcpElement === null || (typeof value.lcpElement === 'string' && VALID_LCP_ELEMENTS.has(value.lcpElement))))) &&
+      (value.name === 'LCP' &&
+        (value.lcpElement === null || (typeof value.lcpElement === 'string' && VALID_LCP_ELEMENTS.has(value.lcpElement))))) &&
     typeof value.rating === 'string' &&
     value.rating.length <= MAX_RATING_LENGTH &&
     (value.navigationType === undefined || isContextString(value.navigationType)) &&
