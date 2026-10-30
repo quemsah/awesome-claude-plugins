@@ -1,0 +1,389 @@
+import type Database from 'better-sqlite3'
+
+const schemaVersion = 15
+
+function createSchema(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE repositories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      html_url TEXT UNIQUE,
+      stargazers_count INTEGER,
+      forks_count INTEGER,
+      subscribers_count INTEGER,
+      description TEXT,
+      owner TEXT,
+      owner_url TEXT,
+      repo_name TEXT,
+      repo_updated TEXT,
+      plugins_count INTEGER,
+      catalog_updated_at TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+    CREATE TABLE runs (
+      run_id TEXT PRIMARY KEY,
+      status TEXT NOT NULL CHECK(status IN ('running', 'completed', 'failed', 'published')),
+      started_at TEXT NOT NULL,
+      heartbeat_at TEXT NOT NULL,
+      completed_at TEXT,
+      published_at TEXT,
+      commit_sha TEXT,
+      pending_commit_sha TEXT,
+      warning_count INTEGER NOT NULL DEFAULT 0 CHECK(warning_count >= 0),
+      last_error TEXT
+    );
+    CREATE UNIQUE INDEX runs_single_active ON runs(status) WHERE status = 'running';
+    CREATE TABLE stats (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL UNIQUE,
+      size INTEGER NOT NULL CHECK(size >= 0),
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      run_id TEXT UNIQUE REFERENCES runs(run_id)
+    );
+    CREATE TABLE settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+    CREATE TABLE run_errors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id TEXT NOT NULL REFERENCES runs(run_id),
+      phase TEXT NOT NULL,
+      repository_id INTEGER,
+      range_start INTEGER,
+      range_end INTEGER,
+      error_type TEXT NOT NULL,
+      retry_count INTEGER NOT NULL DEFAULT 0 CHECK(retry_count >= 0),
+      occurred_at TEXT NOT NULL
+    );
+    CREATE INDEX run_errors_by_run ON run_errors(run_id, id);
+    PRAGMA user_version = 1;
+  `)
+}
+
+function migrateTo2(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE runs ADD COLUMN draft_date TEXT;
+    ALTER TABLE runs ADD COLUMN draft_id INTEGER CHECK(draft_id > 0);
+    ALTER TABLE runs ADD COLUMN draft_size INTEGER CHECK(draft_size >= 0);
+    ALTER TABLE runs ADD COLUMN draft_hash TEXT;
+    PRAGMA user_version = 2;
+  `)
+}
+
+function migrateTo3(db: Database.Database): void {
+  const pending = db.prepare('SELECT run_id, status FROM runs WHERE pending_commit_sha IS NOT NULL').all() as {
+    run_id: string
+    status: string
+  }[]
+  if (pending.length > 1 || (pending.length === 1 && pending[0].status !== 'completed')) {
+    throw new Error('Cannot migrate ambiguous pending Git publication; reconcile the runs before upgrading')
+  }
+  db.exec(`
+    CREATE TABLE publication_lease (
+      slot INTEGER PRIMARY KEY CHECK(slot = 1),
+      run_id TEXT NOT NULL REFERENCES runs(run_id),
+      owner TEXT NOT NULL
+    );
+    INSERT INTO publication_lease (slot, run_id, owner)
+      SELECT 1, run_id, 'migration_recovery' FROM runs WHERE pending_commit_sha IS NOT NULL;
+    PRAGMA user_version = 3;
+  `)
+}
+
+type RepositoryMigrationRow = {
+  id: number
+  html_url: string
+  stargazers_count: number | null
+  forks_count: number | null
+  subscribers_count: number | null
+  description: string | null
+  owner: string | null
+  owner_url: string | null
+  repo_name: string | null
+  repo_updated: string | null
+  plugins_count: number | null
+}
+
+function migrateDuplicateGroup(db: Database.Database, htmlUrl: string): void {
+  const rows = db
+    .prepare(`
+      SELECT id, html_url, stargazers_count, forks_count, subscribers_count, description, owner, owner_url,
+             repo_name, repo_updated, plugins_count
+      FROM repositories
+      WHERE html_url = ? COLLATE NOCASE
+      ORDER BY
+        ((owner IS NOT NULL) + (repo_name IS NOT NULL) + (owner_url IS NOT NULL) +
+         (stargazers_count IS NOT NULL) + (forks_count IS NOT NULL) +
+         (subscribers_count IS NOT NULL) + (repo_updated IS NOT NULL) +
+         (plugins_count IS NOT NULL)) DESC,
+        repo_updated DESC,
+        id ASC
+    `)
+    .all(htmlUrl) as RepositoryMigrationRow[]
+  const preferred = rows[0]
+  if (!preferred) return
+  const keeper = rows.reduce((oldest, row) => (row.id < oldest.id ? row : oldest))
+
+  for (const duplicate of rows) {
+    if (duplicate.id === keeper.id) continue
+    db.prepare('UPDATE run_errors SET repository_id = ? WHERE repository_id = ?').run(keeper.id, duplicate.id)
+    db.prepare('DELETE FROM repositories WHERE id = ?').run(duplicate.id)
+  }
+
+  db.prepare(`
+    UPDATE repositories SET
+      html_url = ?,
+      stargazers_count = ?,
+      forks_count = ?,
+      subscribers_count = ?,
+      description = ?,
+      owner = ?,
+      owner_url = ?,
+      repo_name = ?,
+      repo_updated = ?,
+      plugins_count = ?
+    WHERE id = ?
+  `).run(
+    preferred.html_url,
+    preferred.stargazers_count,
+    preferred.forks_count,
+    preferred.subscribers_count,
+    preferred.description,
+    preferred.owner,
+    preferred.owner_url,
+    preferred.repo_name,
+    preferred.repo_updated,
+    preferred.plugins_count,
+    keeper.id,
+  )
+}
+
+function migrateTo4(db: Database.Database): void {
+  const duplicateGroups = db
+    .prepare(`
+      SELECT html_url
+      FROM repositories
+      WHERE html_url IS NOT NULL
+      GROUP BY html_url COLLATE NOCASE
+      HAVING COUNT(*) > 1
+    `)
+    .all() as { html_url: string }[]
+
+  for (const { html_url: htmlUrl } of duplicateGroups) migrateDuplicateGroup(db, htmlUrl)
+
+  db.exec(`
+    CREATE UNIQUE INDEX repositories_html_url_nocase_unique
+      ON repositories(html_url COLLATE NOCASE)
+      WHERE html_url IS NOT NULL;
+    PRAGMA user_version = 4;
+  `)
+}
+
+function migrateTo5(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE repositories ADD COLUMN marketplace_etag TEXT;
+    PRAGMA user_version = 5;
+  `)
+}
+
+function hasColumn(db: Database.Database, name: string): boolean {
+  return (db.pragma('table_info(repositories)') as Array<{ name: string }>).some((column) => column.name === name)
+}
+
+function migrateTo6(db: Database.Database): void {
+  for (const column of ['github_node_id', 'marketplace_oid', 'repository_etag']) {
+    if (!hasColumn(db, column)) db.exec(`ALTER TABLE repositories ADD COLUMN ${column} TEXT`)
+  }
+  db.pragma('user_version = 6')
+}
+
+function migrateTo7(db: Database.Database): void {
+  if (!hasColumn(db, 'marketplace_parser_version')) {
+    db.exec('ALTER TABLE repositories ADD COLUMN marketplace_parser_version INTEGER CHECK(marketplace_parser_version >= 1)')
+  }
+  db.pragma('user_version = 7')
+}
+
+function migrateTo8(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS discovery_ranges (
+      root_start INTEGER NOT NULL CHECK(root_start >= 0),
+      root_end INTEGER NOT NULL CHECK(root_end >= root_start),
+      range_start INTEGER NOT NULL CHECK(range_start >= root_start),
+      range_end INTEGER NOT NULL CHECK(range_end >= range_start AND range_end <= root_end),
+      PRIMARY KEY (root_start, root_end, range_start, range_end)
+    );
+    PRAGMA user_version = 8;
+  `)
+}
+
+function hasRunColumn(db: Database.Database, name: string): boolean {
+  return (db.pragma('table_info(runs)') as Array<{ name: string }>).some((column) => column.name === name)
+}
+
+function migrateTo9(db: Database.Database): void {
+  if (!hasRunColumn(db, 'phase')) {
+    db.exec(`
+      ALTER TABLE runs ADD COLUMN phase TEXT NOT NULL DEFAULT 'startup'
+        CHECK(phase IN ('startup', 'discovery', 'enrichment', 'finalize'))
+    `)
+  }
+  if (!hasRunColumn(db, 'phase_started_at')) db.exec('ALTER TABLE runs ADD COLUMN phase_started_at TEXT')
+  if (!hasRunColumn(db, 'phase_total')) {
+    db.exec('ALTER TABLE runs ADD COLUMN phase_total INTEGER CHECK(phase_total IS NULL OR phase_total >= 0)')
+  }
+  if (!hasRunColumn(db, 'phase_processed')) {
+    db.exec('ALTER TABLE runs ADD COLUMN phase_processed INTEGER NOT NULL DEFAULT 0 CHECK(phase_processed >= 0)')
+  }
+  db.exec(`
+    UPDATE runs SET phase = 'finalize' WHERE status != 'running';
+    PRAGMA user_version = 9;
+  `)
+}
+
+function migrateTo10(db: Database.Database): void {
+  if (!hasRunColumn(db, 'phase')) {
+    db.exec(`
+      ALTER TABLE runs ADD COLUMN phase TEXT NOT NULL DEFAULT 'startup'
+        CHECK(phase IN ('startup', 'discovery', 'enrichment', 'finalize'))
+    `)
+  }
+  if (!hasRunColumn(db, 'phase_started_at')) db.exec('ALTER TABLE runs ADD COLUMN phase_started_at TEXT')
+  if (!hasRunColumn(db, 'phase_total')) {
+    db.exec('ALTER TABLE runs ADD COLUMN phase_total INTEGER CHECK(phase_total IS NULL OR phase_total >= 0)')
+  }
+  if (!hasRunColumn(db, 'phase_processed')) {
+    db.exec('ALTER TABLE runs ADD COLUMN phase_processed INTEGER NOT NULL DEFAULT 0 CHECK(phase_processed >= 0)')
+  }
+  db.exec("UPDATE runs SET phase = 'finalize' WHERE status != 'running'")
+
+  if (!hasColumn(db, 'marketplace_failed_oid')) db.exec('ALTER TABLE repositories ADD COLUMN marketplace_failed_oid TEXT')
+  if (!hasColumn(db, 'marketplace_failed_parser_version')) {
+    db.exec('ALTER TABLE repositories ADD COLUMN marketplace_failed_parser_version INTEGER CHECK(marketplace_failed_parser_version >= 1)')
+  }
+  db.pragma('user_version = 10')
+}
+
+function migrateTo11(db: Database.Database): void {
+  if (hasColumn(db, 'plugins_count')) {
+    if (hasColumn(db, 'marketplace_etag')) {
+      db.exec(`
+        UPDATE repositories
+        SET plugins_count = NULL, marketplace_etag = NULL
+        WHERE plugins_count IS NOT NULL
+      `)
+    } else {
+      db.exec('UPDATE repositories SET plugins_count = NULL WHERE plugins_count IS NOT NULL')
+    }
+  }
+  db.pragma('user_version = 11')
+}
+
+function migrateTo12(db: Database.Database): void {
+  db.exec(`
+    ALTER TABLE discovery_ranges RENAME TO discovery_ranges_v10;
+    CREATE TABLE discovery_ranges (
+      query_family TEXT NOT NULL,
+      root_start INTEGER NOT NULL CHECK(root_start >= 0),
+      root_end INTEGER NOT NULL CHECK(root_end >= root_start),
+      range_start INTEGER NOT NULL CHECK(range_start >= root_start),
+      range_end INTEGER NOT NULL CHECK(range_end >= range_start AND range_end <= root_end),
+      PRIMARY KEY (query_family, root_start, root_end, range_start, range_end)
+    );
+    INSERT INTO discovery_ranges (query_family, root_start, root_end, range_start, range_end)
+      SELECT 'marketplace_filename_path', root_start, root_end, range_start, range_end
+      FROM discovery_ranges_v10;
+    DROP TABLE discovery_ranges_v10;
+    ALTER TABLE run_errors ADD COLUMN query_family TEXT;
+    PRAGMA user_version = 12;
+  `)
+}
+
+function migrateTo13(db: Database.Database): void {
+  if (hasColumn(db, 'plugins_count')) {
+    if (hasColumn(db, 'marketplace_etag')) {
+      db.exec('UPDATE repositories SET plugins_count = NULL, marketplace_etag = NULL WHERE plugins_count IS NOT NULL')
+    } else {
+      db.exec('UPDATE repositories SET plugins_count = NULL WHERE plugins_count IS NOT NULL')
+    }
+  }
+  db.pragma('user_version = 13')
+}
+
+function migrateTo14(db: Database.Database): void {
+  if (!hasColumn(db, 'catalog_updated_at')) db.exec('ALTER TABLE repositories ADD COLUMN catalog_updated_at TEXT')
+  db.exec(`
+    UPDATE repositories
+    SET catalog_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    WHERE catalog_updated_at IS NULL;
+
+    CREATE TRIGGER IF NOT EXISTS repositories_catalog_timestamp_after_insert
+    AFTER INSERT ON repositories
+    WHEN NEW.catalog_updated_at IS NULL
+    BEGIN
+      UPDATE repositories
+      SET catalog_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE id = NEW.id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS repositories_catalog_timestamp_after_update
+    AFTER UPDATE OF stargazers_count, forks_count, subscribers_count, description, owner, repo_name, plugins_count
+    ON repositories
+    WHEN OLD.stargazers_count IS NOT NEW.stargazers_count
+      OR OLD.forks_count IS NOT NEW.forks_count
+      OR OLD.subscribers_count IS NOT NEW.subscribers_count
+      OR OLD.description IS NOT NEW.description
+      OR OLD.owner IS NOT NEW.owner
+      OR OLD.repo_name IS NOT NEW.repo_name
+      OR OLD.plugins_count IS NOT NEW.plugins_count
+    BEGIN
+      UPDATE repositories
+      SET catalog_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE id = NEW.id;
+    END;
+
+    PRAGMA user_version = 14;
+  `)
+}
+
+function migrateTo15(db: Database.Database): void {
+  if (!hasColumn(db, 'plugins_json')) db.exec('ALTER TABLE repositories ADD COLUMN plugins_json TEXT')
+  // Plugin descriptions are part of the public catalog and must advance its sitemap lastmod.
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS repositories_plugin_summary_timestamp_after_update
+    AFTER UPDATE OF plugins_json ON repositories
+    WHEN OLD.plugins_json IS NOT NEW.plugins_json
+    BEGIN
+      UPDATE repositories
+      SET catalog_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE id = NEW.id;
+    END;
+  `)
+  db.pragma('user_version = 15')
+}
+
+function migrateSchema(db: Database.Database, version: number): void {
+  if (version === 0) createSchema(db)
+  if (version < 2) migrateTo2(db)
+  if (version < 3) migrateTo3(db)
+  if (version < 4) migrateTo4(db)
+  if (version < 5) migrateTo5(db)
+  if (version < 6) migrateTo6(db)
+  if (version < 7) migrateTo7(db)
+  if (version < 8) migrateTo8(db)
+  if (version < 9) migrateTo9(db)
+  if (version < 10) migrateTo10(db)
+  if (version < 11) migrateTo11(db)
+  if (version < 12) migrateTo12(db)
+  if (version < 13) migrateTo13(db)
+  if (version < 14) migrateTo14(db)
+  if (version < 15) migrateTo15(db)
+}
+
+export function initializeSchema(db: Database.Database): void {
+  const version = db.pragma('user_version', { simple: true }) as number
+  if (version > schemaVersion) throw new Error(`Unsupported SQLite schema version: ${version}`)
+  if (version === schemaVersion) return
+  db.transaction(() => migrateSchema(db, version))()
+}
