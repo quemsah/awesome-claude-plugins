@@ -11,6 +11,7 @@ const repoKeys = [
   'owner',
   'repo_name',
   'plugins_count',
+  'catalog_updated_at',
   'id',
 ] as const
 const statsKeys = ['id', 'date', 'size'] as const
@@ -94,7 +95,6 @@ function decode(value: string | Uint8Array, path: string, issues: Issue[]): unkn
   }
 }
 
-/** Validate canonical identity segments without trusting derived URL fields. */
 function validateRepoIdentity(item: Record<string, unknown>, path: string, issues: Issue[]): void {
   const { owner, repo_name: name } = item
   if (typeof owner !== 'string' || !isValidGitHubPathSegment(owner)) {
@@ -105,7 +105,6 @@ function validateRepoIdentity(item: Record<string, unknown>, path: string, issue
   }
 }
 
-/** Validate the public numeric and text values without exposing internal storage fields. */
 function validateRepoFields(item: Record<string, unknown>, path: string, issues: Issue[]): void {
   for (const key of ['stargazers_count', 'forks_count', 'subscribers_count', 'plugins_count'] as const) {
     count(item[key], `${path}.${key}`, issues, key === 'plugins_count')
@@ -117,6 +116,15 @@ function validateRepoFields(item: Record<string, unknown>, path: string, issues:
     if (typeof item[key] === 'string' && hasUnpairedSurrogate(item[key])) {
       issues.push({ path: `${path}.${key}`, message: 'invalid UTF-8 (unpaired surrogate)' })
     }
+  }
+  const catalogUpdatedAt = item.catalog_updated_at
+  if (
+    typeof catalogUpdatedAt !== 'string' ||
+    !utcDate.test(catalogUpdatedAt) ||
+    Number.isNaN(Date.parse(catalogUpdatedAt)) ||
+    new Date(catalogUpdatedAt).toISOString() !== catalogUpdatedAt
+  ) {
+    issues.push({ path: `${path}.catalog_updated_at`, message: 'must be a valid ISO UTC timestamp' })
   }
 }
 

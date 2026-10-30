@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 13
+const schemaVersion = 14
 
 function createSchema(db: Database.Database): void {
   db.exec(`
@@ -16,6 +16,7 @@ function createSchema(db: Database.Database): void {
       repo_name TEXT,
       repo_updated TEXT,
       plugins_count INTEGER,
+      catalog_updated_at TEXT,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL
     );
@@ -310,6 +311,42 @@ function migrateTo13(db: Database.Database): void {
   db.pragma('user_version = 13')
 }
 
+function migrateTo14(db: Database.Database): void {
+  if (!hasColumn(db, 'catalog_updated_at')) db.exec('ALTER TABLE repositories ADD COLUMN catalog_updated_at TEXT')
+  db.exec(`
+    UPDATE repositories
+    SET catalog_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    WHERE catalog_updated_at IS NULL;
+
+    CREATE TRIGGER IF NOT EXISTS repositories_catalog_timestamp_after_insert
+    AFTER INSERT ON repositories
+    WHEN NEW.catalog_updated_at IS NULL
+    BEGIN
+      UPDATE repositories
+      SET catalog_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE id = NEW.id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS repositories_catalog_timestamp_after_update
+    AFTER UPDATE OF stargazers_count, forks_count, subscribers_count, description, owner, repo_name, plugins_count
+    ON repositories
+    WHEN OLD.stargazers_count IS NOT NEW.stargazers_count
+      OR OLD.forks_count IS NOT NEW.forks_count
+      OR OLD.subscribers_count IS NOT NEW.subscribers_count
+      OR OLD.description IS NOT NEW.description
+      OR OLD.owner IS NOT NEW.owner
+      OR OLD.repo_name IS NOT NEW.repo_name
+      OR OLD.plugins_count IS NOT NEW.plugins_count
+    BEGIN
+      UPDATE repositories
+      SET catalog_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE id = NEW.id;
+    END;
+
+    PRAGMA user_version = 14;
+  `)
+}
+
 function migrateSchema(db: Database.Database, version: number): void {
   if (version === 0) createSchema(db)
   if (version < 2) migrateTo2(db)
@@ -324,6 +361,7 @@ function migrateSchema(db: Database.Database, version: number): void {
   if (version < 11) migrateTo11(db)
   if (version < 12) migrateTo12(db)
   if (version < 13) migrateTo13(db)
+  if (version < 14) migrateTo14(db)
 }
 
 export function initializeSchema(db: Database.Database): void {
