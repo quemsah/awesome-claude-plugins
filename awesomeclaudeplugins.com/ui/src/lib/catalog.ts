@@ -8,6 +8,7 @@ import { type CatalogQuality, getCatalogQuality } from './catalogQuality.ts'
 import { getCatalog } from './catalogStore.ts'
 import { createFuseIndex } from './fuzzySearch.ts'
 import { getGitHubRepoPath } from './repositoryIdentity.ts'
+import { isArchivedRepo } from './repoMetadata.ts'
 import { normalizeSearchQuery } from './searchQuery.ts'
 import type { SortOption } from './sortOptions.ts'
 
@@ -25,11 +26,6 @@ for (const repo of catalogRepos) {
   if (!catalogReposByPath.has(path)) {
     catalogReposByPath.set(path, repo)
   }
-}
-
-/** Whether GitHub marks a repository as archived (or its description advertises that status). */
-export function isArchivedRepo(repo: CatalogRepo): boolean {
-  return repo.archived === true || /^\[archived\]/i.test(repo.description?.trim() ?? '')
 }
 
 function sortDateValue(value: string | null | undefined): number {

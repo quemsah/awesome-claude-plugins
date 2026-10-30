@@ -19,7 +19,7 @@ export function formatDate(date: Date): string {
 /** Human-readable age of a GitHub event. Returns null for unknown/invalid timestamps. */
 export function formatRelativeTime(value: string | Date | number | null | undefined, nowMs = Date.now()): string | null {
   if (value == null || value === '') return null
-  const time = new Date(value).getTime()
+  const time = value instanceof Date ? value.getTime() : new Date(value).getTime()
   if (!Number.isFinite(time)) return null
   const seconds = Math.floor((nowMs - time) / 1_000)
   if (seconds < 60) return 'just now'
