@@ -62,9 +62,7 @@ async function parsePayload(request: Request): Promise<unknown> {
   }
 }
 
-function isWebVital(
-  value: unknown
-): value is {
+function isWebVital(value: unknown): value is {
   name: string
   lcpElement?: string | null
   navigationType?: string
