@@ -17,18 +17,26 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true })
 })
 
-
 it('upgrades an existing v15 catalog without losing its catalog timestamps', () => {
   const db = new Database(':memory:')
   try {
     initializeSchema(db)
-    db.prepare("INSERT INTO repositories (html_url, plugins_count, catalog_updated_at, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)").run('https://github.com/example/older-marketplace', 2, '2026-01-01T00:00:00.000Z', 'before', 'before')
+    db.prepare(
+      'INSERT INTO repositories (html_url, plugins_count, catalog_updated_at, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)',
+    ).run('https://github.com/example/older-marketplace', 2, '2026-01-01T00:00:00.000Z', 'before', 'before')
     db.exec('DROP TABLE discovery_candidates; DROP TABLE repository_search_partitions; PRAGMA user_version = 15;')
     initializeSchema(db)
     expect(db.pragma('user_version', { simple: true })).toBe(17)
-    expect(db.prepare('SELECT catalog_updated_at, plugins_count FROM repositories').get()).toEqual({ catalog_updated_at: '2026-01-01T00:00:00.000Z', plugins_count: 2 })
-    expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'repository_search_partitions'").get()).toEqual({ name: 'repository_search_partitions' })
-    expect((db.pragma('table_info(repository_search_partitions)') as Array<{ name: string }>).some((column) => column.name === 'next_page')).toBe(true)
+    expect(db.prepare('SELECT catalog_updated_at, plugins_count FROM repositories').get()).toEqual({
+      catalog_updated_at: '2026-01-01T00:00:00.000Z',
+      plugins_count: 2,
+    })
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'repository_search_partitions'").get()).toEqual({
+      name: 'repository_search_partitions',
+    })
+    expect(
+      (db.pragma('table_info(repository_search_partitions)') as Array<{ name: string }>).some(({ name }) => name === 'next_page'),
+    ).toBe(true)
   } finally {
     db.close()
   }
@@ -116,11 +124,9 @@ it('initializes all tables and remains idempotent on reopen', () => {
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
   expect(tables).toEqual([
     { name: 'discovery_candidates' },
-    { name: 'discovery_candidates' },
     { name: 'discovery_ranges' },
     { name: 'publication_lease' },
     { name: 'repositories' },
-    { name: 'repository_search_partitions' },
     { name: 'repository_search_partitions' },
     { name: 'run_errors' },
     { name: 'runs' },

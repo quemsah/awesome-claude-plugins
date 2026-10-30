@@ -60,7 +60,7 @@ function compareLastAttempt(left: Work, right: Work): number {
 }
 
 function schedulePushedWork(entries: Work[], afterQueryId?: string): Work[] {
-  const queryIds = [...repositorySearchQueries.map(({ queryId }) => queryId)]
+  const queryIds = repositorySearchQueries.map(({ queryId }) => queryId)
   for (const { query } of entries) if (!queryIds.includes(query.queryId)) queryIds.push(query.queryId)
   const mostRecentlyAttempted = entries
     .filter(({ window, partition }) => window.field === 'pushed' && partition.last_attempt_at !== null)
