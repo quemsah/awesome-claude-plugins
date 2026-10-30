@@ -107,7 +107,17 @@ function appendContractIssues(contractIssues: ContractIssue[], path: string, iss
     }
   }
   // Preserve the identity-first order of the original validator.
-  const fieldOrder = ['owner', 'repo_name', 'stargazers_count', 'forks_count', 'subscribers_count', 'plugins_count', 'description', 'plugins', 'catalog_updated_at']
+  const fieldOrder = [
+    'owner',
+    'repo_name',
+    'stargazers_count',
+    'forks_count',
+    'subscribers_count',
+    'plugins_count',
+    'description',
+    'plugins',
+    'catalog_updated_at',
+  ]
   const ordered = contractIssues
     .filter((issue) => issue.path[0] !== 'id' && issue.code !== 'unrecognized_keys')
     .sort((a, b) => fieldOrder.indexOf(String(a.path[0])) - fieldOrder.indexOf(String(b.path[0])))
