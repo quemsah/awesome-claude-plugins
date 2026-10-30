@@ -3,6 +3,7 @@ import * as z from 'zod/mini'
 import { getMcpBundleUrl } from '../../lib/mcpBundleUrl.ts'
 
 const CONTROL_CHARACTER_PATTERN = /[\r\n]/
+const MCP_PROTOCOL_PATTERN = /^[a-z][a-z0-9+.-]*:/i
 const GITHUB_REPO_PATH_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
 const PluginPathSchema = z.string().check(
   z.minLength(1),
@@ -56,9 +57,7 @@ const PluginComponentSchema = z.union([
 
 // An MCP component can also be an HTTPS bundle URL; mixed lists include inline server maps.
 const McpLocationSchema = z.union([
-  PluginPathSchema.check(
-    z.refine((path) => !/^[a-z][a-z0-9+.-]*:/i.test(path), { error: 'MCP paths must be relative' })
-  ),
+  PluginPathSchema.check(z.refine((path) => !MCP_PROTOCOL_PATTERN.test(path), { error: 'MCP paths must be relative' })),
   z.string().check(
     z.maxLength(512),
     z.refine((url) => getMcpBundleUrl(url) !== null, { error: 'Must be a safe HTTPS MCP bundle URL' })
