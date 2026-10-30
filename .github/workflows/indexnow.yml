@@ -53,7 +53,9 @@ jobs:
     name: Submit changed repository URLs
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Initial catalog submissions have taken over 29 minutes; keep heavy syncs resumable.
+    # This job does not gate Railway deployment.
+    timeout-minutes: 90
     concurrency:
       group: indexnow-${{ github.ref }}
       cancel-in-progress: false
@@ -75,13 +77,26 @@ jobs:
         run: node --test scripts/indexnow-*.test.mjs
         working-directory: awesomeclaudeplugins.com/ui
 
-      - name: Restore and save IndexNow baseline
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Restoring and saving separately prevents a fresh cache entry every 30 minutes,
+      # especially when production is not deployed yet or the catalog is unchanged.
+      - name: Restore IndexNow baseline
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/indexnow-state
           key: indexnow-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             indexnow-${{ github.ref_name }}-
+
+      - name: Record current baseline fingerprint
+        id: baseline_before
+        env:
+          BASELINE_PATH: ${{ runner.temp }}/indexnow-state/repos.json
+        run: |
+          if [[ -f "$BASELINE_PATH" ]]; then
+            echo "sha=$(sha256sum "$BASELINE_PATH" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=missing" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Submit IndexNow URLs
         run: npm run indexnow
@@ -92,3 +107,22 @@ jobs:
           INDEXNOW_BASELINE_PATH: ${{ runner.temp }}/indexnow-state/repos.json
           # A scheduled run skips and retries later if Railway has not deployed the catalog.
           INDEXNOW_DEFER_UNTIL_DEPLOYED: ${{ github.event_name == 'schedule' }}
+
+      - name: Check whether the baseline changed
+        id: baseline_changed
+        env:
+          BASELINE_PATH: ${{ runner.temp }}/indexnow-state/repos.json
+          PREVIOUS_SHA: ${{ steps.baseline_before.outputs.sha }}
+        run: |
+          if [[ -f "$BASELINE_PATH" ]] && [[ "$(sha256sum "$BASELINE_PATH" | cut -d ' ' -f1)" != "$PREVIOUS_SHA" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Save changed IndexNow baseline
+        if: steps.baseline_changed.outputs.changed == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/indexnow-state
+          key: indexnow-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
