@@ -9,6 +9,7 @@ interface PluginListProps {
   source?: string | PluginSource
 }
 
+/** Display component paths and link them only when they resolve to source files. */
 export function PluginList({ title, items, repoPath, defaultBranch, source }: PluginListProps) {
   const isPathList = Array.isArray(items)
   const listItems = isPathList ? items : Object.keys(items ?? {})

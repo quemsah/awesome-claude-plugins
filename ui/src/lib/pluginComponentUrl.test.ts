@@ -145,6 +145,13 @@ describe('getPluginComponentFileUrl', () => {
       expect(getPluginComponentFileUrl('.', marketplaceRepo, defaultBranch, 'sub\\file.md')).toBeNull()
     })
 
+    it('rejects ambiguous empty and dot segments in source and component paths', () => {
+      expect(getPluginComponentFileUrl('.', marketplaceRepo, defaultBranch, 'commands//run.md')).toBeNull()
+      expect(getPluginComponentFileUrl('.', marketplaceRepo, defaultBranch, 'commands/./run.md')).toBeNull()
+      expect(getPluginComponentFileUrl('./plugins//core', marketplaceRepo, defaultBranch, 'commands/run.md')).toBeNull()
+      expect(getPluginComponentFileUrl('./plugins/./core', marketplaceRepo, defaultBranch, 'commands/run.md')).toBeNull()
+    })
+
     it('rejects newlines in paths', () => {
       expect(getPluginComponentFileUrl('.', marketplaceRepo, defaultBranch, 'sub/\nfile.md')).toBeNull()
     })

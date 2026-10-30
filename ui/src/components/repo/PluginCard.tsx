@@ -17,6 +17,7 @@ type PluginCardProps = {
   repo?: GitHubRepository | null
 }
 
+/** Render plugin metadata and resolve component lists against the plugin's own source. */
 export function PluginCard({ marketplaceName, plugin, repoPath, repo }: PluginCardProps) {
   return (
     <Card className="group w-full transition-all duration-300 hover:border-primary/30 hover:bg-linear-to-tl hover:from-muted hover:to-background">

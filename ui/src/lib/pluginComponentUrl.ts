@@ -9,10 +9,12 @@ const LEADING_RELATIVE_PATTERN = /^(?:\.\/)+/
 const TRAILING_SLASHES_PATTERN = /\/+$/
 const EXACT_DOT_PATTERN = /^\.$/
 
+/** Avoid empty and dot-only GitHub path segments. */
 function isValidPathSegment(segment?: string): boolean {
   return Boolean(segment && segment !== '.' && segment !== '..')
 }
 
+/** Parse an owner/repository identity without accepting GitHub URL path escapes. */
 function normalizeGitHubRepository(value: string): string | null {
   if (!GITHUB_REPO_PATH_PATTERN.test(value)) return null
   const [owner, repo] = value.split('/')
@@ -23,6 +25,7 @@ function normalizeGitHubRepository(value: string): string | null {
   return `${owner}/${repoName}`
 }
 
+/** Accept a GitHub repository identity or canonical GitHub HTTP(S) URL. */
 function getGitHubRepository(value?: string): string | null {
   if (!value) return null
   const repository = normalizeGitHubRepository(value)
@@ -51,13 +54,18 @@ function getGitHubRepository(value?: string): string | null {
   }
 }
 
+/** Normalize a relative repository path while rejecting traversal and ambiguous segments. */
 function normalizeRelativePath(path: string): string | null {
   if (path.startsWith('/') || path.includes('\\') || PARENT_DIR_PATTERN.test(path) || NEWLINE_PATTERN.test(path)) {
     return null
   }
-  return path.replace(LEADING_RELATIVE_PATTERN, '').replace(TRAILING_SLASHES_PATTERN, '').replace(EXACT_DOT_PATTERN, '')
+  const normalized = path.replace(LEADING_RELATIVE_PATTERN, '').replace(TRAILING_SLASHES_PATTERN, '').replace(EXACT_DOT_PATTERN, '')
+  // Empty segments and interior dots produce ambiguous GitHub file paths.
+  if (normalized && normalized.split('/').some((segment) => !isValidPathSegment(segment))) return null
+  return normalized
 }
 
+/** Resolve a component path beneath its declared plugin root. */
 function joinPluginPath(root: string, file: string): string | null {
   const normalizedRoot = normalizeRelativePath(root)
   const normalizedFile = normalizeRelativePath(file)
@@ -71,10 +79,12 @@ interface PluginSourceTarget {
   pluginRoot: string
 }
 
+/** Prefer immutable source commits over moving branches and refs. */
 function resolvePluginRef(source: { sha?: string; ref?: string; branch?: string; commit?: string }): string {
   return source.sha ?? source.commit ?? source.ref ?? source.branch ?? 'HEAD'
 }
 
+/** Interpret marketplace-local roots and shorthand GitHub sources. */
 function resolveStringSource(source: string, marketplaceRepo: string, marketplaceDefaultBranch?: string): PluginSourceTarget | null {
   if (source.startsWith('github:')) {
     return {
@@ -95,6 +105,7 @@ function resolveStringSource(source: string, marketplaceRepo: string, marketplac
   return null
 }
 
+/** Resolve supported structured plugin source declarations. */
 function resolveObjectSource(source: PluginSource): PluginSourceTarget | null {
   if (source.source === 'github') {
     return {
@@ -116,6 +127,7 @@ function resolveObjectSource(source: PluginSource): PluginSourceTarget | null {
   return null
 }
 
+/** Select a trusted GitHub repository, ref, and plugin root for a component. */
 function resolvePluginSourceTarget(
   source: string | PluginSource | undefined,
   marketplaceRepo: string,
@@ -132,6 +144,7 @@ function resolvePluginSourceTarget(
   return null
 }
 
+/** Build a GitHub file link only when the source, ref and component path are trustworthy. */
 export function getPluginComponentFileUrl(
   source: string | PluginSource | undefined,
   marketplaceRepo: string,
