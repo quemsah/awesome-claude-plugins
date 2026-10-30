@@ -1193,6 +1193,8 @@ it('reuses cached repository metadata after a conditional REST 304', async () =>
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old')
   ready(db, id)
+  // The repository already has archived metadata, so its conditional ETag remains valid.
+  db.prepare('UPDATE repositories SET archived = 0 WHERE id = ?').run(id)
   db.prepare('UPDATE repositories SET repository_etag = ?, marketplace_etag = ?, marketplace_parser_version = ? WHERE id = ?').run(
     '"repo"',
     '"manifest"',
