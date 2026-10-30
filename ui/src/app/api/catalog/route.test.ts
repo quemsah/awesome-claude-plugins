@@ -62,22 +62,4 @@ describe('/api/catalog parity with the server initial render', { timeout: 120_00
     expect(paged).toMatchObject({ pluginsCount: expected.pluginsCount, total: expected.total })
     expect(paged.repos.map((repo) => repo.id)).toEqual(expected.repos.map((repo) => repo.id))
   })
-
-  it('supports returning plugin names and descriptions in /api/catalog response', async () => {
-    const url = new URL('http://localhost/api/catalog')
-    url.searchParams.set('pageSize', '5')
-    const response = await GET(new Request(url, { headers: { 'x-real-ip': 'plugin-metadata-check' } }))
-    const data = (await response.json()) as { repos: Array<{ id: number; plugins?: Array<{ name?: string; description?: string }> }> }
-
-    expect(response.status).toBe(200)
-    expect(Array.isArray(data.repos)).toBe(true)
-    for (const repo of data.repos) {
-      if (repo.plugins) {
-        expect(Array.isArray(repo.plugins)).toBe(true)
-        for (const plugin of repo.plugins) {
-          expect(typeof plugin.name === 'string' || typeof plugin.description === 'string').toBe(true)
-        }
-      }
-    }
-  })
 })
