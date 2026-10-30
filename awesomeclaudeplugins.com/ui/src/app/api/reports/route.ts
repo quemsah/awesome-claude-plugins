@@ -10,6 +10,7 @@ const rateLimiter = new RateLimiter(10_000, MAX_REPORTS_PER_MINUTE, 60_000)
 type NormalizedReport = {
   documentUri: unknown
   violatedDirective: unknown
+  blockedUri: unknown
 }
 
 export async function POST(request: Request) {
@@ -39,7 +40,9 @@ export async function POST(request: Request) {
     const document = getPathname(normalized.documentUri)
     const route = document === null ? null : toRouteTemplate(document)
     const directive = sanitize(normalized.violatedDirective)
-    const key = JSON.stringify([route, directive])
+    // Record only a coarse source bucket: raw blocked URLs may include private paths or tokens.
+    const blockedSource = toBlockedSourceBucket(normalized.blockedUri)
+    const key = JSON.stringify([route, directive, blockedSource])
     if (seen.has(key)) {
       continue
     }
@@ -52,6 +55,7 @@ export async function POST(request: Request) {
         event: 'csp_violation',
         route,
         directive,
+        blockedSource,
       })
     )
   }
@@ -82,12 +86,16 @@ function normalizeReport(value: unknown): NormalizedReport | null {
 
   const legacyReport = value['csp-report']
   if (isRecord(legacyReport)) {
-    return { documentUri: legacyReport['document-uri'], violatedDirective: legacyReport['violated-directive'] }
+    return {
+      documentUri: legacyReport['document-uri'],
+      violatedDirective: legacyReport['violated-directive'],
+      blockedUri: legacyReport['blocked-uri'],
+    }
   }
 
   const reportBody = value.body
   if (isRecord(reportBody) && (value.type === undefined || value.type === 'csp-violation')) {
-    return { documentUri: reportBody.documentURL, violatedDirective: reportBody.effectiveDirective }
+    return { documentUri: reportBody.documentURL, violatedDirective: reportBody.effectiveDirective, blockedUri: reportBody.blockedURL }
   }
 
   return null
@@ -113,5 +121,23 @@ function getPathname(value: unknown): string | null {
       return null
     }
     throw error
+  }
+}
+
+// Bucket external URLs without storing arbitrary hostnames, paths, or query strings.
+function toBlockedSourceBucket(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  if (['inline', 'eval', 'wasm-eval', 'self'].includes(value)) return value
+
+  try {
+    const url = new URL(value)
+    if (url.protocol === 'data:' || url.protocol === 'blob:') return url.protocol.slice(0, -1)
+    if (url.protocol === 'chrome-extension:' || url.protocol === 'moz-extension:') return 'browser-extension'
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return 'other-scheme'
+    if (url.hostname === 'awesomeclaudeplugins.com') return 'self'
+    if (url.hostname === 'scripts.simpleanalyticscdn.com' || url.hostname === 'queue.simpleanalyticscdn.com') return 'simpleanalytics'
+    return 'external'
+  } catch {
+    return 'unknown'
   }
 }
