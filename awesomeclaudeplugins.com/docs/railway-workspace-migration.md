@@ -4,12 +4,12 @@
 > `main` until the source changes, Railway settings, and dependent catalog
 > contracts can be released together. This is a runbook, not permission to deploy.
 
-## Verified current production configuration (2026-10-30)
+## Required intermediate configuration after #392 (verify before #378)
 
 | Service | Root directory | Builder | Build | Start | Watch paths |
 | --- | --- | --- | --- | --- | --- |
-| UI (`awesome-claude-plugins`) | `/awesomeclaudeplugins.com/ui` | Railpack | auto-detected | auto-detected | `/ui/**` |
-| `crawler` | `/awesomeclaudeplugins.com/crawler` | Railpack | `npm ci && npm run build` | `node dist/cli.js crawl` | `/crawler/**` |
+| UI (`awesome-claude-plugins`) | `/awesomeclaudeplugins.com/ui` | Railpack | auto-detected | auto-detected | `/awesomeclaudeplugins.com/ui/**` |
+| `crawler` | `/awesomeclaudeplugins.com/crawler` | Railpack | `npm ci && npm run build` | `node dist/cli.js crawl` | `/awesomeclaudeplugins.com/crawler/**` |
 
 Both use `main`. The crawler uses the `0 21 * * *` cron schedule,
 `NEVER` restart policy, and a persistent volume mounted on `/data`.
@@ -17,8 +17,7 @@ Do not change its volume, environment variables, cron, or service identity.
 
 ## Required target settings
 
-All build and start commands run **from the repository root** (not from
-`ui/` or `crawler/`); the root `package-lock.json` and
+All build and start commands run **from Railway service root `/awesomeclaudeplugins.com`** (not from the Git repository root or the app subdirectories). The workspace `package-lock.json` and
 `shared/catalog-contract/` must be visible at install, build, and runtime.
 
 | Setting | UI | Crawler |
@@ -27,21 +26,21 @@ All build and start commands run **from the repository root** (not from
 | Builder | `RAILPACK` | `RAILPACK` |
 | Build command | `npm ci --workspace=awesome-claude-plugins --include-workspace-root=false && npm run build:ui` | `npm ci --workspace=catalog-crawler --include-workspace-root=false && npm run build:crawler` |
 | Start command | `npm run start:ui` | `npm run start:crawler` |
-| Watch patterns | `/ui/**`, `/packages/catalog-contract/**`, `/awesomeclaudeplugins.com/package.json`, `/awesomeclaudeplugins.com/package-lock.json` | `/crawler/**`, `/packages/catalog-contract/**`, `/awesomeclaudeplugins.com/package.json`, `/awesomeclaudeplugins.com/package-lock.json` |
+| Watch patterns | `/awesomeclaudeplugins.com/ui/**`, `/awesomeclaudeplugins.com/shared/**`, `/awesomeclaudeplugins.com/package.json`, `/awesomeclaudeplugins.com/package-lock.json` | `/awesomeclaudeplugins.com/crawler/**`, `/awesomeclaudeplugins.com/shared/**`, `/awesomeclaudeplugins.com/package.json`, `/awesomeclaudeplugins.com/package-lock.json` |
 
-If a root `.npmrc` is introduced, also add `/.npmrc` to both watch-pattern
+If a root `.npmrc` is introduced, also add `/awesomeclaudeplugins.com/.npmrc` to both watch-pattern
 lists. Watch patterns are evaluated from the *repository root* even when a
 service root directory is set. If build input beyond these paths changes,
 add that input to the corresponding watch patterns.
 
 Build commands intentionally use targeted `npm ci` with the shared
 lockfile. The root package scripts select the correct workspace. In
-particular, invoking `node dist/cli.js crawl` from the repository root is
+particular, invoking `node dist/cli.js crawl` from the workspace root is
 incorrect; the crawler entrypoint is under `crawler/dist/`.
 
 ## Coordinated release order
 
-1. Merge PR #369 (marketplace parser contract) **before** PR #378, or
+1. First merge PR #392 and complete its Railway directory cutover. Then merge PR #369 (marketplace parser contract) **before** PR #378, or
    intentionally retain #378's stacked base until its dependency is ready.
 2. Reconcile #378 against current `main`: PR #367 removed `html_url` /
    `owner_url` from the published snapshot, PR #370 added
@@ -79,7 +78,7 @@ incorrect; the crawler entrypoint is under `crawler/dist/`.
 
 ## No-go checklist
 
-- [ ] PR #369 integrated, #352 changes accounted for
+- [ ] PR #392 merged and deployed from new app-specific Railway roots; PR #369 integrated, #352 changes accounted for
 - [ ] Contract matches #367 + #370 + #352; fixture tests verify the *published* shape
 - [ ] All required CI green at the final SHA
 - [ ] Both Railway services have a reviewed target config
