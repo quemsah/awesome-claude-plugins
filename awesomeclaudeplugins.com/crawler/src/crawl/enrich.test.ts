@@ -2175,3 +2175,20 @@ it('stores invalid marketplace state on the actual ID after earlier batched cano
     { id: secondId, html_url: 'https://github.com/team/old', marketplace_failed_oid: invalidOid },
   ])
 })
+
+it('enriches persisted license and archive data and uses immutable discovery timestamp', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', null, '2025-01-02T03:04:05.000Z')
+  const client = reader(async (owner, name) => ({
+    kind: 'found',
+    data: { ...githubRepo(owner, name), archived: true, license: { spdx_id: 'MIT' } },
+  }))
+  await enrichRepositories(db, client, 'crawl-1')
+  const row = db.prepare('SELECT license, archived, createdAt FROM repositories WHERE id = ?').get(id)
+  expect(row).toEqual({ license: 'MIT', archived: 1, createdAt: '2025-01-02T03:04:05.000Z' })
+  expect(JSON.parse(renderRepos(listPublishable(db)))[0]).toMatchObject({
+    pushed_at: '2026-09-22T12:00:00.000Z',
+    catalog_added_at: '2025-01-02T03:04:05.000Z',
+    license: 'MIT', archived: true,
+  })
+})
