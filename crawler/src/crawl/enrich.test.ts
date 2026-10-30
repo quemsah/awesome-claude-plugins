@@ -303,7 +303,7 @@ it('keeps the old plugin count and OID when changed content unexpectedly returns
 
   expect(getMarketplace).toHaveBeenCalledWith('team', 'repo', undefined, { maxAttempts: 1 })
   expect(db.prepare('SELECT * FROM repositories WHERE id = ?').get(id)).toEqual(before)
-  expect(counts).toMatchObject({ updated: 0, unchangedOnError: 1, warnings: 1, conclusive: 0 })
+  expect(counts).toMatchObject({ updated: 0, unchangedOnError: 1, warnings: 0, conclusive: 0 })
   expect(listRunErrors(db, 'crawl-1').map(({ error_type }) => error_type)).toEqual(['marketplace_not_modified_after_oid_change'])
 })
 
@@ -719,12 +719,13 @@ it('publishes bounded plugin summaries without splitting or preserving malformed
   const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), nodeId)
   const oid = 'unicode-marketplace-oid'
   const astral = String.fromCodePoint(0x1f600)
-  const pluginName = `${'n'.repeat(158)}${astral}${'x'.repeat(5)}`
+  const pluginName = `${'n'.repeat(158)}${astral}`
   const pluginDescription = `${'d'.repeat(298)}${astral}${'x'.repeat(5)}`
   const manifest = {
     name: 'catalog',
     owner: { name: 'maintainer' },
     plugins: [
+      { name: `${pluginName}${'x'.repeat(5)}`, description: pluginDescription, source: './plugins/invalid-overlong-name' },
       { name: pluginName, description: pluginDescription, source: './plugins/demo' },
       { name: '\ud800bad\udc00', description: '\udc00bad\ud800', source: './plugins/malformed' },
     ],
