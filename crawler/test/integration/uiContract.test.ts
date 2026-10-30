@@ -12,12 +12,18 @@ it('validates crawler snapshots with the shared catalog and UI stats schemas', a
     completeRun(db, 'integration', '2026-01-12T00:00:00.000Z', 0)
     prepareDraft(db, 'integration', new Date('2026-01-12T00:00:00.000Z'))
     const { reposJson, statsJson } = readDraftSnapshot(db, 'integration')
-    const [{ ReposArraySchema }, { StatsArraySchema }] = await Promise.all([
+    const [{ PublishedReposArraySchema, ReposArraySchema }, { StatsArraySchema }] = await Promise.all([
       import('@awesome-claude-plugins/catalog-contract'),
       import('../../../ui/src/schemas/stats.schema.ts'),
     ])
 
-    expect(ReposArraySchema.parse(JSON.parse(reposJson))).toHaveLength(2)
+    const published = JSON.parse(reposJson)
+    expect(PublishedReposArraySchema.parse(published)).toHaveLength(2)
+    expect(ReposArraySchema.parse(published)).toHaveLength(2)
+    // Previously published URLs must not be reintroduced by the shared package.
+    expect(published[0]).not.toHaveProperty('html_url')
+    expect(published[0]).not.toHaveProperty('owner_url')
+    expect(published[0]).toHaveProperty('catalog_updated_at')
     expect(StatsArraySchema.parse(JSON.parse(statsJson))).toHaveLength(3)
   } finally {
     db.close()
