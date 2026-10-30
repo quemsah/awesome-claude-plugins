@@ -56,6 +56,7 @@ describe('MarketplacePluginsSchema', () => {
       plugins: [
         {
           name: 'partial-metadata',
+          displayName: 'Readable Plugin',
           source: './plugins/partial-metadata',
           description: 'Still visible',
           version: '1.0.0',
@@ -71,7 +72,8 @@ describe('MarketplacePluginsSchema', () => {
       expect(result.data.invalidPluginCount).toBe(0)
       expect(result.data.plugins).toEqual([
         {
-          name: 'partial-metadata',
+          name: 'Readable Plugin',
+          id: 'partial-metadata',
           source: './plugins/partial-metadata',
           description: 'Still visible',
           version: '1.0.0',

@@ -1,7 +1,9 @@
-import { parseMarketplace as parseSharedMarketplace } from '@awesome-claude-plugins/catalog-contract'
+import { isMarketplacePlugin, parseMarketplace as parseSharedMarketplace } from '@awesome-claude-plugins/catalog-contract'
 import * as z from 'zod/mini'
+import { getMcpBundleUrl } from '../../lib/mcpBundleUrl.ts'
 
 const CONTROL_CHARACTER_PATTERN = /[\r\n]/
+const MCP_PROTOCOL_PATTERN = /^[a-z][a-z0-9+.-]*:/i
 const GITHUB_REPO_PATH_PATTERN = /^(?!\.{1,2}\/)[A-Za-z0-9._-]+\/(?!\.{1,2}$)[A-Za-z0-9._-]+$/
 const PluginPathSchema = z.string().check(
   z.minLength(1),
@@ -44,12 +46,33 @@ const SafeUrlSchema = (max: number) =>
   )
 const SourceUrlSchema = SafeUrlSchema(512)
 const PluginSourceStringSchema = PluginPathSchema
+// Claude Code requires component paths to be explicitly relative to the plugin root.
+const PluginComponentPathSchema = PluginPathSchema.check(
+  z.refine((path) => path.startsWith('./'), { error: 'Component paths must start with "./"' })
+)
 const PluginComponentSchema = z.union([
   z.pipe(
-    PluginPathSchema,
+    PluginComponentPathSchema,
     z.transform((path) => [path])
   ),
-  z.array(PluginPathSchema).check(z.maxLength(100)),
+  z.array(PluginComponentPathSchema).check(z.maxLength(100)),
+  z.record(z.string(), z.unknown()),
+])
+
+// An MCP component can also be an HTTPS bundle URL; mixed lists include inline server maps.
+const McpLocationSchema = z.union([
+  PluginComponentPathSchema.check(z.refine((path) => !MCP_PROTOCOL_PATTERN.test(path), { error: 'MCP paths must be relative' })),
+  z.string().check(
+    z.maxLength(512),
+    z.refine((url) => getMcpBundleUrl(url) !== null, { error: 'Must be a safe HTTPS MCP bundle URL' })
+  ),
+])
+const McpServersSchema = z.union([
+  z.pipe(
+    McpLocationSchema,
+    z.transform((path) => [path])
+  ),
+  z.array(z.union([McpLocationSchema, z.record(z.string(), z.unknown())])).check(z.maxLength(100)),
   z.record(z.string(), z.unknown()),
 ])
 
@@ -81,9 +104,9 @@ export type Plugin = {
   license?: string
   keywords?: string[]
   strict?: boolean
-  commands?: string[] | Record<string, unknown>
-  agents?: string[] | Record<string, unknown>
-  mcpServers?: string[] | Record<string, unknown>
+  commands?: string | string[] | Record<string, unknown>
+  agents?: string | string[] | Record<string, unknown>
+  mcpServers?: string | Array<string | Record<string, unknown>> | Record<string, unknown>
   homepage?: string
   tags?: string[]
 }
@@ -94,7 +117,8 @@ export type MarketplacePluginsResult = {
   issues: z.core.$ZodIssue[]
 }
 
-function hasComponentEntries(value: string[] | Record<string, unknown> | undefined): boolean {
+function hasComponentEntries(value: Plugin['commands'] | Plugin['mcpServers']): boolean {
+  if (typeof value === 'string') return value.trim().length > 0
   return Array.isArray(value) ? value.length > 0 : value !== undefined && Object.keys(value).length > 0
 }
 
@@ -138,7 +162,7 @@ export const PluginSchema: z.ZodMiniType<Plugin> = z
     strict: z.optional(z.boolean()),
     commands: z.optional(PluginComponentSchema),
     agents: z.optional(PluginComponentSchema),
-    mcpServers: z.optional(PluginComponentSchema),
+    mcpServers: z.optional(McpServersSchema),
     homepage: z.optional(SafeUrlSchema(2_048)),
     tags: z.optional(z.array(z.string().check(z.minLength(1), z.maxLength(100))).check(z.maxLength(50))),
   })
@@ -174,7 +198,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 const OPTIONAL_PLUGIN_METADATA_FIELDS = [
   'description',
   'version',
-  'id',
   'category',
   'author',
   'license',
@@ -189,7 +212,7 @@ const OPTIONAL_PLUGIN_METADATA_FIELDS = [
 
 /** Keep individually valid display metadata even if another optional field is malformed. */
 function recoverPluginWithValidMetadata(entry: Record<string, unknown>): Plugin | null {
-  const core = PluginSchema.safeParse({ name: entry.name, source: entry.source })
+  const core = PluginSchema.safeParse({ name: entry.name, id: entry.id, source: entry.source })
   if (!core.success) return null
 
   let plugin = core.data
@@ -203,11 +226,8 @@ function recoverPluginWithValidMetadata(entry: Record<string, unknown>): Plugin 
 
 export const MarketplacePluginsSchema: z.ZodMiniType<MarketplacePluginsResult> = z.transform((value, context): MarketplacePluginsResult => {
   const result: MarketplacePluginsResult = { plugins: [], invalidPluginCount: 0, issues: [] }
-  let validEntries: Set<unknown>
   try {
-    // The shared parser validates the root and filters invalid plugin sources once.
-    // Its z.unknown() plugin entries retain their original object identities.
-    validEntries = new Set(parseSharedMarketplace(value).plugins)
+    parseSharedMarketplace(value)
   } catch {
     context.issues.push({
       code: 'custom',
@@ -216,22 +236,43 @@ export const MarketplacePluginsSchema: z.ZodMiniType<MarketplacePluginsResult> =
     })
     return result
   }
-
-  // Safe after parseSharedMarketplace accepted the canonical root shape.
-  const entries = (value as { plugins: unknown[] }).plugins
-  entries.forEach((entry, index) => {
-    const parsed = PluginSchema.safeParse(entry)
-    if (validEntries.has(entry)) {
-      if (parsed.success) {
-        result.plugins.push(parsed.data)
-        return
-      }
-      if (isRecord(entry)) {
-        const recovered = recoverPluginWithValidMetadata(entry)
-        if (recovered) {
-          result.plugins.push(recovered)
-          return
+  if (
+    !isRecord(value) ||
+    typeof value.name !== 'string' ||
+    value.name.trim().length === 0 ||
+    !isRecord(value.owner) ||
+    typeof value.owner.name !== 'string' ||
+    value.owner.name.length === 0 ||
+    !Array.isArray(value.plugins)
+  ) {
+    context.issues.push({
+      code: 'custom',
+      message: 'Marketplace must have non-empty name, non-empty owner.name, and a plugins array',
+      input: value,
+    })
+    return result
+  }
+  value.plugins.forEach((entry, index) => {
+    const candidate = isRecord(entry)
+      ? {
+          ...entry,
+          id: entry.name,
+          name:
+            typeof entry.displayName === 'string' && entry.displayName.trim().length > 0 && entry.displayName.length <= 160
+              ? entry.displayName
+              : entry.name,
         }
+      : entry
+    const parsed = PluginSchema.safeParse(candidate)
+    if (parsed.success && isMarketplacePlugin(entry)) {
+      result.plugins.push(parsed.data)
+      return
+    }
+    if (!parsed.success && isMarketplacePlugin(entry) && isRecord(candidate)) {
+      const recovered = recoverPluginWithValidMetadata(candidate)
+      if (recovered) {
+        result.plugins.push(recovered)
+        return
       }
     }
     result.invalidPluginCount++
