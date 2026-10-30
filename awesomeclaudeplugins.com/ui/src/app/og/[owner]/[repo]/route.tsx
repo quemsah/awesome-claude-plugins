@@ -3,6 +3,13 @@ import { findCatalogRepo } from '../../../../lib/catalog.ts'
 
 export const runtime = 'nodejs'
 
+// Open Graph images use a limited built-in font. Emoji and dingbat symbols can trigger
+// a runtime fallback-font fetch that returns HTTP 400 (observed for ✻).
+// Preserve language text while dropping only these decorative glyphs from the preview.
+export function sanitizeOgDescription(value: string): string {
+  return value.replaceAll(/[\p{So}\p{Sk}\u200d\uFE0e\uFE0f]/gu, ' ').replaceAll(/\s+/g, ' ').trim()
+}
+
 type RouteContext = {
   params: Promise<{ owner: string; repo: string }>
 }
@@ -34,7 +41,7 @@ export async function GET(_: Request, { params }: RouteContext) {
         {`${catalogRepo.owner}/${catalogRepo.repo_name}`}
       </div>
       <div style={{ color: '#d0d0d0', fontSize: 28, marginTop: 28, textAlign: 'center' }}>
-        {(catalogRepo.description ?? 'Claude Code plugin repository').slice(0, 220)}
+        {sanitizeOgDescription(catalogRepo.description ?? 'Claude Code plugin repository').slice(0, 220) || 'Claude Code plugin repository'}
       </div>
     </div>,
     {
