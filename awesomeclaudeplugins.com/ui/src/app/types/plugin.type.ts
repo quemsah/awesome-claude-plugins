@@ -1,5 +1,6 @@
 import { isMarketplacePlugin, parseMarketplace as parseSharedMarketplace } from '@awesome-claude-plugins/catalog-contract'
 import * as z from 'zod/mini'
+import { getMcpBundleUrl } from '../../lib/mcpBundleUrl.ts'
 
 const CONTROL_CHARACTER_PATTERN = /[\r\n]/
 const GITHUB_REPO_PATH_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
@@ -53,6 +54,25 @@ const PluginComponentSchema = z.union([
   z.record(z.string(), z.unknown()),
 ])
 
+// An MCP component can also be an HTTPS bundle URL; mixed lists include inline server maps.
+const McpLocationSchema = z.union([
+  PluginPathSchema.check(
+    z.refine((path) => !/^[a-z][a-z0-9+.-]*:/i.test(path), { error: 'MCP paths must be relative' })
+  ),
+  z.string().check(
+    z.maxLength(512),
+    z.refine((url) => getMcpBundleUrl(url) !== null, { error: 'Must be a safe HTTPS MCP bundle URL' })
+  ),
+])
+const McpServersSchema = z.union([
+  z.pipe(
+    McpLocationSchema,
+    z.transform((path) => [path])
+  ),
+  z.array(z.union([McpLocationSchema, z.record(z.string(), z.unknown())])).check(z.maxLength(100)),
+  z.record(z.string(), z.unknown()),
+])
+
 export type PluginAuthor = {
   name?: string
   email?: string
@@ -83,7 +103,7 @@ export type Plugin = {
   strict?: boolean
   commands?: string | string[] | Record<string, unknown>
   agents?: string | string[] | Record<string, unknown>
-  mcpServers?: string | string[] | Record<string, unknown>
+  mcpServers?: string | Array<string | Record<string, unknown>> | Record<string, unknown>
   homepage?: string
   tags?: string[]
 }
@@ -94,7 +114,8 @@ export type MarketplacePluginsResult = {
   issues: z.core.$ZodIssue[]
 }
 
-function hasComponentEntries(value: string[] | Record<string, unknown> | undefined): boolean {
+function hasComponentEntries(value: Plugin['commands'] | Plugin['mcpServers']): boolean {
+  if (typeof value === 'string') return value.trim().length > 0
   return Array.isArray(value) ? value.length > 0 : value !== undefined && Object.keys(value).length > 0
 }
 
@@ -138,7 +159,7 @@ export const PluginSchema: z.ZodMiniType<Plugin> = z
     strict: z.optional(z.boolean()),
     commands: z.optional(PluginComponentSchema),
     agents: z.optional(PluginComponentSchema),
-    mcpServers: z.optional(PluginComponentSchema),
+    mcpServers: z.optional(McpServersSchema),
     homepage: z.optional(SafeUrlSchema(2_048)),
     tags: z.optional(z.array(z.string().check(z.minLength(1), z.maxLength(100))).check(z.maxLength(50))),
   })
