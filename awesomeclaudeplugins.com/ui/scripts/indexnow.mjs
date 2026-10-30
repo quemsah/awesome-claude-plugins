@@ -14,6 +14,7 @@ const BASELINE_PATH = process.env.INDEXNOW_BASELINE_PATH ?? fileURLToPath(new UR
 const MAX_READY_ATTEMPTS = 12
 const READY_RETRY_DELAY_MS = 15_000
 const READY_CONCURRENCY = 20
+const DEFER_UNTIL_DEPLOYED = process.env.INDEXNOW_DEFER_UNTIL_DEPLOYED === 'true'
 
 if (MODE !== 'full' && MODE !== 'changed') {
   throw new Error(`Unsupported IndexNow mode: ${MODE}`)
@@ -25,7 +26,7 @@ if (keyFile !== INDEXNOW_KEY) {
 }
 
 async function fetchXml(url) {
-  const response = await fetch(url)
+  const response = await fetch(url, { signal: AbortSignal.timeout(20_000) })
   if (!response.ok) {
     throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`)
   }
@@ -68,7 +69,8 @@ function writeBaseline(records, includedUrls = null) {
 async function waitForCatalogDeployment(fingerprint) {
   const url = new URL('/api/catalog-version', SITE_URL)
   let lastReason = 'not checked'
-  for (let attempt = 1; attempt <= MAX_READY_ATTEMPTS; attempt += 1) {
+  const attempts = DEFER_UNTIL_DEPLOYED ? 1 : MAX_READY_ATTEMPTS
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
       const response = await fetch(url, {
         headers: { 'Cache-Control': 'no-cache' },
@@ -78,7 +80,7 @@ async function waitForCatalogDeployment(fingerprint) {
         const deployed = await response.json()
         if (deployed?.sha256 === fingerprint) {
           console.log('Live catalog fingerprint matches the checked-out snapshot.')
-          return
+          return true
         }
         lastReason = 'deployed snapshot differs from checkout'
       } else {
@@ -87,10 +89,14 @@ async function waitForCatalogDeployment(fingerprint) {
     } catch (error) {
       lastReason = error instanceof Error ? error.message : String(error)
     }
-    if (attempt < MAX_READY_ATTEMPTS) {
+    if (attempt < attempts) {
       console.log(`Waiting for the catalog deployment (${attempt}/${MAX_READY_ATTEMPTS}): ${lastReason}`)
       await new Promise((resolve) => setTimeout(resolve, READY_RETRY_DELAY_MS))
     }
+  }
+  if (DEFER_UNTIL_DEPLOYED) {
+    console.log(`IndexNow deferred until the next scheduled run: ${lastReason}. Baseline was not advanced.`)
+    return false
   }
   throw new Error(`Catalog deployment was not ready: ${lastReason}. IndexNow baseline was not advanced.`)
 }
@@ -98,6 +104,7 @@ async function waitForCatalogDeployment(fingerprint) {
 async function waitForChangedPages(urls) {
   let pending = urls.map((url) => ({ url, reason: 'not checked' }))
   for (let attempt = 1; attempt <= MAX_READY_ATTEMPTS && pending.length > 0; attempt += 1) {
+    console.log(`Checking ${pending.length} changed URL(s), readiness pass ${attempt}/${MAX_READY_ATTEMPTS}.`)
     const failures = []
     let cursor = 0
     await Promise.all(
@@ -148,23 +155,25 @@ async function submitUrls(urls) {
 
 const { records: currentRecords, fingerprint: currentFingerprint } = readCurrentCatalog()
 // An HTTP 200 on a pre-existing page does not prove that new catalog data is live.
-// Wait until the deployed build exposes the exact snapshot we are submitting.
-await waitForCatalogDeployment(currentFingerprint)
-
-if (MODE === 'full') {
-  const urls = await sitemapUrls(SITEMAP_URL)
-  await submitUrls(urls)
-  writeBaseline(currentRecords, new Set(urls))
-} else {
-  const previousRecords = readBaseline()
-  const { changedUrls, retiredUrls } = diffCatalogRecords(previousRecords, currentRecords)
-  if (changedUrls.length > 0) await waitForChangedPages(changedUrls)
-  const urls = [...new Set([...changedUrls, ...retiredUrls])]
-  if (urls.length > 0) {
+// Never advance the baseline until the deployed build exposes the exact catalog snapshot.
+if (await waitForCatalogDeployment(currentFingerprint)) {
+  // On a fresh install the scheduled job establishes the baseline automatically.
+  if (MODE === 'full' || !existsSync(BASELINE_PATH)) {
+    if (MODE === 'changed') console.log('IndexNow baseline missing; submitting the live sitemap to initialize it.')
+    const urls = await sitemapUrls(SITEMAP_URL)
     await submitUrls(urls)
-    console.log(`IndexNow delta: ${changedUrls.length} added/updated, ${retiredUrls.length} retired URLs.`)
+    writeBaseline(currentRecords, new Set(urls))
   } else {
-    console.log('No changed or retired indexable repository URLs.')
+    const previousRecords = readBaseline()
+    const { changedUrls, retiredUrls } = diffCatalogRecords(previousRecords, currentRecords)
+    console.log(`IndexNow delta: ${changedUrls.length} added/updated, ${retiredUrls.length} retired URLs.`)
+    if (changedUrls.length > 0) await waitForChangedPages(changedUrls)
+    const urls = [...new Set([...changedUrls, ...retiredUrls])]
+    if (urls.length > 0) {
+      await submitUrls(urls)
+    } else {
+      console.log('No changed or retired indexable repository URLs.')
+    }
+    writeBaseline(currentRecords)
   }
-  writeBaseline(currentRecords)
 }
