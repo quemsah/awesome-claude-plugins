@@ -58,7 +58,11 @@ const fallbackPlugin = {
   author: { email: 'fallback@example.dev' },
   commands: './commands/external.md',
   agents: ['./agents/external.md'],
-  mcpServers: './mcp.json',
+  mcpServers: [
+    './mcp.json',
+    { reviewer: { command: 'node', args: ['./servers/reviewer.mjs'] } },
+    'https://example.com/reviewer.mcpb',
+  ],
 }
 
 const githubSourcePlugin = {
