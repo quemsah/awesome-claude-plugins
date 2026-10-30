@@ -1293,9 +1293,12 @@ async function loadRepository(
 ): Promise<LoadedRepository | null | RetryLater> {
   let result: RepoResult<GitHubRepo>
   try {
-    result = await reader.getRepository(identity.owner, identity.repo, row.archived == null ? undefined : row.repository_etag ?? undefined, {
-      maxAttempts: policy.maxAttempts,
-    })
+    result = await reader.getRepository(
+      identity.owner,
+      identity.repo,
+      row.archived == null ? undefined : row.repository_etag ?? undefined,
+      { maxAttempts: policy.maxAttempts },
+    )
   } catch (error) {
     if (error instanceof GitHubFatalError) logRepositoryFatalError(error, runId, row, identity, log)
     throw error

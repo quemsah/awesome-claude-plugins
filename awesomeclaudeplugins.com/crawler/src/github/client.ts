@@ -195,7 +195,9 @@ function parseRepository(value: unknown): GitHubRepo {
     !count(value.subscribers_count) ||
     !nonempty(value.pushed_at) ||
     (value.archived !== undefined && typeof value.archived !== 'boolean') ||
-    (value.license !== undefined && value.license !== null && (!record(value.license) || (value.license.spdx_id !== null && typeof value.license.spdx_id !== 'string'))) ||
+    (value.license !== undefined &&
+      value.license !== null &&
+      (!record(value.license) || (value.license.spdx_id !== null && typeof value.license.spdx_id !== 'string'))) ||
     (value.node_id !== undefined && !nonempty(value.node_id)) ||
     typeof value.private !== 'boolean' ||
     !record(value.owner) ||
@@ -241,7 +243,9 @@ function isGraphQLRepoPayload(value: unknown): value is GraphQLRepoPayload {
     nonempty(value.pushedAt),
     typeof value.isPrivate === 'boolean',
     (value.isArchived === undefined || typeof value.isArchived === 'boolean'),
-    (value.licenseInfo === undefined || value.licenseInfo === null || (record(value.licenseInfo) && (value.licenseInfo.spdxId === null || typeof value.licenseInfo.spdxId === 'string'))),
+    (value.licenseInfo === undefined ||
+      value.licenseInfo === null ||
+      (record(value.licenseInfo) && (value.licenseInfo.spdxId === null || typeof value.licenseInfo.spdxId === 'string'))),
     nonempty(value.owner.login),
     nonempty(value.owner.url),
     count(value.watchers.totalCount),
@@ -262,7 +266,9 @@ function parseGraphQLRepo(value: unknown): GitHubGraphQLRepo | null {
     subscribers_count: value.watchers.totalCount,
     pushed_at: value.pushedAt,
     ...(value.isArchived === undefined ? {} : { archived: value.isArchived }),
-    ...(value.licenseInfo === undefined ? {} : { license: value.licenseInfo === null ? null : { spdx_id: value.licenseInfo.spdxId } }),
+    ...(value.licenseInfo === undefined
+      ? {}
+      : { license: value.licenseInfo === null ? null : { spdx_id: value.licenseInfo.spdxId } }),
     private: value.isPrivate,
     owner: { login: value.owner.login, html_url: value.owner.url },
     marketplace_oid: value.object?.oid ?? null,

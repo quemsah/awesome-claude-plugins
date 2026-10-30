@@ -44,10 +44,16 @@ export function renderRepos(
       plugins_count: row.plugins_count,
       ...(options.includeCatalogUpdatedAt === false || plugins === null ? {} : { plugins }),
       ...(options.includeCatalogUpdatedAt === false ? {} : { catalog_updated_at: row.catalog_updated_at }),
-      ...(options.includeCatalogUpdatedAt === false || !publicTimestamp(row.pushed_at) ? {} : { pushed_at: publicTimestamp(row.pushed_at) }),
-      ...(options.includeCatalogUpdatedAt === false || !publicTimestamp(row.catalog_added_at) ? {} : { catalog_added_at: publicTimestamp(row.catalog_added_at) }),
+      ...(options.includeCatalogUpdatedAt === false || !publicTimestamp(row.pushed_at)
+        ? {}
+        : { pushed_at: publicTimestamp(row.pushed_at) }),
+      ...(options.includeCatalogUpdatedAt === false || !publicTimestamp(row.catalog_added_at)
+        ? {}
+        : { catalog_added_at: publicTimestamp(row.catalog_added_at) }),
       ...(options.includeCatalogUpdatedAt === false || !row.license ? {} : { license: row.license }),
-      ...(options.includeCatalogUpdatedAt === false || row.archived == null ? {} : { archived: row.archived === true || row.archived === 1 }),
+      ...(options.includeCatalogUpdatedAt === false || row.archived == null
+        ? {}
+        : { archived: row.archived === true || row.archived === 1 }),
       id: row.id,
     })
   })

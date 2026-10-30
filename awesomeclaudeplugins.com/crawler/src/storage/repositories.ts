@@ -43,7 +43,14 @@ export type EnrichmentFields = Pick<
   Partial<
     Pick<
       RepositoryRow,
-      'github_node_id' | 'marketplace_oid' | 'repository_etag' | 'marketplace_etag' | 'marketplace_parser_version' | 'plugins_json' | 'license' | 'archived'
+      | 'github_node_id'
+      | 'marketplace_oid'
+      | 'repository_etag'
+      | 'marketplace_etag'
+      | 'marketplace_parser_version'
+      | 'plugins_json'
+      | 'license'
+      | 'archived'
     >
   >
 
