@@ -42,6 +42,39 @@ export default function PrivacyPage() {
               </a>
               .
             </p>
+            <p className="mt-3">
+              To measure feature utility and improve discovery, we collect anonymous functional events without any personally identifiable
+              information (PII):
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              <li>
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground text-xs">copy_marketplace_add</code>: recorded
+                when copying a marketplace addition command.
+              </li>
+              <li>
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground text-xs">copy_plugin_install</code>: recorded when
+                copying a plugin install command.
+              </li>
+              <li>
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground text-xs">open_github</code>: recorded when
+                clicking GitHub links, including repository and owner-profile links.
+              </li>
+              <li>
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground text-xs">search_no_results</code>: recorded when a
+                search yields 0 results (search query terms are never collected).
+              </li>
+              <li>
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground text-xs">sort_change</code>: recorded when
+                selecting a catalog sort option.
+              </li>
+              <li>
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground text-xs">filter_change</code>: recorded when
+                selecting a time range or filter option.
+              </li>
+            </ul>
+            <p className="mt-3">
+              These events never include personal details, search terms, query parameters, IP addresses, or visitor identifiers.
+            </p>
           </section>
           <section>
             <h2 className="mb-2 font-semibold text-foreground text-xl">Browser storage</h2>
