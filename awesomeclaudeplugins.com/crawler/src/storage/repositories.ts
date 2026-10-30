@@ -58,7 +58,13 @@ export type PublishableRepository = Pick<
   | 'repo_name'
   | 'plugins_count'
   | 'catalog_updated_at'
-> & { plugins_json?: string | null }
+> & {
+  plugins_json?: string | null
+  pushed_at?: string | null
+  created_at?: string | null
+  license?: string | null
+  archived?: boolean | null
+}
 
 export function createDiscoveryWriter(db: Database.Database) {
   const find = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE ORDER BY id LIMIT 1')

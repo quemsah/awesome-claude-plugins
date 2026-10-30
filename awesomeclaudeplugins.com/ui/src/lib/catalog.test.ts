@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/style/useNamingConvention: Test assertion mirrors catalog field names. */
 
 import { describe, expect, it } from 'vitest'
-import { type CatalogRepo, formatCatalogRepo, getCanonicalCatalogRepos, searchCatalogRepos } from './catalog.ts'
+import { type CatalogRepo, formatCatalogRepo, getCanonicalCatalogRepos, isArchivedRepo, searchCatalogRepos } from './catalog.ts'
 import { createFuseIndex } from './fuzzySearch.ts'
 
 function repoKey(repo: CatalogRepo) {
@@ -152,5 +152,18 @@ describe('formatCatalogRepo', () => {
 
     const formatted = formatCatalogRepo(rawRepo)
     expect(formatted.plugins).toBeUndefined()
+  })
+})
+
+describe('archived-aware sorting', () => {
+  it('recognizes archived repositories from either source', () => {
+    const repo = { description: '[Archived] retired', archived: null } as CatalogRepo
+    expect(isArchivedRepo(repo)).toBe(true)
+    expect(isArchivedRepo({ ...repo, description: 'active', archived: true })).toBe(true)
+    expect(isArchivedRepo({ ...repo, description: 'active', archived: false })).toBe(false)
+  })
+  it('accepts both freshness sort modes with missing metadata', () => {
+    expect(searchCatalogRepos('claude', 'updated-desc').repos.length).toBeGreaterThan(0)
+    expect(searchCatalogRepos('claude', 'created-desc').repos.length).toBeGreaterThan(0)
   })
 })

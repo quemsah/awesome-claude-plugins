@@ -27,7 +27,20 @@ for (const repo of catalogRepos) {
   }
 }
 
+/** Whether GitHub marks a repository as archived (or its description advertises that status). */
+export function isArchivedRepo(repo: CatalogRepo): boolean {
+  return repo.archived === true || /^\[archived\]/i.test(repo.description?.trim() ?? '')
+}
+
+function sortDateValue(value: string | null | undefined): number {
+  if (!value) return 0
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 function compareCatalogRepos(left: CatalogRepo, right: CatalogRepo, sortOption: SortOption): number {
+  const archivedDiff = Number(isArchivedRepo(left)) - Number(isArchivedRepo(right))
+  if (archivedDiff !== 0) return archivedDiff
   const descriptionSignal = (repo: CatalogRepo) => (repo.description?.trim() ? 1 : 0)
   switch (sortOption) {
     case 'forks-desc':
@@ -36,6 +49,10 @@ function compareCatalogRepos(left: CatalogRepo, right: CatalogRepo, sortOption: 
       const pluginSignal = (repo: CatalogRepo) => (repo.plugins_count ?? 0) * Math.log10((repo.stargazers_count ?? 0) + 10)
       return pluginSignal(right) - pluginSignal(left) || (right.plugins_count ?? 0) - (left.plugins_count ?? 0)
     }
+    case 'updated-desc':
+      return sortDateValue(right.pushed_at) - sortDateValue(left.pushed_at) || (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0)
+    case 'created-desc':
+      return sortDateValue(right.created_at) - sortDateValue(left.created_at) || (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0)
     default:
       return (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0) || descriptionSignal(right) - descriptionSignal(left)
   }
@@ -45,6 +62,8 @@ const catalogReposBySort: Record<SortOption, readonly CatalogRepo[]> = {
   'stars-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'stars-desc')),
   'forks-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'forks-desc')),
   'plugins-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'plugins-desc')),
+  'updated-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'updated-desc')),
+  'created-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'created-desc')),
 }
 const catalogPluginsCount = canonicalCatalogRepos.reduce((total, repo) => total + (repo.plugins_count ?? 0), 0)
 

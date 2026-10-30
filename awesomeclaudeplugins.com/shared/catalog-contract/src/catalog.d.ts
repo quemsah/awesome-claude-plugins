@@ -13,6 +13,10 @@ export type CatalogRecord = {
   plugins_count: number | null
   plugins?: PluginSummary[]
   catalog_updated_at: string
+  pushed_at?: string | null
+  created_at?: string | null
+  license?: string | null
+  archived?: boolean | null
   id: number
 }
 
@@ -30,6 +34,10 @@ export type Repo = {
   plugin_description?: string
   plugin_summaries?: PluginSummary[]
   catalog_updated_at?: string
+  pushed_at?: string | null
+  created_at?: string | null
+  license?: string | null
+  archived?: boolean | null
   id: number
 }
 

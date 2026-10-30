@@ -20,6 +20,10 @@ export function renderRepos(
       owner_url: row.owner_url,
       repo_name: row.repo_name,
       plugins_count: row.plugins_count,
+      ...(row.pushed_at !== undefined ? { pushed_at: row.pushed_at } : {}),
+      ...(row.created_at !== undefined ? { created_at: row.created_at } : {}),
+      ...(row.license !== undefined ? { license: row.license } : {}),
+      ...(row.archived !== undefined ? { archived: row.archived } : {}),
       id: row.id,
     }))
     return `${JSON.stringify(legacyRepositories)}\n`

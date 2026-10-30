@@ -4,13 +4,16 @@ import { GitFork, Star } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { trackEvent } from '../../lib/analytics.ts'
+import { isArchivedRepo } from '../../lib/catalog.ts'
 import { copyText } from '../../lib/clipboard.ts'
 import { getMarketplaceAddCommand } from '../../lib/installCommand.ts'
+import { formatRelativeTime } from '../../lib/utils.ts'
 import { getGitHubOwnerUrl, getGitHubRepoPath, getGitHubRepoUrl } from '../../lib/repositoryIdentity.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { ClaudeIcon } from '../common/ClaudeIcon.tsx'
 import { CopiedIcon } from '../common/CopiedIcon.tsx'
 import { CopyIcon } from '../common/CopyIcon.tsx'
+import { Badge } from '../ui/badge.tsx'
 import { Button } from '../ui/button.tsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card.tsx'
 import { AnimatedGithubIcon } from './AnimatedGithubIcon.tsx'
@@ -36,6 +39,10 @@ export function RepoCard({ repo, className }: RepoCardProps) {
   const isMounted = useRef(true)
   const marketplaceCommand = useMemo(() => getMarketplaceAddCommand(repo.owner, repo.repo_name), [repo.owner, repo.repo_name])
   const hasValidRepoInfo = Boolean(marketplaceCommand)
+  const archived = isArchivedRepo(repo)
+  const updatedAge = formatRelativeTime(repo.pushed_at)
+  const addedAge = formatRelativeTime(repo.created_at)
+  const freshnessText = updatedAge ? `updated ${updatedAge}` : addedAge ? `added ${addedAge}` : null
 
   useEffect(() => {
     isMounted.current = true
@@ -79,9 +86,12 @@ export function RepoCard({ repo, className }: RepoCardProps) {
       onMouseLeave={handleMouseLeave}
     >
       <CardHeader className="-space-y-2 pr-14 sm:pr-16">
-        <CardTitle className="group-hover:text-primary text-base transition-colors duration-300 sm:text-lg">
-          <h2>{repo.repo_name}</h2>
-        </CardTitle>
+        <div className="flex flex-wrap items-center gap-2">
+          <CardTitle className="group-hover:text-primary text-base transition-colors duration-300 sm:text-lg">
+            <h2>{repo.repo_name}</h2>
+          </CardTitle>
+          {archived ? <Badge variant="outline">Archived</Badge> : null}
+        </div>
         <Button asChild className="touch-target absolute top-4 right-4 h-8 w-8 sm:top-6 sm:right-6" size="icon" variant="outline">
           <a
             aria-label={`View ${repo.owner}/${repo.repo_name} on GitHub`}
@@ -110,6 +120,12 @@ export function RepoCard({ repo, className }: RepoCardProps) {
         <div className="grow">
           <p className="text-muted-foreground mb-4 line-clamp-2 text-sm">{repo.description?.trim() || 'No description available.'}</p>
         </div>
+        {freshnessText || repo.license ? (
+          <div className="text-muted-foreground mb-3 flex flex-wrap items-center gap-2 text-xs">
+            {freshnessText ? <span suppressHydrationWarning>{freshnessText}</span> : null}
+            {repo.license ? <Badge variant="outline">{repo.license}</Badge> : null}
+          </div>
+        ) : null}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1">
