@@ -33,6 +33,9 @@ function page(items: SearchPage['items'], total_count = items.length, incomplete
 
 function reader(search: GitHubReader['searchCode']): GitHubReader {
   return {
+    searchRepositories: async () => {
+      throw new Error('Repository search is unused in this fixture')
+    },
     searchCode: search,
     getRepository: async () => {
       throw new Error('Discovery must not enrich repositories')
@@ -226,7 +229,9 @@ it('tags warnings with their family and preserves that family cache while later 
   ])
   expect(result.warnings).toEqual([{ range: [0, 0], category: 'temporary-error', query_family: 'marketplace_filename_path' }])
   expect(result.families.marketplace_filename_path.warningCount).toBe(1)
-  expect(logs.map(({ query_family }) => query_family)).toEqual(['marketplace_filename_path'])
+  expect(logs.filter(({ event }) => event === 'crawl.warning').map(({ query_family }) => query_family)).toEqual([
+    'marketplace_filename_path',
+  ])
 })
 
 it('keeps aggregate and family success counts aligned when a family range splits', async () => {

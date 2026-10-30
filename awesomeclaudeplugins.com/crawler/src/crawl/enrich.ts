@@ -22,7 +22,16 @@ import {
   rebindCanonicalUrl,
   updateEnriched,
 } from '../storage/repositories.js'
-import { advanceRunPhase, getRun, prepareRunErrorWriter, recordRunError, runWhileActive, startRunPhase } from '../storage/runs.js'
+import {
+  advanceRunPhase,
+  getRun,
+  getSetting,
+  prepareRunErrorWriter,
+  recordRunError,
+  runWhileActive,
+  setSetting,
+  startRunPhase,
+} from '../storage/runs.js'
 
 export type EnrichmentCounts = {
   updated: number
@@ -33,7 +42,40 @@ export type EnrichmentCounts = {
   deletedBlankUrl: number
   conclusive: number
   warnings: number
+  deferredCandidates: number
   knownInvalidSkipped?: number
+}
+
+export const MAX_PENDING_CANDIDATES_PER_RUN = 200
+const PENDING_CANDIDATE_CURSOR_SETTING = 'enrichment_pending_candidate_cursor'
+
+function selectPendingCandidateIds(db: Database.Database, cursor: number, limit: number): number[] {
+  if (limit === 0) return []
+  const parserVersion = MARKETPLACE_INVALID_CONTENT_CACHE_VERSION
+  const after = db
+    .prepare(`
+      SELECT id FROM repositories
+      WHERE plugins_count IS NULL
+        AND (marketplace_failed_oid IS NULL OR marketplace_failed_parser_version IS NULL OR marketplace_failed_parser_version != ?)
+        AND id > ?
+      ORDER BY id LIMIT ?
+    `)
+    .all(parserVersion, cursor, limit) as Array<{ id: number }>
+  const ids = after.map(({ id }) => id)
+  const remaining = limit - ids.length
+  if (remaining > 0 && cursor > 0) {
+    const before = db
+      .prepare(`
+        SELECT id FROM repositories
+        WHERE plugins_count IS NULL
+          AND (marketplace_failed_oid IS NULL OR marketplace_failed_parser_version IS NULL OR marketplace_failed_parser_version != ?)
+          AND id <= ?
+        ORDER BY id LIMIT ?
+      `)
+      .all(parserVersion, cursor, remaining) as Array<{ id: number }>
+    ids.push(...before.map(({ id }) => id))
+  }
+  return ids
 }
 
 type EnrichmentWriteBatch = {
@@ -1922,7 +1964,10 @@ export async function enrichRepositories(
   onProgress?: () => void,
   now: () => string = () => new Date().toISOString(),
   log?: Log,
+  maxPendingCandidates = MAX_PENDING_CANDIDATES_PER_RUN,
 ): Promise<EnrichmentCounts> {
+  if (!Number.isSafeInteger(maxPendingCandidates) || maxPendingCandidates < 0)
+    throw new Error('maxPendingCandidates must be a nonnegative safe integer')
   if (getRun(db, runId)?.phase !== 'enrichment') {
     const total = (db.prepare('SELECT COUNT(*) AS count FROM repositories').get() as { count: number }).count
     startRunPhase(db, runId, 'enrichment', now(), total)
@@ -1936,9 +1981,16 @@ export async function enrichRepositories(
     deletedBlankUrl: 0,
     conclusive: 0,
     warnings: 0,
+    deferredCandidates: 0,
     knownInvalidSkipped: 0,
   }
   let lastId = 0
+  const storedCursor = Number(getSetting(db, PENDING_CANDIDATE_CURSOR_SETTING) ?? '0')
+  const candidateCursor = Number.isSafeInteger(storedCursor) && storedCursor > 0 ? storedCursor : 0
+  const pendingCandidateIds = new Set(selectPendingCandidateIds(db, candidateCursor, maxPendingCandidates))
+  if (pendingCandidateIds.size > 0) {
+    setSetting(db, PENDING_CANDIDATE_CURSOR_SETTING, String([...pendingCandidateIds].at(-1)))
+  }
   const removedIds = new Set<number>()
   const retryQueue: RetryQueue = { tasks: [], deferredIds: new Set<number>() }
   const processedIds = new Set<number>()
@@ -1965,8 +2017,20 @@ export async function enrichRepositories(
     const rows = listForEnrichment(db, lastId, 50)
     if (rows.length === 0) break
     for (const row of rows) lastId = row.id
-    const graphQLRows = rows.filter((row) => row.github_node_id && parseRepositoryUrl(row.html_url ?? ''))
-    const legacyRows = rows.filter((row) => !row.github_node_id || !parseRepositoryUrl(row.html_url ?? ''))
+    const eligibleRows: RepositoryRow[] = []
+    for (const row of rows) {
+      const knownInvalidMarketplace =
+        row.marketplace_failed_oid !== null && row.marketplace_failed_parser_version === MARKETPLACE_INVALID_CONTENT_CACHE_VERSION
+      if (row.plugins_count !== null || knownInvalidMarketplace) {
+        eligibleRows.push(row)
+      } else if (pendingCandidateIds.has(row.id)) {
+        eligibleRows.push(row)
+      } else {
+        counts.deferredCandidates++
+      }
+    }
+    const graphQLRows = eligibleRows.filter((row) => row.github_node_id && parseRepositoryUrl(row.html_url ?? ''))
+    const legacyRows = eligibleRows.filter((row) => !row.github_node_id || !parseRepositoryUrl(row.html_url ?? ''))
     for (const row of legacyRows) {
       if (!removedIds.has(row.id)) {
         await enrichOne(db, reader, runId, row, counts, removedIds, now, FIRST_PASS_REST, retryQueue, onProgress, log)

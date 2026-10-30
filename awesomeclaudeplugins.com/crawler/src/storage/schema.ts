@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 15
+const schemaVersion = 17
 
 function createSchema(db: Database.Database): void {
   db.exec(`
@@ -363,6 +363,48 @@ function migrateTo15(db: Database.Database): void {
   db.pragma('user_version = 15')
 }
 
+function migrateTo16(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS repository_search_partitions (
+      query_version INTEGER NOT NULL CHECK(query_version >= 1),
+      query_id TEXT NOT NULL,
+      partition_key TEXT NOT NULL,
+      date_field TEXT NOT NULL CHECK(date_field IN ('created', 'pushed')),
+      date_start TEXT NOT NULL,
+      date_end TEXT NOT NULL CHECK(date_end >= date_start),
+      status TEXT NOT NULL CHECK(status IN ('pending', 'incomplete', 'complete', 'split')),
+      last_attempt_at TEXT,
+      last_completed_at TEXT,
+      total_count INTEGER NOT NULL DEFAULT 0 CHECK(total_count >= 0),
+      pages_fetched INTEGER NOT NULL DEFAULT 0 CHECK(pages_fetched >= 0),
+      candidate_count INTEGER NOT NULL DEFAULT 0 CHECK(candidate_count >= 0),
+      incomplete_results INTEGER NOT NULL DEFAULT 0 CHECK(incomplete_results IN (0, 1)),
+      saturated INTEGER NOT NULL DEFAULT 0 CHECK(saturated IN (0, 1)),
+      PRIMARY KEY (query_version, query_id, partition_key)
+    );
+    -- repository_id deliberately survives enrichment deleting rejected candidates.
+    CREATE TABLE IF NOT EXISTS discovery_candidates (
+      run_id TEXT NOT NULL REFERENCES runs(run_id),
+      repository_id INTEGER NOT NULL,
+      source TEXT NOT NULL CHECK(source IN ('code_search', 'repo_search')),
+      query_id TEXT NOT NULL,
+      PRIMARY KEY (run_id, repository_id, source, query_id)
+    );
+    PRAGMA user_version = 16;
+  `)
+}
+
+function migrateTo17(db: Database.Database): void {
+  const partitionColumns = db.pragma('table_info(repository_search_partitions)') as Array<{ name: string }>
+  if (!partitionColumns.some(({ name }) => name === 'next_page')) {
+    db.exec(`
+      ALTER TABLE repository_search_partitions ADD COLUMN next_page INTEGER NOT NULL DEFAULT 1
+        CHECK(next_page BETWEEN 1 AND 11);
+    `)
+  }
+  db.pragma('user_version = 17')
+}
+
 function migrateSchema(db: Database.Database, version: number): void {
   if (version === 0) createSchema(db)
   if (version < 2) migrateTo2(db)
@@ -379,6 +421,8 @@ function migrateSchema(db: Database.Database, version: number): void {
   if (version < 13) migrateTo13(db)
   if (version < 14) migrateTo14(db)
   if (version < 15) migrateTo15(db)
+  if (version < 16) migrateTo16(db)
+  if (version < 17) migrateTo17(db)
 }
 
 export function initializeSchema(db: Database.Database): void {

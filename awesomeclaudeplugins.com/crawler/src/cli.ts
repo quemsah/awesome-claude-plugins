@@ -233,6 +233,7 @@ function rateTracker(checkpoint?: (buckets: GitHubRateBuckets) => void): {
   }
   const rateLog: RateLog = (event) => {
     hasObserved = true
+    if (event.bucket === 'repo_search') buckets.repo_search ??= { requests: 0, waitMs: 0, lastRemaining: null }
     const bucket = event.bucket === 'graphql' ? buckets.graphql : buckets[event.bucket]
     if (!bucket) return
     if (event.request) {
@@ -398,7 +399,7 @@ async function runLocalCommand(
   output: (line: string) => void,
 ): Promise<boolean> {
   if (command === 'inspect') {
-    output(JSON.stringify(inspect(db)))
+    output(JSON.stringify(inspect(db, now())))
     return true
   }
   if (command === 'inspect-progress') {

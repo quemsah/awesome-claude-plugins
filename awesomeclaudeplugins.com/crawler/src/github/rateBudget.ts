@@ -1,6 +1,6 @@
 import { sleepWithShutdown, throwIfShutdown } from '../shutdown.js'
 
-export type RateResource = 'code_search' | 'core' | 'graphql'
+export type RateResource = 'code_search' | 'repo_search' | 'core' | 'graphql'
 
 export type GitHubRetryReason =
   | 'network'
@@ -46,6 +46,7 @@ type RateBucketSummary = {
 }
 export type GitHubRateBuckets = {
   code_search: RateBucketSummary
+  repo_search?: RateBucketSummary
   core: RateBucketSummary
   graphql?: RateBucketSummary & {
     totalCost: number
@@ -61,6 +62,7 @@ export type GitHubRateBuckets = {
 export type GraphQLRateObservation = { cost: number; remaining: number; resetAt: string; limit: number; used: number; latencyMs?: number }
 
 const rules: Record<RateResource, { limit: number; windowMs: number; spacingMs: number }> = {
+  repo_search: { limit: 30, windowMs: 60_000, spacingMs: 2_000 },
   code_search: { limit: 10, windowMs: 60_000, spacingMs: 6_200 },
   core: { limit: 5_000, windowMs: 3_600_000, spacingMs: 750 },
   graphql: { limit: 5_000, windowMs: 3_600_000, spacingMs: 750 },
@@ -86,11 +88,12 @@ function resetHeaderTimestamp(headers: Headers | undefined): number | undefined 
 }
 
 export class RateBudget {
-  private readonly sent: Record<RateResource, number[]> = { code_search: [], core: [], graphql: [] }
-  private readonly blockedUntil: Record<RateResource, number> = { code_search: 0, core: 0, graphql: 0 }
-  private readonly lastSent: Record<RateResource, number | null> = { code_search: null, core: null, graphql: null }
+  private readonly sent: Record<RateResource, number[]> = { repo_search: [], code_search: [], core: [], graphql: [] }
+  private readonly blockedUntil: Record<RateResource, number> = { repo_search: 0, code_search: 0, core: 0, graphql: 0 }
+  private readonly lastSent: Record<RateResource, number | null> = { repo_search: null, code_search: null, core: null, graphql: null }
   private graphqlQuota: { limit: number; remaining: number; resetAt: number; lastCost: number } | null = null
   private readonly reservations: Record<RateResource, Promise<void>> = {
+    repo_search: Promise.resolve(),
     code_search: Promise.resolve(),
     core: Promise.resolve(),
     graphql: Promise.resolve(),
@@ -153,7 +156,12 @@ export class RateBudget {
 
   observe(expected: RateResource, headers: Headers): void {
     const resource = headers.get('x-ratelimit-resource')
-    const bucket: RateResource = resource === 'core' || resource === 'code_search' || resource === 'graphql' ? resource : expected
+    const bucket: RateResource =
+      expected === 'repo_search'
+        ? expected
+        : resource === 'core' || resource === 'code_search' || resource === 'graphql'
+          ? resource
+          : expected
     const remaining = integerHeader(headers, 'x-ratelimit-remaining')
     this.log?.({ bucket, ...(remaining === undefined ? {} : { remaining }) })
 

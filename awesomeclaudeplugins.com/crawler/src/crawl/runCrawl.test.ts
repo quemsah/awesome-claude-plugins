@@ -1,8 +1,13 @@
 import Database from 'better-sqlite3'
 import { afterEach, expect, it, vi } from 'vitest'
+import { completeRepositoryHistory } from '../../test/repositorySearchFixture.js'
 import { GitHubFatalError, type GitHubReader, type GitHubRepo, GitHubTemporaryError } from '../github/client.js'
+import { repositorySearchQueries, repositorySearchQueryVersion } from '../github/repositorySearchQueries.js'
 import type { SizeRange } from '../github/sizeRanges.js'
+import { replaceCachedDiscoveryRanges } from '../storage/discoveryRanges.js'
+import { inspect } from '../storage/inspect.js'
 import { upsertDiscovery } from '../storage/repositories.js'
+import { ensureRepositorySearchPartition, saveRepositorySearchPartition } from '../storage/repositorySearch.js'
 import {
   beginRun,
   claimPublicationLease,
@@ -26,6 +31,7 @@ const url = 'https://github.com/team/repo'
 function database(): Database.Database {
   const db = new Database(':memory:')
   initializeSchema(db)
+  completeRepositoryHistory(db)
   databases.push(db)
   return db
 }
@@ -49,6 +55,7 @@ function repo(owner: string, name: string): GitHubRepo {
 
 function reader(overrides: Partial<GitHubReader> = {}): GitHubReader {
   return {
+    searchRepositories: async () => ({ items: [], total_count: 0, incomplete_results: false }),
     searchCode: async () => ({
       items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: url, description: 'from search' } }],
       total_count: 1,
@@ -212,11 +219,14 @@ it('reports a pending publication as an explicit lock instead of treating it as 
   expect(getRun(db, 'new')).toBeNull()
 })
 
-it('fails rather than completing when every search range fails, even if enrichment confirms an existing row', async () => {
+it('fails rather than completing when both discovery sources fail, even if enrichment confirms an existing row', async () => {
   const db = database()
   upsertDiscovery(db, url, 'old')
   const client = reader({
     searchCode: async () => {
+      throw new GitHubTemporaryError('network outage', 503)
+    },
+    searchRepositories: async () => {
       throw new GitHubTemporaryError('network outage', 503)
     },
   })
@@ -228,6 +238,60 @@ it('fails rather than completing when every search range fails, even if enrichme
   const errors = listRunErrors(db, 'no-search')
   expect(errors.filter(({ phase }) => phase === 'search')).toHaveLength(4)
   expect(errors.at(-1)).toMatchObject({ phase: 'crawl', error_type: 'no_successful_ranges' })
+})
+
+it('completes from Repository Search when every Code Search range fails', async () => {
+  const db = database()
+  const repoSearchUrl = 'https://github.com/team/repo-search-only'
+  const client = reader({
+    searchCode: async () => {
+      throw new GitHubTemporaryError('network outage', 503)
+    },
+    searchRepositories: async (query) =>
+      query.startsWith('topic:claude-plugin is:public pushed:')
+        ? {
+            items: [
+              {
+                html_url: repoSearchUrl,
+                description: 'independent discovery candidate',
+                node_id: 'repo-search-node',
+                private: false,
+              },
+            ],
+            total_count: 1,
+            incomplete_results: false,
+          }
+        : { items: [], total_count: 0, incomplete_results: false },
+  })
+
+  const result = await runCrawl(db, client, 'repo-search-only', { ranges: [firstRange] })
+
+  expect(result.discovery.successfulRanges).toBe(0)
+  expect(result.discovery.sources.repo_search.uniqueCandidates).toBe(1)
+  expect(result.enrichment.conclusive).toBe(1)
+  expect(result.status).toBe('completed')
+  expect(db.prepare('SELECT owner, plugins_count FROM repositories WHERE html_url = ?').get(repoSearchUrl)).toEqual({
+    owner: 'team',
+    plugins_count: 1,
+  })
+})
+
+it('completes an empty Repository Search scan when Code Search fails and there is nothing to enrich', async () => {
+  const db = database()
+  const client = reader({
+    searchCode: async () => {
+      throw new GitHubTemporaryError('network outage', 503)
+    },
+    searchRepositories: async () => ({ items: [], total_count: 0, incomplete_results: false }),
+  })
+
+  const result = await runCrawl(db, client, 'repo-search-empty', { ranges: [firstRange] })
+
+  expect(result.discovery.successfulRanges).toBe(0)
+  expect(result.discovery.sources.repo_search.state).toBe('complete')
+  expect(result.enrichment.conclusive).toBe(0)
+  expect(result.status).toBe('completed')
+  expect(getRun(db, 'repo-search-empty')).toMatchObject({ status: 'completed', last_error: null })
 })
 
 it('fails when search succeeds but every marketplace result is transient', async () => {
@@ -567,4 +631,297 @@ it('marks a shutdown crawl as terminated after the in-flight request and release
     completed_at: '2026-09-23T02:00:00.000Z',
   })
   expect(listRunErrors(db, 'shutdown')).toContainEqual(expect.objectContaining({ phase: 'crawl', error_type: 'terminated' }))
+})
+
+it('finishes the crawl while reporting bounded incomplete repo coverage and post-enrichment source overlap', async () => {
+  const db = database()
+  db.exec('DELETE FROM repository_search_partitions')
+  const log = vi.fn()
+  const order: string[] = []
+  const result = await runCrawl(
+    db,
+    reader({
+      searchCode: async () => {
+        order.push('code')
+        return {
+          items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: url, description: null } }],
+          total_count: 1,
+          incomplete_results: false,
+        }
+      },
+      searchRepositories: async () => {
+        order.push('repo')
+        return {
+          items: [
+            { html_url: url, description: null },
+            { html_url: 'https://github.com/team/only-repo', description: null },
+            { html_url: 'https://github.com/team/mcp', description: null },
+          ],
+          total_count: 3,
+          incomplete_results: true,
+        }
+      },
+      getMarketplace: async (_owner, name) => {
+        order.push('enrich')
+        return name === 'mcp' ? { kind: 'not-found' } : { kind: 'found', data: { plugins: [1] } }
+      },
+    }),
+    'bounded',
+    { ranges: [[0, 1]], now: () => new Date('2026-10-30T12:00:00Z'), log },
+  )
+  expect(result.status).toBe('completed')
+  expect(order.slice(0, 3)).toEqual(['code', 'code', 'repo'])
+  expect(order.indexOf('enrich')).toBeGreaterThan(order.lastIndexOf('repo'))
+  expect(result.discovery).toMatchObject({
+    coverageScope: 'configured_query_catalog',
+    uniqueCandidates: 3,
+    uniqueCatalogAdditions: 2,
+    sources: {
+      code_search: {
+        state: 'complete',
+        pagesFetched: 2,
+        totalResults: 2,
+        uniqueCandidates: 1,
+        newUrls: 1,
+        acceptedMarketplaces: 1,
+        rejectedCandidates: 0,
+      },
+      repo_search: {
+        state: 'incomplete',
+        pagesFetched: 20,
+        totalResults: 60,
+        uniqueCandidates: 3,
+        newUrls: 2,
+        acceptedMarketplaces: 2,
+        rejectedCandidates: 1,
+        pendingCandidates: 0,
+        warnings: expect.arrayContaining(['incomplete-results', 'request-budget']),
+      },
+    },
+  })
+  expect(result.warningCount).toBeGreaterThan(0)
+  expect(result.errorCategories).not.toHaveProperty('repo_search_incomplete')
+  expect(log).toHaveBeenCalledWith(
+    expect.objectContaining({
+      event: 'crawl.repository_search.partition',
+      queryId: repositorySearchQueries[0].queryId,
+      queryVersion: repositorySearchQueryVersion,
+      partitionKey: 'pushed:2026-10-01..2026-10-30',
+      state: 'incomplete',
+      reason: 'incomplete-results',
+    }),
+  )
+  expect(log).toHaveBeenCalledWith(
+    expect.objectContaining({ event: 'crawl.coverage_warning', source: 'repo_search', category: 'source_incomplete' }),
+  )
+  expect(JSON.stringify(log.mock.calls)).not.toContain('"items"')
+})
+
+it('alerts in structured logs after consecutive incomplete rolling scans and clears the streak after recovery', async () => {
+  const db = database()
+  const log = vi.fn()
+  const options = { ranges: [[0, 1]] as const, now: () => new Date('2026-10-30T12:00:00Z'), log }
+  const partial = reader({ searchRepositories: async () => ({ items: [], total_count: 0, incomplete_results: true }) })
+  await runCrawl(db, partial, 'partial-1', options)
+  expect(log.mock.calls.some(([event]) => event.event === 'crawl.coverage_alert')).toBe(false)
+  await runCrawl(db, partial, 'partial-2', options)
+  expect(log).toHaveBeenCalledWith(
+    expect.objectContaining({ event: 'crawl.coverage_alert', category: 'rolling_partition_repeatedly_incomplete', consecutiveCrawls: 2 }),
+  )
+  await runCrawl(db, reader(), 'recovered', options)
+  expect(
+    JSON.parse((db.prepare("SELECT value FROM settings WHERE key = 'discovery_source_repo_search'").get() as { value: string }).value),
+  ).toMatchObject({ state: 'complete', rollingIncompleteStreak: 0 })
+})
+
+it('marks a saturated Code Search leaf incomplete even when GitHub returns all accessible results', async () => {
+  const db = database()
+  const result = await runCrawl(
+    db,
+    reader({
+      searchCode: async () => ({
+        items: Array.from({ length: 100 }, () => ({
+          path: '.claude-plugin/marketplace.json',
+          repository: { html_url: url, description: null },
+        })),
+        total_count: 1000,
+        incomplete_results: false,
+      }),
+    }),
+    'saturated-code',
+    { ranges: [[0, 0]], now: () => new Date('2026-10-30T12:00:00Z') },
+  )
+  expect(result.discovery.sources.code_search).toMatchObject({ state: 'incomplete', incompletePartitions: 2, saturatedPartitions: 2 })
+})
+
+it('counts each incomplete Code Search leaf separately when cached partitions fail', async () => {
+  const db = database()
+  replaceCachedDiscoveryRanges(
+    db,
+    'marketplace_filename_path',
+    [0, 1],
+    [
+      [0, 0],
+      [1, 1],
+    ],
+  )
+  const result = await runCrawl(
+    db,
+    reader({
+      searchCode: async (query) => {
+        if (query.startsWith('filename:')) throw new GitHubTemporaryError('temporary', 503)
+        return {
+          items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: url, description: null } }],
+          total_count: 1,
+          incomplete_results: false,
+        }
+      },
+    }),
+    'cached-leaves',
+    { ranges: [[0, 1]], now: () => new Date('2026-10-30T12:00:00Z') },
+  )
+  expect(result.discovery.sources.code_search).toMatchObject({ state: 'incomplete', partitions: 3, incompletePartitions: 2 })
+})
+
+it('does not count an existing accepted canonical marketplace as an addition when a merge changes its row id', async () => {
+  const db = database()
+  const oldId = upsertDiscovery(db, url, null)
+  const canonical = 'https://github.com/team/canonical'
+  const existingId = upsertDiscovery(db, canonical, null)
+  db.prepare('UPDATE repositories SET plugins_count = 1 WHERE id = ?').run(existingId)
+  const result = await runCrawl(
+    db,
+    reader({ getRepository: async () => ({ kind: 'found', data: repo('team', 'canonical') }) }),
+    'merged-additions',
+    { ranges: [[0, 1]], now: () => new Date('2026-10-30T12:00:00Z') },
+  )
+  expect(db.prepare('SELECT id FROM repositories WHERE html_url = ?').get(canonical)).toEqual({ id: oldId })
+  expect(result.discovery.sources.code_search.acceptedMarketplaces).toBe(1)
+  expect(result.discovery.uniqueCatalogAdditions).toBe(0)
+})
+
+it.each(['code_search', 'repo_search'] as const)(
+  'persists %s fatal attempts independently after a previously complete scan',
+  async (source) => {
+    const db = database()
+    const first = new Date('2026-10-30T12:00:00Z')
+    const failedAt = new Date('2026-10-30T13:00:00Z')
+    await runCrawl(db, reader(), 'complete-before-fatal', { ranges: [[0, 1]], now: () => first })
+    const client = reader(
+      source === 'code_search'
+        ? {
+            searchCode: async () => {
+              throw new GitHubFatalError('fatal code', 422)
+            },
+          }
+        : {
+            searchRepositories: async () => {
+              throw new GitHubFatalError('fatal repo', 422)
+            },
+          },
+    )
+    await expect(runCrawl(db, client, 'fatal-source', { ranges: [[0, 1]], now: () => failedAt })).rejects.toMatchObject({
+      category: 'github_fatal_error',
+    })
+    const coverage = inspect(db, failedAt)
+    expect(coverage.sources[source]).toMatchObject({
+      freshness: 'incomplete',
+      due: true,
+      lastAttempt: failedAt.toISOString(),
+      lastCompleteScan: first.toISOString(),
+      incompletePartitions: expect.any(Number),
+    })
+    expect(coverage.sources[source].incompletePartitions).toBeGreaterThan(0)
+    if (source === 'repo_search')
+      expect(coverage.sources.code_search).toMatchObject({ freshness: 'fresh', lastCompleteScan: failedAt.toISOString() })
+    else expect(coverage.sources.repo_search.lastAttempt).toBe(first.toISOString())
+  },
+)
+
+it('persists consecutive fatal rolling attempts and alerts before propagating the second failure', async () => {
+  const db = database()
+  const log = vi.fn()
+  const options = { ranges: [[0, 1]] as const, now: () => new Date('2026-10-30T12:00:00Z'), log }
+  await runCrawl(db, reader(), 'fatal-rolling-baseline', options)
+  const client = reader({
+    searchRepositories: async () => {
+      throw new GitHubFatalError('query rejected', 422)
+    },
+  })
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    await expect(runCrawl(db, client, `fatal-rolling-${attempt}`, options)).rejects.toMatchObject({ category: 'github_fatal_error' })
+    expect(inspect(db, options.now()).sources.repo_search).toMatchObject({ freshness: 'incomplete', rollingIncompleteStreak: attempt })
+  }
+  expect(log).toHaveBeenCalledWith(
+    expect.objectContaining({
+      event: 'crawl.coverage_alert',
+      category: 'rolling_partition_repeatedly_incomplete',
+      runId: 'fatal-rolling-2',
+      consecutiveCrawls: 2,
+    }),
+  )
+  expect(inspect(db, options.now()).sources.repo_search.alerts).toContain('rolling_partition_repeatedly_incomplete')
+})
+
+it('alerts on the same unresolved historical leaf across invocations while rolling scans succeed and clears it after recovery', async () => {
+  const db = database()
+  const historical = ensureRepositorySearchPartition(db, 'metadata_plugin', { field: 'created', start: '2008-01-01', end: '2008-12-31' })
+  historical.status = 'incomplete'
+  historical.last_completed_at = null
+  saveRepositorySearchPartition(db, historical)
+  const log = vi.fn()
+  let at = new Date('2026-10-30T12:00:00Z')
+  const options = { ranges: [[0, 1]] as const, now: () => at, log }
+  const client = reader({
+    searchRepositories: async (query) => ({ items: [], total_count: 0, incomplete_results: query.includes('created:') }),
+  })
+  await runCrawl(db, client, 'historical-first', options)
+  expect(inspect(db, at).sources.repo_search.alerts).not.toContain('partition_repeatedly_incomplete')
+  at = new Date('2026-10-31T12:00:00Z')
+  await runCrawl(db, client, 'historical-again', options)
+  expect(log).toHaveBeenCalledWith(
+    expect.objectContaining({
+      event: 'crawl.coverage_alert',
+      category: 'partition_repeatedly_incomplete',
+      runId: 'historical-again',
+      partitions: [{ queryId: 'metadata_plugin', partitionKey: historical.partition_key }],
+    }),
+  )
+  expect(inspect(db, at).sources.repo_search).toMatchObject({
+    rollingIncompleteStreak: 0,
+    alerts: ['partition_repeatedly_incomplete'],
+    repeatedIncompletePartitions: [{ queryId: 'metadata_plugin', partitionKey: historical.partition_key }],
+  })
+  await runCrawl(db, reader(), 'historical-recovered', options)
+  expect(inspect(db, at).sources.repo_search).toMatchObject({ freshness: 'fresh', alerts: [], repeatedIncompletePartitions: [] })
+})
+
+it('retains alerts for historical due leaves skipped by the request budget despite old complete checkpoints', async () => {
+  const db = database()
+  db.prepare("UPDATE repository_search_partitions SET last_completed_at = '2026-01-01T00:00:00Z'").run()
+  const log = vi.fn()
+  const at = new Date('2026-10-30T12:00:00Z')
+  const options = { ranges: [[0, 1]] as const, now: () => at, log }
+  await runCrawl(db, reader(), 'budget-history-first', options)
+  await runCrawl(db, reader(), 'budget-history-again', options)
+  const expected = { queryId: 'topic_claude_code_plugin', partitionKey: 'created:2026-01-01..2026-12-31' }
+  expect(
+    db
+      .prepare('SELECT status FROM repository_search_partitions WHERE query_id = ? AND partition_key = ?')
+      .get(expected.queryId, expected.partitionKey),
+  ).toEqual({ status: 'complete' })
+  expect(inspect(db, at).sources.repo_search).toMatchObject({
+    freshness: 'incomplete',
+    rollingIncompleteStreak: 0,
+    alerts: ['partition_repeatedly_incomplete'],
+    repeatedIncompletePartitions: expect.arrayContaining([expected]),
+  })
+  expect(log).toHaveBeenCalledWith(
+    expect.objectContaining({
+      event: 'crawl.coverage_alert',
+      category: 'partition_repeatedly_incomplete',
+      runId: 'budget-history-again',
+      partitions: expect.arrayContaining([expected]),
+    }),
+  )
 })

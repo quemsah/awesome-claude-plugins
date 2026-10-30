@@ -4,7 +4,9 @@ import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import { type DiscoveryQueryFamily, discoverySearchFamilies } from '../github/searchFamilies.js'
 import type { SizeRange } from '../github/sizeRanges.js'
 import type { Log } from '../logging.js'
+import { recordDiscoveryCandidate } from '../storage/discoveryCandidates.js'
 import { listCachedDiscoveryRanges, replaceCachedDiscoveryRanges } from '../storage/discoveryRanges.js'
+import { recordDiscoverySourceOutcome } from '../storage/discoverySources.js'
 import { createDiscoveryWriter } from '../storage/repositories.js'
 import { recordRunError, runWhileActive } from '../storage/runs.js'
 
@@ -26,7 +28,10 @@ export type DiscoverySummary = {
   families: Record<DiscoveryQueryFamily, DiscoveryFamilySummary>
 }
 
+export type CodeDiscoveryMetrics = { pagesFetched: number; totalResults: number; partitions: number; incompletePartitions: number }
+
 type RangeState = {
+  metrics?: CodeDiscoveryMetrics
   runId: string
   queryFamily: DiscoveryQueryFamily
   range: SizeRange
@@ -42,6 +47,7 @@ type RangeState = {
 }
 
 type CoverageState = {
+  metrics?: CodeDiscoveryMetrics
   complete: boolean
   leaves: SizeRange[]
   log?: Log
@@ -101,7 +107,10 @@ async function searchPage(
   state: RangeState,
 ): Promise<Awaited<ReturnType<GitHubReader['searchCode']>> | null> {
   try {
-    return await reader.searchCode(query, page)
+    if (state.metrics) state.metrics.pagesFetched++
+    const result = await reader.searchCode(query, page)
+    if (state.metrics) state.metrics.totalResults += result.items.length
+    return result
   } catch (error) {
     if (error instanceof GitHubFatalError) {
       state.log?.({
@@ -143,8 +152,13 @@ function processItems(
         continue
       }
       const countKey = url.toLowerCase()
-      if (state.countedUrls.has(countKey)) continue
-      const { existing } = writeDiscovery(url, repository.description, state.now(), repository.node_id)
+      if (state.countedUrls.has(countKey)) {
+        const row = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE').get(url) as { id: number }
+        recordDiscoveryCandidate(db, state.runId, row.id, 'code_search', state.queryFamily)
+        continue
+      }
+      const { id, existing } = writeDiscovery(url, repository.description, state.now(), repository.node_id)
+      recordDiscoveryCandidate(db, state.runId, id, 'code_search', state.queryFamily)
       state.countedUrls.add(countKey)
       if (existing) state.summary.existingUrls++
       else state.summary.newUrls++
@@ -276,6 +290,10 @@ async function recoverIncompleteRange(
   if (min >= max) {
     if (page > 1) adjustSuccessfulRanges(summary, queryFamily, -1)
     coverage.complete = false
+    if (coverage.metrics) {
+      coverage.metrics.partitions++
+      coverage.metrics.incompletePartitions++
+    }
     return true
   }
   await splitRange(db, reader, runId, queryFamily, writeDiscovery, range, summary, now, onProgress, countedUrls, page > 1, coverage)
@@ -381,6 +399,7 @@ async function searchRange(
     found: 0,
     totalCount: null,
     log: coverage.log,
+    metrics: coverage.metrics,
   }
   let found = 0
   let lastTotalCount = 0
@@ -430,6 +449,10 @@ async function searchRange(
     rangeComplete = false
   }
   if (found < lastTotalCount) rangeComplete = false
+  if (coverage.metrics) {
+    coverage.metrics.partitions++
+    coverage.metrics.incompletePartitions += Number(!rangeComplete || state.warned.has('saturated') || state.warned.has('page-limit'))
+  }
   if (rangeComplete) coverage.leaves.push(range)
   else coverage.complete = false
   onProgress?.()
@@ -443,6 +466,7 @@ export async function discover(
   onProgress?: () => void,
   now: () => string = () => new Date().toISOString(),
   log?: Log,
+  metrics: CodeDiscoveryMetrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0 },
 ): Promise<DiscoverySummary> {
   const summary: DiscoverySummary = {
     newUrls: 0,
@@ -458,19 +482,47 @@ export async function discover(
   const writeDiscovery = createDiscoveryWriter(db)
   const countedUrls = new Set<string>()
 
-  for (const family of discoverySearchFamilies) {
-    for (const rootRange of ranges) {
-      const cachedRanges = listCachedDiscoveryRanges(db, family.queryFamily, rootRange) ?? [rootRange]
-      const coverage: CoverageState = { complete: true, leaves: [], log }
-      for (const range of cachedRanges) {
-        await searchRange(db, reader, runId, family.queryFamily, writeDiscovery, range, summary, now, coverage, onProgress, countedUrls)
+  try {
+    for (const family of discoverySearchFamilies) {
+      for (const rootRange of ranges) {
+        const cachedRanges = listCachedDiscoveryRanges(db, family.queryFamily, rootRange) ?? [rootRange]
+        const coverage: CoverageState = { complete: true, leaves: [], log, metrics }
+        for (const range of cachedRanges) {
+          await searchRange(db, reader, runId, family.queryFamily, writeDiscovery, range, summary, now, coverage, onProgress, countedUrls)
+        }
+        if (coverage.complete) {
+          runWhileActive(db, runId, () => replaceCachedDiscoveryRanges(db, family.queryFamily, rootRange, coverage.leaves))
+        }
+        onProgress?.()
       }
-      if (coverage.complete) {
-        runWhileActive(db, runId, () => replaceCachedDiscoveryRanges(db, family.queryFamily, rootRange, coverage.leaves))
-      }
-      onProgress?.()
     }
+  } catch (error) {
+    recordDiscoverySourceOutcome(
+      db,
+      runId,
+      'code_search',
+      {
+        state: 'incomplete',
+        incompletePartitions: metrics.incompletePartitions + 1,
+        warnings: [...new Set([...summary.warnings.map(({ category }) => category), 'fatal-error'])],
+      },
+      now(),
+      log,
+    )
+    throw error
   }
+  recordDiscoverySourceOutcome(
+    db,
+    runId,
+    'code_search',
+    {
+      state: metrics.incompletePartitions ? 'incomplete' : metrics.partitions ? 'complete' : 'not_due',
+      incompletePartitions: metrics.incompletePartitions,
+      warnings: [...new Set(summary.warnings.map(({ category }) => category))],
+    },
+    now(),
+    log,
+  )
 
   return summary
 }

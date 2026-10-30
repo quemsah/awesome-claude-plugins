@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3'
 import { describe, expect, it, vi } from 'vitest'
+import { completeRepositoryHistory } from '../../test/repositorySearchFixture.js'
 import { type GitHubReader, GitHubTemporaryError } from '../github/client.js'
 import type { GitHubGit } from '../publish/githubGit.js'
 import { ShutdownError } from '../shutdown.js'
@@ -11,6 +12,7 @@ import { executeCrawl, executePublish } from './execute.js'
 const now = () => new Date('2026-09-23T12:00:00.000Z')
 const range = [[0, 150]] as const
 const reader: GitHubReader = {
+  searchRepositories: async () => ({ items: [], total_count: 0, incomplete_results: false }),
   searchCode: vi.fn(async () => ({ items: [], total_count: 0, incomplete_results: false })),
   getRepository: vi.fn(async (owner: string, repo: string) =>
     owner === 'alpha'
@@ -36,6 +38,7 @@ async function dbFixture() {
   const db = new Database(':memory:')
   initializeSchema(db)
   populateFixture(db)
+  completeRepositoryHistory(db)
   return db
 }
 
@@ -49,6 +52,56 @@ function notifier() {
 }
 
 describe('orchestration', () => {
+  it('persists and round-trips bounded source status without treating incomplete repo search as crawl failure', async () => {
+    const db = await dbFixture()
+    try {
+      const log = vi.fn()
+      const result = await executeCrawl(
+        db,
+        { ...reader, searchRepositories: async () => ({ items: [], total_count: 0, incomplete_results: true }) },
+        'source-report',
+        { now, ranges: range, dryRun: true, log },
+      )
+      expect(result.report.discovery).toMatchObject({
+        coverageScope: 'configured_query_catalog',
+        sources: { code_search: { state: 'complete' }, repo_search: { state: 'incomplete', warnings: ['incomplete-results'] } },
+      })
+      const report = JSON.parse(getSetting(db, 'run_report_source-report') ?? 'null')
+      expect(report.discovery).toEqual(result.report.discovery)
+      report.discovery.sources.repo_search.pagesFetched = -1
+      setSetting(db, 'run_report_source-report', JSON.stringify(report))
+      await expect(executePublish(db, {} as GitHubGit, 'source-report', { now, writeEnabled: true, log })).rejects.toThrow(
+        'Invalid stored crawl report',
+      )
+    } finally {
+      db.close()
+    }
+  })
+
+  it.each([
+    null,
+    { requests: -1, waitMs: 0, lastRemaining: null },
+    { requests: 1, waitMs: 0, lastRemaining: null, retries: -1 },
+    { requests: 1, waitMs: 0, lastRemaining: null, retryReasons: { unknown: 1 } },
+  ])('rejects malformed stored repository search counters %j before publishing', async (bucket) => {
+    const db = await dbFixture()
+    try {
+      await executeCrawl(db, reader, 'repo-metrics', { now, ranges: range, dryRun: true })
+      const report = JSON.parse(getSetting(db, 'run_report_repo-metrics') ?? 'null')
+      report.rateBuckets = {
+        code_search: { requests: 0, waitMs: 0, lastRemaining: null },
+        core: { requests: 0, waitMs: 0, lastRemaining: null },
+        repo_search: bucket,
+      }
+      setSetting(db, 'run_report_repo-metrics', JSON.stringify(report))
+      await expect(executePublish(db, {} as GitHubGit, 'repo-metrics', { now, writeEnabled: true })).rejects.toThrow(
+        'Invalid stored GitHub rate report',
+      )
+    } finally {
+      db.close()
+    }
+  })
+
   it('dry-run reads GitHub, persists a draft and never calls Git or announces publication', async () => {
     const db = await dbFixture()
     const notify = notifier()
@@ -119,6 +172,9 @@ describe('orchestration', () => {
       searchCode: async () => {
         throw new GitHubTemporaryError('read-secret inside body', 503)
       },
+      searchRepositories: async () => {
+        throw new GitHubTemporaryError('read-secret inside body', 503)
+      },
     }
     await expect(executeCrawl(db, failing, 'failed', { now, ranges: range, dryRun: true, notifier: notify })).rejects.toThrow()
     expect(getRun(db, 'failed')?.status).toBe('failed')
@@ -136,6 +192,7 @@ describe('orchestration', () => {
     const db = await dbFixture()
     const rateBuckets = {
       code_search: { requests: 3, waitMs: 500, lastRemaining: 7 },
+      repo_search: { requests: 2, waitMs: 2_000, lastRemaining: 28, retries: 1, retryWaitMs: 4_000, retryReasons: { network: 1 } },
       core: { requests: 11, waitMs: 1000, lastRemaining: 4800 },
     }
     await executeCrawl(db, reader, 'prepared', { now, ranges: range, dryRun: true, rateBuckets: () => rateBuckets })
@@ -352,6 +409,9 @@ describe('orchestration', () => {
       searchCode: async () => {
         throw new GitHubTemporaryError('read-secret', 503)
       },
+      searchRepositories: async () => {
+        throw new GitHubTemporaryError('read-secret', 503)
+      },
     }
 
     await expect(
@@ -377,6 +437,9 @@ describe('orchestration', () => {
     const failing: GitHubReader = {
       ...reader,
       searchCode: async () => {
+        throw new GitHubTemporaryError('read-secret', 503)
+      },
+      searchRepositories: async () => {
         throw new GitHubTemporaryError('read-secret', 503)
       },
     }

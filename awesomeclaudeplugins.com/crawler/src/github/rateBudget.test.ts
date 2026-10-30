@@ -18,6 +18,41 @@ function virtualClock() {
 }
 
 describe('RateBudget', () => {
+  it('paces repository searches independently from code searches', async () => {
+    const clock = virtualClock()
+    const budget = new RateBudget(clock)
+    await budget.acquire('code_search')
+    await budget.acquire('repo_search')
+    expect(clock.time).toBe(0)
+    await budget.acquire('repo_search')
+    expect(clock.time).toBe(2_000)
+    await budget.acquire('code_search')
+    expect(clock.time).toBe(6_200)
+  })
+
+  it.each(['search', 'code_search', 'core'])(
+    'applies repository search reset headers for resource %s to its local bucket',
+    async (resource) => {
+      const clock = virtualClock()
+      const budget = new RateBudget(clock)
+      await budget.acquire('repo_search')
+      budget.observe(
+        'repo_search',
+        new Headers({
+          'x-ratelimit-resource': resource,
+          'x-ratelimit-remaining': '0',
+          'x-ratelimit-reset': '20',
+        }),
+      )
+      await budget.acquire('code_search')
+      expect(clock.time).toBe(0)
+      await budget.acquire('core')
+      expect(clock.time).toBe(0)
+      await budget.acquire('repo_search')
+      expect(clock.time).toBe(21_000)
+    },
+  )
+
   it('ignores an out-of-range GraphQL reset header and uses the payload reset time', () => {
     const events: Parameters<NonNullable<ConstructorParameters<typeof RateBudget>[1]>>[0][] = []
     const clock = virtualClock()

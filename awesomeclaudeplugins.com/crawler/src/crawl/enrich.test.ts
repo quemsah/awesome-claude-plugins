@@ -12,7 +12,7 @@ import {
 import { MARKETPLACE_INVALID_CONTENT_CACHE_VERSION, MARKETPLACE_PARSER_VERSION } from '../github/marketplace.js'
 import { renderRepos } from '../output/catalogSnapshot.js'
 import { listPublishable, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
-import { beginRun, getRun, listRunErrors } from '../storage/runs.js'
+import { beginRun, completeRun, getRun, listRunErrors } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
 import { enrichRepositories } from './enrich.js'
 
@@ -55,6 +55,9 @@ function reader(
   }),
 ): GitHubReader {
   return {
+    searchRepositories: async () => {
+      throw new Error('Repository search is unused in this fixture')
+    },
     searchCode: async () => {
       throw new Error('enrichment must not search')
     },
@@ -140,6 +143,7 @@ it('pages by id after deleting blank and 404 rows, visiting newly discovered ids
     deletedBlankUrl: 2,
     conclusive: 52,
     warnings: 0,
+    deferredCandidates: 0,
     knownInvalidSkipped: 0,
   })
   expect(seen).toHaveLength(52)
@@ -161,6 +165,74 @@ it('visits exactly 50 rows without repeating the last row of the batch', async (
 
   expect((await enrichRepositories(db, reader(getRepository), 'crawl-1')).newReady).toBe(50)
   expect(getRepository).toHaveBeenCalledTimes(50)
+})
+
+it('limits per-run enrichment of unprocessed marketplace candidates and leaves the rest queued', async () => {
+  const db = database()
+  upsertDiscovery(db, 'https://github.com/team/candidate-1', 'first')
+  upsertDiscovery(db, 'https://github.com/team/candidate-2', 'second')
+  upsertDiscovery(db, 'https://github.com/team/candidate-3', 'third')
+  const fetched: string[] = []
+
+  const result = await enrichRepositories(
+    db,
+    reader(
+      async (owner, repo) => {
+        fetched.push(`${owner}/${repo}`)
+        return { kind: 'found', data: githubRepo(owner, repo) }
+      },
+      async () => ({ kind: 'found', data: validMarketplaceFixture.input }),
+    ),
+    'crawl-1',
+    undefined,
+    () => '2026-10-30T12:00:00Z',
+    undefined,
+    2,
+  )
+
+  expect(fetched).toEqual(['team/candidate-1', 'team/candidate-2'])
+  expect(result.deferredCandidates).toBe(1)
+  expect(db.prepare('SELECT plugins_count FROM repositories ORDER BY id').all()).toEqual([
+    { plugins_count: validMarketplaceFixture.pluginsCount },
+    { plugins_count: validMarketplaceFixture.pluginsCount },
+    { plugins_count: null },
+  ])
+})
+
+it('rotates the candidate cap so a failing low-id candidate does not starve later candidates', async () => {
+  const db = database()
+  upsertDiscovery(db, 'https://github.com/team/candidate-1', 'first')
+  upsertDiscovery(db, 'https://github.com/team/candidate-2', 'second')
+  const firstRunFetches: string[] = []
+  const failingReader = reader(async (_owner, repo) => {
+    firstRunFetches.push(repo)
+    return { kind: 'temporary-error', status: 503, reason: 'offline', retryCount: 0 }
+  })
+  const first = await enrichRepositories(db, failingReader, 'crawl-1', undefined, () => '2026-10-30T12:00:00Z', undefined, 1)
+  expect(firstRunFetches).toContain('candidate-1')
+  expect(first.deferredCandidates).toBe(1)
+  completeRun(db, 'crawl-1', '2026-10-30T12:30:00Z', first.warnings)
+  beginRun(db, 'crawl-2', '2026-10-31T12:00:00Z')
+
+  const laterRunFetches: string[] = []
+  const second = await enrichRepositories(
+    db,
+    reader(
+      async (_owner, repo) => {
+        laterRunFetches.push(repo)
+        return { kind: 'found', data: githubRepo('team', repo) }
+      },
+      async () => ({ kind: 'found', data: validMarketplaceFixture.input }),
+    ),
+    'crawl-2',
+    undefined,
+    () => '2026-10-31T12:00:00Z',
+    undefined,
+    1,
+  )
+
+  expect(laterRunFetches).toContain('candidate-2')
+  expect(second.deferredCandidates).toBe(1)
 })
 
 it('uses batched GraphQL metadata and skips marketplace REST when the stored OID is unchanged', async () => {
@@ -526,6 +598,9 @@ it('defers retryable REST failures until the first repository pass is complete',
   const calls: string[] = []
   let firstAttempts = 0
   const client: GitHubReader = {
+    searchRepositories: async () => {
+      throw new Error('Repository search is unused in this fixture')
+    },
     searchCode: async () => {
       throw new Error('enrichment must not search')
     },
@@ -581,6 +656,9 @@ it('gives marketplace a fresh three-attempt budget after a deferred repository r
   const repositoryMaxAttempts: number[] = []
   const marketplaceMaxAttempts: number[] = []
   const client: GitHubReader = {
+    searchRepositories: async () => {
+      throw new Error('Repository search is unused in this fixture')
+    },
     searchCode: async () => {
       throw new Error('enrichment must not search')
     },
@@ -632,6 +710,9 @@ it('does not inherit the repository retry offset when marketplace content is imm
   let repositoryCalls = 0
   const marketplaceMaxAttempts: number[] = []
   const client: GitHubReader = {
+    searchRepositories: async () => {
+      throw new Error('Repository search is unused in this fixture')
+    },
     searchCode: async () => {
       throw new Error('enrichment must not search')
     },

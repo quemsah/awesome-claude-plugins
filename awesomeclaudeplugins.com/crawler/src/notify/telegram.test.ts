@@ -142,6 +142,7 @@ describe('TelegramNotifier', () => {
         deletedBlankUrl: 5,
         conclusive: 30,
         warnings: 2,
+        deferredCandidates: 0,
         knownInvalidSkipped: 318,
       },
       errorCategories: { marketplace_rate_limited: 2, repository_identity_mismatch: 1 },
