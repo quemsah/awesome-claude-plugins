@@ -1,20 +1,27 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
+  ],
   "timezone": "Europe/Athens",
   "separateMultipleMajor": true,
   "lockFileMaintenance": {
     "enabled": true,
-    "schedule": ["before 9am on the first day of the month"]
+    "schedule": [
+      "before 9am on the first day of the month"
+    ]
   },
   "customManagers": [
     {
       "customType": "regex",
       "description": "Bump the Biome config schema URL together with the Biome version.",
       "managerFilePatterns": [
-        "/^(ui|crawler)/biome\\.json$/"
+        "/^awesomeclaudeplugins\\.com\\/(ui|crawler)\\/biome\\.json$/"
       ],
-      "matchStrings": ["\"\\$schema\": \"https://biomejs\\.dev/schemas/(?<currentValue>[0-9.]+)/schema\\.json\""],
+      "matchStrings": [
+        "\"\\$schema\": \"https://biomejs\\.dev/schemas/(?<currentValue>[0-9.]+)/schema\\.json\""
+      ],
       "depNameTemplate": "@biomejs/biome",
       "datasourceTemplate": "npm"
     }
@@ -22,17 +29,40 @@
   "packageRules": [
     {
       "description": "Keep framework updates isolated for focused review.",
-      "matchPackageNames": ["next", "react", "react-dom", "@next/bundle-analyzer"],
-      "matchUpdateTypes": ["minor", "patch"],
-      "schedule": ["after 10am and before 11am on Monday"],
+      "matchPackageNames": [
+        "next",
+        "react",
+        "react-dom",
+        "@next/bundle-analyzer"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "schedule": [
+        "after 10am and before 11am on Monday"
+      ],
       "groupName": "framework dependency updates",
       "minimumReleaseAge": "7 days"
     },
     {
       "description": "Group lower-risk type and tooling updates.",
-      "matchPackageNames": ["@biomejs/biome", "@playwright/test", "@tailwindcss/postcss", "husky", "tailwindcss", "typescript", "/^@types//"],
-      "matchUpdateTypes": ["minor", "patch"],
-      "schedule": ["after 2pm and before 3pm on Wednesday"],
+      "matchPackageNames": [
+        "@biomejs/biome",
+        "@playwright/test",
+        "@tailwindcss/postcss",
+        "husky",
+        "tailwindcss",
+        "typescript",
+        "/^@types//"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "schedule": [
+        "after 2pm and before 3pm on Wednesday"
+      ],
       "groupName": "tooling and type dependency updates",
       "minimumReleaseAge": "3 days"
     },
@@ -54,15 +84,24 @@
         "use-debounce",
         "zod"
       ],
-      "matchUpdateTypes": ["minor", "patch"],
-      "schedule": ["after 4pm and before 5pm on Friday"],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "schedule": [
+        "after 4pm and before 5pm on Friday"
+      ],
       "groupName": "runtime dependency updates",
       "minimumReleaseAge": "3 days"
     },
     {
       "description": "Keep every major dependency update in its own pull request.",
-      "matchUpdateTypes": ["major"],
-      "schedule": ["after 9am and before 10am on Tuesday"],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "schedule": [
+        "after 9am and before 10am on Tuesday"
+      ],
       "minimumReleaseAge": "7 days"
     }
   ]

@@ -128,14 +128,16 @@ it('runs discovery, enrichment, snapshot generation and Git publication through 
   const tree = treeBodies[0] as { tree: Array<{ path: string; content: string }> }
   expect(tree.tree.map(({ path }) => path)).toEqual([
     'README.md',
-    'ui/src/data/repos.json',
-    'ui/src/data/stats.json',
-    'ui/src/data/markdown-paths.json',
+    'awesomeclaudeplugins.com/ui/src/data/repos.json',
+    'awesomeclaudeplugins.com/ui/src/data/stats.json',
+    'awesomeclaudeplugins.com/ui/src/data/markdown-paths.json',
   ])
-  const markdownPaths = JSON.parse(tree.tree.find(({ path }) => path === 'ui/src/data/markdown-paths.json')?.content ?? 'null')
+  const markdownPaths = JSON.parse(
+    tree.tree.find(({ path }) => path === 'awesomeclaudeplugins.com/ui/src/data/markdown-paths.json')?.content ?? 'null',
+  )
   expect(markdownPaths).toEqual([])
 
-  const repos = JSON.parse(tree.tree.find(({ path }) => path === 'ui/src/data/repos.json')?.content ?? 'null')
+  const repos = JSON.parse(tree.tree.find(({ path }) => path === 'awesomeclaudeplugins.com/ui/src/data/repos.json')?.content ?? 'null')
   expect(repos).toEqual([
     {
       stargazers_count: 12,
