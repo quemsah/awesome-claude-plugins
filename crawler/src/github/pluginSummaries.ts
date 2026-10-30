@@ -14,35 +14,33 @@ export function isWellFormedUnicode(value: string): boolean {
   return true
 }
 
+function isOptionalBoundedText(value: unknown, maxLength: number): value is string | undefined {
+  return value === undefined || (typeof value === 'string' && value.length > 0 && value.length <= maxLength && isWellFormedUnicode(value))
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+export function isPluginSummary(value: unknown): value is PluginSummary {
+  if (!isRecord(value)) return false
+  if (Object.keys(value).some((key) => key !== 'name' && key !== 'description')) return false
+  if (!isOptionalBoundedText(value.name, 160) || !isOptionalBoundedText(value.description, 300)) return false
+  return value.name !== undefined || value.description !== undefined
+}
+
+export function isPluginSummaries(value: unknown): value is PluginSummary[] {
+  return Array.isArray(value) && value.length <= 30 && value.every(isPluginSummary)
+}
+
 export function parsePluginSummariesJson(value: string | null): PluginSummary[] | null {
   if (value === null) return null
-  let parsed: unknown
   try {
-    parsed = JSON.parse(value) as unknown
+    const parsed: unknown = JSON.parse(value)
+    return isPluginSummaries(parsed) ? parsed : null
   } catch {
     return null
   }
-  if (!Array.isArray(parsed) || parsed.length > 30) return null
-
-  const summaries: PluginSummary[] = []
-  for (const item of parsed) {
-    if (typeof item !== 'object' || item === null || Array.isArray(item)) return null
-    const keys = Object.keys(item)
-    if (keys.some((key) => key !== 'name' && key !== 'description')) return null
-    const summary = item as Record<string, unknown>
-    const name = summary.name
-    const description = summary.description
-    if (
-      (name !== undefined && (typeof name !== 'string' || !name || name.length > 160 || !isWellFormedUnicode(name))) ||
-      (description !== undefined &&
-        (typeof description !== 'string' || !description || description.length > 300 || !isWellFormedUnicode(description))) ||
-      (name === undefined && description === undefined)
-    ) {
-      return null
-    }
-    summaries.push({ ...(name === undefined ? {} : { name }), ...(description === undefined ? {} : { description }) })
-  }
-  return summaries
 }
 
 export function serializePluginSummaries(items: readonly unknown[]): string {
