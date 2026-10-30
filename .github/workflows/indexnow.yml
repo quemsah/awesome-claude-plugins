@@ -14,7 +14,7 @@ on:
   push:
     branches: [main]
     paths:
-      - ui/src/data/repos.json
+      - awesomeclaudeplugins.com/ui/src/data/repos.json
   schedule:
     - cron: '17 4 * * *'
 
@@ -42,7 +42,7 @@ jobs:
 
       - name: Test IndexNow change detection
         run: node --test scripts/indexnow-*.test.mjs
-        working-directory: ui
+        working-directory: awesomeclaudeplugins.com/ui
 
       - name: Restore and save IndexNow baseline
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -54,7 +54,7 @@ jobs:
 
       - name: Submit IndexNow URLs
         run: npm run indexnow
-        working-directory: ui
+        working-directory: awesomeclaudeplugins.com/ui
         env:
           INDEXNOW_SITE_URL: ${{ vars.INDEXNOW_SITE_URL || 'https://awesomeclaudeplugins.com' }}
           INDEXNOW_MODE: ${{ inputs.mode || 'changed' }}

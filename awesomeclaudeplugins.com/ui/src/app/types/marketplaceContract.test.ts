@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { expect, it } from 'vitest'
 import { MarketplacePluginsSchema } from './plugin.type.ts'
 
-const fixturesDirectory = resolve(process.cwd(), '../test/fixtures/marketplace/v1')
+const fixturesDirectory = resolve(process.cwd(), '../shared/fixtures/marketplace/v1')
 const fixtures = readdirSync(fixturesDirectory)
   .filter((file) => file.endsWith('.json'))
   .map((file) => JSON.parse(readFileSync(resolve(fixturesDirectory, file), 'utf8')) as MarketplaceContractFixture)
