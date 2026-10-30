@@ -17,7 +17,8 @@
     "inspect:progress": "node dist/cli.js inspect-progress",
     "crawl": "node dist/cli.js crawl",
     "publish": "node dist/cli.js publish",
-    "maintenance": "node dist/cli.js maintenance"
+    "maintenance": "node dist/cli.js maintenance",
+    "smoke:sqlite": "node scripts/smoke-sqlite.mjs"
   },
   "dependencies": {
     "better-sqlite3": "12.11.1",
@@ -30,8 +31,5 @@
     "@types/node": "^24.13.6",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
-  },
-  "allowScripts": {
-    "better-sqlite3@12.11.1": true
   }
 }

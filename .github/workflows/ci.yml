@@ -169,6 +169,10 @@ jobs:
         run: npm ci --workspace=catalog-crawler --include-workspace-root=false
         working-directory: awesomeclaudeplugins.com
 
+      - name: Smoke test native SQLite bindings
+        run: npm run smoke:sqlite
+        working-directory: awesomeclaudeplugins.com/crawler
+
       - name: Run crawler typecheck
         run: npm run typecheck
         working-directory: awesomeclaudeplugins.com/crawler
