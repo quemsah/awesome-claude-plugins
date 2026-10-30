@@ -26,6 +26,8 @@ it.each(fixtures)('matches marketplace contract v$version for $name', (fixture) 
   expect(result !== undefined).toBe(fixture.expected.valid)
   if (result) {
     expect(result.plugins.length).toBe(fixture.expected.pluginsCount)
-    expect(result.plugins.map((plugin) => plugin.name)).toEqual(fixture.expected.pluginNames)
+    expect(
+      result.plugins.map((plugin) => (plugin !== null && typeof plugin === 'object' && 'name' in plugin ? plugin.name : undefined)),
+    ).toEqual(fixture.expected.pluginNames)
   }
 })
