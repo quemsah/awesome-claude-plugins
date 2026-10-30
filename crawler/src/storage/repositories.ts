@@ -13,6 +13,7 @@ export interface RepositoryRow {
   repo_name: string | null
   repo_updated: string | null
   plugins_count: number | null
+  plugins_json: string | null
   catalog_updated_at: string
   github_node_id: string | null
   marketplace_oid: string | null
@@ -37,7 +38,12 @@ export type EnrichmentFields = Pick<
   | 'repo_updated'
   | 'plugins_count'
 > &
-  Partial<Pick<RepositoryRow, 'github_node_id' | 'marketplace_oid' | 'repository_etag' | 'marketplace_etag' | 'marketplace_parser_version'>>
+  Partial<
+    Pick<
+      RepositoryRow,
+      'github_node_id' | 'marketplace_oid' | 'repository_etag' | 'marketplace_etag' | 'marketplace_parser_version' | 'plugins_json'
+    >
+  >
 
 export type PublishableRepository = Pick<
   RepositoryRow,
@@ -52,7 +58,7 @@ export type PublishableRepository = Pick<
   | 'repo_name'
   | 'plugins_count'
   | 'catalog_updated_at'
->
+> & { plugins_json?: string | null }
 
 export function createDiscoveryWriter(db: Database.Database) {
   const find = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE ORDER BY id LIMIT 1')
@@ -99,6 +105,7 @@ const enrichedUpdateSql = `
     repo_name = @repo_name,
     repo_updated = @repo_updated,
     plugins_count = @plugins_count,
+    plugins_json = COALESCE(@plugins_json, plugins_json),
     github_node_id = COALESCE(@github_node_id, github_node_id),
     marketplace_oid = COALESCE(@marketplace_oid, marketplace_oid),
     repository_etag = COALESCE(@repository_etag, repository_etag),
@@ -125,6 +132,7 @@ export function prepareEnrichedUpdate(db: Database.Database) {
       repository_etag: fields.repository_etag ?? null,
       marketplace_etag: fields.marketplace_etag ?? null,
       marketplace_parser_version: fields.marketplace_parser_version ?? null,
+      plugins_json: fields.plugins_json ?? null,
       id,
       updatedAt: at,
     })
@@ -201,7 +209,7 @@ export function listCoreComplete(db: Database.Database): PublishableRepository[]
   return db
     .prepare(`
     SELECT id, html_url, stargazers_count, forks_count, subscribers_count,
-           description, owner, owner_url, repo_name, plugins_count, catalog_updated_at
+           description, owner, owner_url, repo_name, plugins_count, plugins_json, catalog_updated_at
     FROM repositories
     WHERE html_url IS NOT NULL AND owner IS NOT NULL AND repo_name IS NOT NULL AND owner_url IS NOT NULL
       AND stargazers_count IS NOT NULL AND forks_count IS NOT NULL

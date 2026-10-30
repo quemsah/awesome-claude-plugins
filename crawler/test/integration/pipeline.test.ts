@@ -145,6 +145,7 @@ it('runs discovery, enrichment, snapshot generation and Git publication through 
       owner: 'acme',
       repo_name: 'catalog',
       plugins_count: 2,
+      plugins: [{ name: 'one' }, { name: 'two' }],
       catalog_updated_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
       id: 1,
     },

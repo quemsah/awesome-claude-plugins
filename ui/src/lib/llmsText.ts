@@ -120,14 +120,6 @@ Every HTML page announces its Markdown rendition with a \`<link rel="alternate" 
 - View basic repository details and plugin entries when GitHub and raw repository data are available.
 - View historical catalog-size statistics from checked-in snapshot data.
 
-## Technical Implementation
-
-- **Framework**: Next.js 16 with App Router for optimal performance
-- **Styling**: Tailwind CSS with custom themes and responsive design
-- **Animation**: CSS-based animations for enhanced user experience
-- **Search**: Repository-text search with sorting and load-more browsing
-- **Analytics**: Historical repository-count snapshots
-
 ## Usage Guidelines
 
 - **Search**: Use the search bar to find catalog entries by repository text
@@ -145,8 +137,7 @@ The catalog and statistics are generated from checked-in snapshot data. Their up
 
 ## Optional Resources
 
-- [Claude AI Documentation](https://www.anthropic.com/claude): Official Claude AI documentation
-- [Next.js Official Docs](https://nextjs.org/docs): Framework documentation and best practices`
+- [Claude AI Documentation](https://www.anthropic.com/claude): Official Claude AI documentation`
 }
 
 function formatPlainNumber(value: number): string {

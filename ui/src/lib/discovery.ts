@@ -123,7 +123,7 @@ export function renderCatalogApiContract(): string {
 
   return `- \`GET ${BASE_URL}/api/catalog\` returns one page of repositories as \`application/json\`.
 - Query parameters: \`q\` (free text, matched fuzzily and truncated to ${contract.maxQueryLength} characters), \`sort\` (${contract.sortOptions.join(' | ')}), \`page\` (zero-based), \`pageSize\` (1-${contract.maxPageSize}, default ${contract.defaultPageSize}).
-- Response fields: ${contract.responseFields.map((field) => `\`${field}\``).join(', ')} — \`repos\` is the page, \`total\` the number of matches, \`hasMore\` whether a next page exists and \`pluginsCount\` the plugins reported across all matches.
+- Response fields: ${contract.responseFields.map((field) => `\`${field}\``).join(', ')} — \`repos\` is the page, \`total\` the number of matches, \`hasMore\` whether a next page exists and \`pluginsCount\` the plugins reported across all matches. Repository records in \`repos\` include available plugin names and descriptions (\`plugins\`) when present in the catalog.
 - Errors: \`400\` with \`{ "message": "Invalid pagination parameters" }\` for out-of-range \`page\` or \`pageSize\`, \`429\` with \`Retry-After\` beyond ${contract.requestsPerMinute} requests per minute.
 - Unknown \`sort\` values fall back to the default order instead of failing, and a request that is valid but matches nothing returns an empty \`repos\` array with \`total: 0\`.`
 }

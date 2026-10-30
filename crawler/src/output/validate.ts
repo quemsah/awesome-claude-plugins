@@ -1,4 +1,5 @@
 import { isValidGitHubPathSegment } from '../github/identifiers.js'
+import { isPluginSummaries } from '../github/pluginSummaries.js'
 
 type Issue = { path: string; message: string }
 type SnapshotOptions = { expectedSize?: number; requireLatestSize?: boolean }
@@ -14,6 +15,7 @@ const repoKeys = [
   'catalog_updated_at',
   'id',
 ] as const
+const optionalRepoKeys = ['plugins'] as const
 const statsKeys = ['id', 'date', 'size'] as const
 const utcDate = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 
@@ -21,7 +23,7 @@ function safePath(path: string): string {
   if (path === 'expectedSize') return path
   const prefix = /^(repos|stats)(?:\[\d+\])?/.exec(path)?.[0] ?? 'snapshot'
   const field = path.slice(prefix.length)
-  const allowed = prefix.startsWith('repos') ? repoKeys : statsKeys
+  const allowed = prefix.startsWith('repos') ? [...repoKeys, ...optionalRepoKeys] : statsKeys
   return field.startsWith('.') && allowed.some((key) => field === `.${key}`) ? path : prefix
 }
 
@@ -112,6 +114,9 @@ function validateRepoFields(item: Record<string, unknown>, path: string, issues:
   if (item.description !== null && typeof item.description !== 'string') {
     issues.push({ path: `${path}.description`, message: 'must be a string or null' })
   }
+  if ('plugins' in item && !isPluginSummaries(item.plugins)) {
+    issues.push({ path: `${path}.plugins`, message: 'invalid public plugin summary' })
+  }
   for (const key of ['description', 'owner', 'repo_name'] as const) {
     if (typeof item[key] === 'string' && hasUnpairedSurrogate(item[key])) {
       issues.push({ path: `${path}.${key}`, message: 'invalid UTF-8 (unpaired surrogate)' })
@@ -133,7 +138,7 @@ function validateRepoItem(item: unknown, path: string, issues: Issue[], previous
     issues.push({ path, message: 'must be an object' })
     return previousId
   }
-  keys(item, repoKeys, path, issues)
+  keys(item, 'plugins' in item ? [...repoKeys, ...optionalRepoKeys] : repoKeys, path, issues)
   validateRepoIdentity(item, path, issues)
   validateRepoFields(item, path, issues)
   const id = item.id

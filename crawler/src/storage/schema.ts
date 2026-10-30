@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 14
+const schemaVersion = 15
 
 function createSchema(db: Database.Database): void {
   db.exec(`
@@ -347,6 +347,22 @@ function migrateTo14(db: Database.Database): void {
   `)
 }
 
+function migrateTo15(db: Database.Database): void {
+  if (!hasColumn(db, 'plugins_json')) db.exec('ALTER TABLE repositories ADD COLUMN plugins_json TEXT')
+  // Plugin descriptions are part of the public catalog and must advance its sitemap lastmod.
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS repositories_plugin_summary_timestamp_after_update
+    AFTER UPDATE OF plugins_json ON repositories
+    WHEN OLD.plugins_json IS NOT NEW.plugins_json
+    BEGIN
+      UPDATE repositories
+      SET catalog_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE id = NEW.id;
+    END;
+  `)
+  db.pragma('user_version = 15')
+}
+
 function migrateSchema(db: Database.Database, version: number): void {
   if (version === 0) createSchema(db)
   if (version < 2) migrateTo2(db)
@@ -362,6 +378,7 @@ function migrateSchema(db: Database.Database, version: number): void {
   if (version < 12) migrateTo12(db)
   if (version < 13) migrateTo13(db)
   if (version < 14) migrateTo14(db)
+  if (version < 15) migrateTo15(db)
 }
 
 export function initializeSchema(db: Database.Database): void {

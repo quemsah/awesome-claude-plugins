@@ -32,4 +32,14 @@ describe('catalog totals the machine surfaces publish', () => {
     expect(feed.items[0].content_text).toContain(`The catalog contains ${home.total} repositories`)
     expect(feed.items[0].content_text).toContain(`and ${home.pluginsCount} reported plugin entries`)
   })
+
+  it('omits web framework implementation details and links to Next.js', async () => {
+    const llms = await (await llmsTxt()).text()
+
+    expect(llms).not.toContain('## Technical Implementation')
+    expect(llms).not.toContain('Next.js')
+    expect(llms).not.toContain('Tailwind CSS')
+    expect(llms).not.toContain('nextjs.org')
+    expect(llms).toContain('## Usage Guidelines')
+  })
 })

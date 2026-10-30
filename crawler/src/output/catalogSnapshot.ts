@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { parsePluginSummariesJson } from '../github/pluginSummaries.js'
 import type { PublishableRepository } from '../storage/repositories.js'
 import { assertValidStatsDraft, type StatsRecord } from './statsDraft.js'
 
@@ -24,8 +25,9 @@ export function renderRepos(
     return `${JSON.stringify(legacyRepositories)}\n`
   }
 
-  const repositories = rows.map((row) =>
-    JSON.stringify({
+  const repositories = rows.map((row) => {
+    const plugins = parsePluginSummariesJson(row.plugins_json ?? null)
+    return JSON.stringify({
       stargazers_count: row.stargazers_count,
       forks_count: row.forks_count,
       subscribers_count: row.subscribers_count,
@@ -33,10 +35,11 @@ export function renderRepos(
       owner: row.owner,
       repo_name: row.repo_name,
       plugins_count: row.plugins_count,
+      ...(options.includeCatalogUpdatedAt === false || plugins === null ? {} : { plugins }),
       ...(options.includeCatalogUpdatedAt === false ? {} : { catalog_updated_at: row.catalog_updated_at }),
       id: row.id,
-    }),
-  )
+    })
+  })
   return `[\n${repositories.join(',\n')}\n]\n`
 }
 
