@@ -1,0 +1,10 @@
+npm --prefix awesomeclaudeplugins.com/ui run lint || exit $?
+
+# Do not require crawler dependencies for UI-only commits.
+if git diff --cached --name-only -- awesomeclaudeplugins.com/crawler/ | grep -q .; then
+  if [ ! -x awesomeclaudeplugins.com/crawler/node_modules/.bin/biome ] && [ ! -x awesomeclaudeplugins.com/node_modules/.bin/biome ]; then
+    echo 'Crawler dependencies are missing. Run: npm ci --workspace=catalog-crawler --include-workspace-root=false' >&2
+    exit 1
+  fi
+  npm --prefix awesomeclaudeplugins.com/crawler run lint || exit $?
+fi

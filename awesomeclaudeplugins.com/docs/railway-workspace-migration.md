@@ -8,8 +8,8 @@
 
 | Service | Root directory | Builder | Build | Start | Watch paths |
 | --- | --- | --- | --- | --- | --- |
-| UI (`awesome-claude-plugins`) | `/ui` | Railpack | auto-detected | auto-detected | `/ui/**` |
-| `crawler` | `/crawler` | Railpack | `npm ci && npm run build` | `node dist/cli.js crawl` | `/crawler/**` |
+| UI (`awesome-claude-plugins`) | `/awesomeclaudeplugins.com/ui` | Railpack | auto-detected | auto-detected | `/ui/**` |
+| `crawler` | `/awesomeclaudeplugins.com/crawler` | Railpack | `npm ci && npm run build` | `node dist/cli.js crawl` | `/crawler/**` |
 
 Both use `main`. The crawler uses the `0 21 * * *` cron schedule,
 `NEVER` restart policy, and a persistent volume mounted on `/data`.
@@ -19,15 +19,15 @@ Do not change its volume, environment variables, cron, or service identity.
 
 All build and start commands run **from the repository root** (not from
 `ui/` or `crawler/`); the root `package-lock.json` and
-`packages/catalog-contract/` must be visible at install, build, and runtime.
+`shared/catalog-contract/` must be visible at install, build, and runtime.
 
 | Setting | UI | Crawler |
 | --- | --- | --- |
-| Root directory | `/` | `/` |
+| Root directory | `/awesomeclaudeplugins.com` | `/awesomeclaudeplugins.com` |
 | Builder | `RAILPACK` | `RAILPACK` |
 | Build command | `npm ci --workspace=awesome-claude-plugins --include-workspace-root=false && npm run build:ui` | `npm ci --workspace=catalog-crawler --include-workspace-root=false && npm run build:crawler` |
 | Start command | `npm run start:ui` | `npm run start:crawler` |
-| Watch patterns | `/ui/**`, `/packages/catalog-contract/**`, `/package.json`, `/package-lock.json` | `/crawler/**`, `/packages/catalog-contract/**`, `/package.json`, `/package-lock.json` |
+| Watch patterns | `/ui/**`, `/packages/catalog-contract/**`, `/awesomeclaudeplugins.com/package.json`, `/awesomeclaudeplugins.com/package-lock.json` | `/crawler/**`, `/packages/catalog-contract/**`, `/awesomeclaudeplugins.com/package.json`, `/awesomeclaudeplugins.com/package-lock.json` |
 
 If a root `.npmrc` is introduced, also add `/.npmrc` to both watch-pattern
 lists. Watch patterns are evaluated from the *repository root* even when a

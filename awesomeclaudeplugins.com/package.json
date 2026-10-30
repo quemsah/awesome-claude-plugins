@@ -7,7 +7,7 @@
   "workspaces": [
     "ui",
     "crawler",
-    "packages/*"
+    "shared/*"
   ],
   "scripts": {
     "build:ui": "npm run build --workspace=awesome-claude-plugins",
