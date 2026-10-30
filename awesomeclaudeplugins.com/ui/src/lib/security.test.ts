@@ -1,8 +1,10 @@
 /** biome-ignore-all lint/style/useNamingConvention: Test fixtures mirror catalog field names. */
 import { describe, expect, it } from 'vitest'
+import { PluginSchema } from '../app/types/plugin.type.ts'
 import { RepoSchema } from '../schemas/repo.schema.ts'
 import { getMarketplaceAddCommand, getPluginInstallCommand, isPluginInstallCommandVerified } from './installCommand.ts'
 import { serializeJsonLd } from './jsonLd.ts'
+import { getMcpBundleUrl } from './mcpBundleUrl.ts'
 import { getGitHubRepoPath } from './repositoryIdentity.ts'
 
 describe('catalog security boundaries', () => {
@@ -71,5 +73,32 @@ describe('install command verification', () => {
   it('does not derive an install target from a repository path', () => {
     expect(getPluginInstallCommand({ pluginName: 'fallback-install-target' })).toBe('/plugin install fallback-install-target')
     expect(getPluginInstallCommand({})).toBeNull()
+  })
+})
+
+describe('MCP server component shapes', () => {
+  it('keeps mixed relative paths, inline server maps, and HTTPS MCP bundles', () => {
+    const mcpServers = [
+      './mcp/servers.json',
+      { reviewer: { command: 'node', args: ['./mcp/reviewer.mjs'] } },
+      'https://example.com/reviewer.mcpb',
+    ]
+    const result = PluginSchema.safeParse({ name: 'mixed-mcp', source: './plugins/mixed-mcp', mcpServers })
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.mcpServers).toEqual(mcpServers)
+  })
+
+  it('rejects non-HTTPS, credential-bearing, or non-bundle MCP URLs', () => {
+    for (const url of [
+      'http://example.com/server.mcpb',
+      'https://user:secret@example.com/server.mcpb',
+      'https://example.com/server.zip',
+      'https://example.com/server.mcpb?token=secret',
+      'javascript:alert(1)',
+    ]) {
+      expect(PluginSchema.safeParse({ name: 'invalid-url', mcpServers: [url] }).success).toBe(false)
+      expect(getMcpBundleUrl(url)).toBeNull()
+    }
+    expect(getMcpBundleUrl('https://example.com/server.dxt')).toBe('https://example.com/server.dxt')
   })
 })
