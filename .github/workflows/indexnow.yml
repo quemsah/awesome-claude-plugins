@@ -26,10 +26,6 @@ on:
     # Run after deployment, never as a blocking check on the commit being deployed.
     - cron: '17,47 * * * *'
 
-concurrency:
-  group: indexnow-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   validate:
     name: Validate IndexNow change detection
@@ -58,6 +54,9 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    concurrency:
+      group: indexnow-${{ github.ref }}
+      cancel-in-progress: false
     permissions:
       contents: read
 
