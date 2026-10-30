@@ -8,6 +8,7 @@ import { serializeBaseline } from './indexnow-state.mjs'
 
 const site = 'https://awesomeclaudeplugins.com'
 const catalog = JSON.parse(readFileSync(new URL('../src/data/repos.json', import.meta.url), 'utf8'))
+const API_FAILURE_PATTERN = /IndexNow rejected the request: 503/
 let importCounter = 0
 
 async function runWithMockedFetch({ baselinePath, fetcher, defer = true }) {
@@ -88,7 +89,6 @@ test('scheduled IndexNow bootstraps from the live sitemap after deployment when 
   }
 })
 
-
 test('scheduled IndexNow does not publish unchanged URLs or mutate its baseline', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'indexnow-noop-'))
   const baselinePath = join(dir, 'repos.json')
@@ -139,7 +139,7 @@ test('failed IndexNow API submission leaves the previous baseline intact', async
           throw new Error(`Unexpected request: ${endpoint}`)
         },
       }),
-      /IndexNow rejected the request: 503/
+      API_FAILURE_PATTERN
     )
     assert.deepEqual(calls, [`${site}/api/catalog-version`, current.url, 'https://api.indexnow.org/indexnow'])
     assert.equal(readFileSync(baselinePath, 'utf8'), baseline)
