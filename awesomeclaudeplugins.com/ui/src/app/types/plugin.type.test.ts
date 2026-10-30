@@ -82,6 +82,29 @@ describe('MarketplacePluginsSchema', () => {
     }
   })
 
+  it('reuses shared source eligibility for mixed entries without losing valid metadata', () => {
+    const result = MarketplacePluginsSchema.safeParse({
+      name: 'catalog',
+      owner: { name: 'maintainer' },
+      plugins: [
+        { name: 'first', source: './plugins/first' },
+        // Valid display shape, but rejected by the shared marketplace contract.
+        { name: 'missing-github-repo', source: { source: 'github' } },
+        { name: 'recovered', source: './plugins/recovered', description: 'Shown', keywords: [42] },
+        { name: 'invalid-path', source: '../outside' },
+        { name: 'last', source: './plugins/last' },
+      ],
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.plugins.map((plugin) => plugin.name)).toEqual(['first', 'recovered', 'last'])
+      expect(result.data.plugins[1]?.description).toBe('Shown')
+      expect(result.data.invalidPluginCount).toBe(2)
+      expect(result.data.issues).toEqual(expect.arrayContaining([expect.objectContaining({ path: ['plugins', 3, 'source'] })]))
+    }
+  })
+
   it('rejects dot-segments in GitHub source repository identifiers', () => {
     const result = MarketplacePluginsSchema.safeParse({
       name: 'catalog',
