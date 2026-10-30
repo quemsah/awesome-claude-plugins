@@ -21,6 +21,7 @@ describe('POST /api/vitals', () => {
       level: 'info',
       event: 'web_vital',
       metric: 'LCP',
+      lcpElement: null,
       navigationType: 'navigate',
       path: '/[owner]/[repo]',
       rating: 'good',
@@ -35,6 +36,16 @@ describe('POST /api/vitals', () => {
     await post({ ...BASE_METRIC, rating: 'poor', path: '/stats' }, '198.51.100.7')
 
     expect(parseEvent(info)).toMatchObject({ level: 'warn', path: '/stats', rating: 'poor' })
+  })
+
+  it('records only a validated LCP element category', async () => {
+    const info = mockInfo()
+    const result = await post({ ...BASE_METRIC, path: '/', lcpElement: 'image' }, '198.51.100.11')
+    expect(result.status).toBe(204)
+    expect(parseEvent(info)).toMatchObject({ metric: 'LCP', lcpElement: 'image' })
+
+    const bad = await post({ ...BASE_METRIC, lcpElement: '#private-user-content' }, '198.51.100.12')
+    expect(bad.status).toBe(400)
   })
 
   it('collapses a forged path onto a known template', async () => {
