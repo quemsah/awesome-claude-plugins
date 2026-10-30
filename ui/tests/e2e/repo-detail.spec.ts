@@ -119,7 +119,7 @@ test('repo detail page rejects marketplace manifests served as a plugin array', 
   await page.goto('/mksglu/context-mode')
 
   await expect(page.getByText('Marketplace manifest contains invalid data.')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Example Plugin@1.2.3' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'example-plugin' })).toHaveCount(0)
 })
 
 test('repo detail page keeps valid plugins and string component paths from a partly invalid manifest', async ({ page }) => {
