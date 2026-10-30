@@ -127,7 +127,7 @@ it('updates a discovered row atomically, preserving its original id and URL', ()
   expect(updateEnriched(db, id + 500, enriched)).toBe(false)
 })
 
-it('advances catalog_updated_at only when an exported repository field changes', () => {
+it('advances catalog_updated_at when exported metrics or freshness change', () => {
   const { upsertDiscovery, updateEnriched } = repositoryStorage
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/example/repo', 'first')
@@ -135,7 +135,7 @@ it('advances catalog_updated_at only when an exported repository field changes',
   db.prepare("UPDATE repositories SET catalog_updated_at = '2020-01-01T00:00:00.000Z' WHERE id = ?").run(id)
 
   updateEnriched(db, id, { ...enriched, repo_updated: '2026-01-01T00:00:00Z' })
-  expect(db.prepare('SELECT catalog_updated_at FROM repositories WHERE id = ?').get(id)).toEqual({
+  expect(db.prepare('SELECT catalog_updated_at FROM repositories WHERE id = ?').get(id)).not.toEqual({
     catalog_updated_at: '2020-01-01T00:00:00.000Z',
   })
 

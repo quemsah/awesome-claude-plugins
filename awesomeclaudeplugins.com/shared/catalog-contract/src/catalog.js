@@ -75,9 +75,9 @@ export const PublishedRepoSchema = z
     plugins_count: SafeCountSchema.nullable(),
     plugins: z.array(PublishedPluginSummarySchema).max(30).optional(),
     catalog_updated_at: UtcTimestampSchema,
-    pushed_at: z.string().datetime().nullable().optional(),
-    catalog_added_at: z.string().datetime().nullable().optional(),
-    license: SafeTextSchema.nullable().optional(),
+    pushed_at: UtcTimestampSchema.nullable().optional(),
+    catalog_added_at: UtcTimestampSchema.nullable().optional(),
+    license: SafeTextSchema.max(80).nullable().optional(),
     archived: z.boolean().nullable().optional(),
     id: z.number().int().refine(Number.isSafeInteger).positive(),
   })
