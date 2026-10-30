@@ -21,7 +21,7 @@
     "smoke:sqlite": "node scripts/smoke-sqlite.mjs"
   },
   "dependencies": {
-    "better-sqlite3": "12.11.1",
+    "better-sqlite3": "13.0.3",
     "@awesome-claude-plugins/catalog-contract": "^0.1.0"
   },
   "devDependencies": {
