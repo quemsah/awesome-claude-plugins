@@ -25,6 +25,25 @@ function passesThrough(pathname: string, accept?: string) {
 }
 
 describe('proxy', () => {
+  it('returns 404 for malformed traversal requests rather than an internal server error', () => {
+    for (const path of [
+      '/..∕..∕..∕etc/passwd',
+      '/..�..�..�etc/passwd',
+      '/owner%2F..%2F..%2Fetc%2Fpasswd',
+      '/owner%5C..%5Cetc%5Cpasswd',
+      '/owner%EF%BF%BDrepo',
+    ]) {
+      const response = responseFor(path)
+      expect(response.status, path).toBe(404)
+      expect(response.headers.get('x-middleware-rewrite')).toBeNull()
+    }
+  })
+
+  it('continues to serve legitimate repository names and markdown paths', () => {
+    expect(passesThrough('/valid-owner/repo.name')).toBe(true)
+    expect(rewrittenTo('/valid-owner/repo.name.md')).toBe(`${ORIGIN}/api/markdown/valid-owner/repo.name`)
+  })
+
   it('serves a repository markdown path from the markdown api', () => {
     expect(rewrittenTo('/ykdojo/claude-code-tips.md')).toBe(`${ORIGIN}/api/markdown/ykdojo/claude-code-tips`)
   })
