@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 14
+const schemaVersion = 15
 
 function createSchema(db: Database.Database): void {
   db.exec(`
@@ -316,6 +316,14 @@ function migrateTo14(db: Database.Database): void {
   db.pragma('user_version = 14')
 }
 
+// v14 may already have been applied by the catalog-timestamp migration.
+// In that case, v15 must still create the plugin-summary column.
+function migrateTo15(db: Database.Database): void {
+  if (!hasColumn(db, 'plugins_json')) db.exec('ALTER TABLE repositories ADD COLUMN plugins_json TEXT')
+
+  db.pragma('user_version = 15')
+}
+
 function migrateSchema(db: Database.Database, version: number): void {
   if (version === 0) createSchema(db)
   if (version < 2) migrateTo2(db)
@@ -331,6 +339,7 @@ function migrateSchema(db: Database.Database, version: number): void {
   if (version < 12) migrateTo12(db)
   if (version < 13) migrateTo13(db)
   if (version < 14) migrateTo14(db)
+  if (version < 15) migrateTo15(db)
 }
 
 export function initializeSchema(db: Database.Database): void {
