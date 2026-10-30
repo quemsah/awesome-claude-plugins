@@ -7,7 +7,11 @@ export const runtime = 'nodejs'
 // a runtime fallback-font fetch that returns HTTP 400 (observed for ✻).
 // Preserve language text while dropping only these decorative glyphs from the preview.
 export function sanitizeOgDescription(value: string): string {
-  return value.replaceAll(/[\p{So}\p{Sk}\u200d\uFE0e\uFE0f]/gu, ' ').replaceAll(/\s+/g, ' ').trim()
+  return value
+    .replaceAll(/[\p{So}\p{Sk}\uFE0e\uFE0f]/gu, ' ')
+    .replaceAll(/\u200d/gu, ' ')
+    .replaceAll(/\s+/g, ' ')
+    .trim()
 }
 
 type RouteContext = {
