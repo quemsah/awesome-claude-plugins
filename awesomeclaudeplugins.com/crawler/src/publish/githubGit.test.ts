@@ -87,9 +87,9 @@ describe('GitHubGitClient', () => {
       base_tree: baseTree,
       tree: [
         { path: 'README.md', mode: '100644', type: 'blob', content: '# Catalog\n' },
-        { path: 'ui/src/data/repos.json', mode: '100644', type: 'blob', content: '[{"id":1}]\n' },
-        { path: 'ui/src/data/stats.json', mode: '100644', type: 'blob', content: '[{"id":1}]\n' },
-        { path: 'ui/src/data/markdown-paths.json', mode: '100644', type: 'blob', content: '["owner/repo.md"]\n' },
+        { path: 'awesomeclaudeplugins.com/ui/src/data/repos.json', mode: '100644', type: 'blob', content: '[{"id":1}]\n' },
+        { path: 'awesomeclaudeplugins.com/ui/src/data/stats.json', mode: '100644', type: 'blob', content: '[{"id":1}]\n' },
+        { path: 'awesomeclaudeplugins.com/ui/src/data/markdown-paths.json', mode: '100644', type: 'blob', content: '["owner/repo.md"]\n' },
       ],
     })
     expect(payload(requests[3])).toEqual({ tree: treeSha, parents: [baseSha], message: 'Update catalog' })

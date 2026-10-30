@@ -35,17 +35,21 @@ jobs:
         with:
           filters: |
             app:
-              - 'ui/**'
+              - 'awesomeclaudeplugins.com/ui/**'
+              - 'awesomeclaudeplugins.com/shared/**'
+              - 'awesomeclaudeplugins.com/package*.json'
               - '.github/workflows/ci.yml'
             crawler:
-              - 'crawler/**'
+              - 'awesomeclaudeplugins.com/crawler/**'
               - 'README.md'
-              - 'ui/src/data/repos.json'
-              - 'ui/src/schemas/**'
-              - 'ui/src/lib/repositoryIdentity.ts'
-              - 'ui/package.json'
-              - 'ui/package-lock.json'
-              - 'ui/.npmrc'
+              - 'awesomeclaudeplugins.com/ui/src/data/repos.json'
+              - 'awesomeclaudeplugins.com/ui/src/schemas/**'
+              - 'awesomeclaudeplugins.com/ui/src/lib/repositoryIdentity.ts'
+              - 'awesomeclaudeplugins.com/ui/package.json'
+              - 'awesomeclaudeplugins.com/ui/package-lock.json'
+              - 'awesomeclaudeplugins.com/ui/.npmrc'
+              - 'awesomeclaudeplugins.com/shared/**'
+              - 'awesomeclaudeplugins.com/package*.json'
               - '.github/workflows/ci.yml'
 
   app:
@@ -67,37 +71,37 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: ui/.nvmrc
+          node-version-file: awesomeclaudeplugins.com/ui/.nvmrc
           cache: 'npm'
-          cache-dependency-path: ui/package-lock.json
+          cache-dependency-path: awesomeclaudeplugins.com/ui/package-lock.json
 
       - name: Install dependencies
         run: npm ci
-        working-directory: ui
+        working-directory: awesomeclaudeplugins.com/ui
 
       - name: Run typecheck
         run: npm run typecheck
-        working-directory: ui
+        working-directory: awesomeclaudeplugins.com/ui
 
       - name: Run linter
         run: npm run lint
-        working-directory: ui
+        working-directory: awesomeclaudeplugins.com/ui
 
       - name: Run unit tests
         run: npm run test:unit
-        working-directory: ui
+        working-directory: awesomeclaudeplugins.com/ui
 
       - name: Cache Next.js build cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ui/.next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('ui/package-lock.json') }}-${{ hashFiles('ui/src/**', 'ui/next.config.ts', 'ui/postcss.config.mjs', 'ui/tailwind.config.ts') }}
+          path: awesomeclaudeplugins.com/ui/.next/cache
+          key: ${{ runner.os }}-next-${{ hashFiles('awesomeclaudeplugins.com/ui/package-lock.json') }}-${{ hashFiles('awesomeclaudeplugins.com/ui/src/**', 'awesomeclaudeplugins.com/ui/next.config.ts', 'awesomeclaudeplugins.com/ui/postcss.config.mjs', 'awesomeclaudeplugins.com/ui/tailwind.config.ts') }}
           restore-keys: |
-            ${{ runner.os }}-next-${{ hashFiles('ui/package-lock.json') }}-
+            ${{ runner.os }}-next-${{ hashFiles('awesomeclaudeplugins.com/ui/package-lock.json') }}-
 
       - name: Build Next.js app
         run: npm run build
-        working-directory: ui
+        working-directory: awesomeclaudeplugins.com/ui
         env:
           GITHUB_API_URL: http://127.0.0.1:3100
           GITHUB_RAW_URL: http://127.0.0.1:3100
@@ -107,21 +111,21 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('ui/package-lock.json') }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles('awesomeclaudeplugins.com/ui/package-lock.json') }}
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
-        working-directory: ui
+        working-directory: awesomeclaudeplugins.com/ui
         if: steps.playwright-cache.outputs.cache-hit != 'true'
 
       - name: Ensure Playwright system dependencies
         run: npx playwright install-deps chromium
-        working-directory: ui
+        working-directory: awesomeclaudeplugins.com/ui
         if: steps.playwright-cache.outputs.cache-hit == 'true'
 
       - name: Run browser e2e tests
         run: npm run test:e2e
-        working-directory: ui
+        working-directory: awesomeclaudeplugins.com/ui
         env:
           PLAYWRIGHT_PREBUILT: '1'
 
@@ -131,8 +135,8 @@ jobs:
         with:
           name: playwright-failure-${{ github.run_id }}
           path: |
-            ui/playwright-report/
-            ui/test-results/
+            awesomeclaudeplugins.com/ui/playwright-report/
+            awesomeclaudeplugins.com/ui/test-results/
           if-no-files-found: ignore
           retention-days: 7
 
@@ -155,34 +159,34 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: crawler/.nvmrc
+          node-version-file: awesomeclaudeplugins.com/crawler/.nvmrc
           cache: 'npm'
-          cache-dependency-path: crawler/package-lock.json
+          cache-dependency-path: awesomeclaudeplugins.com/crawler/package-lock.json
 
       - name: Install crawler dependencies
         run: npm ci
-        working-directory: crawler
+        working-directory: awesomeclaudeplugins.com/crawler
 
       - name: Run crawler typecheck
         run: npm run typecheck
-        working-directory: crawler
+        working-directory: awesomeclaudeplugins.com/crawler
 
       - name: Run crawler linter
         run: npm run lint
-        working-directory: crawler
+        working-directory: awesomeclaudeplugins.com/crawler
 
       - name: Run crawler unit tests
         run: npm run test
-        working-directory: crawler
+        working-directory: awesomeclaudeplugins.com/crawler
 
       - name: Install UI schema dependencies
         run: npm ci
-        working-directory: ui
+        working-directory: awesomeclaudeplugins.com/ui
 
       - name: Typecheck crawler UI integration
         run: npm run typecheck:integration
-        working-directory: crawler
+        working-directory: awesomeclaudeplugins.com/crawler
 
       - name: Test crawler output with UI schemas
         run: npm run test:integration
-        working-directory: crawler
+        working-directory: awesomeclaudeplugins.com/crawler

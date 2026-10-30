@@ -166,9 +166,9 @@ export class GitHubGitClient implements GitHubGit {
       base_tree: baseTreeSha,
       tree: [
         { path: 'README.md', mode: '100644', type: 'blob', content: files.readme },
-        { path: 'ui/src/data/repos.json', mode: '100644', type: 'blob', content: files.reposJson },
-        { path: 'ui/src/data/stats.json', mode: '100644', type: 'blob', content: files.statsJson },
-        { path: 'ui/src/data/markdown-paths.json', mode: '100644', type: 'blob', content: files.markdownPathsJson },
+        { path: 'awesomeclaudeplugins.com/ui/src/data/repos.json', mode: '100644', type: 'blob', content: files.reposJson },
+        { path: 'awesomeclaudeplugins.com/ui/src/data/stats.json', mode: '100644', type: 'blob', content: files.statsJson },
+        { path: 'awesomeclaudeplugins.com/ui/src/data/markdown-paths.json', mode: '100644', type: 'blob', content: files.markdownPathsJson },
       ],
     })
     if (!record(response)) throw new GitHubGitResponseError()
