@@ -132,7 +132,9 @@ it('runs discovery, enrichment, snapshot generation and Git publication through 
     'awesomeclaudeplugins.com/ui/src/data/stats.json',
     'awesomeclaudeplugins.com/ui/src/data/markdown-paths.json',
   ])
-  const markdownPaths = JSON.parse(tree.tree.find(({ path }) => path === 'awesomeclaudeplugins.com/ui/src/data/markdown-paths.json')?.content ?? 'null')
+  const markdownPaths = JSON.parse(
+    tree.tree.find(({ path }) => path === 'awesomeclaudeplugins.com/ui/src/data/markdown-paths.json')?.content ?? 'null',
+  )
   expect(markdownPaths).toEqual([])
 
   const repos = JSON.parse(tree.tree.find(({ path }) => path === 'awesomeclaudeplugins.com/ui/src/data/repos.json')?.content ?? 'null')
