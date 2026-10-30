@@ -1,4 +1,4 @@
-import { isMarketplacePlugin, parseMarketplace as parseSharedMarketplace } from '@awesome-claude-plugins/catalog-contract'
+import { parseMarketplace as parseSharedMarketplace } from '@awesome-claude-plugins/catalog-contract'
 import * as z from 'zod/mini'
 
 const CONTROL_CHARACTER_PATTERN = /[\r\n]/
@@ -203,8 +203,11 @@ function recoverPluginWithValidMetadata(entry: Record<string, unknown>): Plugin 
 
 export const MarketplacePluginsSchema: z.ZodMiniType<MarketplacePluginsResult> = z.transform((value, context): MarketplacePluginsResult => {
   const result: MarketplacePluginsResult = { plugins: [], invalidPluginCount: 0, issues: [] }
+  let validEntries: Set<unknown>
   try {
-    parseSharedMarketplace(value)
+    // The shared parser validates the root and filters invalid plugin sources once.
+    // Its z.unknown() plugin entries retain their original object identities.
+    validEntries = new Set(parseSharedMarketplace(value).plugins)
   } catch {
     context.issues.push({
       code: 'custom',
@@ -213,33 +216,22 @@ export const MarketplacePluginsSchema: z.ZodMiniType<MarketplacePluginsResult> =
     })
     return result
   }
-  if (
-    !isRecord(value) ||
-    typeof value.name !== 'string' ||
-    value.name.trim().length === 0 ||
-    !isRecord(value.owner) ||
-    typeof value.owner.name !== 'string' ||
-    value.owner.name.length === 0 ||
-    !Array.isArray(value.plugins)
-  ) {
-    context.issues.push({
-      code: 'custom',
-      message: 'Marketplace must have non-empty name, non-empty owner.name, and a plugins array',
-      input: value,
-    })
-    return result
-  }
-  value.plugins.forEach((entry, index) => {
+
+  // Safe after parseSharedMarketplace accepted the canonical root shape.
+  const entries = (value as { plugins: unknown[] }).plugins
+  entries.forEach((entry, index) => {
     const parsed = PluginSchema.safeParse(entry)
-    if (parsed.success && isMarketplacePlugin(entry)) {
-      result.plugins.push(parsed.data)
-      return
-    }
-    if (!parsed.success && isMarketplacePlugin(entry)) {
-      const recovered = recoverPluginWithValidMetadata(entry)
-      if (recovered) {
-        result.plugins.push(recovered)
+    if (validEntries.has(entry)) {
+      if (parsed.success) {
+        result.plugins.push(parsed.data)
         return
+      }
+      if (isRecord(entry)) {
+        const recovered = recoverPluginWithValidMetadata(entry)
+        if (recovered) {
+          result.plugins.push(recovered)
+          return
+        }
       }
     }
     result.invalidPluginCount++
