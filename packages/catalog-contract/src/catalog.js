@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { getGitHubOwnerUrl, getGitHubRepoUrl, isGitHubSegment } from './identity.js'
+import { isGitHubSegment } from './identity.js'
 
 function isWellFormedUnicode(value) {
   for (let index = 0; index < value.length; index += 1) {
@@ -16,38 +16,63 @@ function isWellFormedUnicode(value) {
 
 const SafeTextSchema = z.string().refine(isWellFormedUnicode, 'invalid UTF-8 (unpaired surrogate)')
 const SafeCountSchema = z.number().int().refine(Number.isSafeInteger).nonnegative()
-const CanonicalRepoUrlShape = /^https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
-const CanonicalOwnerUrlShape = /^https:\/\/github\.com\/[A-Za-z0-9._-]+$/
+const GitHubSegmentSchema = SafeTextSchema.refine(isGitHubSegment, 'must be a GitHub path segment')
+const UtcTimestampSchema = z.string().refine(
+  (value) =>
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) &&
+    !Number.isNaN(Date.parse(value)) &&
+    new Date(value).toISOString() === value,
+  'must be a valid ISO UTC timestamp',
+)
 
-export const RepoSchema = z
+// Display records can include partial GitHub metadata. This is intentionally
+// separate from the strict shape the crawler is allowed to publish.
+export const PluginSummarySchema = z.object({
+  description: z.string().optional(),
+  name: z.string().optional(),
+})
+
+export const RepoSchema = z.object({
+  stargazers_count: z.number().nullable(),
+  forks_count: z.number().nullable(),
+  subscribers_count: z.number().nullable(),
+  description: z.string().nullable(),
+  owner: GitHubSegmentSchema.nullable(),
+  repo_name: GitHubSegmentSchema.nullable(),
+  plugins_count: z.number().nullable(),
+  plugins: z.array(PluginSummarySchema).optional(),
+  plugin_name: z.string().optional(),
+  plugin_description: z.string().optional(),
+  plugin_summaries: z.array(PluginSummarySchema).optional(),
+  catalog_updated_at: z.string().datetime().optional(),
+  id: z.number(),
+})
+
+export const ReposArraySchema = z.array(RepoSchema)
+
+// Published snapshot contract after #367 (derived URLs removed), #370
+// (per-record lastmod required), and #352 (bounded optional summaries).
+const PublishedPluginSummarySchema = z
   .object({
-    html_url: SafeTextSchema.refine((value) => CanonicalRepoUrlShape.test(value), 'must be the canonical GitHub repository URL'),
+    name: SafeTextSchema.min(1).max(160).optional(),
+    description: SafeTextSchema.min(1).max(300).optional(),
+  })
+  .strict()
+  .refine((item) => item.name !== undefined || item.description !== undefined, 'invalid public plugin summary')
+
+export const PublishedRepoSchema = z
+  .object({
     stargazers_count: SafeCountSchema,
     forks_count: SafeCountSchema,
     subscribers_count: SafeCountSchema,
     description: SafeTextSchema.nullable(),
-    owner: SafeTextSchema.refine(isGitHubSegment, 'must be a GitHub owner segment'),
-    owner_url: SafeTextSchema.refine((value) => CanonicalOwnerUrlShape.test(value), 'must be the canonical GitHub owner URL'),
-    repo_name: SafeTextSchema.refine(isGitHubSegment, 'must be a GitHub repository segment'),
+    owner: GitHubSegmentSchema,
+    repo_name: GitHubSegmentSchema,
     plugins_count: SafeCountSchema.nullable(),
+    plugins: z.array(PublishedPluginSummarySchema).max(30).optional(),
+    catalog_updated_at: UtcTimestampSchema,
     id: z.number().int().refine(Number.isSafeInteger).positive(),
   })
   .strict()
-  .superRefine((repo, context) => {
-    if (repo.html_url !== getGitHubRepoUrl(repo.owner, repo.repo_name)) {
-      context.addIssue({
-        code: 'custom',
-        message: 'must be the canonical GitHub repository URL',
-        path: ['html_url'],
-      })
-    }
-    if (repo.owner_url !== getGitHubOwnerUrl(repo.owner)) {
-      context.addIssue({
-        code: 'custom',
-        message: 'must be the canonical GitHub owner URL',
-        path: ['owner_url'],
-      })
-    }
-  })
 
-export const ReposArraySchema = z.array(RepoSchema)
+export const PublishedReposArraySchema = z.array(PublishedRepoSchema)
