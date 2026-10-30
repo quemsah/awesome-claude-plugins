@@ -40,7 +40,7 @@ Prioritize task relevance, validated marketplace counts (\`plugins_count > 0\`),
 Do not automatically discard projects because they have zero stars or an empty GitHub description; these are incomplete quality signals.
 
 ### Step 3: Retrieve catalog Markdown
-Fetch \`GET ${BASE_URL}/{owner}/{repo}.md\` for repository metadata and the available marketplace-add command.
+Fetch \`GET ${BASE_URL}/{owner}/{repo}.md\` for repository metadata. Treat any marketplace-add command shown there as reference only; do not run it because it does not use the audited commit. Register the plugin only as described in Step 5.
 For repository names ending in \`.md\`, append a second \`.md\` suffix (for example \`/sstklen/yes.md.md\`).
 The Markdown description is a discovery aid, **not** a source-code audit or full plugin manifest.
 
