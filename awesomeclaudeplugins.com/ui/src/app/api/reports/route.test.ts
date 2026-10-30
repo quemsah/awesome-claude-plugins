@@ -29,8 +29,23 @@ describe('POST /api/reports', () => {
     const info = mockInfo()
     await post(
       [
-        { type: 'csp-violation', body: { documentURL: 'https://awesomeclaudeplugins.com/', effectiveDirective: 'script-src', blockedURL: 'chrome-extension://private-extension-id/token' } },
-        { 'csp-report': { 'document-uri': 'https://awesomeclaudeplugins.com/', 'violated-directive': 'script-src', 'blocked-uri': 'https://unknown.example/private?token=secret' } },
+        {
+          type: 'csp-violation',
+          body: {
+            // biome-ignore lint/style/useNamingConvention: Reporting API uses the standard documentURL property.
+            documentURL: 'https://awesomeclaudeplugins.com/',
+            effectiveDirective: 'script-src',
+            // biome-ignore lint/style/useNamingConvention: Reporting API uses the standard blockedURL property.
+            blockedURL: 'chrome-extension://private-extension-id/token',
+          },
+        },
+        {
+          'csp-report': {
+            'document-uri': 'https://awesomeclaudeplugins.com/',
+            'violated-directive': 'script-src',
+            'blocked-uri': 'https://unknown.example/private?token=secret',
+          },
+        },
       ],
       '198.51.100.3'
     )
