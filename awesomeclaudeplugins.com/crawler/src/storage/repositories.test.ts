@@ -256,12 +256,7 @@ it('rejects dot-segment identities even when their stored URL matches the raw ow
 
 it('stores nullable GitHub metadata without changing the first discovery date', () => {
   const db = database()
-  const id = repositoryStorage.upsertDiscovery(
-    db,
-    'https://github.com/example/metadata',
-    null,
-    '2024-01-02T00:00:00.000Z',
-  )
+  const id = repositoryStorage.upsertDiscovery(db, 'https://github.com/example/metadata', null, '2024-01-02T00:00:00.000Z')
   repositoryStorage.updateEnriched(db, id, { ...enriched, license: 'MIT', archived: 1 })
   expect(db.prepare('SELECT license, archived, createdAt FROM repositories WHERE id = ?').get(id)).toEqual({
     license: 'MIT',

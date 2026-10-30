@@ -103,7 +103,7 @@ it('accepts optional canonical UTC freshness metadata and rejects malformed date
     license: 'MIT',
   }
   expect(() => validateSnapshot(JSON.stringify([valid]), JSON.stringify(validStats))).not.toThrow()
-  expect(() =>
-    validateSnapshot(JSON.stringify([{ ...valid, pushed_at: '2026-10-30T12:00:00Z' }]), JSON.stringify(validStats)),
-  ).toThrow(/pushed_at.*valid ISO UTC timestamp/)
+  expect(() => validateSnapshot(JSON.stringify([{ ...valid, pushed_at: '2026-10-30T12:00:00Z' }]), JSON.stringify(validStats))).toThrow(
+    /pushed_at.*valid ISO UTC timestamp/,
+  )
 })
