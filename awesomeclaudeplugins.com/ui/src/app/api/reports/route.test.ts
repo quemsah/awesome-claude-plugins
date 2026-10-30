@@ -20,8 +20,27 @@ describe('POST /api/reports', () => {
       event: 'csp_violation',
       route: '/[owner]/[repo]',
       directive: 'require-trusted-types-for',
+      blockedSource: null,
     })
     expect(String(info.mock.calls[0]?.[0])).not.toContain('alexjx')
+  })
+
+  it('keeps the blocked source but never logs URLs or extension IDs', async () => {
+    const info = mockInfo()
+    await post(
+      [
+        { type: 'csp-violation', body: { documentURL: 'https://awesomeclaudeplugins.com/', effectiveDirective: 'script-src', blockedURL: 'chrome-extension://private-extension-id/token' } },
+        { 'csp-report': { 'document-uri': 'https://awesomeclaudeplugins.com/', 'violated-directive': 'script-src', 'blocked-uri': 'https://unknown.example/private?token=secret' } },
+      ],
+      '198.51.100.3'
+    )
+    expect(info).toHaveBeenCalledTimes(2)
+    expect(parseEvent(info)).toMatchObject({ blockedSource: 'browser-extension' })
+    const events = info.mock.calls.map(([line]) => JSON.parse(String(line)) as Record<string, unknown>)
+    expect(events[1]).toMatchObject({ blockedSource: 'external' })
+    expect(JSON.stringify(events)).not.toContain('private-extension-id')
+    expect(JSON.stringify(events)).not.toContain('secret')
+    expect(JSON.stringify(events)).not.toContain('unknown.example')
   })
 
   it('keeps distinct directives as distinct events', async () => {
