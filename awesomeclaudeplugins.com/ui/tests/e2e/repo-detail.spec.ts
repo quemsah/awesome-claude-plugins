@@ -88,9 +88,7 @@ test('repo detail page refreshes repository and marketplace data in the browser'
   )
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
   await expect.poll(() => copiedText(page)).toBe('/plugin install example-plugin@ykdojo')
-  await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem('lastPluginInstallEvent'))).toBe(
-    'copy_plugin_install'
-  )
+  await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem('lastPluginInstallEvent'))).toBe('copy_plugin_install')
 })
 
 test('repo detail page uses the official plugin and marketplace names for install commands', async ({ page }) => {
