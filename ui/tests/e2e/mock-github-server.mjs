@@ -36,7 +36,7 @@ const examplePlugin = {
   description: 'A plugin rendered from mocked marketplace data',
   version: '1.2.3',
   category: 'Testing',
-  source: './.claude-plugin/plugin.json',
+  source: './plugins/example-plugin',
   author: { name: 'Example Maintainer', email: 'maintainer@example.dev' },
   keywords: ['testing', 'automation'],
   commands: './commands/example.md',
@@ -56,13 +56,17 @@ const fallbackPlugin = {
     sha: '0123456789abcdef0123456789abcdef01234567',
   },
   author: { email: 'fallback@example.dev' },
+  commands: './commands/external.md',
+  agents: ['./agents/external.md'],
+  mcpServers: './mcp.json',
 }
 
 const githubSourcePlugin = {
   name: 'github-source-plugin',
   displayName: 'GitHub Source Plugin',
   description: 'A plugin sourced from a GitHub repository',
-  source: { source: 'github', repo: 'elsewhere/shared-plugins', ref: 'main' },
+  source: { source: 'github', repo: 'elsewhere/shared-plugins', ref: 'main', path: 'plugins/review' },
+  commands: './commands/review.md',
 }
 
 const unnamedPlugin = {

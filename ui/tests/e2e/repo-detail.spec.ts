@@ -75,9 +75,12 @@ test('repo detail page refreshes repository and marketplace data in the browser'
   await expect(plugin.getByText('/plugin install example-plugin@ykdojo')).toBeVisible()
   await expect(plugin.getByRole('link', { name: 'Open ./commands/example.md in a new tab' })).toHaveAttribute(
     'href',
-    'https://github.com/ykdojo/claude-code-tips/blob/main/./commands/example.md'
+    'https://github.com/ykdojo/claude-code-tips/blob/main/plugins/example-plugin/commands/example.md'
   )
-  await expect(plugin.getByRole('link', { name: 'Open ./agents/reviewer.md in a new tab' })).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./agents/reviewer.md in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/ykdojo/claude-code-tips/blob/main/plugins/example-plugin/agents/reviewer.md'
+  )
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
   await expect.poll(() => copiedText(page)).toBe('/plugin install example-plugin@ykdojo')
 })
@@ -93,6 +96,18 @@ test('repo detail page uses the official plugin and marketplace names for instal
   await expect(plugin.getByRole('link', { name: 'Open source repository elsewhere/shared-plugins in a new tab' })).toHaveAttribute(
     'href',
     'https://github.com/elsewhere/shared-plugins/tree/0123456789abcdef0123456789abcdef01234567'
+  )
+  await expect(plugin.getByRole('link', { name: 'Open ./commands/external.md in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/elsewhere/shared-plugins/blob/0123456789abcdef0123456789abcdef01234567/commands/external.md'
+  )
+  await expect(plugin.getByRole('link', { name: 'Open ./agents/external.md in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/elsewhere/shared-plugins/blob/0123456789abcdef0123456789abcdef01234567/agents/external.md'
+  )
+  await expect(plugin.getByRole('link', { name: 'Open ./mcp.json in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/elsewhere/shared-plugins/blob/0123456789abcdef0123456789abcdef01234567/mcp.json'
   )
 })
 
@@ -117,6 +132,10 @@ test('repo detail page renders a GitHub source object as a repository link', asy
   await expect(plugin.getByRole('link', { name: 'Open source repository elsewhere/shared-plugins in a new tab' })).toHaveAttribute(
     'href',
     'https://github.com/elsewhere/shared-plugins/tree/main'
+  )
+  await expect(plugin.getByRole('link', { name: 'Open ./commands/review.md in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/elsewhere/shared-plugins/blob/main/plugins/review/commands/review.md'
   )
 })
 
@@ -160,9 +179,18 @@ test('repo detail page keeps valid plugins and string component paths from a par
 
   const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'string-component-plugin' }) })
   await expect(plugin).toBeVisible()
-  await expect(plugin.getByRole('link', { name: 'Open ./commands/run.md in a new tab' })).toBeVisible()
-  await expect(plugin.getByRole('link', { name: 'Open ./agents/reviewer.md in a new tab' })).toBeVisible()
-  await expect(plugin.getByRole('link', { name: 'Open ./mcp.json in a new tab' })).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./commands/run.md in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/ykdojo/claude-code-tips/blob/main/plugins/string-component-plugin/commands/run.md'
+  )
+  await expect(plugin.getByRole('link', { name: 'Open ./agents/reviewer.md in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/ykdojo/claude-code-tips/blob/main/plugins/string-component-plugin/agents/reviewer.md'
+  )
+  await expect(plugin.getByRole('link', { name: 'Open ./mcp.json in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/ykdojo/claude-code-tips/blob/main/plugins/string-component-plugin/mcp.json'
+  )
   await expect(page.getByText('1 invalid plugin entry was skipped.', { exact: true })).toBeVisible()
   await expect(page.getByText('Marketplace manifest contains invalid data.')).toBeHidden()
 })
