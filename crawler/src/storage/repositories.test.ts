@@ -127,6 +127,27 @@ it('updates a discovered row atomically, preserving its original id and URL', ()
   expect(updateEnriched(db, id + 500, enriched)).toBe(false)
 })
 
+it('advances catalog_updated_at only when an exported repository field changes', () => {
+  const { upsertDiscovery, updateEnriched } = repositoryStorage
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/example/repo', 'first')
+  updateEnriched(db, id, enriched)
+  db.prepare("UPDATE repositories SET catalog_updated_at = '2020-01-01T00:00:00.000Z' WHERE id = ?").run(id)
+
+  updateEnriched(db, id, { ...enriched, repo_updated: '2026-01-01T00:00:00Z' })
+  expect(db.prepare('SELECT catalog_updated_at FROM repositories WHERE id = ?').get(id)).toEqual({
+    catalog_updated_at: '2020-01-01T00:00:00.000Z',
+  })
+
+  updateEnriched(db, id, { ...enriched, stargazers_count: enriched.stargazers_count + 1 })
+  expect(db.prepare('SELECT catalog_updated_at FROM repositories WHERE id = ?').get(id)).toMatchObject({
+    catalog_updated_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
+  })
+  expect(db.prepare('SELECT catalog_updated_at FROM repositories WHERE id = ?').get(id)).not.toEqual({
+    catalog_updated_at: '2020-01-01T00:00:00.000Z',
+  })
+})
+
 it('rejects negative GitHub counts before modifying a previously enriched row', () => {
   const { upsertDiscovery, updateEnriched } = repositoryStorage
   const db = database()
@@ -176,6 +197,7 @@ it('publishes only complete canonical GitHub rows with the ten public columns', 
       owner_url: 'https://github.com/example',
       repo_name: 'repo',
       plugins_count: 3,
+      catalog_updated_at: expect.any(String),
       plugins_json: null,
     },
   ])
@@ -205,6 +227,7 @@ it('publishes canonical enriched rows with unknown plugin counts without leaking
       owner_url: 'https://github.com/example',
       repo_name: 'repo',
       plugins_count: null,
+      catalog_updated_at: expect.any(String),
       plugins_json: null,
     },
   ])
