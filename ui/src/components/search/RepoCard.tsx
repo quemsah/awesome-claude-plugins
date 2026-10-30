@@ -26,6 +26,7 @@ interface RepoCardProps {
   className?: string
 }
 
+/** Render a repository preview with GitHub links derived from validated catalog identity. */
 export function RepoCard({ repo, className }: RepoCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isCopied, setIsCopied] = useState(false)
