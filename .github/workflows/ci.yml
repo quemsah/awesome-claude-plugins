@@ -46,6 +46,9 @@ jobs:
               - 'awesomeclaudeplugins.com/crawler/**'
               - 'README.md'
               - 'awesomeclaudeplugins.com/ui/src/data/repos.json'
+              # Crawler's integration test still imports the UI stats schema.
+              - 'awesomeclaudeplugins.com/ui/src/schemas/**'
+              - 'awesomeclaudeplugins.com/ui/package.json'
               - 'awesomeclaudeplugins.com/shared/**'
               - 'awesomeclaudeplugins.com/package.json'
               - 'awesomeclaudeplugins.com/package-lock.json'
