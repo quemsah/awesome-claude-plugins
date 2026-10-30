@@ -48,6 +48,11 @@ test('repo detail page serves catalog repository data in its HTML without contac
 
 test('repo detail page refreshes repository and marketplace data in the browser', async ({ page }) => {
   await mockClipboard(page)
+  await page.addInitScript(() => {
+    window.sa_event = (event) => {
+      if (event === 'copy_plugin_install') window.sessionStorage.setItem('lastPluginInstallEvent', event)
+    }
+  })
   await page.goto('/ykdojo/claude-code-tips')
 
   await expect(page.getByRole('heading', { name: 'claude-code-tips' })).toBeVisible()
@@ -71,41 +76,80 @@ test('repo detail page refreshes repository and marketplace data in the browser'
     ])
   )
   expect(JSON.stringify(jsonLd)).not.toContain('"Unknown"')
-  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'example-plugin@1.2.3' }) })
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Example Plugin@1.2.3' }) })
   await expect(plugin.getByText('/plugin install example-plugin@ykdojo')).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./commands/example.md in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/ykdojo/claude-code-tips/blob/main/plugins/example-plugin/commands/example.md'
+  )
+  await expect(plugin.getByRole('link', { name: 'Open ./agents/reviewer.md in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/ykdojo/claude-code-tips/blob/main/plugins/example-plugin/agents/reviewer.md'
+  )
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
   await expect.poll(() => copiedText(page)).toBe('/plugin install example-plugin@ykdojo')
+  await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem('lastPluginInstallEvent'))).toBe('copy_plugin_install')
 })
 
-test('repo detail page uses the manifest marketplace name for fallback install commands', async ({ page }) => {
+test('repo detail page uses the official plugin and marketplace names for install commands', async ({ page }) => {
   await mockClipboard(page)
   await page.goto('/ykdojo/claude-code-tips')
 
-  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'fallback-install-target' }) })
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Fallback Install Target' }) })
   await expect(plugin.getByText('/plugin install fallback-install-target@ykdojo')).toBeVisible()
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
   await expect.poll(() => copiedText(page)).toBe('/plugin install fallback-install-target@ykdojo')
-  await expect(plugin.getByRole('link', { name: 'Open source file plugins/fallback.json in a new tab' })).toHaveAttribute(
+  await expect(plugin.getByRole('link', { name: 'Open source repository elsewhere/shared-plugins in a new tab' })).toHaveAttribute(
     'href',
-    'https://github.com/elsewhere/shared-plugins/blob/main/plugins/fallback.json'
+    'https://github.com/elsewhere/shared-plugins/tree/0123456789abcdef0123456789abcdef01234567'
+  )
+  await expect(plugin.getByRole('link', { name: 'Open ./commands/external.md in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/elsewhere/shared-plugins/blob/0123456789abcdef0123456789abcdef01234567/commands/external.md'
+  )
+  await expect(plugin.getByRole('link', { name: 'Open ./agents/external.md in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/elsewhere/shared-plugins/blob/0123456789abcdef0123456789abcdef01234567/agents/external.md'
+  )
+  await expect(plugin.getByRole('link', { name: 'Open ./mcp.json in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/elsewhere/shared-plugins/blob/0123456789abcdef0123456789abcdef01234567/mcp.json'
+  )
+  await expect(plugin.getByText('MCP Servers (3)')).toBeVisible()
+  await expect(plugin.getByText('reviewer', { exact: true })).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open reviewer in a new tab' })).toHaveCount(0)
+  await expect(plugin.getByRole('link', { name: 'Open https://example.com/reviewer.mcpb in a new tab' })).toHaveAttribute(
+    'href',
+    'https://example.com/reviewer.mcpb'
   )
 })
 
-test('repo detail page renders a GitHub source object as a repository link', async ({ page }) => {
+test('repo detail page skips invalid marketplace entries and keeps valid plugins', async ({ page }) => {
+  await page.goto('/ykdojo/claude-code-tips')
+
+  await expect(page.getByRole('heading', { name: 'Example Plugin@1.2.3' })).toBeVisible()
+  await expect(page.getByText('A plugin without a name or identifier')).toHaveCount(0)
+})
+
+test('repo detail page installs a marketplace entry under the marketplace name', async ({ page }) => {
+  await page.goto('/mksglu/context-mode')
+
+  await expect(page.getByRole('heading', { name: 'Example Plugin@1.2.3' })).toBeVisible()
+  await expect(page.getByText('/plugin install example-plugin@context-mode')).toBeVisible()
+})
+
+test('repo detail page resolves a git-subdir source and its components', async ({ page }) => {
   await page.goto('/ykdojo/claude-code-tips')
 
   const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'GitHub Source Plugin' }) })
-  await expect(plugin.getByRole('link', { name: 'Open source repository elsewhere/shared-plugins in a new tab' })).toHaveAttribute(
+  await expect(plugin.getByRole('link', { name: 'Open source directory plugins/review in a new tab' })).toHaveAttribute(
     'href',
-    'https://github.com/elsewhere/shared-plugins/tree/main'
+    'https://github.com/elsewhere/shared-plugins/tree/main/plugins/review'
   )
-})
-
-test('repo detail page skips entries without valid plugin identifiers', async ({ page }) => {
-  await page.goto('/ykdojo/claude-code-tips')
-
-  await expect(page.getByText('A plugin without a name or identifier')).toHaveCount(0)
-  await expect(page.getByText('1 invalid plugin entry was skipped.', { exact: true })).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./commands/review.md in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/elsewhere/shared-plugins/blob/main/plugins/review/commands/review.md'
+  )
 })
 
 test('repo detail page rejects marketplace manifests served as a plugin array', async ({ page }) => {
@@ -119,7 +163,7 @@ test('repo detail page rejects marketplace manifests served as a plugin array', 
   await page.goto('/mksglu/context-mode')
 
   await expect(page.getByText('Marketplace manifest contains invalid data.')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'example-plugin' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Example Plugin@1.2.3' })).toHaveCount(0)
 })
 
 test('repo detail page keeps valid plugins and string component paths from a partly invalid manifest', async ({ page }) => {
@@ -148,9 +192,18 @@ test('repo detail page keeps valid plugins and string component paths from a par
 
   const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'string-component-plugin' }) })
   await expect(plugin).toBeVisible()
-  await expect(plugin.getByRole('link', { name: 'Open ./commands/run.md in a new tab' })).toBeVisible()
-  await expect(plugin.getByRole('link', { name: 'Open ./agents/reviewer.md in a new tab' })).toBeVisible()
-  await expect(plugin.getByRole('link', { name: 'Open ./mcp.json in a new tab' })).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open ./commands/run.md in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/ykdojo/claude-code-tips/blob/main/plugins/string-component-plugin/commands/run.md'
+  )
+  await expect(plugin.getByRole('link', { name: 'Open ./agents/reviewer.md in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/ykdojo/claude-code-tips/blob/main/plugins/string-component-plugin/agents/reviewer.md'
+  )
+  await expect(plugin.getByRole('link', { name: 'Open ./mcp.json in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/ykdojo/claude-code-tips/blob/main/plugins/string-component-plugin/mcp.json'
+  )
   await expect(page.getByText('1 invalid plugin entry was skipped.', { exact: true })).toBeVisible()
   await expect(page.getByText('Marketplace manifest contains invalid data.')).toBeHidden()
 })

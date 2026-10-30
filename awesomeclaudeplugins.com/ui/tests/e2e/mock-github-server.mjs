@@ -36,26 +36,37 @@ const examplePlugin = {
   description: 'A plugin rendered from mocked marketplace data',
   version: '1.2.3',
   category: 'Testing',
-  source: '.claude-plugin/plugin.json',
+  source: './plugins/example-plugin',
   author: { name: 'Example Maintainer', email: 'maintainer@example.dev' },
   keywords: ['testing', 'automation'],
-  commands: ['commands/example.md'],
-  agents: ['agents/reviewer.md'],
-  mcpServers: ['mcp/server.json'],
+  commands: './commands/example.md',
+  agents: ['./agents/reviewer.md'],
+  mcpServers: { testing: { command: 'node', args: ['./mcp/server.mjs'] } },
+  hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: './hooks/check.sh' }] }] },
 }
 
 const fallbackPlugin = {
   name: 'fallback-install-target',
   displayName: 'Fallback Install Target',
-  description: 'A plugin whose source points at another repository',
-  source: { source: 'plugins/fallback.json', repo: 'elsewhere/shared-plugins', branch: 'main' },
+  description: 'A plugin sourced from another GitHub repository',
+  source: {
+    source: 'github',
+    repo: 'elsewhere/shared-plugins',
+    ref: 'main',
+    sha: '0123456789abcdef0123456789abcdef01234567',
+  },
   author: { email: 'fallback@example.dev' },
+  commands: './commands/external.md',
+  agents: ['./agents/external.md'],
+  mcpServers: ['./mcp.json', { reviewer: { command: 'node', args: ['./servers/reviewer.mjs'] } }, 'https://example.com/reviewer.mcpb'],
 }
 
 const githubSourcePlugin = {
-  name: 'GitHub Source Plugin',
+  name: 'github-source-plugin',
+  displayName: 'GitHub Source Plugin',
   description: 'A plugin sourced from a GitHub repository',
-  source: { source: 'github', repo: 'elsewhere/shared-plugins', ref: 'main' },
+  source: { source: 'git-subdir', url: 'https://github.com/elsewhere/shared-plugins.git', ref: 'main', path: 'plugins/review' },
+  commands: './commands/review.md',
 }
 
 const unnamedPlugin = {

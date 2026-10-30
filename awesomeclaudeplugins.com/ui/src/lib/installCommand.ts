@@ -5,6 +5,7 @@ export type InstallCommandType = 'marketplace-add' | 'plugin-install'
 
 export type PluginInstallCommandInput = {
   pluginName?: string
+  pluginId?: string
   marketplaceName?: string
 }
 
@@ -37,25 +38,31 @@ export function isPluginInstallCommandVerified(pluginName?: string, marketplaceN
 /**
  * Generates a `/plugin install` command from verified manifest semantics.
  *
- * Uses the marketplace manifest entry name and marketplace name when available.
- * A plugin name without a marketplace name is displayed but remains unverified.
+ * Priority:
+ * 1. `pluginId` + `marketplaceName` → `/plugin install {pluginId}@{marketplaceName}`
+ * 2. `pluginName` + `marketplaceName` → `/plugin install {name}@{marketplaceName}`
+ * 3. `pluginId` only → `/plugin install {id}`
+ * 4. `pluginName` only → `/plugin install {name}` (unverified)
  *
  * Returns `null` when the plugin name is invalid or the supplied marketplace name is unsafe.
  */
-export function getPluginInstallCommand({ pluginName, marketplaceName }: PluginInstallCommandInput): string | null {
+export function getPluginInstallCommand({ pluginName, pluginId, marketplaceName }: PluginInstallCommandInput): string | null {
   const normalizedName = normalizePluginName(pluginName)
+  const normalizedPluginId = typeof pluginId === 'string' ? pluginId.trim() : undefined
+  if (normalizedPluginId && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedPluginId)) return null
   const normalizedMarketplaceName = typeof marketplaceName === 'string' ? marketplaceName.trim() : undefined
 
   if (normalizedMarketplaceName && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedMarketplaceName)) {
     return null
   }
 
-  if (normalizedName && normalizedMarketplaceName) {
-    return `/plugin install ${normalizedName}@${normalizedMarketplaceName}`
+  const installName = normalizedPluginId || normalizedName
+  if (installName && normalizedMarketplaceName) {
+    return `/plugin install ${installName}@${normalizedMarketplaceName}`
   }
 
-  if (normalizedName) {
-    return `/plugin install ${normalizedName}`
+  if (installName) {
+    return `/plugin install ${installName}`
   }
 
   return null

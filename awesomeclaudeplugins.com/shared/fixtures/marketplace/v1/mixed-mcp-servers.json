@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "name": "mixed-mcp-servers",
+  "expected": {
+    "valid": true,
+    "pluginsCount": 1,
+    "pluginNames": [
+      "mixed-mcp"
+    ],
+    "reason": "Claude Code mcpServers supports arrays mixing relative paths, inline server maps, and HTTPS MCP bundles.",
+    "plugin": {
+      "id": "mixed-mcp",
+      "name": "Mixed MCP",
+      "mcpServers": [
+        "./mcp/servers.json",
+        {
+          "reviewer": {
+            "command": "node",
+            "args": [
+              "./mcp/reviewer.mjs"
+            ]
+          }
+        },
+        "https://example.com/reviewer.mcpb"
+      ]
+    }
+  },
+  "input": {
+    "name": "mixed-mcp-marketplace",
+    "owner": {
+      "name": "fixture-maintainer"
+    },
+    "plugins": [
+      {
+        "name": "mixed-mcp",
+        "displayName": "Mixed MCP",
+        "source": "./plugins/mixed-mcp",
+        "mcpServers": [
+          "./mcp/servers.json",
+          {
+            "reviewer": {
+              "command": "node",
+              "args": [
+                "./mcp/reviewer.mjs"
+              ]
+            }
+          },
+          "https://example.com/reviewer.mcpb"
+        ]
+      }
+    ]
+  }
+}

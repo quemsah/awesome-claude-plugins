@@ -17,12 +17,11 @@ type PluginCardProps = {
   repo?: GitHubRepository | null
 }
 
-/** Render plugin metadata and resolve component lists against the plugin's own source. */
 export function PluginCard({ marketplaceName, plugin, repoPath, repo }: PluginCardProps) {
   return (
     <Card className="group w-full transition-all duration-300 hover:border-primary/30 hover:bg-linear-to-tl hover:from-muted hover:to-background">
       <PluginHeader category={plugin.category} name={plugin.name} version={plugin.version} />
-      {plugin.name ? <InstallCommand marketplaceName={marketplaceName} pluginName={plugin.name} /> : null}
+      {plugin.name ? <InstallCommand marketplaceName={marketplaceName} pluginId={plugin.id} pluginName={plugin.name} /> : null}
       <CardContent className="pt-1">
         <dl className="space-y-2">
           <PluginDescription description={plugin.description} />
