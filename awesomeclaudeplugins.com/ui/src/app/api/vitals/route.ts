@@ -10,6 +10,7 @@ const CONTROL_CHARACTER_PATTERN = /[\r\n]/
 const rateLimiter = new RateLimiter(10_000, MAX_REPORTS_PER_MINUTE, 60_000)
 const VALID_METRICS = new Set(['CLS', 'FCP', 'INP', 'LCP', 'TTFB'])
 const VALID_RATINGS = new Set(['good', 'needs-improvement', 'poor'])
+const VALID_LCP_ELEMENTS = new Set(['image', 'text', 'other'])
 
 export async function POST(request: Request) {
   if (rateLimiter.isRateLimited(getRateLimitKey(request.headers))) {
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
       level: rating === 'good' ? 'info' : 'warn',
       event: 'web_vital',
       metric: payload.name,
+      ...(payload.name === 'LCP' ? { lcpElement: payload.lcpElement ?? null } : {}),
       navigationType: payload.navigationType ?? null,
       path: payload.path === undefined ? null : toRouteTemplate(payload.path),
       rating,
@@ -62,7 +64,7 @@ async function parsePayload(request: Request): Promise<unknown> {
 
 function isWebVital(
   value: unknown
-): value is { name: string; navigationType?: string; path?: string; rating: string; release?: string; value: number } {
+): value is { name: string; lcpElement?: string | null; navigationType?: string; path?: string; rating: string; release?: string; value: number } {
   if (!(isRecord(value) && 'name' in value && 'rating' in value && 'value' in value)) {
     return false
   }
@@ -70,6 +72,8 @@ function isWebVital(
   return (
     typeof value.name === 'string' &&
     VALID_METRICS.has(value.name) &&
+    (value.lcpElement === undefined ||
+      (value.name === 'LCP' && (value.lcpElement === null || (typeof value.lcpElement === 'string' && VALID_LCP_ELEMENTS.has(value.lcpElement))))) &&
     typeof value.rating === 'string' &&
     value.rating.length <= MAX_RATING_LENGTH &&
     (value.navigationType === undefined || isContextString(value.navigationType)) &&
