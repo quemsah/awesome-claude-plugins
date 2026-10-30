@@ -53,7 +53,7 @@ jobs:
     name: Submit changed repository URLs
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    # Initial catalog submissions have taken over 29 minutes; keep heavy syncs resumable.
+    # A successful initial catalog submission previously took over 29 minutes.
     # This job does not gate Railway deployment.
     timeout-minutes: 90
     concurrency:
