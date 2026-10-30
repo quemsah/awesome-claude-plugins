@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-const GITHUB_REPO_PATH_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
+const GITHUB_REPO_PATH_PATTERN = /^(?!\.{1,2}\/)[A-Za-z0-9._-]+\/(?!\.{1,2}$)[A-Za-z0-9._-]+$/
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
