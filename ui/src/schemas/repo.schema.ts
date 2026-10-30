@@ -26,6 +26,7 @@ export const RepoSchema = z.object({
   plugin_name: z.string().optional(),
   plugin_description: z.string().optional(),
   plugin_summaries: z.array(PluginSummarySchema).optional(),
+  catalog_updated_at: z.string().datetime().optional(),
   id: z.number(),
 })
 
