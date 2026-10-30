@@ -16,6 +16,7 @@ function createSchema(db: Database.Database): void {
       repo_name TEXT,
       repo_updated TEXT,
       plugins_count INTEGER,
+      catalog_updated_at TEXT,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL
     );
@@ -311,16 +312,54 @@ function migrateTo13(db: Database.Database): void {
 }
 
 function migrateTo14(db: Database.Database): void {
-  if (!hasColumn(db, 'plugins_json')) db.exec('ALTER TABLE repositories ADD COLUMN plugins_json TEXT')
+  if (!hasColumn(db, 'catalog_updated_at')) db.exec('ALTER TABLE repositories ADD COLUMN catalog_updated_at TEXT')
+  db.exec(`
+    UPDATE repositories
+    SET catalog_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    WHERE catalog_updated_at IS NULL;
 
-  db.pragma('user_version = 14')
+    CREATE TRIGGER IF NOT EXISTS repositories_catalog_timestamp_after_insert
+    AFTER INSERT ON repositories
+    WHEN NEW.catalog_updated_at IS NULL
+    BEGIN
+      UPDATE repositories
+      SET catalog_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE id = NEW.id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS repositories_catalog_timestamp_after_update
+    AFTER UPDATE OF stargazers_count, forks_count, subscribers_count, description, owner, repo_name, plugins_count
+    ON repositories
+    WHEN OLD.stargazers_count IS NOT NEW.stargazers_count
+      OR OLD.forks_count IS NOT NEW.forks_count
+      OR OLD.subscribers_count IS NOT NEW.subscribers_count
+      OR OLD.description IS NOT NEW.description
+      OR OLD.owner IS NOT NEW.owner
+      OR OLD.repo_name IS NOT NEW.repo_name
+      OR OLD.plugins_count IS NOT NEW.plugins_count
+    BEGIN
+      UPDATE repositories
+      SET catalog_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE id = NEW.id;
+    END;
+
+    PRAGMA user_version = 14;
+  `)
 }
 
-// v14 may already have been applied by the catalog-timestamp migration.
-// In that case, v15 must still create the plugin-summary column.
 function migrateTo15(db: Database.Database): void {
   if (!hasColumn(db, 'plugins_json')) db.exec('ALTER TABLE repositories ADD COLUMN plugins_json TEXT')
-
+  // Plugin descriptions are part of the public catalog and must advance its sitemap lastmod.
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS repositories_plugin_summary_timestamp_after_update
+    AFTER UPDATE OF plugins_json ON repositories
+    WHEN OLD.plugins_json IS NOT NEW.plugins_json
+    BEGIN
+      UPDATE repositories
+      SET catalog_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE id = NEW.id;
+    END;
+  `)
   db.pragma('user_version = 15')
 }
 
