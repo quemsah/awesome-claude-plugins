@@ -1,18 +1,8 @@
 import { ImageResponse } from 'next/og'
 import { findCatalogRepo } from '../../../../lib/catalog.ts'
+import { sanitizeOgDescription } from '../../../../lib/ogText.ts'
 
 export const runtime = 'nodejs'
-
-// Open Graph images use a limited built-in font. Emoji and dingbat symbols can trigger
-// a runtime fallback-font fetch that returns HTTP 400 (observed for ✻).
-// Preserve language text while dropping only these decorative glyphs from the preview.
-export function sanitizeOgDescription(value: string): string {
-  return value
-    .replaceAll(/[\p{So}\p{Sk}]/gu, ' ')
-    .replaceAll(/\uFE0e|\uFE0f|\u200d/gu, ' ')
-    .replaceAll(/\s+/g, ' ')
-    .trim()
-}
 
 type RouteContext = {
   params: Promise<{ owner: string; repo: string }>
