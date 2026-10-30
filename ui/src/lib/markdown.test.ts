@@ -20,13 +20,11 @@ type RepoOverrides = { description?: string | null; plugins_count?: number | nul
 
 function makeRepo(overrides: RepoOverrides = {}) {
   return {
-    html_url: 'https://github.com/example/repository',
     stargazers_count: 10,
     forks_count: 1,
     subscribers_count: 2,
     description: 'A repository description that is long enough to be strong.',
     owner: 'example',
-    owner_url: 'https://github.com/example',
     repo_name: 'repository',
     plugins_count: 2,
     id: 1,

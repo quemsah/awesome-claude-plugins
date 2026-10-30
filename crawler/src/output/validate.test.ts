@@ -2,13 +2,11 @@ import { expect, it } from 'vitest'
 import { validateSnapshot } from './validate.js'
 
 const validRepo = {
-  html_url: 'https://github.com/Owner/Repo',
   stargazers_count: 12,
   forks_count: 0,
   subscribers_count: 3,
   description: null,
   owner: 'Owner',
-  owner_url: 'https://github.com/Owner',
   repo_name: 'Repo',
   plugins_count: null,
   id: 7,
@@ -25,10 +23,10 @@ it('accepts UTF-8 JSON preserving canonical case and null fields', () => {
 })
 
 it('reports issue count and paths for malformed records instead of silently dropping them', () => {
-  const malformed = { ...validRepo, html_url: 'https://github.com/Owner/Repo?token=a', stargazers_count: -1, plugins_count: 1.5 }
+  const malformed = { ...validRepo, owner: 'bad/owner', stargazers_count: -1, plugins_count: 1.5 }
   const extra = { ...validRepo, id: 8, repo_updated: 'internal' }
   expect(() => validateSnapshot(JSON.stringify([malformed, extra]), JSON.stringify(validStats))).toThrow(
-    /4 issues.*repos\[0\]\.html_url.*repos\[0\]\.stargazers_count.*repos\[0\]\.plugins_count.*repos\[1\]\.repo_updated/s,
+    /4 issues.*repos\[0\]\.owner.*repos\[0\]\.stargazers_count.*repos\[0\]\.plugins_count.*repos\[1\]\.repo_updated/s,
   )
 })
 

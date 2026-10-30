@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { trackEvent } from '../../lib/analytics.ts'
 import { copyText } from '../../lib/clipboard.ts'
 import { getMarketplaceAddCommand } from '../../lib/installCommand.ts'
-import { getGitHubOwnerUrl, getGitHubRepoPath } from '../../lib/repositoryIdentity.ts'
+import { getGitHubOwnerUrl, getGitHubRepoPath, getGitHubRepoUrl } from '../../lib/repositoryIdentity.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 import { ClaudeIcon } from '../common/ClaudeIcon.tsx'
 import { CopiedIcon } from '../common/CopiedIcon.tsx'
@@ -27,6 +27,7 @@ interface RepoCardProps {
   className?: string
 }
 
+/** Render a repository preview with GitHub links derived from validated catalog identity. */
 export function RepoCard({ repo, className }: RepoCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isCopied, setIsCopied] = useState(false)
@@ -84,7 +85,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
         <Button asChild className="touch-target absolute top-4 right-4 h-8 w-8 sm:top-6 sm:right-6" size="icon" variant="outline">
           <a
             aria-label={`View ${repo.owner}/${repo.repo_name} on GitHub`}
-            href={repo.html_url}
+            href={getGitHubRepoUrl(repo.owner ?? '', repo.repo_name ?? '')}
             onClick={() => trackEvent('open_github')}
             rel="noopener noreferrer"
             target="_blank"

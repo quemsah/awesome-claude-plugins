@@ -137,11 +137,15 @@ it('runs discovery, enrichment, snapshot generation and Git publication through 
 
   const repos = JSON.parse(tree.tree.find(({ path }) => path === 'ui/src/data/repos.json')?.content ?? 'null')
   expect(repos).toEqual([
-    expect.objectContaining({
-      html_url: 'https://github.com/acme/catalog',
-      repo_name: 'catalog',
+    {
       stargazers_count: 12,
+      forks_count: 2,
+      subscribers_count: 3,
+      description: 'enriched',
+      owner: 'acme',
+      repo_name: 'catalog',
       plugins_count: 2,
-    }),
+      id: 1,
+    },
   ])
 })

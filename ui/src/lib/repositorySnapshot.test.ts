@@ -6,10 +6,8 @@ import { createCatalogRepositorySnapshot } from './repositorySnapshot.ts'
 const catalogRepo = {
   description: 'A catalogued repository',
   forks_count: 815,
-  html_url: 'https://github.com/example-owner/example-repo',
   id: 1,
   owner: 'example-owner',
-  owner_url: 'https://github.com/example-owner',
   plugins_count: 1,
   repo_name: 'example-repo',
   stargazers_count: 10105,
