@@ -2,6 +2,7 @@
 
 import { type GitHubRepository, GitHubRepositorySchema } from '../schemas/github.schema.ts'
 import type { Repo } from '../schemas/repo.schema.ts'
+import { getGitHubOwnerUrl, getGitHubRepoUrl } from './repositoryIdentity.ts'
 
 /** Why the repository page fell back to catalog data instead of live GitHub metadata. */
 export type CatalogSnapshotReason = 'github-not-found' | 'github-unavailable'
@@ -11,7 +12,7 @@ export type CatalogSnapshotReason = 'github-not-found' | 'github-unavailable'
  * the catalog never recorded stay unknown instead of being shown as zero or a placeholder date.
  */
 export function createCatalogRepositorySnapshot(repo: Repo): GitHubRepository {
-  if (!(repo.owner && repo.repo_name && repo.owner_url)) {
+  if (!(repo.owner && repo.repo_name)) {
     throw new Error('Catalog repository is missing canonical identity fields')
   }
 
@@ -20,7 +21,7 @@ export function createCatalogRepositorySnapshot(repo: Repo): GitHubRepository {
     default_branch: 'HEAD',
     description: repo.description,
     forks_count: repo.forks_count ?? 0,
-    html_url: repo.html_url,
+    html_url: getGitHubRepoUrl(repo.owner, repo.repo_name),
     homepage: null,
     language: null,
     license: null,
@@ -28,7 +29,7 @@ export function createCatalogRepositorySnapshot(repo: Repo): GitHubRepository {
     open_issues_count: null,
     owner: {
       avatar_url: null,
-      html_url: repo.owner_url,
+      html_url: getGitHubOwnerUrl(repo.owner),
       login: repo.owner,
       type: null,
     },
