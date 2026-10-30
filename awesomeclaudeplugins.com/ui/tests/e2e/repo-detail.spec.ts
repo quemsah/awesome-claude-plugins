@@ -48,6 +48,11 @@ test('repo detail page serves catalog repository data in its HTML without contac
 
 test('repo detail page refreshes repository and marketplace data in the browser', async ({ page }) => {
   await mockClipboard(page)
+  await page.addInitScript(() => {
+    window.sa_event = (event) => {
+      if (event === 'copy_plugin_install') window.sessionStorage.setItem('lastPluginInstallEvent', event)
+    }
+  })
   await page.goto('/ykdojo/claude-code-tips')
 
   await expect(page.getByRole('heading', { name: 'claude-code-tips' })).toBeVisible()
@@ -83,6 +88,9 @@ test('repo detail page refreshes repository and marketplace data in the browser'
   )
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
   await expect.poll(() => copiedText(page)).toBe('/plugin install example-plugin@ykdojo')
+  await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem('lastPluginInstallEvent'))).toBe(
+    'copy_plugin_install'
+  )
 })
 
 test('repo detail page uses the official plugin and marketplace names for install commands', async ({ page }) => {
@@ -108,6 +116,13 @@ test('repo detail page uses the official plugin and marketplace names for instal
   await expect(plugin.getByRole('link', { name: 'Open ./mcp.json in a new tab' })).toHaveAttribute(
     'href',
     'https://github.com/elsewhere/shared-plugins/blob/0123456789abcdef0123456789abcdef01234567/mcp.json'
+  )
+  await expect(plugin.getByText('MCP Servers (3)')).toBeVisible()
+  await expect(plugin.getByText('reviewer', { exact: true })).toBeVisible()
+  await expect(plugin.getByRole('link', { name: 'Open reviewer in a new tab' })).toHaveCount(0)
+  await expect(plugin.getByRole('link', { name: 'Open https://example.com/reviewer.mcpb in a new tab' })).toHaveAttribute(
+    'href',
+    'https://example.com/reviewer.mcpb'
   )
 })
 
