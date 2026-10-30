@@ -1,5 +1,6 @@
 import { ImageResponse } from 'next/og'
 import { findCatalogRepo } from '../../../../lib/catalog.ts'
+import { sanitizeOgDescription } from '../../../../lib/ogText.ts'
 
 export const runtime = 'nodejs'
 
@@ -34,7 +35,7 @@ export async function GET(_: Request, { params }: RouteContext) {
         {`${catalogRepo.owner}/${catalogRepo.repo_name}`}
       </div>
       <div style={{ color: '#d0d0d0', fontSize: 28, marginTop: 28, textAlign: 'center' }}>
-        {(catalogRepo.description ?? 'Claude Code plugin repository').slice(0, 220)}
+        {sanitizeOgDescription(catalogRepo.description ?? 'Claude Code plugin repository').slice(0, 220) || 'Claude Code plugin repository'}
       </div>
     </div>,
     {

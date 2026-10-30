@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { sanitizeOgDescription } from '../../../../lib/ogText.ts'
 import { GET } from './route.tsx'
 
 const catalogOwner = 'ykdojo'
@@ -9,6 +10,11 @@ function get(owner: string, repo: string) {
 }
 
 describe('GET /og/[owner]/[repo]', () => {
+  it('keeps multilingual text but excludes symbols that trigger dynamic font fallback', () => {
+    expect(sanitizeOgDescription('  ✻ Tools 🚀 for Ελληνικά and Русский  ')).toBe('Tools for Ελληνικά and Русский')
+    expect(sanitizeOgDescription('✨ ✻ 🚀')).toBe('')
+  })
+
   it('renders a PNG for a catalog repository', async () => {
     const response = await get(catalogOwner, catalogRepo)
     const body = await response.arrayBuffer()
