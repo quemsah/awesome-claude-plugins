@@ -202,6 +202,13 @@ function recordProblem(
   })
 }
 
+/** Only publish GitHub-declared SPDX identifiers, not an inferred license. */
+function licenseFromGitHub(data: GitHubRepo): string | null | undefined {
+  if (data.license === undefined) return undefined
+  const value = data.license?.spdx_id?.trim()
+  return value && value !== 'NOASSERTION' && value.length <= 80 ? value : null
+}
+
 type LoadedRepository = {
   data: GitHubRepo
   canonical: CanonicalIdentity
@@ -242,6 +249,8 @@ function persistEnrichment(
       owner_url: loaded.ownerUrl,
       repo_name: loaded.repo,
       repo_updated: loaded.data.pushed_at,
+      license: licenseFromGitHub(loaded.data),
+      archived: typeof loaded.data.archived === 'boolean' ? Number(loaded.data.archived) : null,
       plugins_count: pluginsCount,
       plugins_json: pluginsJson,
       github_node_id: loaded.githubNodeId,
@@ -514,6 +523,8 @@ function persistRepositoryMetadataOnMarketplaceError(
         owner_url: loaded.ownerUrl,
         repo_name: loaded.repo,
         repo_updated: loaded.data.pushed_at,
+        license: licenseFromGitHub(loaded.data),
+        archived: typeof loaded.data.archived === 'boolean' ? Number(loaded.data.archived) : null,
         plugins_count: preserved.plugins_count,
         plugins_json: preserved.plugins_json,
         github_node_id: loaded.githubNodeId,
@@ -1163,6 +1174,8 @@ function loadCachedRepository(
     forks_count: row.forks_count,
     subscribers_count: row.subscribers_count,
     pushed_at: row.repo_updated,
+    ...(row.license ? { license: { spdx_id: row.license } } : {}),
+    ...(row.archived == null ? {} : { archived: row.archived === 1 }),
     private: false,
     owner: { login: row.owner, html_url: row.owner_url },
     ...(row.github_node_id === null ? {} : { node_id: row.github_node_id }),
@@ -1280,7 +1293,7 @@ async function loadRepository(
 ): Promise<LoadedRepository | null | RetryLater> {
   let result: RepoResult<GitHubRepo>
   try {
-    result = await reader.getRepository(identity.owner, identity.repo, row.repository_etag ?? undefined, {
+    result = await reader.getRepository(identity.owner, identity.repo, row.archived == null ? undefined : row.repository_etag ?? undefined, {
       maxAttempts: policy.maxAttempts,
     })
   } catch (error) {

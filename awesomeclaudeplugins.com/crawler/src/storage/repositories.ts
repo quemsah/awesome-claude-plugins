@@ -12,8 +12,8 @@ export interface RepositoryRow {
   owner_url: string | null
   repo_name: string | null
   repo_updated: string | null
-  license: string | null
-  archived: number | null
+  license?: string | null
+  archived?: number | null
   plugins_count: number | null
   plugins_json: string | null
   catalog_updated_at: string
