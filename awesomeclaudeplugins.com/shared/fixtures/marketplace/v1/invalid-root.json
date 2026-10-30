@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "invalid-root",
+  "expected": {
+    "valid": false,
+    "pluginsCount": null,
+    "pluginNames": null
+  },
+  "input": {
+    "name": "catalog",
+    "plugins": [
+      {
+        "name": "local-plugin",
+        "source": "./plugins/local-plugin"
+      }
+    ]
+  }
+}

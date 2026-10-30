@@ -1,4 +1,5 @@
-export const MARKETPLACE_INVALID_CONTENT_CACHE_VERSION = 5
+export const MARKETPLACE_INVALID_CONTENT_CACHE_VERSION = 7
+export const MARKETPLACE_PARSER_VERSION = 4
 
 export type Marketplace = { plugins: unknown[] }
 
@@ -13,15 +14,60 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-function isPluginEntry(value: unknown): value is Record<string, unknown> {
-  if (!isRecord(value) || typeof value.name !== 'string' || value.name.trim().length === 0) return false
+const GITHUB_REPO_PATH_PATTERN = /^(?!\.{1,2}\/)[A-Za-z0-9._-]+\/(?!\.{1,2}$)[A-Za-z0-9._-]+$/
 
-  const source = value.source
-  if (typeof source === 'string') return source.trim().length > 0
-  if (!isRecord(source) || typeof source.source !== 'string' || !source.source.trim()) return false
-  if (source.source === 'github') return typeof source.repo === 'string' && source.repo.trim().length > 0
-  if (source.source === 'url') return typeof source.url === 'string' && source.url.trim().length > 0
-  return true
+function isSafePath(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= 512 && !value.includes('..') && !/[\r\n]/.test(value)
+}
+
+function isSafeSourceUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 512) return false
+  if (GITHUB_REPO_PATH_PATTERN.test(value)) return true
+
+  try {
+    const url = new URL(value)
+    return (url.protocol === 'http:' || url.protocol === 'https:') && !url.username && !url.password
+  } catch {
+    return false
+  }
+}
+
+function hasValidSourceKind(source: string, value: Record<string, unknown>): boolean {
+  return (source !== 'github' || typeof value.repo === 'string') && (source !== 'url' || typeof value.url === 'string')
+}
+
+function hasSafeSourceLocation(value: Record<string, unknown>): boolean {
+  return (
+    (value.repo === undefined || (typeof value.repo === 'string' && GITHUB_REPO_PATH_PATTERN.test(value.repo))) &&
+    (value.url === undefined || isSafeSourceUrl(value.url)) &&
+    (value.path === undefined || isSafePath(value.path)) &&
+    (value.branch === undefined || isSafePath(value.branch)) &&
+    (value.ref === undefined || isSafePath(value.ref))
+  )
+}
+
+function hasSafeSourceRevision(value: Record<string, unknown>): boolean {
+  return (
+    (value.commit === undefined || (typeof value.commit === 'string' && /^[A-Fa-f0-9]{7,64}$/.test(value.commit))) &&
+    (value.sha === undefined || (typeof value.sha === 'string' && /^[A-Fa-f0-9]{7,64}$/.test(value.sha)))
+  )
+}
+
+function isValidSource(value: unknown): boolean {
+  if (isSafePath(value)) return true
+  if (!isRecord(value) || !isSafePath(value.source)) return false
+
+  return hasValidSourceKind(value.source, value) && hasSafeSourceLocation(value) && hasSafeSourceRevision(value)
+}
+
+function isPluginEntry(value: unknown): value is Record<string, unknown> {
+  return (
+    isRecord(value) &&
+    typeof value.name === 'string' &&
+    value.name.trim().length > 0 &&
+    value.name.length <= 160 &&
+    isValidSource(value.source)
+  )
 }
 
 export function parseMarketplace(value: unknown): Marketplace {

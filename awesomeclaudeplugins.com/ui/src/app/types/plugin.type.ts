@@ -1,10 +1,11 @@
 import * as z from 'zod/mini'
 
 const CONTROL_CHARACTER_PATTERN = /[\r\n]/
-const GITHUB_REPO_PATH_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
+const GITHUB_REPO_PATH_PATTERN = /^(?!\.{1,2}\/)[A-Za-z0-9._-]+\/(?!\.{1,2}$)[A-Za-z0-9._-]+$/
 const PluginPathSchema = z.string().check(
   z.minLength(1),
   z.maxLength(512),
+  z.refine((value) => value.trim().length > 0, { error: 'Must be a safe repository path' }),
   z.refine((value) => !(value.includes('..') || CONTROL_CHARACTER_PATTERN.test(value)), {
     error: 'Must be a safe repository path',
   })
@@ -15,6 +16,7 @@ const MarketplaceNameSchema = PluginIdSchema
 const SourceRefSchema = z.string().check(
   z.minLength(1),
   z.maxLength(512),
+  z.refine((value) => value.trim().length > 0, { error: 'Must be a safe source ref' }),
   z.refine((value) => !(value.includes('..') || CONTROL_CHARACTER_PATTERN.test(value)), {
     error: 'Must be a safe source ref',
   })
@@ -168,77 +170,84 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-function isEmptyMarketplace(value: Record<string, unknown>): boolean {
-  return Array.isArray(value.skills) || isRecord(value.skills)
+function isCountableMarketplacePlugin(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value) || typeof value.name !== 'string' || value.name.trim().length === 0 || value.name.length > 160) return false
+
+  return (
+    (typeof value.source === 'string' && value.source.trim().length > 0) ||
+    (isRecord(value.source) &&
+      typeof value.source.source === 'string' &&
+      value.source.source.trim().length > 0 &&
+      (value.source.source !== 'github' || typeof value.source.repo === 'string') &&
+      (value.source.source !== 'url' || typeof value.source.url === 'string'))
+  )
+}
+
+const OPTIONAL_PLUGIN_METADATA_FIELDS = [
+  'description',
+  'version',
+  'id',
+  'category',
+  'author',
+  'license',
+  'keywords',
+  'strict',
+  'commands',
+  'agents',
+  'mcpServers',
+  'homepage',
+  'tags',
+] as const satisfies readonly (keyof Plugin)[]
+
+/** Keep independently valid display metadata when one optional field is malformed. */
+function recoverPluginWithValidMetadata(entry: Record<string, unknown>): Plugin | null {
+  const core = PluginSchema.safeParse({ name: entry.name, source: entry.source })
+  if (!core.success) return null
+
+  let plugin = core.data
+  for (const field of OPTIONAL_PLUGIN_METADATA_FIELDS) {
+    if (!(field in entry)) continue
+    const withField = PluginSchema.safeParse({ ...plugin, [field]: entry[field] })
+    if (withField.success) plugin = withField.data
+  }
+  return plugin
 }
 
 export const MarketplacePluginsSchema: z.ZodMiniType<MarketplacePluginsResult> = z.transform((value, context): MarketplacePluginsResult => {
-  const parsePluginList = (entries: unknown[], path: PropertyKey[] = []): MarketplacePluginsResult => {
-    const result: MarketplacePluginsResult = { plugins: [], invalidPluginCount: 0, issues: [] }
-
-    entries.forEach((entry, index) => {
-      const parsed = PluginSchema.safeParse(entry)
-      if (parsed.success) {
-        result.plugins.push(parsed.data)
-      } else {
-        result.invalidPluginCount += 1
-        result.issues.push(...parsed.error.issues.map((issue) => ({ ...issue, path: [...path, index, ...issue.path] })))
-      }
+  const result: MarketplacePluginsResult = { plugins: [], invalidPluginCount: 0, issues: [] }
+  if (
+    !isRecord(value) ||
+    typeof value.name !== 'string' ||
+    value.name.trim().length === 0 ||
+    !isRecord(value.owner) ||
+    typeof value.owner.name !== 'string' ||
+    value.owner.name.length === 0 ||
+    !Array.isArray(value.plugins)
+  ) {
+    context.issues.push({
+      code: 'custom',
+      message: 'Marketplace must have non-empty name, non-empty owner.name, and a plugins array',
+      input: value,
     })
-
     return result
   }
-
-  const emptyResult = (): MarketplacePluginsResult => ({ plugins: [], invalidPluginCount: 0, issues: [] })
-
-  if (Array.isArray(value)) return parsePluginList(value)
-
-  if (!isRecord(value)) {
-    context.issues.push({ code: 'custom', message: 'Unsupported marketplace manifest shape', input: value })
-    return emptyResult()
-  }
-
-  const candidates: {
-    container: Record<string, unknown> | undefined
-    key: 'plugins' | 'repositories'
-    path: PropertyKey[]
-  }[] = [
-    { container: value, key: 'plugins', path: ['plugins'] },
-    {
-      container: isRecord(value.marketplace) ? value.marketplace : undefined,
-      key: 'plugins',
-      path: ['marketplace', 'plugins'],
-    },
-    { container: value, key: 'repositories', path: ['repositories'] },
-  ]
-
-  for (const { container, key, path } of candidates) {
-    if (container && Array.isArray(container[key])) {
-      return parsePluginList(container[key], path)
+  value.plugins.forEach((entry, index) => {
+    const parsed = PluginSchema.safeParse(entry)
+    if (parsed.success && isCountableMarketplacePlugin(entry)) {
+      result.plugins.push(parsed.data)
+      return
     }
-  }
-
-  const hasMarketplaceWrapper = ['plugins', 'repositories', 'marketplace'].some((key) => key in value)
-  if (!hasMarketplaceWrapper) {
-    const parsedPlugin = PluginSchema.safeParse(value)
-    if (parsedPlugin.success) return { plugins: [parsedPlugin.data], invalidPluginCount: 0, issues: [] }
-    if (isEmptyMarketplace(value)) return emptyResult()
-
-    for (const issue of parsedPlugin.error.issues) {
-      context.issues.push({
-        code: 'custom',
-        message: issue.message,
-        path: issue.path,
-        input: value,
-      })
+    if (!parsed.success && isCountableMarketplacePlugin(entry)) {
+      const recovered = recoverPluginWithValidMetadata(entry)
+      if (recovered) {
+        result.plugins.push(recovered)
+        return
+      }
     }
-    return emptyResult()
-  }
-
-  if (isEmptyMarketplace(value)) return emptyResult()
-
-  context.issues.push({ code: 'custom', message: 'Unsupported marketplace manifest shape', input: value })
-  return emptyResult()
+    result.invalidPluginCount++
+    if (!parsed.success) result.issues.push(...parsed.error.issues.map((issue) => ({ ...issue, path: ['plugins', index, ...issue.path] })))
+  })
+  return result
 })
 
 export function getMarketplaceName(value: unknown): string | undefined {
@@ -250,12 +259,7 @@ export function getMarketplaceName(value: unknown): string | undefined {
     return parsedName.success ? parsedName.data : undefined
   }
 
-  if (!object.marketplace || typeof object.marketplace !== 'object' || Array.isArray(object.marketplace)) return undefined
-  const marketplace = object.marketplace as Record<string, unknown>
-  if (!Array.isArray(marketplace.plugins)) return undefined
-
-  const parsedName = MarketplaceNameSchema.safeParse(marketplace.name)
-  return parsedName.success ? parsedName.data : undefined
+  return undefined
 }
 
 /** Prefer the marketplace's own summary. A single plugin may represent a whole repository,
@@ -269,7 +273,8 @@ export function getMarketplaceDescription(value: unknown): string | undefined {
   const ownDescription = clean(value.description) ?? (isRecord(value.marketplace) ? clean(value.marketplace.description) : undefined)
   if (ownDescription) return ownDescription
 
-  const parsed = MarketplacePluginsSchema.safeParse(value)
-  if (!parsed.success || parsed.data.plugins.length !== 1) return undefined
-  return clean(parsed.data.plugins[0]?.description)
+  const entries = Array.isArray(value.plugins) ? value.plugins : [value]
+  if (entries.length !== 1) return undefined
+  const parsed = PluginSchema.safeParse(entries[0])
+  return parsed.success ? clean(parsed.data.description) : undefined
 }

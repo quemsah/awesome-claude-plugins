@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "name": "partial-entries",
+  "expected": {
+    "valid": true,
+    "pluginsCount": 3,
+    "pluginNames": [
+      "local-plugin",
+      "remote-plugin",
+      "partial-metadata"
+    ]
+  },
+  "input": {
+    "name": "catalog",
+    "owner": {
+      "name": "maintainer"
+    },
+    "plugins": [
+      {
+        "name": "local-plugin",
+        "source": "./plugins/local-plugin"
+      },
+      {
+        "name": "remote-plugin",
+        "source": {
+          "source": "github",
+          "repo": "example-owner/example-repo"
+        }
+      },
+      {
+        "name": "partial-metadata",
+        "source": "./plugins/partial-metadata",
+        "keywords": [
+          42
+        ],
+        "description": "Still visible"
+      },
+      {
+        "name": "missing-source"
+      },
+      {
+        "source": "./plugins/unnamed"
+      },
+      {
+        "name": "empty-source",
+        "source": ""
+      },
+      {
+        "name": "empty-source-object",
+        "source": {
+          "arbitrary": true
+        }
+      },
+      null,
+      "unexpected entry"
+    ]
+  }
+}

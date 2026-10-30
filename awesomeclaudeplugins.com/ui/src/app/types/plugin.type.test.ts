@@ -3,7 +3,7 @@ import { getMarketplaceDescription, getMarketplaceName, MarketplacePluginsSchema
 
 describe('MarketplacePluginsSchema', () => {
   it('reads supported plugin fields for display', () => {
-    const payload = { name: 'catalog', plugins: [{ name: 'plugin', source: './plugins/plugin' }] }
+    const payload = { name: 'catalog', owner: { name: 'maintainer' }, plugins: [{ name: 'plugin', source: './plugins/plugin' }] }
     const result = MarketplacePluginsSchema.safeParse(payload)
     expect(result.success).toBe(true)
     if (result.success) expect(result.data.plugins).toHaveLength(1)
@@ -12,13 +12,15 @@ describe('MarketplacePluginsSchema', () => {
 
   it('extracts marketplace names only from marketplace wrappers', () => {
     expect(getMarketplaceName({ name: 'ykdojo', plugins: [{ name: 'dx', source: './' }] })).toBe('ykdojo')
-    expect(getMarketplaceName({ marketplace: { name: 'nested-market', plugins: [{ name: 'nested-plugin' }] } })).toBe('nested-market')
+    expect(getMarketplaceName({ marketplace: { name: 'nested-market', plugins: [{ name: 'nested-plugin' }] } })).toBeUndefined()
     expect(getMarketplaceName({ name: 'single-plugin', source: './plugins/single-plugin' })).toBeUndefined()
     expect(getMarketplaceName({ name: 'bad/name', plugins: [] })).toBeUndefined()
   })
 
   it('accepts current Claude marketplace source objects', () => {
     const result = MarketplacePluginsSchema.safeParse({
+      name: 'catalog',
+      owner: { name: 'maintainer' },
       plugins: [
         {
           name: 'official-plugin',
@@ -47,8 +49,62 @@ describe('MarketplacePluginsSchema', () => {
     }
   })
 
+  it('preserves safe optional metadata when another optional field is malformed', () => {
+    const result = MarketplacePluginsSchema.safeParse({
+      name: 'catalog',
+      owner: { name: 'maintainer' },
+      plugins: [
+        {
+          name: 'partial-metadata',
+          source: './plugins/partial-metadata',
+          description: 'Still visible',
+          version: '1.0.0',
+          category: 'tools',
+          commands: './commands/run.md',
+          keywords: [42],
+        },
+      ],
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.invalidPluginCount).toBe(0)
+      expect(result.data.plugins).toEqual([
+        {
+          name: 'partial-metadata',
+          source: './plugins/partial-metadata',
+          description: 'Still visible',
+          version: '1.0.0',
+          category: 'tools',
+          commands: ['./commands/run.md'],
+        },
+      ])
+    }
+  })
+
+  it('rejects dot-segments in GitHub source repository identifiers', () => {
+    const result = MarketplacePluginsSchema.safeParse({
+      name: 'catalog',
+      owner: { name: 'maintainer' },
+      plugins: [
+        { name: 'parent-owner', source: { source: 'github', repo: '../plugins' } },
+        { name: 'parent-repo', source: { source: 'github', repo: 'owner/..' } },
+        { name: 'dot-owner', source: { source: 'github', repo: './plugins' } },
+        { name: 'valid', source: { source: 'github', repo: 'owner/plugins' } },
+      ],
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.plugins.map((plugin) => plugin.name)).toEqual(['valid'])
+      expect(result.data.invalidPluginCount).toBe(3)
+    }
+  })
+
   it('skips source URLs with embedded credentials and reports their validation issue', () => {
     const result = MarketplacePluginsSchema.safeParse({
+      name: 'catalog',
+      owner: { name: 'maintainer' },
       plugins: [{ name: 'unsafe-plugin', source: { source: 'url', url: 'https://user:pass@example.com/plugin.git' } }],
     })
 
@@ -62,6 +118,8 @@ describe('MarketplacePluginsSchema', () => {
 
   it('skips traversal in source object fallback paths and reports the validation issue', () => {
     const result = MarketplacePluginsSchema.safeParse({
+      name: 'catalog',
+      owner: { name: 'maintainer' },
       plugins: [
         {
           name: 'unsafe-plugin',
@@ -78,7 +136,7 @@ describe('MarketplacePluginsSchema', () => {
     }
   })
 
-  it('accepts common marketplace wrappers and a single plugin entry', () => {
+  it('rejects marketplace shapes that do not follow the canonical root contract', () => {
     const wrapped = MarketplacePluginsSchema.safeParse({
       marketplace: {
         plugins: [{ name: 'wrapped-plugin', source: './plugins/wrapped-plugin' }],
@@ -92,20 +150,21 @@ describe('MarketplacePluginsSchema', () => {
       source: './plugins/single-plugin',
     })
 
-    expect(wrapped.success && wrapped.data.plugins[0]?.name).toBe('wrapped-plugin')
-    expect(repositories.success && repositories.data.plugins[0]?.name).toBe('repository-plugin')
-    expect(single.success && single.data.plugins[0]?.name).toBe('single-plugin')
+    expect(wrapped.success).toBe(false)
+    expect(repositories.success).toBe(false)
+    expect(single.success).toBe(false)
   })
 
-  it('treats skill-only metadata as an empty plugin list', () => {
+  it('rejects skill-only metadata without the canonical marketplace root', () => {
     const result = MarketplacePluginsSchema.safeParse({ skills: { pgns: { name: 'pgns' } }, strict: false })
 
-    expect(result.success).toBe(true)
-    if (result.success) expect(result.data.plugins).toEqual([])
+    expect(result.success).toBe(false)
   })
 
   it('accepts MCP server maps and non-standard author email values', () => {
     const result = MarketplacePluginsSchema.safeParse({
+      name: 'catalog',
+      owner: { name: 'maintainer' },
       plugins: [
         {
           name: 'firebase',
@@ -127,9 +186,12 @@ describe('MarketplacePluginsSchema', () => {
 
   it('normalizes string component paths and keeps object component maps', () => {
     const result = MarketplacePluginsSchema.safeParse({
+      name: 'catalog',
+      owner: { name: 'maintainer' },
       plugins: [
         {
           name: 'manifest-shapes',
+          source: './',
           commands: './commands/run.md',
           agents: './agents/reviewer.md',
           mcpServers: './mcp.json',
@@ -149,6 +211,8 @@ describe('MarketplacePluginsSchema', () => {
 
   it('keeps valid plugin entries when another entry is invalid and reports it', () => {
     const result = MarketplacePluginsSchema.safeParse({
+      name: 'catalog',
+      owner: { name: 'maintainer' },
       plugins: [
         { name: 'valid-plugin', source: './plugins/valid-plugin' },
         { name: 'invalid-plugin', source: '../outside' },

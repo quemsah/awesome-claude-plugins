@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "name": "invalid-sources",
+  "expected": {
+    "valid": true,
+    "pluginsCount": 0,
+    "pluginNames": []
+  },
+  "input": {
+    "name": "catalog",
+    "owner": {
+      "name": "maintainer"
+    },
+    "plugins": [
+      {
+        "name": "traversal",
+        "source": "../outside"
+      },
+      {
+        "name": "credentials",
+        "source": {
+          "source": "url",
+          "url": "https://user:pass@example.com/plugin.git"
+        }
+      },
+      {
+        "name": "blank-source",
+        "source": "   "
+      },
+      {
+        "name": "blank-path",
+        "source": {
+          "source": "github",
+          "repo": "example/repo",
+          "path": " "
+        }
+      },
+      {
+        "name": "blank-ref",
+        "source": {
+          "source": "github",
+          "repo": "example/repo",
+          "ref": "\t"
+        }
+      },
+      {
+        "name": "blank-branch",
+        "source": {
+          "source": "github",
+          "repo": "example/repo",
+          "branch": " "
+        }
+      },
+      {
+        "name": "parent-owner",
+        "source": {
+          "source": "github",
+          "repo": "../plugins"
+        }
+      },
+      {
+        "name": "parent-repo",
+        "source": {
+          "source": "github",
+          "repo": "owner/.."
+        }
+      },
+      {
+        "name": "dot-owner",
+        "source": {
+          "source": "github",
+          "repo": "./plugins"
+        }
+      }
+    ]
+  }
+}

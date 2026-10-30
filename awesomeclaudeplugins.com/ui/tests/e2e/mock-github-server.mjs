@@ -31,8 +31,8 @@ function buildRepository(owner, name, overrides = {}) {
 }
 
 const examplePlugin = {
-  name: 'Example Plugin',
-  id: 'different-plugin-id',
+  name: 'example-plugin',
+  displayName: 'Example Plugin',
   description: 'A plugin rendered from mocked marketplace data',
   version: '1.2.3',
   category: 'Testing',
@@ -45,7 +45,8 @@ const examplePlugin = {
 }
 
 const fallbackPlugin = {
-  name: 'Fallback Install Target',
+  name: 'fallback-install-target',
+  displayName: 'Fallback Install Target',
   description: 'A plugin whose source points at another repository',
   source: { source: 'plugins/fallback.json', repo: 'elsewhere/shared-plugins', branch: 'main' },
   author: { email: 'fallback@example.dev' },
@@ -67,10 +68,16 @@ const unnamedPlugin = {
  */
 const fixtures = {
   'ykdojo/claude-code-tips': {
-    marketplace: { status: 200, body: { name: 'ykdojo', plugins: [examplePlugin, fallbackPlugin, githubSourcePlugin, unnamedPlugin] } },
+    marketplace: {
+      status: 200,
+      body: { name: 'ykdojo', owner: { name: 'ykdojo' }, plugins: [examplePlugin, fallbackPlugin, githubSourcePlugin, unnamedPlugin] },
+    },
   },
   'mksglu/context-mode': {
-    marketplace: { status: 200, body: [examplePlugin] },
+    marketplace: {
+      status: 200,
+      body: { name: 'context-mode', owner: { name: 'mksglu' }, plugins: [examplePlugin] },
+    },
   },
   'ZeframLou/call-me': {
     marketplace: { status: 404, body: { message: 'Not Found' } },
