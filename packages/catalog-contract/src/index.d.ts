@@ -1,6 +1,6 @@
 import type { CatalogRecord, Repo } from './catalog.js'
 
-export { RepoSchema, ReposArraySchema } from './catalog.js'
+export { PluginSummarySchema, PublishedRepoSchema, PublishedReposArraySchema, RepoSchema, ReposArraySchema } from './catalog.js'
 export {
   encodeGitHubPath,
   GITHUB_SEGMENT_PATTERN,
@@ -20,5 +20,5 @@ export {
 } from './identity.js'
 export { isMarketplacePlugin, MarketplaceFormatError, parseMarketplace } from './marketplace.js'
 
-export type { CatalogRecord, Repo }
+export type { CatalogRecord, PluginSummary, Repo }
 export type Marketplace = { plugins: unknown[] }
