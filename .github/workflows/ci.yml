@@ -40,6 +40,8 @@ jobs:
               - 'awesomeclaudeplugins.com/package.json'
               - 'awesomeclaudeplugins.com/package-lock.json'
               - 'awesomeclaudeplugins.com/.npmrc'
+              - 'awesomeclaudeplugins.com/.nvmrc'
+              - 'awesomeclaudeplugins.com/.node-version'
               - '.github/workflows/ci.yml'
             crawler:
               - 'awesomeclaudeplugins.com/crawler/**'
@@ -52,6 +54,8 @@ jobs:
               - 'awesomeclaudeplugins.com/package.json'
               - 'awesomeclaudeplugins.com/package-lock.json'
               - 'awesomeclaudeplugins.com/.npmrc'
+              - 'awesomeclaudeplugins.com/.nvmrc'
+              - 'awesomeclaudeplugins.com/.node-version'
               - '.github/workflows/ci.yml'
 
   app:
