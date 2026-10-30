@@ -94,6 +94,7 @@ function decode(value: string | Uint8Array, path: string, issues: Issue[]): unkn
   }
 }
 
+/** Validate canonical identity segments without trusting derived URL fields. */
 function validateRepoIdentity(item: Record<string, unknown>, path: string, issues: Issue[]): void {
   const { owner, repo_name: name } = item
   if (typeof owner !== 'string' || !isValidGitHubPathSegment(owner)) {
@@ -104,6 +105,7 @@ function validateRepoIdentity(item: Record<string, unknown>, path: string, issue
   }
 }
 
+/** Validate the public numeric and text values without exposing internal storage fields. */
 function validateRepoFields(item: Record<string, unknown>, path: string, issues: Issue[]): void {
   for (const key of ['stargazers_count', 'forks_count', 'subscribers_count', 'plugins_count'] as const) {
     count(item[key], `${path}.${key}`, issues, key === 'plugins_count')

@@ -21,6 +21,25 @@ describe('catalog security boundaries', () => {
     expect(result.success).toBe(false)
   })
 
+  it('rejects dot-only GitHub owner and repository segments', () => {
+    const validRepo = {
+      stargazers_count: 1,
+      forks_count: 0,
+      subscribers_count: 0,
+      description: null,
+      owner: 'owner',
+      repo_name: 'repository',
+      plugins_count: 0,
+      id: 1,
+    }
+    for (const segment of ['.', '..']) {
+      expect(RepoSchema.safeParse({ ...validRepo, owner: segment }).success).toBe(false)
+      expect(RepoSchema.safeParse({ ...validRepo, repo_name: segment }).success).toBe(false)
+    }
+    expect(RepoSchema.safeParse(validRepo).success).toBe(true)
+    expect(RepoSchema.safeParse({ ...validRepo, repo_name: '.github' }).success).toBe(true)
+  })
+
   it('only generates catalog paths from encoded repository segments', () => {
     expect(getGitHubRepoPath('owner', 'repo')).toBe('owner/repo')
     expect(getGitHubRepoPath('owner name', 'repo name')).toBe('owner%20name/repo%20name')

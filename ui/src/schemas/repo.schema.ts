@@ -2,7 +2,10 @@
 import { z } from 'zod'
 import { isGitHubSegment } from '../lib/repositoryIdentity.ts'
 
-const GitHubSegmentSchema = z.string().refine(isGitHubSegment, 'Must be a valid GitHub path segment')
+// Match crawler validation: dot-only segments are not repository identities.
+const GitHubSegmentSchema = z
+  .string()
+  .refine((value) => value !== '.' && value !== '..' && isGitHubSegment(value), 'Must be a valid GitHub path segment')
 
 export const RepoSchema = z.object({
   stargazers_count: z.number().nullable(),

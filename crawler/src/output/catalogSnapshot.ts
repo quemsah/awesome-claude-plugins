@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3'
 import type { PublishableRepository } from '../storage/repositories.js'
 import { assertValidStatsDraft, type StatsRecord } from './statsDraft.js'
 
+/** Serialize only the eight public catalog fields, one repository per line for reviewable diffs. */
 export function renderRepos(rows: readonly PublishableRepository[]): string {
   const repositories = rows.map((row) =>
     JSON.stringify({
