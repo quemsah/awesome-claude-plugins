@@ -262,7 +262,7 @@ it('recovers the previous eight-field multiline catalog serialization', async ()
   prepareDraft(db, 'r1', timestamp)
   const files = readDraftSnapshot(db, 'r1')
   const previousReposJson = renderRepos(listPublishable(db), { includeCatalogUpdatedAt: false })
-  expect(previousReposJson.startsWith('[\\n{')).toBe(true)
+  expect(previousReposJson.startsWith('[\n{')).toBe(true)
   expect(JSON.parse(previousReposJson)[0]).not.toHaveProperty('html_url')
   expect(JSON.parse(previousReposJson)[0]).not.toHaveProperty('catalog_updated_at')
 
