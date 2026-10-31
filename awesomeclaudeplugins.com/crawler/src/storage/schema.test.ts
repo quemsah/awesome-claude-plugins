@@ -21,9 +21,13 @@ it('upgrades an existing v15 catalog without losing its catalog timestamps', () 
   const db = new Database(':memory:')
   try {
     initializeSchema(db)
-    db.prepare(
-      'INSERT INTO repositories (html_url, plugins_count, catalog_updated_at, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)',
-    ).run('https://github.com/example/older-marketplace', 2, '2026-01-01T00:00:00.000Z', 'before', 'before')
+    db.prepare('INSERT INTO repositories (html_url, plugins_count, catalog_updated_at, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)').run(
+      'https://github.com/example/older-marketplace',
+      2,
+      '2026-01-01T00:00:00.000Z',
+      'before',
+      'before',
+    )
     db.exec('DROP TABLE discovery_candidates; DROP TABLE repository_search_partitions; PRAGMA user_version = 15;')
     initializeSchema(db)
     expect(db.pragma('user_version', { simple: true })).toBe(18)
@@ -49,7 +53,9 @@ it('persists rejected candidates across reopened database connections and migrat
     db.exec('DROP TABLE rejected_repository_candidates; PRAGMA user_version = 17;')
     initializeSchema(db)
     db.prepare('INSERT INTO rejected_repository_candidates VALUES (?, ?, ?)').run(
-      'https://github.com/example/rejected', 'node-rejected', '2026-10-30T12:00:00Z',
+      'https://github.com/example/rejected',
+      'node-rejected',
+      '2026-10-30T12:00:00Z',
     )
     initializeSchema(db)
     expect(db.pragma('user_version', { simple: true })).toBe(18)
