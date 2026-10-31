@@ -4,17 +4,21 @@
   "engines": {
     "node": "24.22.2"
   },
+  "packageManager": "bun@1.3.1",
   "workspaces": [
     "ui",
     "crawler",
     "shared/*"
   ],
   "scripts": {
-    "build:ui": "npm run build --workspace=awesome-claude-plugins",
-    "start:ui": "npm run start --workspace=awesome-claude-plugins",
-    "build:crawler": "npm run build --workspace=catalog-crawler && npm run smoke:sqlite --workspace=catalog-crawler",
-    "start:crawler": "npm run crawl --workspace=catalog-crawler"
+    "build:ui": "bun run --cwd ui build",
+    "start:ui": "bun run --cwd ui start",
+    "build:crawler": "bun run --cwd crawler build && bun run --cwd crawler smoke:sqlite",
+    "start:crawler": "bun run --cwd crawler crawl"
   },
+  "trustedDependencies": [
+    "better-sqlite3"
+  ],
   "allowScripts": {
     "better-sqlite3@12.11.1": true
   }
