@@ -13,20 +13,20 @@ This is the release gate for the `missing` branch; **do not merge or enable prod
 
 ## 1. Prepare and run offline tests
 
-Use **Node.js 24.22.2** and the npm workspace in `awesomeclaudeplugins.com/`.
+Use **Bun 1.4.4** for package management and **Node.js 24.22.2** for the application runtime and native SQLite binding.
 
 ```bash
 git fetch origin
 git switch missing
 git pull --ff-only origin missing
 cd awesomeclaudeplugins.com
-npm ci
-npm run smoke:sqlite --workspace=catalog-crawler
-npm run typecheck --workspace=catalog-crawler
-npm run lint --workspace=catalog-crawler
-npm run test --workspace=catalog-crawler
-npm run typecheck:integration --workspace=catalog-crawler
-npm run test:integration --workspace=catalog-crawler
+bun install --frozen-lockfile
+bun run --filter catalog-crawler smoke:sqlite
+bun run --filter catalog-crawler typecheck
+bun run --filter catalog-crawler lint
+bun run --filter catalog-crawler test
+bun run --filter catalog-crawler typecheck:integration
+bun run --filter catalog-crawler test:integration
 ```
 
 The crawler tests cover capped pagination, saved next-page cursors, retry/reset behavior, temporal partitions, deduplication, source coverage and SQLite schema migrations through v19, including the populated #404 v16 → v19 upgrade. Re-run these before investigating any live API mismatch.
@@ -46,8 +46,8 @@ export DB_PATH="$PWD/.local/discovery-audit.sqlite"
 export PUBLISH_ENABLED=false
 export REPOSITORY_SEARCH_ENABLED=true
 # Export a read-only GITHUB_READ_TOKEN securely (do not commit it or paste it into logs).
-npm run crawl --workspace=catalog-crawler -- --dry-run | tee .local/discovery-audit.log
-npm run inspect --workspace=catalog-crawler | tee .local/discovery-inspect.json
+bun run --filter catalog-crawler crawl --dry-run | tee .local/discovery-audit.log
+bun run --filter catalog-crawler inspect | tee .local/discovery-inspect.json
 ```
 
 On PowerShell, after `New-Item -Force -ItemType Directory .local`:
@@ -57,9 +57,9 @@ $env:DB_PATH = (Join-Path (Get-Location) '.local/discovery-audit.sqlite')
 $env:PUBLISH_ENABLED = 'false'
 $env:REPOSITORY_SEARCH_ENABLED = 'true'
 # Set GITHUB_READ_TOKEN through your usual local secret manager/environment.
-npm run crawl --workspace=catalog-crawler -- --dry-run | Tee-Object -FilePath .local/discovery-audit.log
+bun run --filter catalog-crawler crawl --dry-run | Tee-Object -FilePath .local/discovery-audit.log
 if ($LASTEXITCODE -ne 0) { throw "Crawler failed with exit code $LASTEXITCODE" }
-npm run inspect --workspace=catalog-crawler | Tee-Object -FilePath .local/discovery-inspect.json
+bun run --filter catalog-crawler inspect | Tee-Object -FilePath .local/discovery-inspect.json
 if ($LASTEXITCODE -ne 0) { throw "Inspect failed with exit code $LASTEXITCODE" }
 ```
 
@@ -70,8 +70,8 @@ Run it **at least twice on the same disposable DB** to check continuation and fa
 An expired unfinished pushed window is stored as a distinct exact date range with its pagination cursor; `inspect` reports every still-unverified window as a gap. **Ordinary scheduled crawls never replay expired windows automatically.** After examining these gaps and obtaining separate approval for backfill, use the same isolated database and read-only token:
 
 ```bash
-npm run crawl --workspace=catalog-crawler -- --dry-run --reconcile-expired-gaps
-npm run inspect --workspace=catalog-crawler
+bun run --filter catalog-crawler crawl --dry-run --reconcile-expired-gaps
+bun run --filter catalog-crawler inspect
 ```
 
 The flag is accepted only with `--dry-run` and `REPOSITORY_SEARCH_ENABLED=true`. This command uses the standard **20 Repository Search HTTP attempts per run** and persists progress for the next explicitly requested replay. A gap is removed **only after a successful page-one-verified scan**; saturated windows are split into exact smaller ranges. Repeat under operator control until verified or investigate any remaining gaps. A dry run writes to `DB_PATH` but never publishes. Never use a production or actively written database for this audit.
