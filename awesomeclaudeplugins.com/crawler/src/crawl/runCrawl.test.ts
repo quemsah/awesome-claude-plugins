@@ -891,7 +891,10 @@ it.each(['code_search', 'repo_search'] as const)(
     } else {
       const result = await runCrawl(db, client, 'fatal-source', { ranges: [[0, 1]], now: () => failedAt })
       expect(result.status).toBe('completed')
-      expect(result.discovery.sources.repo_search).toMatchObject({ state: 'incomplete', warnings: ['optional-source-error'] })
+      expect(result.discovery.sources.repo_search).toMatchObject({
+        state: 'incomplete',
+        warnings: expect.arrayContaining(['fatal-error', 'optional-source-error']),
+      })
     }
     const coverage = inspect(db, failedAt)
     expect(coverage.sources[source]).toMatchObject({
