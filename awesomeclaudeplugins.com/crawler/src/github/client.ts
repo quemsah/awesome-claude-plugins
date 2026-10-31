@@ -39,7 +39,7 @@ export type GitHubGraphQLRepo = GitHubRepo & {
 export type RepositorySearchPage = {
   total_count: number
   incomplete_results: boolean
-  items: Array<Pick<GitHubRepo, 'html_url' | 'description' | 'node_id' | 'private'>>
+  items: Array<Pick<GitHubRepo, 'html_url' | 'description' | 'node_id' | 'private'> & { pushed_at?: string | null }>
 }
 export type GraphQLRateLimit = { cost: number; remaining: number; resetAt: string; limit: number; used: number }
 type GraphQLResult<T> =
@@ -200,7 +200,8 @@ function parseRepositorySearch(value: unknown): RepositorySearchPage {
         nonempty(item.html_url) &&
         description(item.description) &&
         (item.node_id === undefined || nonempty(item.node_id)) &&
-        (item.private === undefined || typeof item.private === 'boolean'),
+        (item.private === undefined || typeof item.private === 'boolean') &&
+        (item.pushed_at === undefined || item.pushed_at === null || typeof item.pushed_at === 'string'),
     )
   ) {
     throw new Error('Invalid repository search response')
