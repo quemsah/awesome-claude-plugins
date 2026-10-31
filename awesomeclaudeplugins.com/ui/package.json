@@ -16,8 +16,7 @@
     "test:e2e": "playwright test",
     "lint": "biome check .",
     "fix": "biome check --write --unsafe .",
-    "format": "biome format --write .",
-    "prepare": "cd ../.. && husky awesomeclaudeplugins.com/ui/.husky"
+    "format": "biome format --write ."
   },
   "dependencies": {
     "@awesome-claude-plugins/catalog-contract": "^0.1.0",
