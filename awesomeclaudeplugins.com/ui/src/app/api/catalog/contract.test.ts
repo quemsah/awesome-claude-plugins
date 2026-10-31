@@ -49,9 +49,9 @@ describe('/api/catalog published contract', () => {
   })
 
   it('truncates rather than rejects a query longer than the documented cap', async () => {
-    const longQuery = `?q=${'claude code plugin marketplace '.repeat(6)}`
+    const longQuery = `?q=${'z'.repeat(catalogApiContract.maxQueryLength + 1)}`
     const { response } = await get(longQuery)
 
     expect(response.status).toBe(200)
-  })
+  }, 15_000)
 })

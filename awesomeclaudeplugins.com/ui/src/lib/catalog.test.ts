@@ -1,8 +1,9 @@
 /** biome-ignore-all lint/style/useNamingConvention: Test assertion mirrors catalog field names. */
 
 import { describe, expect, it } from 'vitest'
-import { type CatalogRepo, formatCatalogRepo, getCanonicalCatalogRepos, searchCatalogRepos } from './catalog.ts'
+import { type CatalogRepo, compareCatalogRepos, formatCatalogRepo, getCanonicalCatalogRepos, searchCatalogRepos } from './catalog.ts'
 import { createFuseIndex } from './fuzzySearch.ts'
+import { isArchivedRepo } from './repoMetadata.ts'
 
 function repoKey(repo: CatalogRepo) {
   return `${repo.owner}/${repo.repo_name}`
@@ -152,5 +153,64 @@ describe('formatCatalogRepo', () => {
 
     const formatted = formatCatalogRepo(rawRepo)
     expect(formatted.plugins).toBeUndefined()
+  })
+
+  it('never guesses a missing license, but preserves an explicitly provided license state', () => {
+    const repo: CatalogRepo = {
+      id: 999,
+      owner: 'example',
+      repo_name: 'repo',
+      description: 'No license information collected yet',
+      stargazers_count: 1,
+      forks_count: 0,
+      subscribers_count: 0,
+      plugins_count: null,
+    }
+    expect(formatCatalogRepo(repo)).not.toHaveProperty('license')
+    expect(formatCatalogRepo({ ...repo, license: null })).toHaveProperty('license', null)
+    expect(formatCatalogRepo({ ...repo, license: 'MIT' })).toHaveProperty('license', 'MIT')
+  })
+})
+
+describe('archived-aware sorting', () => {
+  it('recognizes archived repositories from either source', () => {
+    const repo = { description: '[Archived] retired', archived: null } as CatalogRepo
+    expect(isArchivedRepo(repo)).toBe(true)
+    expect(isArchivedRepo({ ...repo, description: 'active', archived: true })).toBe(true)
+    expect(isArchivedRepo({ ...repo, description: 'active', archived: false })).toBe(false)
+  })
+  it('accepts both freshness sort modes with missing metadata', () => {
+    expect(searchCatalogRepos('claude', 'updated-desc').repos.length).toBeGreaterThan(0)
+    expect(searchCatalogRepos('claude', 'created-desc').repos.length).toBeGreaterThan(0)
+  })
+})
+
+describe('metadata sorting on representative records', () => {
+  const base = {
+    id: 1,
+    owner: 'demo',
+    repo_name: 'a',
+    description: 'Active',
+    stargazers_count: 1,
+    forks_count: 0,
+    subscribers_count: 0,
+    plugins_count: 1,
+  } satisfies CatalogRepo
+  it('sorts missing timestamps last', () => {
+    const recent = { ...base, pushed_at: '2026-10-30T00:00:00.000Z' }
+    const unknown = { ...base, id: 2, pushed_at: null }
+    expect(compareCatalogRepos(recent, unknown, 'updated-desc')).toBeLessThan(0)
+    expect(compareCatalogRepos(unknown, recent, 'updated-desc')).toBeGreaterThan(0)
+  })
+  it('uses first catalog discovery date rather than GitHub creation date', () => {
+    const recent = { ...base, catalog_added_at: '2026-10-30T00:00:00.000Z' }
+    const older = { ...base, catalog_added_at: '2025-01-01T00:00:00.000Z' }
+    expect(compareCatalogRepos(recent, older, 'created-desc')).toBeLessThan(0)
+  })
+  it('prefers active repositories even when an archived repository has more stars', () => {
+    const archived = { ...base, archived: true, stargazers_count: 1000 }
+    expect(compareCatalogRepos(base, archived, 'stars-desc')).toBeLessThan(0)
+    expect(compareCatalogRepos(base, archived, 'updated-desc')).toBeLessThan(0)
+    expect(isArchivedRepo({ ...base, description: '[Archived] stale text', archived: false })).toBe(false)
   })
 })

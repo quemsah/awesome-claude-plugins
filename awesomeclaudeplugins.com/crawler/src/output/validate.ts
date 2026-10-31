@@ -16,6 +16,7 @@ const repoKeys = [
   'plugins',
   'id',
 ] as const
+const optionalRepoKeys = ['pushed_at', 'catalog_added_at', 'license', 'archived'] as const
 const statsKeys = ['id', 'date', 'size'] as const
 const utcDate = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 
@@ -23,7 +24,7 @@ function safePath(path: string): string {
   if (path === 'expectedSize') return path
   const prefix = /^(repos|stats)(?:\[\d+\])?/.exec(path)?.[0] ?? 'snapshot'
   const field = path.slice(prefix.length)
-  const allowed = prefix.startsWith('repos') ? repoKeys : statsKeys
+  const allowed = prefix.startsWith('repos') ? [...repoKeys, ...optionalRepoKeys] : statsKeys
   return field.startsWith('.') && allowed.some((key) => field === `.${key}`) ? path : prefix
 }
 
@@ -117,6 +118,7 @@ function appendContractIssues(contractIssues: ContractIssue[], path: string, iss
     'description',
     'plugins',
     'catalog_updated_at',
+    ...optionalRepoKeys,
   ]
   const ordered = contractIssues
     .filter((issue) => issue.path[0] !== 'id' && issue.code !== 'unrecognized_keys')

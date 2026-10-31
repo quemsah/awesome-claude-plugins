@@ -144,12 +144,15 @@ function renderFiles(
     }
     throw new PublicationError('snapshot_invalid')
   }
+  // Keep the exact pre-metadata repos.json bytes for drafts saved before this release.
+  const preMetadataFiles = { ...files, reposJson: renderRepos(repositories, { includeNewCatalogMetadata: false }) }
   const previousReposFiles = { ...files, reposJson: renderRepos(repositories, { includeCatalogUpdatedAt: false }) }
   const legacyUrlFiles = { ...files, reposJson: renderRepos(repositories, { legacyUrls: true }) }
   return {
     files,
     hash: snapshotHash(files, true),
     compatibility: [
+      { hash: snapshotHash(preMetadataFiles, true), files: preMetadataFiles },
       {
         // The immediately preceding main branch published line-separated JSON without timestamps.
         hash: snapshotHash(previousReposFiles, true),
@@ -160,6 +163,7 @@ function renderFiles(
       // Some drafts preceded the markdown-paths.json sidecar; preserve the matching
       // exact repos.json bytes for each historical serialization.
       { hash: snapshotHash(files, false), files },
+      { hash: snapshotHash(preMetadataFiles, false), files: preMetadataFiles },
       { hash: snapshotHash(previousReposFiles, false), files: previousReposFiles },
       { hash: snapshotHash(legacyUrlFiles, false), files: legacyUrlFiles },
     ],

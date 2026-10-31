@@ -51,6 +51,8 @@ it('runs discovery, enrichment, snapshot generation and Git publication through 
         forks_count: 2,
         subscribers_count: 3,
         pushed_at: '2026-09-23T00:00:00Z',
+        archived: false,
+        license: { spdx_id: 'MIT' },
         private: false,
         owner: { login: 'acme', html_url: 'https://github.com/acme' },
       })
@@ -149,6 +151,10 @@ it('runs discovery, enrichment, snapshot generation and Git publication through 
       plugins_count: 2,
       plugins: [{ name: 'one' }, { name: 'two' }],
       catalog_updated_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
+      pushed_at: '2026-09-23T00:00:00.000Z',
+      catalog_added_at: '2026-09-23T12:00:00.000Z',
+      license: 'MIT',
+      archived: false,
       id: 1,
     },
   ])
