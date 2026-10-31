@@ -661,6 +661,69 @@ function recordKnownInvalidMarketplace(
   return null
 }
 
+/** Keep the ETag/304 recovery checks separate from the REST request/error handling. */
+function finishNotModifiedLegacyMarketplace(
+  db: Database.Database,
+  runId: string,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  counts: EnrichmentCounts,
+  etag: string | undefined,
+  cachedSummaryValid: boolean,
+  now: () => string,
+  log?: Log,
+  writes?: EnrichmentWriteBatch,
+): MarketplaceState | null {
+  if (row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION) {
+    recordProblem(
+      db,
+      runId,
+      counts,
+      row,
+      'marketplace_not_modified_with_stale_parser',
+      loaded.ready,
+      false,
+      now,
+      0,
+      log,
+      {
+        request: `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/marketplace.json`,
+        parserVersion: row.marketplace_parser_version,
+        expectedParserVersion: MARKETPLACE_PARSER_VERSION,
+      },
+      writes,
+    )
+    return null
+  }
+  if (!cachedSummaryValid) {
+    recordProblem(
+      db,
+      runId,
+      counts,
+      row,
+      'marketplace_not_modified_without_valid_summary',
+      loaded.ready,
+      false,
+      now,
+      0,
+      undefined,
+      {},
+      writes,
+    )
+    return null
+  }
+  if (row.plugins_count === null) {
+    recordProblem(db, runId, counts, row, 'marketplace_not_modified_without_data', loaded.ready, false, now, 0, undefined, {}, writes)
+    return null
+  }
+  return {
+    pluginsCount: row.plugins_count,
+    pluginsJson: row.plugins_json,
+    marketplaceOid: row.marketplace_oid,
+    marketplaceEtag: etag ?? row.marketplace_etag,
+  }
+}
+
 async function loadLegacyMarketplace(
   db: Database.Database,
   reader: GitHubReader,
@@ -749,52 +812,12 @@ async function loadLegacyMarketplace(
       writes,
     )
   }
-  if (result.kind === 'not-modified' && row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION) {
-    recordProblem(
-      db,
-      runId,
-      counts,
-      row,
-      'marketplace_not_modified_with_stale_parser',
-      loaded.ready,
-      false,
-      now,
-      0,
-      log,
-      {
-        request: `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/marketplace.json`,
-        parserVersion: row.marketplace_parser_version,
-        expectedParserVersion: MARKETPLACE_PARSER_VERSION,
-      },
-      writes,
-    )
-    return null
-  }
-  const pluginsCount = result.kind === 'not-modified' ? row.plugins_count : result.data.plugins.length
-  if (result.kind === 'not-modified' && !cachedSummaryValid) {
-    recordProblem(
-      db,
-      runId,
-      counts,
-      row,
-      'marketplace_not_modified_without_valid_summary',
-      loaded.ready,
-      false,
-      now,
-      0,
-      undefined,
-      {},
-      writes,
-    )
-    return null
-  }
-  if (pluginsCount === null) {
-    recordProblem(db, runId, counts, row, 'marketplace_not_modified_without_data', loaded.ready, false, now, 0, undefined, {}, writes)
-    return null
+  if (result.kind === 'not-modified') {
+    return finishNotModifiedLegacyMarketplace(db, runId, row, loaded, counts, result.etag, cachedSummaryValid, now, log, writes)
   }
   return {
-    pluginsCount,
-    pluginsJson: result.kind === 'not-modified' ? row.plugins_json : serializePluginSummaries(result.data.plugins),
+    pluginsCount: result.data.plugins.length,
+    pluginsJson: serializePluginSummaries(result.data.plugins),
     marketplaceOid: row.marketplace_oid,
     marketplaceEtag: result.etag ?? row.marketplace_etag,
   }
