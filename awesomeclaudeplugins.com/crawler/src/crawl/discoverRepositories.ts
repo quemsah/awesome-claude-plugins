@@ -260,7 +260,13 @@ export async function discoverRepositories(
       warnings.add('expired-rolling-gaps-require-reconciliation')
       summary.warnings = [...warnings]
     }
-    summary.state = expiredGaps ? 'incomplete' : work.length === 0 ? 'not_due' : summary.incompletePartitions === 0 ? 'complete' : 'incomplete'
+    summary.state = expiredGaps
+      ? 'incomplete'
+      : work.length === 0
+        ? 'not_due'
+        : summary.incompletePartitions === 0
+          ? 'complete'
+          : 'incomplete'
     recordDiscoverySourceOutcome(
       db,
       runId,

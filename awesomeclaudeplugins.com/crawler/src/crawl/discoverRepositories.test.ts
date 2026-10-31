@@ -9,7 +9,12 @@ import {
   splitDateWindow,
 } from '../github/repositorySearchQueries.js'
 import { recordRejectedCandidate } from '../storage/rejectedCandidates.js'
-import { ensureRepositorySearchPartition, expiredPushedGapCount, repositorySearchCoverage, saveRepositorySearchPartition } from '../storage/repositorySearch.js'
+import {
+  ensureRepositorySearchPartition,
+  expiredPushedGapCount,
+  repositorySearchCoverage,
+  saveRepositorySearchPartition,
+} from '../storage/repositorySearch.js'
 import { beginRun, completeRun } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
 import { discoverRepositories } from './discoverRepositories.js'
@@ -290,11 +295,17 @@ it('does not certify a stale resumed cursor until a full page-one scan has verif
   const calls: number[] = []
   const pageOne = Array.from({ length: 100 }, (_, index) => item(`fresh-${index}`))
   const pageTwo = Array.from({ length: 50 }, (_, index) => item(`later-${index}`))
-  await discoverRepositories(db, reader(async (queryText, pageNumber) => {
-    if (queryText !== target) return page()
-    calls.push(pageNumber)
-    return page(pageNumber === 1 ? pageOne : pageTwo, 150)
-  }), 'run', undefined, () => at)
+  await discoverRepositories(
+    db,
+    reader(async (queryText, pageNumber) => {
+      if (queryText !== target) return page()
+      calls.push(pageNumber)
+      return page(pageNumber === 1 ? pageOne : pageTwo, 150)
+    }),
+    'run',
+    undefined,
+    () => at,
+  )
   expect(calls).toEqual([2])
   expect(checkpoint(db, query.queryId, partition.partition_key)).toMatchObject({
     status: 'incomplete',
@@ -302,12 +313,18 @@ it('does not certify a stale resumed cursor until a full page-one scan has verif
     last_completed_at: null,
   })
   calls.length = 0
-  await discoverRepositories(db, reader(async (queryText, pageNumber) => {
-    if (queryText !== target) return page()
-    calls.push(pageNumber)
-    // A new repository may have moved to page one without affecting total_count.
-    return page(pageNumber === 1 ? [item('moved-on-top'), ...pageOne.slice(1)] : pageTwo, 150)
-  }), 'run', undefined, () => at)
+  await discoverRepositories(
+    db,
+    reader(async (queryText, pageNumber) => {
+      if (queryText !== target) return page()
+      calls.push(pageNumber)
+      // A new repository may have moved to page one without affecting total_count.
+      return page(pageNumber === 1 ? [item('moved-on-top'), ...pageOne.slice(1)] : pageTwo, 150)
+    }),
+    'run',
+    undefined,
+    () => at,
+  )
   expect(calls).toEqual([1, 2])
   expect(checkpoint(db, query.queryId, partition.partition_key)).toMatchObject({ status: 'complete' })
   expect(db.prepare("SELECT html_url FROM repositories WHERE description = 'moved-on-top'").get()).toEqual({

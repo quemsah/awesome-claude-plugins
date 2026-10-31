@@ -87,7 +87,8 @@ export function pruneExpiredPushedPartitions(db: Database.Database, activeWindow
       }
       setSetting(db, gapSetting, JSON.stringify(gaps))
     }
-    return db.prepare(`DELETE FROM repository_search_partitions
+    return db
+      .prepare(`DELETE FROM repository_search_partitions
       WHERE query_version = ? AND date_field = 'pushed' AND date_end < ?`)
       .run(repositorySearchQueryVersion, activeWindowStart).changes
   })()
@@ -155,10 +156,15 @@ export function repositorySearchCoverage(db: Database.Database, at: string) {
     freshness,
     due: freshness !== 'fresh',
     stale,
-    lastCompleteScan: incomplete.length || expiredLeafCount ? null : (leaves.map(({ row }) => row?.last_completed_at ?? null).sort()[0] ?? null),
+    lastCompleteScan:
+      incomplete.length || expiredLeafCount ? null : (leaves.map(({ row }) => row?.last_completed_at ?? null).sort()[0] ?? null),
     incompletePartitions: incomplete.length + expiredLeafCount,
     expiredRollingGaps: unreconciledGaps,
-    warnings: [...(incomplete.length ? ['incomplete_partitions'] : []), ...(expiredLeafCount ? ['expired_rolling_gaps_require_reconciliation'] : []), ...(stale ? ['stale_partitions'] : [])],
+    warnings: [
+      ...(incomplete.length ? ['incomplete_partitions'] : []),
+      ...(expiredLeafCount ? ['expired_rolling_gaps_require_reconciliation'] : []),
+      ...(stale ? ['stale_partitions'] : []),
+    ],
     partitions: incomplete.map(({ queryId, partitionKey: key, row }) => ({
       queryId,
       queryVersion: repositorySearchQueryVersion,
