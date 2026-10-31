@@ -174,7 +174,9 @@ export async function discoverRepositories(
   const attempted = new Set<RepositorySearchPartition>()
   const work: Work[] = []
   const refreshBefore = Date.parse(at) - 90 * 86_400_000
+  const activePushedStart = rollingPushedWindow(at).start
   function collect(query: RepositorySearchQuery, window: DateWindow): void {
+    if (window.field === 'pushed' && window.end < activePushedStart) return
     const partition = ensureRepositorySearchPartition(db, query.queryId, window)
     const children = partition.status === 'split' ? splitDateWindow(window) : null
     if (children) {
@@ -191,7 +193,7 @@ export async function discoverRepositories(
     work.push({ query, window, partition, resumedRolling: false })
   }
   runWhileActive(db, runId, () => {
-    pruneExpiredPushedPartitions(db, rollingPushedWindow(at).start)
+    pruneExpiredPushedPartitions(db, activePushedStart)
     for (const window of [rollingPushedWindow(at), ...historicalWindows(at)]) {
       for (const query of repositorySearchQueries) collect(query, window)
     }
@@ -387,7 +389,7 @@ export async function discoverRepositories(
               saveRepositorySearchPartition(db, partition)
               const remaining = work.slice(index + 1)
               remaining.push(
-                ...children.map((child) => ({
+                ...children.filter((child) => child.field !== 'pushed' || child.end >= activePushedStart).map((child) => ({
                   query,
                   window: child,
                   partition: ensureRepositorySearchPartition(db, query.queryId, child),
