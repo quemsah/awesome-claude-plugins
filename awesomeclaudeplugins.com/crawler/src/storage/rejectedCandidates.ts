@@ -1,12 +1,7 @@
 import type Database from 'better-sqlite3'
 
 /** Rejections are durable across runs, independent of deleted repository rows. */
-export function recordRejectedCandidate(
-  db: Database.Database,
-  htmlUrl: string,
-  githubNodeId: string | null,
-  rejectedAt: string,
-): void {
+export function recordRejectedCandidate(db: Database.Database, htmlUrl: string, githubNodeId: string | null, rejectedAt: string): void {
   db.prepare(`
     INSERT INTO rejected_repository_candidates (html_url, github_node_id, rejected_at)
     VALUES (?, ?, ?)
@@ -24,11 +19,13 @@ export function isUnchangedRejectedCandidate(
   githubNodeId: string | null | undefined,
   pushedAt: string | null | undefined,
 ): boolean {
-  const rejected = db.prepare(`
+  const rejected = db
+    .prepare(`
     SELECT rejected_at FROM rejected_repository_candidates
     WHERE html_url = ? COLLATE NOCASE OR (github_node_id IS NOT NULL AND github_node_id = ?)
     ORDER BY rejected_at DESC LIMIT 1
-  `).get(htmlUrl, githubNodeId ?? null) as { rejected_at: string } | undefined
+  `)
+    .get(htmlUrl, githubNodeId ?? null) as { rejected_at: string } | undefined
   if (!rejected) return false
   const pushed = pushedAt ? Date.parse(pushedAt) : Number.NaN
   const rejectedTime = Date.parse(rejected.rejected_at)
