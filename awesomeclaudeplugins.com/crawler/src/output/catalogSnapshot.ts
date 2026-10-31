@@ -17,11 +17,17 @@ function publicTimestamp(value: string | null | undefined): string | undefined {
   const m = Number(month)
   const d = Number(day)
   if (
-    y < 1000 || m < 1 || m > 12 || d < 1 ||
+    y < 1000 ||
+    m < 1 ||
+    m > 12 ||
+    d < 1 ||
     d > new Date(Date.UTC(y, m, 0)).getUTCDate() ||
-    Number(hour) > 23 || Number(minute) > 59 || Number(second) > 59 ||
+    Number(hour) > 23 ||
+    Number(minute) > 59 ||
+    Number(second) > 59 ||
     (zone !== 'Z' && (Number(zone.slice(1, 3)) > 23 || Number(zone.slice(4)) > 59))
-  ) return undefined
+  )
+    return undefined
   const parsed = Date.parse(value)
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : undefined
 }
@@ -58,14 +64,16 @@ export function renderRepos(
       plugins_count: row.plugins_count,
       ...(options.includeCatalogUpdatedAt === false || plugins === null ? {} : { plugins }),
       ...(options.includeCatalogUpdatedAt === false ? {} : { catalog_updated_at: row.catalog_updated_at }),
-      ...((options.includeCatalogUpdatedAt === false || options.includeNewCatalogMetadata === false) || !publicTimestamp(row.pushed_at)
+      ...(options.includeCatalogUpdatedAt === false || options.includeNewCatalogMetadata === false || !publicTimestamp(row.pushed_at)
         ? {}
         : { pushed_at: publicTimestamp(row.pushed_at) }),
-      ...((options.includeCatalogUpdatedAt === false || options.includeNewCatalogMetadata === false) || !publicTimestamp(row.catalog_added_at)
+      ...(options.includeCatalogUpdatedAt === false || options.includeNewCatalogMetadata === false || !publicTimestamp(row.catalog_added_at)
         ? {}
         : { catalog_added_at: publicTimestamp(row.catalog_added_at) }),
-      ...((options.includeCatalogUpdatedAt === false || options.includeNewCatalogMetadata === false) || !row.license ? {} : { license: row.license }),
-      ...((options.includeCatalogUpdatedAt === false || options.includeNewCatalogMetadata === false) || row.archived == null
+      ...(options.includeCatalogUpdatedAt === false || options.includeNewCatalogMetadata === false || !row.license
+        ? {}
+        : { license: row.license }),
+      ...(options.includeCatalogUpdatedAt === false || options.includeNewCatalogMetadata === false || row.archived == null
         ? {}
         : { archived: row.archived === true || row.archived === 1 }),
       id: row.id,
