@@ -2000,6 +2000,96 @@ async function enrichGraphQLBatch(
   }
 }
 
+function createRepositoryProgressTracker(
+  db: Database.Database,
+  runId: string,
+  removedIds: Set<number>,
+  now: () => string,
+): (row: RepositoryRow) => void {
+  const processedIds = new Set<number>()
+  const accountedRemovedIds = new Set<number>()
+  return (row: RepositoryRow) => {
+    let processed = 0
+    if (!processedIds.has(row.id)) {
+      processedIds.add(row.id)
+      processed++
+    }
+    if (removedIds.size !== accountedRemovedIds.size) {
+      for (const removedId of removedIds) {
+        if (accountedRemovedIds.has(removedId)) continue
+        accountedRemovedIds.add(removedId)
+        if (processedIds.has(removedId)) continue
+        processedIds.add(removedId)
+        processed++
+      }
+    }
+    if (processed > 0) advanceRunPhase(db, runId, processed, now())
+  }
+}
+
+type EnrichmentPageContext = {
+  db: Database.Database
+  reader: GitHubReader
+  runId: string
+  counts: EnrichmentCounts
+  removedIds: Set<number>
+  pendingCandidateIds: Set<number>
+  retryQueue: RetryQueue
+  batchState: { size: number; stableBatches: number }
+  now: () => string
+  onProgress?: () => void
+  log?: Log
+  markRepositoryProcessed: (row: RepositoryRow) => void
+}
+
+async function enrichPage(
+  rows: RepositoryRow[],
+  {
+    db, reader, runId, counts, removedIds, pendingCandidateIds, retryQueue, batchState, now,
+    onProgress, log, markRepositoryProcessed,
+  }: EnrichmentPageContext,
+): Promise<void> {
+  const eligibleRows: RepositoryRow[] = []
+  for (const row of rows) {
+    const knownInvalidMarketplace =
+      row.marketplace_failed_oid !== null && row.marketplace_failed_parser_version === MARKETPLACE_INVALID_CONTENT_CACHE_VERSION
+    if (row.plugins_count !== null || knownInvalidMarketplace) {
+      eligibleRows.push(row)
+    } else if (pendingCandidateIds.has(row.id)) {
+      eligibleRows.push(row)
+    } else {
+      counts.deferredCandidates++
+    }
+  }
+  const graphQLRows = eligibleRows.filter((row) => row.github_node_id && parseRepositoryUrl(row.html_url ?? ''))
+  const legacyRows = eligibleRows.filter((row) => !row.github_node_id || !parseRepositoryUrl(row.html_url ?? ''))
+  for (const row of legacyRows) {
+    if (!removedIds.has(row.id)) {
+      await enrichOne(db, reader, runId, row, counts, removedIds, now, FIRST_PASS_REST, retryQueue, onProgress, log)
+    }
+    if (!retryQueue.deferredIds.has(row.id)) markRepositoryProcessed(row)
+  }
+  for (let offset = 0; offset < graphQLRows.length; ) {
+    const batch = graphQLRows.slice(offset, offset + batchState.size)
+    offset += batch.length
+    await enrichGraphQLBatch(
+      db,
+      reader,
+      runId,
+      batch,
+      counts,
+      removedIds,
+      batchState,
+      now,
+      FIRST_PASS_REST,
+      retryQueue,
+      onProgress,
+      log,
+      markRepositoryProcessed,
+    )
+  }
+}
+
 export async function enrichRepositories(
   db: Database.Database,
   reader: GitHubReader,
@@ -2036,69 +2126,16 @@ export async function enrichRepositories(
   }
   const removedIds = new Set<number>()
   const retryQueue: RetryQueue = { tasks: [], deferredIds: new Set<number>() }
-  const processedIds = new Set<number>()
-  const accountedRemovedIds = new Set<number>()
-  const markRepositoryProcessed = (row: RepositoryRow) => {
-    let processed = 0
-    if (!processedIds.has(row.id)) {
-      processedIds.add(row.id)
-      processed++
-    }
-    if (removedIds.size !== accountedRemovedIds.size) {
-      for (const removedId of removedIds) {
-        if (accountedRemovedIds.has(removedId)) continue
-        accountedRemovedIds.add(removedId)
-        if (processedIds.has(removedId)) continue
-        processedIds.add(removedId)
-        processed++
-      }
-    }
-    if (processed > 0) advanceRunPhase(db, runId, processed, now())
-  }
+  const markRepositoryProcessed = createRepositoryProgressTracker(db, runId, removedIds, now)
   const batchState = { size: 25, stableBatches: 0 }
   while (true) {
     const rows = listForEnrichment(db, lastId, 50)
     if (rows.length === 0) break
     for (const row of rows) lastId = row.id
-    const eligibleRows: RepositoryRow[] = []
-    for (const row of rows) {
-      const knownInvalidMarketplace =
-        row.marketplace_failed_oid !== null && row.marketplace_failed_parser_version === MARKETPLACE_INVALID_CONTENT_CACHE_VERSION
-      if (row.plugins_count !== null || knownInvalidMarketplace) {
-        eligibleRows.push(row)
-      } else if (pendingCandidateIds.has(row.id)) {
-        eligibleRows.push(row)
-      } else {
-        counts.deferredCandidates++
-      }
-    }
-    const graphQLRows = eligibleRows.filter((row) => row.github_node_id && parseRepositoryUrl(row.html_url ?? ''))
-    const legacyRows = eligibleRows.filter((row) => !row.github_node_id || !parseRepositoryUrl(row.html_url ?? ''))
-    for (const row of legacyRows) {
-      if (!removedIds.has(row.id)) {
-        await enrichOne(db, reader, runId, row, counts, removedIds, now, FIRST_PASS_REST, retryQueue, onProgress, log)
-      }
-      if (!retryQueue.deferredIds.has(row.id)) markRepositoryProcessed(row)
-    }
-    for (let offset = 0; offset < graphQLRows.length; ) {
-      const batch = graphQLRows.slice(offset, offset + batchState.size)
-      offset += batch.length
-      await enrichGraphQLBatch(
-        db,
-        reader,
-        runId,
-        batch,
-        counts,
-        removedIds,
-        batchState,
-        now,
-        FIRST_PASS_REST,
-        retryQueue,
-        onProgress,
-        log,
-        markRepositoryProcessed,
-      )
-    }
+    await enrichPage(rows, {
+      db, reader, runId, counts, removedIds, pendingCandidateIds, retryQueue,
+      batchState, now, onProgress, log, markRepositoryProcessed,
+    })
     onProgress?.()
   }
 
