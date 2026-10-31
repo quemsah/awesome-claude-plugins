@@ -38,8 +38,8 @@ jobs:
               - 'awesomeclaudeplugins.com/ui/**'
               - 'awesomeclaudeplugins.com/shared/**'
               - 'awesomeclaudeplugins.com/package.json'
-              - 'awesomeclaudeplugins.com/package-lock.json'
-              - 'awesomeclaudeplugins.com/.npmrc'
+              - 'awesomeclaudeplugins.com/bun.lock'
+              - 'awesomeclaudeplugins.com/.bun-version'
               - 'awesomeclaudeplugins.com/.nvmrc'
               - 'awesomeclaudeplugins.com/.node-version'
               - '.github/workflows/ci.yml'
@@ -52,8 +52,8 @@ jobs:
               - 'awesomeclaudeplugins.com/ui/package.json'
               - 'awesomeclaudeplugins.com/shared/**'
               - 'awesomeclaudeplugins.com/package.json'
-              - 'awesomeclaudeplugins.com/package-lock.json'
-              - 'awesomeclaudeplugins.com/.npmrc'
+              - 'awesomeclaudeplugins.com/bun.lock'
+              - 'awesomeclaudeplugins.com/.bun-version'
               - 'awesomeclaudeplugins.com/.nvmrc'
               - 'awesomeclaudeplugins.com/.node-version'
               - '.github/workflows/ci.yml'
@@ -74,39 +74,45 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@4bc047ad259df6fc24a6c9b0f9a0cb08cf17fbe5 # v2.0.1
         with:
-          node-version-file: awesomeclaudeplugins.com/ui/.nvmrc
-          cache: 'npm'
-          cache-dependency-path: awesomeclaudeplugins.com/package-lock.json
+          bun-version-file: awesomeclaudeplugins.com/.bun-version
 
-      - name: Install app workspace dependencies
-        run: npm ci --workspace=awesome-claude-plugins --include-workspace-root=false
+      - name: Cache Bun global install cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('awesomeclaudeplugins.com/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
         working-directory: awesomeclaudeplugins.com
 
       - name: Run typecheck
-        run: npm run typecheck
+        run: bun run typecheck
         working-directory: awesomeclaudeplugins.com/ui
 
       - name: Run linter
-        run: npm run lint
+        run: bun run lint
         working-directory: awesomeclaudeplugins.com/ui
 
       - name: Run unit tests
-        run: npm run test:unit
+        run: bun run test:unit
         working-directory: awesomeclaudeplugins.com/ui
 
       - name: Cache Next.js build cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: awesomeclaudeplugins.com/ui/.next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('awesomeclaudeplugins.com/package-lock.json') }}-${{ hashFiles('awesomeclaudeplugins.com/ui/src/**', 'awesomeclaudeplugins.com/ui/next.config.ts', 'awesomeclaudeplugins.com/ui/postcss.config.mjs', 'awesomeclaudeplugins.com/ui/tailwind.config.ts') }}
+          key: ${{ runner.os }}-next-${{ hashFiles('awesomeclaudeplugins.com/bun.lock') }}-${{ hashFiles('awesomeclaudeplugins.com/ui/src/**', 'awesomeclaudeplugins.com/ui/next.config.ts', 'awesomeclaudeplugins.com/ui/postcss.config.mjs', 'awesomeclaudeplugins.com/ui/tailwind.config.ts') }}
           restore-keys: |
-            ${{ runner.os }}-next-${{ hashFiles('awesomeclaudeplugins.com/package-lock.json') }}-
+            ${{ runner.os }}-next-${{ hashFiles('awesomeclaudeplugins.com/bun.lock') }}-
 
       - name: Build Next.js app
-        run: npm run build
+        run: bun run build
         working-directory: awesomeclaudeplugins.com/ui
         env:
           GITHUB_API_URL: http://127.0.0.1:3100
@@ -117,20 +123,20 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('awesomeclaudeplugins.com/package-lock.json') }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles('awesomeclaudeplugins.com/bun.lock') }}
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: bun x playwright install --with-deps chromium
         working-directory: awesomeclaudeplugins.com/ui
         if: steps.playwright-cache.outputs.cache-hit != 'true'
 
       - name: Ensure Playwright system dependencies
-        run: npx playwright install-deps chromium
+        run: bun x playwright install-deps chromium
         working-directory: awesomeclaudeplugins.com/ui
         if: steps.playwright-cache.outputs.cache-hit == 'true'
 
       - name: Run browser e2e tests
-        run: npm run test:e2e
+        run: bun run test:e2e
         working-directory: awesomeclaudeplugins.com/ui
         env:
           PLAYWRIGHT_PREBUILT: '1'
@@ -162,37 +168,43 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@4bc047ad259df6fc24a6c9b0f9a0cb08cf17fbe5 # v2.0.1
         with:
-          node-version-file: awesomeclaudeplugins.com/crawler/.nvmrc
-          cache: 'npm'
-          cache-dependency-path: awesomeclaudeplugins.com/package-lock.json
+          bun-version-file: awesomeclaudeplugins.com/.bun-version
+
+      - name: Cache Bun global install cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('awesomeclaudeplugins.com/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
 
       - name: Install crawler workspace dependencies
-        run: npm ci --workspace=catalog-crawler --include-workspace-root=false
+        run: bun install --frozen-lockfile
         working-directory: awesomeclaudeplugins.com
 
       - name: Smoke test native SQLite bindings
-        run: npm run smoke:sqlite
+        run: bun run smoke:sqlite
         working-directory: awesomeclaudeplugins.com/crawler
 
       - name: Run crawler typecheck
-        run: npm run typecheck
+        run: bun run typecheck
         working-directory: awesomeclaudeplugins.com/crawler
 
       - name: Run crawler linter
-        run: npm run lint
+        run: bun run lint
         working-directory: awesomeclaudeplugins.com/crawler
 
       - name: Run crawler unit tests
-        run: npm run test
+        run: bun run test
         working-directory: awesomeclaudeplugins.com/crawler
 
       - name: Typecheck crawler shared contract integration
-        run: npm run typecheck:integration
+        run: bun run typecheck:integration
         working-directory: awesomeclaudeplugins.com/crawler
 
       - name: Test crawler output with the shared catalog contract
-        run: npm run test:integration
+        run: bun run test:integration
         working-directory: awesomeclaudeplugins.com/crawler
