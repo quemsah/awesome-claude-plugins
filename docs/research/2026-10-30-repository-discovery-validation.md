@@ -37,6 +37,7 @@ Create a disposable database path, or first make a consistent, isolated snapshot
 From `awesomeclaudeplugins.com/` on Bash:
 
 ```bash
+set -euo pipefail
 mkdir -p .local
 export DB_PATH="$PWD/.local/discovery-audit.sqlite"
 export PUBLISH_ENABLED=false
@@ -52,7 +53,9 @@ $env:DB_PATH = (Join-Path (Get-Location) '.local/discovery-audit.sqlite')
 $env:PUBLISH_ENABLED = 'false'
 # Set GITHUB_READ_TOKEN through your usual local secret manager/environment.
 npm run crawl --workspace=catalog-crawler -- --dry-run | Tee-Object -FilePath .local/discovery-audit.log
+if ($LASTEXITCODE -ne 0) { throw "Crawler failed with exit code $LASTEXITCODE" }
 npm run inspect --workspace=catalog-crawler | Tee-Object -FilePath .local/discovery-inspect.json
+if ($LASTEXITCODE -ne 0) { throw "Inspect failed with exit code $LASTEXITCODE" }
 ```
 
 Run it **at least twice on the same disposable DB** to check continuation and fair progress. Repeat on a different UTC date if checking shifted rolling windows. Stop if errors or API-budget usage are abnormal; stopping a run leaves incomplete checkpoints to be retried.
