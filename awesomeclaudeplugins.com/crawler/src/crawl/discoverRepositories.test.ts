@@ -8,9 +8,9 @@ import {
   rollingPushedWindow,
   splitDateWindow,
 } from '../github/repositorySearchQueries.js'
+import { recordRejectedCandidate } from '../storage/rejectedCandidates.js'
 import { ensureRepositorySearchPartition, saveRepositorySearchPartition } from '../storage/repositorySearch.js'
 import { beginRun, completeRun } from '../storage/runs.js'
-import { recordRejectedCandidate } from '../storage/rejectedCandidates.js'
 import { initializeSchema } from '../storage/schema.js'
 import { discoverRepositories } from './discoverRepositories.js'
 
@@ -1035,15 +1035,19 @@ it('does not rediscover unchanged marketplace 404 rejections but retries after a
   const current = () => '2026-10-30T12:30:00Z'
   const first = await discoverRepositories(
     db,
-    reader(async (query) => query === firstPushed ? page([item('rejected', { pushed_at: oldPush })]) : page()),
-    'run', undefined, current,
+    reader(async (query) => (query === firstPushed ? page([item('rejected', { pushed_at: oldPush })]) : page())),
+    'run',
+    undefined,
+    current,
   )
   expect(first.uniqueCandidates).toBe(0)
   expect(db.prepare('SELECT COUNT(*) AS n FROM repositories').get()).toEqual({ n: 0 })
   const second = await discoverRepositories(
     db,
-    reader(async (query) => query === firstPushed ? page([item('rejected', { pushed_at: newPush })]) : page()),
-    'run', undefined, current,
+    reader(async (query) => (query === firstPushed ? page([item('rejected', { pushed_at: newPush })]) : page())),
+    'run',
+    undefined,
+    current,
   )
   expect(second.uniqueCandidates).toBe(1)
   expect(db.prepare('SELECT COUNT(*) AS n FROM repositories').get()).toEqual({ n: 1 })
@@ -1061,15 +1065,19 @@ it('bounds the pushed backlog over consecutive saturated days', async () => {
       'run', undefined, () => now,
     )
     const activeStart = rollingPushedWindow(now).start
-    const expired = db.prepare(`
+    const expired = db
+      .prepare(`
       SELECT COUNT(*) AS n FROM repository_search_partitions
       WHERE date_field = 'pushed' AND date_end < ?
-    `).get(activeStart) as { n: number }
+    `)
+      .get(activeStart) as { n: number }
     expect(expired.n).toBe(0)
-    const pending = db.prepare(`
+    const pending = db
+      .prepare(`
       SELECT COUNT(*) AS n FROM repository_search_partitions
       WHERE date_field = 'pushed' AND status IN ('pending', 'incomplete')
-    `).get() as { n: number }
+    `)
+      .get() as { n: number }
     expect(pending.n).toBeLessThan(2000)
   }
 })
