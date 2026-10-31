@@ -127,7 +127,7 @@ it('updates a discovered row atomically, preserving its original id and URL', ()
   expect(updateEnriched(db, id + 500, enriched)).toBe(false)
 })
 
-it('advances catalog_updated_at only when an exported repository field changes', () => {
+it('advances catalog_updated_at when exported metrics or freshness change', () => {
   const { upsertDiscovery, updateEnriched } = repositoryStorage
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/example/repo', 'first')
@@ -135,7 +135,7 @@ it('advances catalog_updated_at only when an exported repository field changes',
   db.prepare("UPDATE repositories SET catalog_updated_at = '2020-01-01T00:00:00.000Z' WHERE id = ?").run(id)
 
   updateEnriched(db, id, { ...enriched, repo_updated: '2026-01-01T00:00:00Z' })
-  expect(db.prepare('SELECT catalog_updated_at FROM repositories WHERE id = ?').get(id)).toEqual({
+  expect(db.prepare('SELECT catalog_updated_at FROM repositories WHERE id = ?').get(id)).not.toEqual({
     catalog_updated_at: '2020-01-01T00:00:00.000Z',
   })
 
@@ -198,6 +198,10 @@ it('publishes only complete canonical GitHub rows with the ten public columns', 
       repo_name: 'repo',
       plugins_count: 3,
       catalog_updated_at: expect.any(String),
+      pushed_at: '2025-03-01T09:00:00Z',
+      catalog_added_at: expect.any(String),
+      license: null,
+      archived: null,
       plugins_json: null,
     },
   ])
@@ -228,6 +232,10 @@ it('publishes canonical enriched rows with unknown plugin counts without leaking
       repo_name: 'repo',
       plugins_count: null,
       catalog_updated_at: expect.any(String),
+      pushed_at: '2025-03-01T09:00:00Z',
+      catalog_added_at: expect.any(String),
+      license: null,
+      archived: null,
       plugins_json: null,
     },
   ])
@@ -244,4 +252,21 @@ it('rejects dot-segment identities even when their stored URL matches the raw ow
     owner_url: 'https://github.com/..',
   })
   expect(listPublishable(db)).toEqual([])
+})
+
+it('stores nullable GitHub metadata without changing the first discovery date', () => {
+  const db = database()
+  const id = repositoryStorage.upsertDiscovery(db, 'https://github.com/example/metadata', null, '2024-01-02T00:00:00.000Z')
+  repositoryStorage.updateEnriched(db, id, { ...enriched, license: 'MIT', archived: 1 })
+  expect(db.prepare('SELECT license, archived, createdAt FROM repositories WHERE id = ?').get(id)).toEqual({
+    license: 'MIT',
+    archived: 1,
+    createdAt: '2024-01-02T00:00:00.000Z',
+  })
+  repositoryStorage.updateEnriched(db, id, { ...enriched, license: null, archived: 0 })
+  expect(db.prepare('SELECT license, archived, createdAt FROM repositories WHERE id = ?').get(id)).toEqual({
+    license: null,
+    archived: 0,
+    createdAt: '2024-01-02T00:00:00.000Z',
+  })
 })

@@ -262,6 +262,14 @@ describe('GitHubClient', () => {
     expect(new Headers(test.requests[0].init?.headers).get('if-none-match')).toBe('"repo-v0"')
   })
 
+  it('parses license and archive data from REST repository metadata', async () => {
+    const test = harness([Response.json({ ...repo, archived: true, license: { spdx_id: 'MIT' } })])
+    const response = await test.client.getRepository('acme', 'catalog')
+    expect(response.kind).toBe('found')
+    if (response.kind !== 'found') throw new Error('Expected repository metadata')
+    expect(response.data).toMatchObject({ archived: true, license: { spdx_id: 'MIT' } })
+  })
+
   it('loads repository metadata and marketplace blob OIDs by GraphQL node ID', async () => {
     const nodeId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
     const resetAt = '2026-09-23T22:00:00Z'
@@ -279,6 +287,8 @@ describe('GitHubClient', () => {
                 forkCount: repo.forks_count,
                 pushedAt: repo.pushed_at,
                 isPrivate: false,
+                isArchived: true,
+                licenseInfo: { spdxId: 'Apache-2.0' },
                 owner: { login: repo.owner.login, url: repo.owner.html_url },
                 watchers: { totalCount: repo.subscribers_count },
                 object: { oid: 'a'.repeat(40), byteSize: 123, isBinary: false },
@@ -312,6 +322,8 @@ describe('GitHubClient', () => {
           forks_count: repo.forks_count,
           subscribers_count: repo.subscribers_count,
           pushed_at: repo.pushed_at,
+          archived: true,
+          license: { spdx_id: 'Apache-2.0' },
           owner: repo.owner,
           marketplace_oid: 'a'.repeat(40),
           marketplace_byte_size: 123,
@@ -328,6 +340,8 @@ describe('GitHubClient', () => {
     const body = JSON.parse(String(test.requests[0].init?.body))
     expect(body).toMatchObject({ variables: { ids: [nodeId] } })
     expect(body.query).toContain('oid byteSize isBinary')
+    expect(body.query).toContain('isArchived')
+    expect(body.query).toContain('licenseInfo { spdxId }')
   })
 
   it('loads marketplace blob text in a separate GraphQL batch and preserves per-node alignment', async () => {

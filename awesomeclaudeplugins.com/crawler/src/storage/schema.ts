@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 18
+const schemaVersion = 19
 
 function createSchema(db: Database.Database): void {
   db.exec(`
@@ -363,7 +363,22 @@ function migrateTo15(db: Database.Database): void {
   db.pragma('user_version = 15')
 }
 
+/** Preserve existing discovery times while adding nullable GitHub metadata. */
 function migrateTo16(db: Database.Database): void {
+  if (!hasColumn(db, 'license')) db.exec('ALTER TABLE repositories ADD COLUMN license TEXT')
+  if (!hasColumn(db, 'archived')) db.exec('ALTER TABLE repositories ADD COLUMN archived INTEGER CHECK(archived IN (0, 1))')
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS repositories_metadata_timestamp_after_update
+    AFTER UPDATE OF repo_updated, license, archived ON repositories
+    WHEN OLD.repo_updated IS NOT NEW.repo_updated OR OLD.license IS NOT NEW.license OR OLD.archived IS NOT NEW.archived
+    BEGIN
+      UPDATE repositories SET catalog_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+    END;
+  `)
+  db.pragma('user_version = 16')
+}
+
+function migrateTo17(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS repository_search_partitions (
       query_version INTEGER NOT NULL CHECK(query_version >= 1),
@@ -390,11 +405,11 @@ function migrateTo16(db: Database.Database): void {
       query_id TEXT NOT NULL,
       PRIMARY KEY (run_id, repository_id, source, query_id)
     );
-    PRAGMA user_version = 16;
+    PRAGMA user_version = 17;
   `)
 }
 
-function migrateTo17(db: Database.Database): void {
+function migrateTo18(db: Database.Database): void {
   const partitionColumns = db.pragma('table_info(repository_search_partitions)') as Array<{ name: string }>
   if (!partitionColumns.some(({ name }) => name === 'next_page')) {
     db.exec(`
@@ -402,10 +417,10 @@ function migrateTo17(db: Database.Database): void {
         CHECK(next_page BETWEEN 1 AND 11);
     `)
   }
-  db.pragma('user_version = 17')
+  db.pragma('user_version = 18')
 }
 
-function migrateTo18(db: Database.Database): void {
+function migrateTo19(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS rejected_repository_candidates (
       html_url TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,
@@ -414,29 +429,37 @@ function migrateTo18(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS rejected_repository_candidates_node_id
       ON rejected_repository_candidates(github_node_id) WHERE github_node_id IS NOT NULL;
-    PRAGMA user_version = 18;
+    PRAGMA user_version = 19;
   `)
 }
 
+// Keep the migration sequence explicit while avoiding a growing chain of conditional branches.
+const migrations: readonly ((db: Database.Database) => void)[] = [
+  migrateTo2,
+  migrateTo3,
+  migrateTo4,
+  migrateTo5,
+  migrateTo6,
+  migrateTo7,
+  migrateTo8,
+  migrateTo9,
+  migrateTo10,
+  migrateTo11,
+  migrateTo12,
+  migrateTo13,
+  migrateTo14,
+  migrateTo15,
+  migrateTo16,
+  migrateTo17,
+  migrateTo18,
+  migrateTo19,
+]
+
 function migrateSchema(db: Database.Database, version: number): void {
   if (version === 0) createSchema(db)
-  if (version < 2) migrateTo2(db)
-  if (version < 3) migrateTo3(db)
-  if (version < 4) migrateTo4(db)
-  if (version < 5) migrateTo5(db)
-  if (version < 6) migrateTo6(db)
-  if (version < 7) migrateTo7(db)
-  if (version < 8) migrateTo8(db)
-  if (version < 9) migrateTo9(db)
-  if (version < 10) migrateTo10(db)
-  if (version < 11) migrateTo11(db)
-  if (version < 12) migrateTo12(db)
-  if (version < 13) migrateTo13(db)
-  if (version < 14) migrateTo14(db)
-  if (version < 15) migrateTo15(db)
-  if (version < 16) migrateTo16(db)
-  if (version < 17) migrateTo17(db)
-  if (version < 18) migrateTo18(db)
+  for (const [index, migrate] of migrations.entries()) {
+    if (version < index + 2) migrate(db)
+  }
 }
 
 export function initializeSchema(db: Database.Database): void {

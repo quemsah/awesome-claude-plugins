@@ -17,23 +17,31 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true })
 })
 
-it('upgrades an existing v15 catalog without losing its catalog timestamps', () => {
+it('upgrades a populated #404 v16 catalog without losing its catalog timestamps', () => {
   const db = new Database(':memory:')
   try {
     initializeSchema(db)
-    db.prepare('INSERT INTO repositories (html_url, plugins_count, catalog_updated_at, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)').run(
+    db.prepare('INSERT INTO repositories (html_url, plugins_count, catalog_updated_at, createdAt, updatedAt, license, archived, repo_updated, plugins_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
       'https://github.com/example/older-marketplace',
       2,
       '2026-01-01T00:00:00.000Z',
       'before',
       'before',
+      'MIT',
+      1,
+      '2026-01-01T01:00:00Z',
+      '[{"name":"sample-plugin"}]',
     )
-    db.exec('DROP TABLE discovery_candidates; DROP TABLE repository_search_partitions; PRAGMA user_version = 15;')
+    db.exec('DROP TABLE discovery_candidates; DROP TABLE repository_search_partitions; DROP TABLE rejected_repository_candidates; PRAGMA user_version = 16;')
     initializeSchema(db)
-    expect(db.pragma('user_version', { simple: true })).toBe(18)
-    expect(db.prepare('SELECT catalog_updated_at, plugins_count FROM repositories').get()).toEqual({
+    expect(db.pragma('user_version', { simple: true })).toBe(19)
+    expect(db.prepare('SELECT catalog_updated_at, plugins_count, license, archived, repo_updated, plugins_json FROM repositories').get()).toEqual({
       catalog_updated_at: '2026-01-01T00:00:00.000Z',
       plugins_count: 2,
+      license: 'MIT',
+      archived: 1,
+      repo_updated: '2026-01-01T01:00:00Z',
+      plugins_json: '[{"name":"sample-plugin"}]',
     })
     expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'repository_search_partitions'").get()).toEqual({
       name: 'repository_search_partitions',
@@ -46,11 +54,11 @@ it('upgrades an existing v15 catalog without losing its catalog timestamps', () 
   }
 })
 
-it('persists rejected candidates across reopened database connections and migration from v17', () => {
+it('persists rejected candidates across reopened database connections and migration from v18', () => {
   const db = new Database(':memory:')
   try {
     initializeSchema(db)
-    db.exec('DROP TABLE rejected_repository_candidates; PRAGMA user_version = 17;')
+    db.exec('DROP TABLE rejected_repository_candidates; PRAGMA user_version = 18;')
     initializeSchema(db)
     db.prepare('INSERT INTO rejected_repository_candidates VALUES (?, ?, ?)').run(
       'https://github.com/example/rejected',
@@ -58,7 +66,7 @@ it('persists rejected candidates across reopened database connections and migrat
       '2026-10-30T12:00:00Z',
     )
     initializeSchema(db)
-    expect(db.pragma('user_version', { simple: true })).toBe(18)
+    expect(db.pragma('user_version', { simple: true })).toBe(19)
     expect(db.prepare('SELECT github_node_id FROM rejected_repository_candidates').get()).toEqual({
       github_node_id: 'node-rejected',
     })
@@ -81,7 +89,7 @@ it('upgrades v13 without changing Code Search checkpoints or existing enrichment
       PRAGMA user_version = 13;
     `)
     initializeSchema(db)
-    expect(db.pragma('user_version', { simple: true })).toBe(18)
+    expect(db.pragma('user_version', { simple: true })).toBe(19)
     expect(db.prepare('SELECT * FROM discovery_ranges ORDER BY query_family').all()).toEqual([
       { query_family: 'marketplace_filename_path', root_start: 0, root_end: 400000, range_start: 0, range_end: 50 },
       { query_family: 'marketplace_path_literal', root_start: 0, root_end: 400000, range_start: 51, range_end: 400000 },
@@ -95,7 +103,7 @@ it('upgrades v13 without changing Code Search checkpoints or existing enrichment
   }
 })
 
-it('adds a page cursor to existing v16 repository search partitions without resetting coverage', () => {
+it('adds a page cursor to existing v17 repository search partitions without resetting coverage', () => {
   const db = new Database(':memory:')
   try {
     initializeSchema(db)
@@ -123,12 +131,12 @@ it('adds a page cursor to existing v16 repository search partitions without rese
         '2026-10-30', '2026-10-30', 'incomplete', '2026-10-30T12:00:00Z', NULL,
         291, 1, 100, 0, 0
       );
-      PRAGMA user_version = 16;
+      PRAGMA user_version = 17;
     `)
 
     initializeSchema(db)
 
-    expect(db.pragma('user_version', { simple: true })).toBe(18)
+    expect(db.pragma('user_version', { simple: true })).toBe(19)
     expect(
       db.prepare('SELECT status, total_count, pages_fetched, candidate_count, next_page FROM repository_search_partitions').get(),
     ).toEqual({
@@ -159,7 +167,7 @@ it('initializes all tables and remains idempotent on reopen', () => {
     { name: 'settings' },
     { name: 'stats' },
   ])
-  expect(db.pragma('user_version', { simple: true })).toBe(18)
+  expect(db.pragma('user_version', { simple: true })).toBe(19)
   const columns = db.prepare('PRAGMA table_info(repositories)').all() as Array<{ name: string }>
   expect(columns.map((row) => row.name)).toEqual(
     expect.arrayContaining([
@@ -172,6 +180,8 @@ it('initializes all tables and remains idempotent on reopen', () => {
       'marketplace_failed_parser_version',
       'catalog_updated_at',
       'plugins_json',
+      'license',
+      'archived',
     ]),
   )
   const runColumns = db.prepare('PRAGMA table_info(runs)').all() as Array<{ name: string }>
@@ -213,7 +223,7 @@ it('migrates populated v1 runs, imported IDs and historical stats atomically and
     `)
     initializeSchema(db)
     initializeSchema(db)
-    expect(db.pragma('user_version', { simple: true })).toBe(18)
+    expect(db.pragma('user_version', { simple: true })).toBe(19)
     expect(db.prepare('SELECT id, createdAt FROM repositories').all()).toEqual([{ id: 53000, createdAt: 'before' }])
     expect(db.prepare('SELECT catalog_updated_at FROM repositories WHERE id = 53000').get()).toMatchObject({
       catalog_updated_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
@@ -251,7 +261,7 @@ it('upgrades a populated v2 database without changing drafts or pending commit S
   `)
   old.close()
   const migrated = openDatabase(path)
-  expect(migrated.pragma('user_version', { simple: true })).toBe(18)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(19)
   expect(migrated.prepare("SELECT draft_hash, pending_commit_sha FROM runs WHERE run_id = 'pending'").get()).toEqual({
     draft_hash: 'a'.repeat(64),
     pending_commit_sha: 'b'.repeat(40),
@@ -281,7 +291,7 @@ it('upgrades main schema v5 while preserving its marketplace ETag', () => {
   db.close()
 
   const migrated = openDatabase(path)
-  expect(migrated.pragma('user_version', { simple: true })).toBe(18)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(19)
   expect(migrated.prepare('SELECT marketplace_etag FROM repositories').get()).toEqual({ marketplace_etag: 'W/"marketplace"' })
   expect((migrated.pragma('table_info(repositories)') as Array<{ name: string }>).map((column) => column.name)).toEqual(
     expect.arrayContaining([
@@ -361,7 +371,7 @@ it('deduplicates case-variant repository URLs without mixing identity or revivin
   db.close()
 
   const migrated = openDatabase(path)
-  expect(migrated.pragma('user_version', { simple: true })).toBe(18)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(19)
   expect(
     migrated
       .prepare(
@@ -417,7 +427,7 @@ it('invalidates cached marketplace counts when upgrading from v10', () => {
   db.close()
 
   const migrated = openDatabase(path)
-  expect(migrated.pragma('user_version', { simple: true })).toBe(18)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(19)
   expect(
     migrated
       .prepare('SELECT plugins_count, marketplace_oid, marketplace_etag FROM repositories WHERE html_url = ?')
@@ -445,7 +455,7 @@ it('invalidates cached marketplace counts when upgrading from v12', () => {
 
   const migrated = openDatabase(path)
   try {
-    expect(migrated.pragma('user_version', { simple: true })).toBe(18)
+    expect(migrated.pragma('user_version', { simple: true })).toBe(19)
     expect(
       migrated
         .prepare('SELECT plugins_count, marketplace_oid, marketplace_etag FROM repositories WHERE html_url = ?')
@@ -477,7 +487,7 @@ it.each([
       ALTER TABLE repositories DROP COLUMN marketplace_failed_oid;
     `,
   ],
-])('upgrades the v9 schema from the %s to v17', (_lineage, schemaChanges) => {
+])('upgrades the v9 schema from the %s to v13', (_lineage, schemaChanges) => {
   const db = database()
   const path = db.name
   db.close()
@@ -498,7 +508,7 @@ it.each([
   legacy.close()
 
   const migrated = openDatabase(path)
-  expect(migrated.pragma('user_version', { simple: true })).toBe(18)
+  expect(migrated.pragma('user_version', { simple: true })).toBe(19)
   const repositoryColumns = (migrated.pragma('table_info(repositories)') as Array<{ name: string }>).map((column) => column.name)
   expect(repositoryColumns).toEqual(expect.arrayContaining(['marketplace_failed_oid', 'marketplace_failed_parser_version']))
   const runColumns = (migrated.pragma('table_info(runs)') as Array<{ name: string }>).map((column) => column.name)
@@ -531,7 +541,7 @@ it('migrates v10 discovery ranges to the current family and leaves old errors un
 
   const migrated = openDatabase(path)
   try {
-    expect(migrated.pragma('user_version', { simple: true })).toBe(18)
+    expect(migrated.pragma('user_version', { simple: true })).toBe(19)
     expect(
       migrated
         .prepare('SELECT query_family, root_start, root_end, range_start, range_end FROM discovery_ranges ORDER BY range_start')
@@ -579,6 +589,40 @@ it('configures SQLite durability and enforces foreign keys', () => {
         )
         .run(),
     ).toThrow(/FOREIGN KEY/)
+  } finally {
+    db.close()
+  }
+})
+
+it('upgrades populated v15 repository metadata through v16 to v19 without resetting first-seen dates', () => {
+  const db = new Database(':memory:')
+  try {
+    db.exec(`
+      CREATE TABLE repositories (
+        id INTEGER PRIMARY KEY,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        repo_updated TEXT,
+        catalog_updated_at TEXT
+      );
+      INSERT INTO repositories VALUES (1, '2024-01-01T00:00:00.000Z', '2024-01-02T00:00:00.000Z', '2024-01-03T00:00:00Z', '2024-01-04T00:00:00.000Z');
+      PRAGMA user_version = 15;
+    `)
+    initializeSchema(db)
+    expect(db.pragma('user_version', { simple: true })).toBe(19)
+    expect(db.prepare('SELECT createdAt, repo_updated, license, archived FROM repositories').get()).toEqual({
+      createdAt: '2024-01-01T00:00:00.000Z',
+      repo_updated: '2024-01-03T00:00:00Z',
+      license: null,
+      archived: null,
+    })
+    db.exec("UPDATE repositories SET archived = 1, license = 'MIT'")
+    expect(db.prepare('SELECT archived, license FROM repositories').get()).toEqual({ archived: 1, license: 'MIT' })
+    expect(db.prepare('SELECT catalog_updated_at FROM repositories').get()).not.toEqual({
+      catalog_updated_at: '2024-01-04T00:00:00.000Z',
+    })
+    initializeSchema(db)
+    expect(db.pragma('user_version', { simple: true })).toBe(19)
   } finally {
     db.close()
   }

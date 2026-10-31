@@ -46,8 +46,8 @@ it('renders only canonical, fully enriched repositories in original id and publi
     expect(result.endsWith('\n')).toBe(true)
     expect(result).toBe(
       `[
-{"stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":null,"owner":"owner","repo_name":"Repo-two","plugins_count":null,"catalog_updated_at":"2025-02-03T04:05:06.789Z","id":5},
-{"stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":"🍃 Привет","owner":"Owner","repo_name":"Repo","plugins_count":null,"catalog_updated_at":"2025-02-03T04:05:06.789Z","id":39}
+{"stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":null,"owner":"owner","repo_name":"Repo-two","plugins_count":null,"catalog_updated_at":"2025-02-03T04:05:06.789Z","pushed_at":"2025-01-01T00:00:00.000Z","id":5},
+{"stargazers_count":3,"forks_count":0,"subscribers_count":2,"description":"🍃 Привет","owner":"Owner","repo_name":"Repo","plugins_count":null,"catalog_updated_at":"2025-02-03T04:05:06.789Z","pushed_at":"2025-01-01T00:00:00.000Z","id":39}
 ]
 `,
     )
@@ -210,6 +210,112 @@ it.each([-1, 1.5, Number.NaN])('rejects an invalid draft size before generating 
   const db = openDatabase(':memory:')
   try {
     expect(() => renderStats(db, { id: 304, date: '2026-09-23T21:00:00.000Z', size })).toThrow(/draft size.*non-negative safe integer/i)
+  } finally {
+    db.close()
+  }
+})
+
+it('publishes normalized GitHub freshness and first-seen date without changing legacy output', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const id = upsertDiscovery(db, 'https://github.com/demo/metadata', null, '2024-01-02T00:00:00.000Z')
+    updateEnriched(db, id, {
+      owner: 'demo',
+      owner_url: 'https://github.com/demo',
+      repo_name: 'metadata',
+      description: 'Recent',
+      stargazers_count: 1,
+      forks_count: 0,
+      subscribers_count: 0,
+      plugins_count: 0,
+      repo_updated: '2026-10-30T12:00:00Z',
+      license: 'MIT',
+      archived: 0,
+    })
+    const rows = listPublishable(db)
+    const normal = JSON.parse(renderRepos(rows))[0]
+    expect(normal).toMatchObject({
+      pushed_at: '2026-10-30T12:00:00.000Z',
+      catalog_added_at: '2024-01-02T00:00:00.000Z',
+      license: 'MIT',
+      archived: false,
+    })
+    const legacy = JSON.parse(renderRepos(rows, { legacyUrls: true }))[0]
+    expect(legacy.pushed_at).toBeUndefined()
+    expect(legacy.catalog_added_at).toBeUndefined()
+    expect(legacy.license).toBeUndefined()
+    const stats = '[{"id":1,"date":"2026-10-30T12:00:00.000Z","size":1}]'
+    expect(() => validateSnapshot(renderRepos(rows), stats)).not.toThrow()
+  } finally {
+    db.close()
+  }
+})
+
+it('omits malformed GitHub timestamps rather than interpreting them as midnight or normalized dates', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const id = upsertDiscovery(db, 'https://github.com/example/dates', null, '2026-10-30T10:30:00.000Z')
+    updateEnriched(db, id, {
+      owner: 'example',
+      repo_name: 'dates',
+      owner_url: 'https://github.com/example',
+      description: null,
+      stargazers_count: 1,
+      forks_count: 0,
+      subscribers_count: 0,
+      plugins_count: 1,
+      repo_updated: '2026-02-30T12:00:00Z',
+    })
+    const rows = listPublishable(db)
+    expect(JSON.parse(renderRepos(rows))[0]).not.toHaveProperty('pushed_at')
+    expect(JSON.parse(renderRepos(rows))[0]).toHaveProperty('catalog_added_at', '2026-10-30T10:30:00.000Z')
+    for (const invalid of [
+      '2026-10-30',
+      '2026-02-30T12:00:00Z',
+      '2025-02-29T12:00:00Z',
+      '2026-13-01T00:00:00Z',
+      '2026-01-01T25:00:00Z',
+      '2026-01-01T12:60:00Z',
+      '2026-01-01T12:00:60Z',
+      '2026-01-01T12:00:00+24:00',
+      '2026-01-01T12:00:00+02:60',
+      '2026-01-01T12:00:00.1234Z',
+      '2026-01-01 12:00:00Z',
+    ]) {
+      db.prepare('UPDATE repositories SET repo_updated = ? WHERE id = ?').run(invalid, id)
+      expect(JSON.parse(renderRepos(listPublishable(db)))[0]).not.toHaveProperty('pushed_at')
+    }
+    db.prepare('UPDATE repositories SET repo_updated = ? WHERE id = ?').run('2026-10-30T13:15:00+03:00', id)
+    expect(JSON.parse(renderRepos(listPublishable(db)))[0]).toHaveProperty('pushed_at', '2026-10-30T10:15:00.000Z')
+    db.prepare('UPDATE repositories SET repo_updated = ? WHERE id = ?').run('2024-02-29T12:34:56.789+02:00', id)
+    expect(JSON.parse(renderRepos(listPublishable(db)))[0]).toHaveProperty('pushed_at', '2024-02-29T10:34:56.789Z')
+  } finally {
+    db.close()
+  }
+})
+
+it('preserves old published bytes with catalog_updated_at and plugins but no new metadata', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const id = upsertDiscovery(db, 'https://github.com/example/metadata', null, '2026-10-30T10:30:00.000Z')
+    updateEnriched(db, id, {
+      owner: 'example',
+      repo_name: 'metadata',
+      owner_url: 'https://github.com/example',
+      description: null,
+      stargazers_count: 1,
+      forks_count: 0,
+      subscribers_count: 0,
+      plugins_count: 1,
+      plugins_json: JSON.stringify([{ name: 'plugin' }]),
+      repo_updated: '2026-10-30T10:00:00Z',
+      license: 'MIT',
+      archived: 1,
+    })
+    const old = JSON.parse(renderRepos(listPublishable(db), { includeNewCatalogMetadata: false }))[0]
+    expect(old).toHaveProperty('plugins')
+    expect(old).toHaveProperty('catalog_updated_at')
+    for (const key of ['pushed_at', 'catalog_added_at', 'license', 'archived']) expect(old).not.toHaveProperty(key)
   } finally {
     db.close()
   }

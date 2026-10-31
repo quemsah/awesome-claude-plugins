@@ -256,6 +256,45 @@ it('still rejects catalog changes when a persisted draft uses the legacy three-f
   expect(git.events).toEqual([])
 })
 
+// Freeze the exact pre-upgrade repos.json serialization independently of renderRepos.
+// A fixture derived from today's serializer would miss accidental historical byte changes.
+it.each([true, false])('publishes a frozen pre-metadata draft with plugins and sidecar=%s', async (withPaths) => {
+  const db = fixture()
+  const git = new Branch()
+  db.prepare('UPDATE repositories SET plugins_json = ?, repo_updated = ?, license = ?, archived = ? WHERE id = 18').run(
+    JSON.stringify([{ name: 'one', description: 'A plugin' }]),
+    '2026-10-30T10:00:00Z',
+    'MIT',
+    1,
+  )
+  db.prepare('UPDATE repositories SET catalog_updated_at = ? WHERE id = 18').run('2025-07-02T11:22:33.456Z')
+  prepareDraft(db, 'r1', timestamp)
+  const currentFiles = readDraftSnapshot(db, 'r1')
+
+  // This is the prior release's byte-for-byte public record, including ordering, plugins,
+  // catalog_updated_at and trailing newline, without the four new optional metadata fields.
+  const preUpgradeReposJson = `[
+{"stargazers_count":42,"forks_count":2,"subscribers_count":3,"description":"Hello","owner":"example","repo_name":"plugin","plugins_count":1,"plugins":[{"name":"one","description":"A plugin"}],"catalog_updated_at":"2025-07-02T11:22:33.456Z","id":18}
+]
+`
+  expect(renderRepos(listPublishable(db), { includeNewCatalogMetadata: false })).toBe(preUpgradeReposJson)
+  expect(JSON.parse(currentFiles.reposJson)[0]).toMatchObject({
+    plugins: [{ name: 'one', description: 'A plugin' }],
+    license: 'MIT',
+    archived: true,
+    pushed_at: '2026-10-30T10:00:00.000Z',
+  })
+  const parts = [currentFiles.readme, preUpgradeReposJson, currentFiles.statsJson]
+  if (withPaths) parts.push(currentFiles.markdownPathsJson)
+  const savedHash = createHash('sha256').update(JSON.stringify(parts), 'utf8').digest('hex')
+  db.prepare('UPDATE runs SET draft_hash = ? WHERE run_id = ?').run(savedHash, 'r1')
+
+  expect(prepareDraft(db, 'r1', new Date('2027-01-01')).hash).toBe(savedHash)
+  expect(readDraftSnapshot(db, 'r1').reposJson).toBe(preUpgradeReposJson)
+  await publishRun(db, git, 'r1', { writeEnabled: true })
+  expect(git.files[0].reposJson).toBe(preUpgradeReposJson)
+})
+
 it('recovers the previous eight-field multiline catalog serialization', async () => {
   const db = fixture()
   const git = new Branch()

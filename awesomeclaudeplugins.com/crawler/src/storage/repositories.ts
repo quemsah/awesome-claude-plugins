@@ -12,6 +12,8 @@ export interface RepositoryRow {
   owner_url: string | null
   repo_name: string | null
   repo_updated: string | null
+  license?: string | null
+  archived?: number | null
   plugins_count: number | null
   plugins_json: string | null
   catalog_updated_at: string
@@ -41,7 +43,14 @@ export type EnrichmentFields = Pick<
   Partial<
     Pick<
       RepositoryRow,
-      'github_node_id' | 'marketplace_oid' | 'repository_etag' | 'marketplace_etag' | 'marketplace_parser_version' | 'plugins_json'
+      | 'github_node_id'
+      | 'marketplace_oid'
+      | 'repository_etag'
+      | 'marketplace_etag'
+      | 'marketplace_parser_version'
+      | 'plugins_json'
+      | 'license'
+      | 'archived'
     >
   >
 
@@ -58,7 +67,13 @@ export type PublishableRepository = Pick<
   | 'repo_name'
   | 'plugins_count'
   | 'catalog_updated_at'
-> & { plugins_json?: string | null }
+> & {
+  plugins_json?: string | null
+  pushed_at?: string | null
+  catalog_added_at?: string | null
+  license?: string | null
+  archived?: boolean | number | null
+}
 
 export function createDiscoveryWriter(db: Database.Database) {
   const find = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE ORDER BY id LIMIT 1')
@@ -104,6 +119,8 @@ const enrichedUpdateSql = `
     owner_url = @owner_url,
     repo_name = @repo_name,
     repo_updated = @repo_updated,
+    license = CASE WHEN @license_known = 1 THEN @license ELSE license END,
+    archived = COALESCE(@archived, archived),
     plugins_count = @plugins_count,
     plugins_json = COALESCE(@plugins_json, plugins_json),
     github_node_id = COALESCE(@github_node_id, github_node_id),
@@ -133,6 +150,9 @@ export function prepareEnrichedUpdate(db: Database.Database) {
       marketplace_etag: fields.marketplace_etag ?? null,
       marketplace_parser_version: fields.marketplace_parser_version ?? null,
       plugins_json: fields.plugins_json ?? null,
+      license: fields.license ?? null,
+      license_known: fields.license !== undefined ? 1 : 0,
+      archived: fields.archived ?? null,
       id,
       updatedAt: at,
     })
@@ -216,7 +236,8 @@ export function listCoreComplete(db: Database.Database): PublishableRepository[]
   return db
     .prepare(`
     SELECT id, html_url, stargazers_count, forks_count, subscribers_count,
-           description, owner, owner_url, repo_name, plugins_count, plugins_json, catalog_updated_at
+           description, owner, owner_url, repo_name, plugins_count, plugins_json, catalog_updated_at,
+           repo_updated AS pushed_at, createdAt AS catalog_added_at, license, archived
     FROM repositories
     WHERE html_url IS NOT NULL AND owner IS NOT NULL AND repo_name IS NOT NULL AND owner_url IS NOT NULL
       AND stargazers_count IS NOT NULL AND forks_count IS NOT NULL

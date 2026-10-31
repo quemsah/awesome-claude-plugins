@@ -28,6 +28,8 @@ export type GitHubRepo = Pick<
   owner: Pick<RepositoryResponse['owner'], 'login' | 'html_url'>
   pushed_at: Extract<RepositoryResponse['pushed_at'], string>
   private?: RepositoryResponse['private']
+  archived?: boolean
+  license?: { spdx_id: string | null } | null
 }
 
 export type GitHubGraphQLRepo = GitHubRepo & {
@@ -219,6 +221,10 @@ function parseRepository(value: unknown): GitHubRepo {
     !count(value.forks_count) ||
     !count(value.subscribers_count) ||
     !nonempty(value.pushed_at) ||
+    (value.archived !== undefined && typeof value.archived !== 'boolean') ||
+    (value.license !== undefined &&
+      value.license !== null &&
+      (!record(value.license) || (value.license.spdx_id !== null && typeof value.license.spdx_id !== 'string'))) ||
     (value.node_id !== undefined && !nonempty(value.node_id)) ||
     typeof value.private !== 'boolean' ||
     !record(value.owner) ||
@@ -239,6 +245,8 @@ type GraphQLRepoPayload = {
   forkCount: number
   pushedAt: string
   isPrivate: boolean
+  isArchived?: boolean
+  licenseInfo?: { spdxId: string | null } | null
   owner: { login: string; url: string }
   watchers: { totalCount: number }
   object: { oid: string; byteSize?: number; isBinary?: boolean | null } | null
@@ -261,6 +269,10 @@ function isGraphQLRepoPayload(value: unknown): value is GraphQLRepoPayload {
     count(value.forkCount),
     nonempty(value.pushedAt),
     typeof value.isPrivate === 'boolean',
+    value.isArchived === undefined || typeof value.isArchived === 'boolean',
+    value.licenseInfo === undefined ||
+      value.licenseInfo === null ||
+      (record(value.licenseInfo) && (value.licenseInfo.spdxId === null || typeof value.licenseInfo.spdxId === 'string')),
     nonempty(value.owner.login),
     nonempty(value.owner.url),
     count(value.watchers.totalCount),
@@ -280,6 +292,8 @@ function parseGraphQLRepo(value: unknown): GitHubGraphQLRepo | null {
     forks_count: value.forkCount,
     subscribers_count: value.watchers.totalCount,
     pushed_at: value.pushedAt,
+    ...(value.isArchived === undefined ? {} : { archived: value.isArchived }),
+    ...(value.licenseInfo === undefined ? {} : { license: value.licenseInfo === null ? null : { spdx_id: value.licenseInfo.spdxId } }),
     private: value.isPrivate,
     owner: { login: value.owner.login, html_url: value.owner.url },
     marketplace_oid: value.object?.oid ?? null,
@@ -346,7 +360,8 @@ function retryAfter(headers: Headers, now: number): number | null {
 const REPOSITORY_METADATA_QUERY = `query RepositoryMetadata($ids: [ID!]!) {
   nodes(ids: $ids) {
     ... on Repository {
-      id url name description stargazerCount forkCount pushedAt isPrivate
+      id url name description stargazerCount forkCount pushedAt isPrivate isArchived
+      licenseInfo { spdxId }
       owner { login url }
       watchers(first: 1) { totalCount }
       object(expression: "HEAD:.claude-plugin/marketplace.json") { ... on Blob { oid byteSize isBinary } }
