@@ -38,9 +38,7 @@ it('recognizes rejected repositories by node ID across URL changes', () => {
   const db = database()
   try {
     recordRejectedCandidate(db, 'https://github.com/example/old', 'node-stable', '2026-10-30T12:00:00Z')
-    expect(
-      isUnchangedRejectedCandidate(db, 'https://github.com/example/renamed', 'node-stable', '2026-10-29T11:00:00Z'),
-    ).toBe(true)
+    expect(isUnchangedRejectedCandidate(db, 'https://github.com/example/renamed', 'node-stable', '2026-10-29T11:00:00Z')).toBe(true)
   } finally {
     db.close()
   }
