@@ -18,6 +18,7 @@ import { createDiscoveryWriter } from '../storage/repositories.js'
 import {
   ensureRepositorySearchPartition,
   pendingPushedPartitions,
+  pruneExpiredPushedPartitions,
   type RepositorySearchPartition,
   saveRepositorySearchPartition,
 } from '../storage/repositorySearch.js'
@@ -189,6 +190,7 @@ export async function discoverRepositories(
     work.push({ query, window, partition, resumedRolling: false })
   }
   runWhileActive(db, runId, () => {
+    pruneExpiredPushedPartitions(db, rollingPushedWindow(at).start)
     for (const window of [rollingPushedWindow(at), ...historicalWindows(at)]) {
       for (const query of repositorySearchQueries) collect(query, window)
     }
