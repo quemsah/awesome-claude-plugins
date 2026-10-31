@@ -28,9 +28,9 @@ npm run typecheck:integration --workspace=catalog-crawler
 npm run test:integration --workspace=catalog-crawler
 ```
 
-The crawler tests cover capped pagination, saved next-page cursors, retry/reset behavior, temporal partitions, deduplication, source coverage and SQLite schema migration v15 → v18 in the current standalone branch. Re-run these before investigating any live API mismatch.
+The crawler tests cover capped pagination, saved next-page cursors, retry/reset behavior, temporal partitions, deduplication, source coverage and SQLite schema migrations through v19, including the populated #404 v16 → v19 upgrade. Re-run these before investigating any live API mismatch.
 
-**Merge-order dependency:** #404 is merged first and owns SQLite schema v16 (license/archived). Before #405 can merge, incorporate #404 into this branch, renumber its Repository Search migrations from v16/v17/v18 to **v17/v18/v19**, and add a migration test that starts from a populated #404 v16 database. The current v18 instructions apply only to this branch *before* that integration.
+**Merge-order dependency satisfied:** #404 was merged into `main` and integrated into #405 in commit `036f8b7`. The #404 metadata migration remains v16; Repository Search uses v17 (partitions), v18 (page cursor), and v19 (rejected-candidate cache). The populated v16 → v19 regression test is part of #405. The separate production-data-copy audit remains a pre-merge gate.
 
 ## 2. Bounded local end-to-end dry-run
 

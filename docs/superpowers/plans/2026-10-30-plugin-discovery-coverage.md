@@ -70,7 +70,7 @@
 - Create: `awesomeclaudeplugins.com/crawler/src/storage/repositorySearch.ts`
 - Create: `awesomeclaudeplugins.com/crawler/src/storage/discoveryCandidates.ts`
 - Modify: `awesomeclaudeplugins.com/crawler/src/crawl/discover.ts` (record Code Search provenance)
-- Modify: `awesomeclaudeplugins.com/crawler/src/storage/schema.ts` (schema version 16)
+- Modify: `awesomeclaudeplugins.com/crawler/src/storage/schema.ts` (Repository Search schema version 17 after #404)
 - Test: `awesomeclaudeplugins.com/crawler/src/github/repositorySearchQueries.test.ts`
 - Test: `awesomeclaudeplugins.com/crawler/src/crawl/discoverRepositories.test.ts`
 - Test: `awesomeclaudeplugins.com/crawler/src/storage/discoveryCandidates.test.ts`
@@ -135,7 +135,7 @@
 
 ### Follow-up: durable page-level continuation
 
-- [x] Add a `next_page` checkpoint and schema v17 migration, preserving existing partition coverage.
+- [x] Add a `next_page` checkpoint and schema v18 migration, preserving existing partition coverage.
 - [x] Resume incomplete partitions from the next page after a successful response; persist the current page before making its request so transient failures retry safely.
 - [x] Reset to page 1 when GitHub reports incomplete results, the result count changes, or a short page appears before the advertised end.
 - [x] Schedule unfinished leaves by least-recent attempt and include `nextPage` in repository-search coverage inspection.
@@ -154,5 +154,5 @@
 ## Rebase onto the 2026-10-30 workspace main
 
 - The crawler files live under `awesomeclaudeplugins.com/crawler/` in the npm workspace. Existing shared contracts and main-branch behavior must remain intact.
-- The main branch already uses SQLite schema versions 14 and 15 for catalog timestamps and plugin summaries. Repository Search tables are added in schema v16, and the page cursor in v17. Production v15 databases must upgrade in place without losing catalog timestamps or existing Code Search checkpoints.
+- After #404, main uses SQLite schema v16 for catalog metadata (license and archived); v14/v15 remain its catalog timestamp and plugin-summary migrations. Repository Search adds tables in v17, the page cursor in v18, and rejected candidate cache in v19. Existing populated v16 databases must upgrade to v19 without losing catalog metadata, original timestamps, plugin summaries, or Code Search checkpoints.
 - Before production backfill: verify a full 20-request bounded crawler dry-run against an isolated database copy, review candidate yield and backlog movement, and check the newest CI results. Production backfill remains intentionally disabled until explicitly approved.
