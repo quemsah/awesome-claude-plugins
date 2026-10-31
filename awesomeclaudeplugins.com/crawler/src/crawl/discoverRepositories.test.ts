@@ -328,21 +328,21 @@ it('resumes the least recently attempted old rolling leaf before an older date l
   const query = repositorySearchQueries[0]
   const moreRecentlyAttempted = ensureRepositorySearchPartition(db, query.queryId, {
     field: 'pushed',
-    start: '2026-08-01',
-    end: '2026-08-02',
+    start: '2026-10-02',
+    end: '2026-10-03',
   })
   Object.assign(moreRecentlyAttempted, { status: 'incomplete', last_attempt_at: '2026-10-29T12:00:00Z' })
   saveRepositorySearchPartition(db, moreRecentlyAttempted)
   const lessRecentlyAttempted = ensureRepositorySearchPartition(db, query.queryId, {
     field: 'pushed',
-    start: '2026-08-03',
-    end: '2026-08-04',
+    start: '2026-10-04',
+    end: '2026-10-05',
   })
   Object.assign(lessRecentlyAttempted, { status: 'incomplete', last_attempt_at: '2026-10-28T12:00:00Z' })
   saveRepositorySearchPartition(db, lessRecentlyAttempted)
 
-  const firstOldQuery = `${query.queryText} pushed:2026-08-01..2026-08-02`
-  const secondOldQuery = `${query.queryText} pushed:2026-08-03..2026-08-04`
+  const firstOldQuery = `${query.queryText} pushed:2026-10-02..2026-10-03`
+  const secondOldQuery = `${query.queryText} pushed:2026-10-04..2026-10-05`
   const oldCalls: string[] = []
   await discoverRepositories(
     db,
