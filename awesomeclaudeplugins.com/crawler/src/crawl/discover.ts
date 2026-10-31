@@ -373,6 +373,49 @@ async function loadSearchRangePage(
   return { kind: 'result', result }
 }
 
+type RangeFinish = {
+  db: Database.Database
+  reader: GitHubReader
+  runId: string
+  queryFamily: DiscoveryQueryFamily
+  writeDiscovery: DiscoveryWriter
+  range: SizeRange
+  summary: DiscoverySummary
+  now: () => string
+  coverage: CoverageState
+  onProgress?: () => void
+  countedUrls: Set<string>
+  state: RangeState
+  found: number
+  lastTotalCount: number
+  sawShortPage: boolean
+  rangeComplete: boolean
+}
+
+async function finishSearchRange({
+  db, reader, runId, queryFamily, writeDiscovery, range, summary, now, coverage, onProgress,
+  countedUrls, state, found, lastTotalCount, sawShortPage, rangeComplete,
+}: RangeFinish): Promise<void> {
+  const [min, max] = range
+  if (sawShortPage && found < lastTotalCount) {
+    warn(db, state, 'short-page')
+    if (min < max) {
+      await splitRange(db, reader, runId, queryFamily, writeDiscovery, range, summary, now, onProgress, countedUrls, true, coverage)
+      onProgress?.()
+      return
+    }
+    rangeComplete = false
+  }
+  if (found < lastTotalCount) rangeComplete = false
+  if (coverage.metrics) {
+    coverage.metrics.partitions++
+    coverage.metrics.incompletePartitions += Number(!rangeComplete || state.warned.has('saturated') || state.warned.has('page-limit'))
+  }
+  if (rangeComplete) coverage.leaves.push(range)
+  else coverage.complete = false
+  onProgress?.()
+}
+
 async function searchRange(
   db: Database.Database,
   reader: GitHubReader,
@@ -386,7 +429,6 @@ async function searchRange(
   onProgress?: () => void,
   countedUrls: Set<string> = new Set(),
 ): Promise<void> {
-  const [min, max] = range
   const query = discoverySearchFamilies.find((family) => family.queryFamily === queryFamily)?.buildQuery(range)
   if (!query) throw new Error(`Unknown discovery query family: ${queryFamily}`)
   const state: RangeState = {
@@ -442,23 +484,10 @@ async function searchRange(
     found += result.items.length
     if (result.items.length === 0 || found >= result.total_count) break
   }
-  if (sawShortPage && found < lastTotalCount) {
-    warn(db, state, 'short-page')
-    if (min < max) {
-      await splitRange(db, reader, runId, queryFamily, writeDiscovery, range, summary, now, onProgress, countedUrls, true, coverage)
-      onProgress?.()
-      return
-    }
-    rangeComplete = false
-  }
-  if (found < lastTotalCount) rangeComplete = false
-  if (coverage.metrics) {
-    coverage.metrics.partitions++
-    coverage.metrics.incompletePartitions += Number(!rangeComplete || state.warned.has('saturated') || state.warned.has('page-limit'))
-  }
-  if (rangeComplete) coverage.leaves.push(range)
-  else coverage.complete = false
-  onProgress?.()
+  await finishSearchRange({
+    db, reader, runId, queryFamily, writeDiscovery, range, summary, now, coverage, onProgress,
+    countedUrls, state, found, lastTotalCount, sawShortPage, rangeComplete,
+  })
 }
 
 export async function discover(

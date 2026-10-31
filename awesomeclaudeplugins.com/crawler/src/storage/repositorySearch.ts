@@ -108,11 +108,9 @@ export function pendingPushedPartitions(db: Database.Database): RepositorySearch
   ).filter((partition) => currentQueries.has(partition.query_id))
 }
 
-/** Read current-catalog leaves plus unfinished leaves from shifted rolling roots; ignore obsolete query versions. */
-export function repositorySearchCoverage(db: Database.Database, at: string) {
-  const rows = db
-    .prepare('SELECT * FROM repository_search_partitions WHERE query_version = ?')
-    .all(repositorySearchQueryVersion) as RepositorySearchPartition[]
+type CoverageLeaf = { queryId: string; partitionKey: string; row?: RepositorySearchPartition }
+
+function collectCoverageLeaves(rows: readonly RepositorySearchPartition[], at: string): CoverageLeaf[] {
   const indexed = new Map(rows.map((row) => [`${row.query_id}/${row.partition_key}`, row]))
   const leaves: Array<{ queryId: string; partitionKey: string; row?: RepositorySearchPartition }> = []
   function collect(queryId: string, window: DateWindow) {
@@ -140,6 +138,15 @@ export function repositorySearchCoverage(db: Database.Database, at: string) {
       currentLeaves.add(identity)
     }
   }
+  return leaves
+}
+
+/** Read current-catalog leaves plus unfinished leaves from shifted rolling roots; ignore obsolete query versions. */
+export function repositorySearchCoverage(db: Database.Database, at: string) {
+  const rows = db
+    .prepare('SELECT * FROM repository_search_partitions WHERE query_version = ?')
+    .all(repositorySearchQueryVersion) as RepositorySearchPartition[]
+  const leaves = collectCoverageLeaves(rows, at)
   const incomplete = leaves.filter(({ row }) => row?.status !== 'complete')
   const unreconciledGaps = expiredPushedGaps(db)
   const expiredLeafCount = expiredPushedGapCount(db)
