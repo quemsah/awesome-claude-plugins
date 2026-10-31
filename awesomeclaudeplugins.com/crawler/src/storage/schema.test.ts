@@ -151,6 +151,7 @@ it('initializes all tables and remains idempotent on reopen', () => {
     { name: 'discovery_candidates' },
     { name: 'discovery_ranges' },
     { name: 'publication_lease' },
+    { name: 'rejected_repository_candidates' },
     { name: 'repositories' },
     { name: 'repository_search_partitions' },
     { name: 'run_errors' },
