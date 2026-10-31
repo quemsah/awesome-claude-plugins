@@ -1,5 +1,5 @@
 # Shared code
 
-All code shared between `../ui` and `../crawler` belongs here. Packages should have one canonical owner for the published catalog contract, GitHub URL/identity helpers and marketplace parsing. Keep runtime-only logic inside the respective app. PR #378 will add `shared/catalog-contract` as the first actual package; don't duplicate its implementation here.
+Packages here are part of the Bun workspace rooted at `awesomeclaudeplugins.com/`. Both `ui` and `crawler` consume `shared/catalog-contract`, which is the canonical catalog contract.
 
-The initial directory-layout PR intentionally does **not** change dependency resolution or introduce a partially configured npm workspace.
+Put cross-package contracts, fixtures and parsing helpers here. Keep runtime-specific logic in its owning application. Install workspace dependencies once from the workspace root with `bun install --frozen-lockfile`.
