@@ -8,6 +8,7 @@ This is the release gate for the `missing` branch; **do not merge or enable prod
 - Repository Search is capped at **20 HTTP attempts per crawl**, reserving up to five for historical work when due. **This is not a cap on all GitHub API calls or total wall time**: the existing Code Search and enrichment may take longer.
 - A `--dry-run` disables publication, **but writes scan checkpoints, candidates and status into `DB_PATH`**. Never point it at a live database; use a separate, disposable file or a verified isolated copy.
 - `PUBLISH_ENABLED=false`; do not supply `GITHUB_PUBLISH_TOKEN`, Telegram credentials or Railway runtime variables for the local test. A GitHub **read-only** token is still required to search.
+- Repository Search is **off by default**. Set `REPOSITORY_SEARCH_ENABLED=true` only in this isolated audit; do not enable it in Railway or production without separate approval.
 - Keep production backfill disabled. The local audit should not create an allow-list for known missing repositories.
 
 ## 1. Prepare and run offline tests
@@ -43,6 +44,7 @@ set -euo pipefail
 mkdir -p .local
 export DB_PATH="$PWD/.local/discovery-audit.sqlite"
 export PUBLISH_ENABLED=false
+export REPOSITORY_SEARCH_ENABLED=true
 # Export a read-only GITHUB_READ_TOKEN securely (do not commit it or paste it into logs).
 npm run crawl --workspace=catalog-crawler -- --dry-run | tee .local/discovery-audit.log
 npm run inspect --workspace=catalog-crawler | tee .local/discovery-inspect.json
@@ -53,6 +55,7 @@ On PowerShell, after `New-Item -Force -ItemType Directory .local`:
 ```powershell
 $env:DB_PATH = (Join-Path (Get-Location) '.local/discovery-audit.sqlite')
 $env:PUBLISH_ENABLED = 'false'
+$env:REPOSITORY_SEARCH_ENABLED = 'true'
 # Set GITHUB_READ_TOKEN through your usual local secret manager/environment.
 npm run crawl --workspace=catalog-crawler -- --dry-run | Tee-Object -FilePath .local/discovery-audit.log
 if ($LASTEXITCODE -ne 0) { throw "Crawler failed with exit code $LASTEXITCODE" }
@@ -69,11 +72,11 @@ Record for each run:
 | Signal | Pass condition |
 | --- | --- |
 | Repository Search attempts | Never more than 20 actual requests in one crawl |
-| Checkpoints | Completed leaves have no pending pages; interrupted leaves resume from stored `next_page` |
+| Checkpoints | Interrupted leaves may resume from `next_page`, but they remain incomplete until a full fresh scan starting at page 1 verifies coverage; reordering must never produce a false complete status |
 | Fair scheduling | Rolling work progresses; when historical work is due, its reserved budget is respected |
 | Candidate funnel | Raw results, unique new URLs, accepted marketplaces, rejected/non-plugin candidates and deferrals reported separately |
 | Catalog integrity | Existing canonical repositories, plugin counts/identities, shared parser output and publication preview do not regress |
-| Coverage clarity | `inspect` shows incomplete/stale partitions and never claims all GitHub repositories were enumerated |
+| Coverage clarity | `inspect` shows incomplete/stale partitions **and unresolved gaps from expired rolling leaves**; these must be reconciled by a bounded backfill before claiming coverage |
 | API behavior | Retry-After, search quotas, errors and runtime are acceptable for normal scheduled crawls |
 
 The earlier focused generic-query check retrieved `human-stuff/prodready`; another isolated page-2 cursor check retrieved `mnemoverse/claude-plugin`. Neither is manually seeded in production. **Do not claim normal full-crawl scheduler reachability until verified by the bounded multi-run audit**; reaching the relevant partition may require multiple scheduled runs.
@@ -84,6 +87,7 @@ The earlier focused generic-query check retrieved `human-stuff/prodready`; anoth
 - [ ] All actionable human/CodeRabbit/CodeFactor review comments are resolved.
 - [ ] Local bounded multi-run dry-run evidence is recorded in the PR.
 - [ ] After #404 is merged, DB upgrade from a populated #404 v16 database to the final #405 v19 schema verified on an isolated copy; lastmod, license, archived flags and catalog data unchanged.
+- [ ] Confirm `rejected_repository_candidates` exists after v16 → v19, and inspect unresolved expired rolling gaps; if any exist, plan and verify a bounded replay before declaring the configured sweep complete.
 - [ ] No unexplained changes to catalog identities, plugin counts or indexability.
 - [ ] Mark the draft PR ready and merge only after those gates pass.
 - [ ] **Separate approval** to enable production discovery and any historical backfill; watch rate budget, backlog age, accepted marketplace yield and failure rate.

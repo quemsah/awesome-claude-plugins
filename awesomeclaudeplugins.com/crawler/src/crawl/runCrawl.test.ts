@@ -21,7 +21,7 @@ import {
   saveRunDraft,
 } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
-import { runCrawl as runCrawlImpl, type RunCrawlOptions } from './runCrawl.js'
+import { type RunCrawlOptions, runCrawl as runCrawlImpl } from './runCrawl.js'
 
 // Existing integration scenarios explicitly opt into Repository Search.
 const runCrawl = (db: Database.Database, reader: GitHubReader, runId: string, options: RunCrawlOptions = {}) =>

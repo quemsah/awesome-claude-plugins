@@ -9,7 +9,7 @@ import {
   splitDateWindow,
 } from '../github/repositorySearchQueries.js'
 import { recordRejectedCandidate } from '../storage/rejectedCandidates.js'
-import { ensureRepositorySearchPartition, saveRepositorySearchPartition } from '../storage/repositorySearch.js'
+import { ensureRepositorySearchPartition, expiredPushedGapCount, repositorySearchCoverage, saveRepositorySearchPartition } from '../storage/repositorySearch.js'
 import { beginRun, completeRun } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
 import { discoverRepositories } from './discoverRepositories.js'
@@ -265,12 +265,53 @@ it('resumes an unfinished rolling leaf at its persisted page and discovers a pag
     [oldQuery, 3],
   ])
   expect(checkpoint(db, query.queryId, oldPartition.partition_key)).toMatchObject({
-    status: 'complete',
-    next_page: 4,
+    status: 'incomplete',
+    next_page: 1,
     pages_fetched: 2,
   })
   expect(db.prepare("SELECT html_url FROM repositories WHERE description = 'page-two-target'").get()).toEqual({
     html_url: 'https://github.com/example/page-two-target',
+  })
+})
+
+it('does not certify a stale resumed cursor until a full page-one scan has verified the results', async () => {
+  const db = database()
+  const query = repositorySearchQueries[0]
+  const window = rollingPushedWindow(at)
+  const partition = ensureRepositorySearchPartition(db, query.queryId, window)
+  Object.assign(partition, {
+    status: 'incomplete',
+    next_page: 2,
+    total_count: 150,
+    last_attempt_at: '2026-10-29T12:00:00Z',
+  })
+  saveRepositorySearchPartition(db, partition)
+  const target = `${query.queryText} pushed:${window.start}..${window.end}`
+  const calls: number[] = []
+  const pageOne = Array.from({ length: 100 }, (_, index) => item(`fresh-${index}`))
+  const pageTwo = Array.from({ length: 50 }, (_, index) => item(`later-${index}`))
+  await discoverRepositories(db, reader(async (queryText, pageNumber) => {
+    if (queryText !== target) return page()
+    calls.push(pageNumber)
+    return page(pageNumber === 1 ? pageOne : pageTwo, 150)
+  }), 'run', undefined, () => at)
+  expect(calls).toEqual([2])
+  expect(checkpoint(db, query.queryId, partition.partition_key)).toMatchObject({
+    status: 'incomplete',
+    next_page: 1,
+    last_completed_at: null,
+  })
+  calls.length = 0
+  await discoverRepositories(db, reader(async (queryText, pageNumber) => {
+    if (queryText !== target) return page()
+    calls.push(pageNumber)
+    // A new repository may have moved to page one without affecting total_count.
+    return page(pageNumber === 1 ? [item('moved-on-top'), ...pageOne.slice(1)] : pageTwo, 150)
+  }), 'run', undefined, () => at)
+  expect(calls).toEqual([1, 2])
+  expect(checkpoint(db, query.queryId, partition.partition_key)).toMatchObject({ status: 'complete' })
+  expect(db.prepare("SELECT html_url FROM repositories WHERE description = 'moved-on-top'").get()).toEqual({
+    html_url: 'https://github.com/example/moved-on-top',
   })
 })
 
@@ -317,7 +358,7 @@ it('resumes from the next page after a temporary page request failure', async ()
     ],
     [[queryText, 3]],
   ])
-  expect(checkpoint(db, query.queryId)).toMatchObject({ status: 'complete', next_page: 4 })
+  expect(checkpoint(db, query.queryId)).toMatchObject({ status: 'incomplete', next_page: 1 })
   expect(db.prepare("SELECT html_url FROM repositories WHERE description = 'found-after-resume'").get()).toEqual({
     html_url: 'https://github.com/example/found-after-resume',
   })
@@ -1082,4 +1123,10 @@ it('bounds the pushed backlog over consecutive saturated days', async () => {
       .get() as { n: number }
     expect(pending.n).toBeLessThan(2000)
   }
+  // Expired incomplete leaves may be pruned from the active checkpoint table,
+  // but the missing coverage must not disappear from the audit.
+  expect(expiredPushedGapCount(db)).toBeGreaterThan(0)
+  const coverage = repositorySearchCoverage(db, new Date(origin + 64 * 86_400_000).toISOString())
+  expect(coverage.freshness).toBe('incomplete')
+  expect(coverage.warnings).toContain('expired_rolling_gaps_require_reconciliation')
 })

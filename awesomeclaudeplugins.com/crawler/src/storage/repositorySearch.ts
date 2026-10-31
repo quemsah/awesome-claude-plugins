@@ -8,6 +8,7 @@ import {
   rollingPushedWindow,
   splitDateWindow,
 } from '../github/repositorySearchQueries.js'
+import { getSetting, setSetting } from './runs.js'
 
 export type RepositorySearchPartition = {
   query_version: number
@@ -51,13 +52,45 @@ export function saveRepositorySearchPartition(db: Database.Database, partition: 
   `).run(partition)
 }
 
-/** Once a rolling pushed partition falls entirely outside the active 30-day window,
- * its unfinished work is superseded by newer windows and must not accumulate forever. */
+/** Keep an immutable, bounded summary of expired unfinished rolling work.
+ * Removing a checkpoint must never silently assert that its range was enumerated. */
+type ExpiredGap = { firstDate: string; lastDate: string; expiredLeaves: number }
+const gapSetting = `repo_search_expired_gaps_v${repositorySearchQueryVersion}`
+
+export function expiredPushedGaps(db: Database.Database): Record<string, ExpiredGap> {
+  const saved = getSetting(db, gapSetting)
+  return saved ? (JSON.parse(saved) as Record<string, ExpiredGap>) : {}
+}
+
+export function expiredPushedGapCount(db: Database.Database): number {
+  return Object.values(expiredPushedGaps(db)).reduce((count, gap) => count + gap.expiredLeaves, 0)
+}
+
+/** Prune old checkpoints only after recording any unfinished time ranges.
+ * Their gaps remain visible until an explicitly verified reconciliation/backfill. */
 export function pruneExpiredPushedPartitions(db: Database.Database, activeWindowStart: string): number {
-  return db
-    .prepare(`DELETE FROM repository_search_partitions
-    WHERE query_version = ? AND date_field = 'pushed' AND date_end < ?`)
-    .run(repositorySearchQueryVersion, activeWindowStart).changes
+  return db.transaction(() => {
+    const rows = db
+      .prepare(`SELECT query_id, date_start, date_end FROM repository_search_partitions
+        WHERE query_version = ? AND date_field = 'pushed'
+          AND date_end < ? AND status IN ('pending', 'incomplete')`)
+      .all(repositorySearchQueryVersion, activeWindowStart) as Array<{ query_id: string; date_start: string; date_end: string }>
+    if (rows.length) {
+      const gaps = expiredPushedGaps(db)
+      for (const row of rows) {
+        const existing = gaps[row.query_id]
+        gaps[row.query_id] = {
+          firstDate: existing && existing.firstDate < row.date_start ? existing.firstDate : row.date_start,
+          lastDate: existing && existing.lastDate > row.date_end ? existing.lastDate : row.date_end,
+          expiredLeaves: (existing?.expiredLeaves ?? 0) + 1,
+        }
+      }
+      setSetting(db, gapSetting, JSON.stringify(gaps))
+    }
+    return db.prepare(`DELETE FROM repository_search_partitions
+      WHERE query_version = ? AND date_field = 'pushed' AND date_end < ?`)
+      .run(repositorySearchQueryVersion, activeWindowStart).changes
+  })()
 }
 
 /** Pending leaves from earlier rolling roots remain resumable as the 30-day window moves. */
@@ -107,6 +140,8 @@ export function repositorySearchCoverage(db: Database.Database, at: string) {
     }
   }
   const incomplete = leaves.filter(({ row }) => row?.status !== 'complete')
+  const unreconciledGaps = expiredPushedGaps(db)
+  const expiredLeafCount = expiredPushedGapCount(db)
   const stale = leaves.some(
     ({ row }) =>
       row?.status === 'complete' &&
@@ -114,15 +149,16 @@ export function repositorySearchCoverage(db: Database.Database, at: string) {
         Date.parse(row.last_completed_at) <= Date.parse(at) - (row.date_field === 'created' ? 90 : 1) * 86_400_000),
   )
   const neverRun = leaves.every(({ row }) => !row?.last_attempt_at && !row?.last_completed_at)
-  const freshness = neverRun ? 'never_run' : incomplete.length ? 'incomplete' : stale ? 'stale' : 'fresh'
+  const freshness = expiredLeafCount || incomplete.length ? 'incomplete' : neverRun ? 'never_run' : stale ? 'stale' : 'fresh'
   return {
     queryVersion: repositorySearchQueryVersion,
     freshness,
     due: freshness !== 'fresh',
     stale,
-    lastCompleteScan: incomplete.length ? null : (leaves.map(({ row }) => row?.last_completed_at ?? null).sort()[0] ?? null),
-    incompletePartitions: incomplete.length,
-    warnings: [...(incomplete.length ? ['incomplete_partitions'] : []), ...(stale ? ['stale_partitions'] : [])],
+    lastCompleteScan: incomplete.length || expiredLeafCount ? null : (leaves.map(({ row }) => row?.last_completed_at ?? null).sort()[0] ?? null),
+    incompletePartitions: incomplete.length + expiredLeafCount,
+    expiredRollingGaps: unreconciledGaps,
+    warnings: [...(incomplete.length ? ['incomplete_partitions'] : []), ...(expiredLeafCount ? ['expired_rolling_gaps_require_reconciliation'] : []), ...(stale ? ['stale_partitions'] : [])],
     partitions: incomplete.map(({ queryId, partitionKey: key, row }) => ({
       queryId,
       queryVersion: repositorySearchQueryVersion,

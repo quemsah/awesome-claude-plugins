@@ -158,6 +158,7 @@ async function crawlAndComplete(
       // A failed optional source must not abort successful Code Search coverage.
       // Shutdown and loss of database ownership still propagate.
       if (error instanceof ShutdownError || error instanceof RunNotActiveError || options.signal?.aborted) throw error
+      if (!(error instanceof GitHubFatalError || error instanceof GitHubTemporaryError)) throw error
       options.log?.({
         level: 'warn',
         event: 'crawl.repository_search.optional_failure',

@@ -18,6 +18,7 @@ import { isUnchangedRejectedCandidate } from '../storage/rejectedCandidates.js'
 import { createDiscoveryWriter } from '../storage/repositories.js'
 import {
   ensureRepositorySearchPartition,
+  expiredPushedGapCount,
   pendingPushedPartitions,
   pruneExpiredPushedPartitions,
   type RepositorySearchPartition,
@@ -252,7 +253,14 @@ export async function discoverRepositories(
     summary.warnings = [...warnings]
     summary.completedPartitions = completed.size
     summary.incompletePartitions = work.filter(({ partition }) => partition.status !== 'split' && !completed.has(partition)).length
-    summary.state = work.length === 0 ? 'not_due' : summary.incompletePartitions === 0 ? 'complete' : 'incomplete'
+    // An expired unfinished window is a durable coverage gap, not a completed scan.
+    const expiredGaps = expiredPushedGapCount(db)
+    if (expiredGaps) {
+      summary.incompletePartitions += expiredGaps
+      warnings.add('expired-rolling-gaps-require-reconciliation')
+      summary.warnings = [...warnings]
+    }
+    summary.state = expiredGaps ? 'incomplete' : work.length === 0 ? 'not_due' : summary.incompletePartitions === 0 ? 'complete' : 'incomplete'
     recordDiscoverySourceOutcome(
       db,
       runId,
@@ -430,6 +438,16 @@ export async function discoverRepositories(
           reason = 'short-page'
           break
         }
+      }
+      // GitHub result ordering can change between runs even when total_count is identical.
+      // A resumed page sequence therefore cannot certify full coverage: only a scan that
+      // started at page 1 can mark a partition complete. Preserve progress as provisional.
+      if (partition.status === 'complete' && firstPage > 1) {
+        partition.status = 'incomplete'
+        partition.last_completed_at = null
+        partition.next_page = 1
+        reason = 'verification-required'
+        runWhileActive(db, runId, () => saveRepositorySearchPartition(db, partition))
       }
       if (partition.status === 'complete') completed.add(partition)
       else if (partition.status !== 'split') warnings.add(reason)
