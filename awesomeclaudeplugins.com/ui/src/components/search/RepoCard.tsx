@@ -72,7 +72,7 @@ function RepoCardMetadata({ repo }: { repo: Repo }) {
   const addedAge = formatRelativeTime(repo.catalog_added_at)
   const updatedText = updatedAge ? `updated ${updatedAge}` : null
   const addedText = addedAge ? `added ${addedAge}` : null
-  if (!(updatedText || addedText) && !repo.license) return null
+  if (!(updatedText || addedText || repo.license)) return null
   return (
     <div className="text-muted-foreground mb-3 flex flex-wrap items-center gap-2 text-xs">
       {updatedText ? <span suppressHydrationWarning>{updatedText}</span> : null}
