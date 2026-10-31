@@ -4,11 +4,13 @@ import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { formatCliError, runCli } from '../src/cli.js'
 import type { GitHubReader } from '../src/github/client.js'
+import { historicalWindows, repositorySearchQueries, rollingPushedWindow } from '../src/github/repositorySearchQueries.js'
 import type { GitHubGit } from '../src/publish/githubGit.js'
 import { PublicationError, prepareDraft } from '../src/publish/publishRun.js'
 import { openDatabase } from '../src/storage/db.js'
 import { populateFixture } from '../src/storage/fixtureDb.js'
 import { inspect } from '../src/storage/inspect.js'
+import { ensureRepositorySearchPartition, saveRepositorySearchPartition } from '../src/storage/repositorySearch.js'
 import {
   beginRun,
   claimPublicationLease,
@@ -19,6 +21,7 @@ import {
   listRunErrors,
   setSetting,
 } from '../src/storage/runs.js'
+import { completeRepositoryHistory } from './repositorySearchFixture.js'
 
 const scratch: string[] = []
 
@@ -45,11 +48,13 @@ function databasePath() {
 function populateTestDatabase(path: string) {
   const db = openDatabase(path)
   populateFixture(db)
+  completeRepositoryHistory(db)
   db.close()
 }
 
 function readerFixture(): GitHubReader {
   return {
+    searchRepositories: async () => ({ items: [], total_count: 0, incomplete_results: false }),
     searchCode: vi.fn(async () => ({ items: [], total_count: 0, incomplete_results: false })),
     getRepository: vi.fn(async (owner: string, repo: string) =>
       owner === 'alpha'
@@ -77,6 +82,32 @@ afterEach(() => {
 })
 
 describe('CLI', () => {
+  it.each(['never_run', 'fresh', 'stale', 'incomplete'] as const)('prints %s Repository Search coverage through inspect', async (state) => {
+    const path = databasePath()
+    const db = openDatabase(path)
+    const at = '2026-10-30T12:00:00Z'
+    if (state !== 'never_run') {
+      for (const window of [rollingPushedWindow(at), ...historicalWindows(at)])
+        for (const query of repositorySearchQueries) {
+          const row = ensureRepositorySearchPartition(db, query.queryId, window)
+          row.status = 'complete'
+          row.last_completed_at = state === 'stale' ? '2026-01-01T00:00:00Z' : at
+          if (state === 'incomplete' && window.field === 'pushed') {
+            row.status = 'incomplete'
+            row.last_attempt_at = at
+          }
+          saveRepositorySearchPartition(db, row)
+        }
+    }
+    db.close()
+    const output = vi.fn()
+    await runCli(['inspect'], { env: { DB_PATH: path }, now: () => new Date(at), output })
+    expect(JSON.parse(output.mock.calls[0]?.[0])).toMatchObject({
+      coverageScope: 'configured_query_catalog',
+      sources: { repo_search: { freshness: state, due: state !== 'fresh' } },
+    })
+  })
+
   it('inspects only aggregate state', () => {
     const db = databasePath()
     populateTestDatabase(db)
@@ -224,6 +255,27 @@ describe('CLI', () => {
       }),
     ).rejects.toThrow(/option/i)
     expect(opened).toBe(false)
+  })
+
+  it('requires an explicit dry-run and enabled repository search for expired-gap replay', async () => {
+    let opened = false
+    await expect(
+      runCli(['crawl', '--reconcile-expired-gaps'], {
+        env: { DB_PATH: 'db', GITHUB_READ_TOKEN: 'token', REPOSITORY_SEARCH_ENABLED: 'true' },
+        open: () => {
+          opened = true
+          throw new Error('unexpected')
+        },
+      }),
+    ).rejects.toThrow(/dry-run/)
+    expect(opened).toBe(false)
+
+    const path = databasePath()
+    await expect(
+      runCli(['crawl', '--dry-run', '--reconcile-expired-gaps'], {
+        env: { DB_PATH: path, GITHUB_READ_TOKEN: 'token', REPOSITORY_SEARCH_ENABLED: 'false' },
+      }),
+    ).rejects.toThrow(/REPOSITORY_SEARCH_ENABLED/)
   })
 
   it('runs despite a recent publication and supports a read-only draft', async () => {
@@ -538,6 +590,9 @@ describe('CLI', () => {
       reader: (_config, log) => {
         log?.({ bucket: 'code_search', request: true })
         log?.({ bucket: 'code_search', remaining: 9 })
+        log?.({ bucket: 'repo_search', request: true })
+        log?.({ bucket: 'repo_search', waitMs: 2_000, remaining: 29 })
+        log?.({ bucket: 'repo_search', retryReason: 'primary_rate_limit', retryWaitMs: 5_000 })
         log?.({ bucket: 'core', request: true })
         log?.({ bucket: 'core', waitMs: 750 })
         log?.({ bucket: 'graphql', request: true })
@@ -549,6 +604,14 @@ describe('CLI', () => {
     const report = output.mock.calls.map(([line]) => JSON.parse(line)).find((line) => line.phase === 'github_rate')
     expect(report.buckets).toEqual({
       code_search: { requests: 1, waitMs: 0, lastRemaining: 9 },
+      repo_search: {
+        requests: 1,
+        waitMs: 2_000,
+        lastRemaining: 29,
+        retries: 1,
+        retryWaitMs: 5_000,
+        retryReasons: { primary_rate_limit: 1 },
+      },
       core: { requests: 1, waitMs: 750, lastRemaining: null },
       graphql: {
         requests: 1,

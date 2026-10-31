@@ -191,7 +191,14 @@ export function rebindCanonicalUrl(
     const keepId = duplicate ? Math.min(id, duplicate.id) : id
     const removedId = duplicate ? Math.max(id, duplicate.id) : null
 
-    if (removedId !== null) db.prepare('DELETE FROM repositories WHERE id = ?').run(removedId)
+    if (removedId !== null) {
+      db.prepare(`
+        INSERT OR IGNORE INTO discovery_candidates (run_id, repository_id, source, query_id)
+        SELECT run_id, ?, source, query_id FROM discovery_candidates WHERE repository_id = ?
+      `).run(keepId, removedId)
+      db.prepare('DELETE FROM discovery_candidates WHERE repository_id = ?').run(removedId)
+      db.prepare('DELETE FROM repositories WHERE id = ?').run(removedId)
+    }
     db.prepare('UPDATE repositories SET html_url = ?, updatedAt = ? WHERE id = ?').run(htmlUrl, at, keepId)
     return { id: keepId, removedId }
   })()

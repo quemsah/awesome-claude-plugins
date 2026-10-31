@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3'
 import type { DiscoverySummary } from '../crawl/discover.js'
 import type { EnrichmentCounts } from '../crawl/enrich.js'
-import { CrawlError, type CrawlSummary, runCrawl } from '../crawl/runCrawl.js'
+import { type CrawlDiscoverySummary, CrawlError, type CrawlSummary, runCrawl } from '../crawl/runCrawl.js'
 import type { GitHubReader } from '../github/client.js'
 import type { GitHubRateBuckets } from '../github/rateBudget.js'
 import { type DiscoveryQueryFamily, discoverySearchFamilies } from '../github/searchFamilies.js'
@@ -35,12 +35,16 @@ export type ExecuteOptions = {
 export type CrawlOptions = ExecuteOptions & {
   ranges?: readonly SizeRange[]
   dryRun: boolean
+  repositorySearchEnabled?: boolean
+  reconcileExpiredGaps?: boolean
   started?: boolean
   git?: GitHubGit
   rateBuckets?: () => GitHubRateBuckets
 }
 
-export type RunReport = Pick<CrawlSummary, 'discovery' | 'enrichment' | 'warningCount' | 'errorCategories'> & {
+export type RunReport = Pick<CrawlSummary, 'enrichment' | 'warningCount' | 'errorCategories'> & {
+  discovery: DiscoverySummary &
+    Partial<Pick<CrawlDiscoverySummary, 'coverageScope' | 'sources' | 'uniqueCandidates' | 'uniqueCatalogAdditions'>>
   rateBuckets?: GitHubRateBuckets
   durationMs?: number
 }
@@ -125,6 +129,7 @@ function validRateBucket(value: unknown): boolean {
 function validRateBuckets(value: unknown): boolean {
   if (!record(value)) return false
   if (!['code_search', 'core'].every((bucket) => validRateBucket(value[bucket]))) return false
+  if (Object.hasOwn(value, 'repo_search') && !validRateBucket(value.repo_search)) return false
   return !Object.hasOwn(value, 'graphql') || validGraphQLRate(value.graphql)
 }
 
@@ -186,8 +191,47 @@ function validDiscoveryFamilies(value: Record<string, unknown>, warningCounts: M
   return successfulRanges === value.successfulRanges && warningCount === value.warningCount
 }
 
+function validSourceDiscovery(value: Record<string, unknown>): boolean {
+  const fields = ['coverageScope', 'sources', 'uniqueCandidates', 'uniqueCatalogAdditions']
+  if (fields.every((field) => !Object.hasOwn(value, field))) return true // Reports created before source summaries.
+  if (
+    value.coverageScope !== 'configured_query_catalog' ||
+    !nonnegative(value.uniqueCandidates) ||
+    !nonnegative(value.uniqueCatalogAdditions) ||
+    !record(value.sources)
+  )
+    return false
+  if (Object.keys(value.sources).length !== 2) return false
+  return ['code_search', 'repo_search'].every((source) => {
+    const entry = (value.sources as Record<string, unknown>)[source]
+    return (
+      record(entry) &&
+      ['complete', 'incomplete', 'not_due'].includes(entry.state as string) &&
+      [
+        'pagesFetched',
+        'totalResults',
+        'queries',
+        'partitions',
+        'incompletePartitions',
+        'uniqueCandidates',
+        'newUrls',
+        'acceptedMarketplaces',
+        'rejectedCandidates',
+        'pendingCandidates',
+        'saturatedPartitions',
+      ].every((field) => nonnegative(entry[field])) &&
+      Array.isArray(entry.warnings) &&
+      entry.warnings.every((warning) => typeof warning === 'string' && /^[a-z][a-z_-]{0,63}$/.test(warning)) &&
+      nonnegative(entry.acceptedMarketplaces) &&
+      nonnegative(entry.rejectedCandidates) &&
+      nonnegative(entry.pendingCandidates) &&
+      entry.acceptedMarketplaces + entry.rejectedCandidates + entry.pendingCandidates === entry.uniqueCandidates
+    )
+  })
+}
+
 function isDiscovery(value: unknown): value is StoredDiscoverySummary {
-  if (!record(value) || !validDiscoveryTotals(value)) return false
+  if (!record(value) || !validDiscoveryTotals(value) || !validSourceDiscovery(value)) return false
   const hasFamilies = Object.hasOwn(value, 'families')
   const warningCounts = discoveryWarningCounts(value.warnings as unknown[], hasFamilies)
   if (!warningCounts) return false
@@ -478,6 +522,8 @@ async function crawlAndPrepare(
     now,
     signal: options.signal,
     started: options.started,
+    repositorySearchEnabled: options.repositorySearchEnabled,
+    reconcileExpiredGaps: options.reconcileExpiredGaps,
     log: options.log,
     onPhase,
   })
@@ -550,6 +596,7 @@ function logDiscoveryProgress(
 ): void {
   const newRepositories = discoveryStartTotal === null ? null : Math.max(0, snapshot.repositories.total - discoveryStartTotal)
   const codeSearchRequests = buckets?.code_search.requests ?? null
+  const repositorySearchRequests = buckets?.repo_search?.requests ?? null
   log({
     level: 'info',
     event: 'crawl.progress',
@@ -565,6 +612,7 @@ function logDiscoveryProgress(
     missingMarketplace: snapshot.repositories.missingMarketplace,
     errorCount: snapshot.errors?.count ?? 0,
     ...(codeSearchRequests === null ? {} : { codeSearchRequests }),
+    ...(repositorySearchRequests === null ? {} : { repositorySearchRequests }),
     ...(buckets ? { rateBuckets: buckets } : {}),
   })
 }

@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import { afterEach, expect, it } from 'vitest'
 import { GitHubFatalError, type GitHubReader, GitHubTemporaryError, type SearchPage } from '../github/client.js'
 import type { SizeRange } from '../github/sizeRanges.js'
+import { recordRejectedCandidate } from '../storage/rejectedCandidates.js'
 import { updateEnriched, upsertDiscovery } from '../storage/repositories.js'
 import { beginRun, listRunErrors } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
@@ -33,6 +34,9 @@ function page(items: SearchPage['items'], total_count = items.length, incomplete
 
 function reader(search: GitHubReader['searchCode']): GitHubReader {
   return {
+    searchRepositories: async () => {
+      throw new Error('Repository search is unused in this fixture')
+    },
     searchCode: search,
     getRepository: async () => {
       throw new Error('Discovery must not enrich repositories')
@@ -56,6 +60,20 @@ function marketplaceQueries(queries: string[]): string[] {
 function marketplaceCalls(calls: Array<[string, number]>): Array<[string, number]> {
   return calls.filter(([query]) => query.startsWith('filename:'))
 }
+
+it('honors rejection caching in Code Search but retries after the 90-day TTL', async () => {
+  const db = database()
+  const url = 'https://github.com/example/rejected'
+  recordRejectedCandidate(db, url, null, '2026-09-23T00:00:00Z')
+  const client = reader(async () => page([item(url, 'rejected')]))
+  const first = await discover(db, client, 'run-1', [firstRange], undefined, () => '2026-09-23T12:00:00Z')
+  expect(first.newUrls).toBe(0)
+  expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 0 })
+
+  const second = await discover(db, client, 'run-1', [firstRange], undefined, () => '2027-01-01T00:00:00Z')
+  expect(second.newUrls).toBe(1)
+  expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 1 })
+})
 
 it('runs both marketplace queries and counts an empty first page as successful coverage', async () => {
   const db = database()
@@ -226,7 +244,9 @@ it('tags warnings with their family and preserves that family cache while later 
   ])
   expect(result.warnings).toEqual([{ range: [0, 0], category: 'temporary-error', query_family: 'marketplace_filename_path' }])
   expect(result.families.marketplace_filename_path.warningCount).toBe(1)
-  expect(logs.map(({ query_family }) => query_family)).toEqual(['marketplace_filename_path'])
+  expect(logs.filter(({ event }) => event === 'crawl.warning').map(({ query_family }) => query_family)).toEqual([
+    'marketplace_filename_path',
+  ])
 })
 
 it('keeps aggregate and family success counts aligned when a family range splits', async () => {

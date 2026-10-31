@@ -133,6 +133,30 @@ it('keeps alert settings for a different run whose id only shares the deleted su
   ])
 })
 
+it('prunes discovery provenance with expired runs while retaining recent, boundary and leased attribution', () => {
+  const db = database()
+  insertRun(db, 'expired', 'completed', '2026-01-01T00:00:00.000Z')
+  insertRun(db, 'recent', 'failed', '2026-09-01T00:00:00.000Z')
+  insertRun(db, 'boundary', 'completed', '2026-06-26T00:00:00.000Z')
+  insertRun(db, 'leased', 'completed', '2026-01-01T00:00:00.000Z')
+  db.prepare("INSERT INTO publication_lease (slot, run_id, owner) VALUES (1, 'leased', 'publisher')").run()
+  const candidate = db.prepare(`
+    INSERT INTO discovery_candidates (run_id, repository_id, source, query_id) VALUES (?, 123, ?, ?)
+  `)
+  for (const run of ['expired', 'recent', 'boundary', 'leased']) {
+    candidate.run(run, 'code_search', 'marketplace_filename_path')
+    candidate.run(run, 'repo_search', 'readme_plugin')
+  }
+
+  expect(runMaintenance(db, new Date('2026-09-24T00:00:00.000Z'))).toMatchObject({ runsDeleted: 1 })
+  expect(db.prepare('SELECT run_id, COUNT(*) AS count FROM discovery_candidates GROUP BY run_id ORDER BY run_id').all()).toEqual([
+    { run_id: 'boundary', count: 2 },
+    { run_id: 'leased', count: 2 },
+    { run_id: 'recent', count: 2 },
+  ])
+  expect(db.pragma('foreign_key_check')).toEqual([])
+})
+
 it('rejects invalid maintenance inputs without deleting data', () => {
   const db = database()
   insertRun(db, 'old', 'failed', '2026-01-01T00:00:00.000Z')

@@ -3,6 +3,7 @@ import { isValidGitBranch, parseGitHubRepository } from './github/identifiers.js
 export type RuntimeConfig = {
   dbPath: string
   publishEnabled: boolean
+  repositorySearchEnabled: boolean
   readToken?: string
   publishToken?: string
   owner?: string
@@ -41,6 +42,9 @@ export function parseConfig(command: 'crawl' | 'publish', env: NodeJS.ProcessEnv
   const flag = env.PUBLISH_ENABLED ?? 'false'
   if (flag !== 'true' && flag !== 'false') throw new ConfigurationError()
   const publishEnabled = flag === 'true'
+  const repoSearchFlag = env.REPOSITORY_SEARCH_ENABLED ?? 'false'
+  if (repoSearchFlag !== 'true' && repoSearchFlag !== 'false') throw new ConfigurationError()
+  const repositorySearchEnabled = repoSearchFlag === 'true'
   const { botToken, chatId } = telegramCredentials(env, publishEnabled)
   if (command === 'publish' && !publishEnabled) throw new ConfigurationError()
   const readToken = env.GITHUB_READ_TOKEN?.trim()
@@ -49,6 +53,7 @@ export function parseConfig(command: 'crawl' | 'publish', env: NodeJS.ProcessEnv
   return {
     dbPath: env.DB_PATH,
     publishEnabled,
+    repositorySearchEnabled,
     readToken,
     ...publisher,
     botToken,
