@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - 'awesomeclaudeplugins.com/package.json'
-      - 'awesomeclaudeplugins.com/package-lock.json'
+      - 'awesomeclaudeplugins.com/bun.lock'
       - 'awesomeclaudeplugins.com/ui/package.json'
       - 'awesomeclaudeplugins.com/crawler/package.json'
       - 'awesomeclaudeplugins.com/shared/**/package.json'
@@ -28,38 +28,23 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          node-version-file: awesomeclaudeplugins.com/ui/.nvmrc
-          cache: npm
-          cache-dependency-path: awesomeclaudeplugins.com/package-lock.json
+          bun-version: latest
 
-      - name: Audit production and complete dependency graphs
-        working-directory: awesomeclaudeplugins.com
-        shell: bash
-        run: |
-          npm audit --json > "$RUNNER_TEMP/audit-all.json" || true
-          npm audit --omit=dev --json > "$RUNNER_TEMP/audit-production.json" || true
-          node - "$RUNNER_TEMP/audit-all.json" "$RUNNER_TEMP/audit-production.json" <<'NODE'
-          const fs = require('node:fs')
-          for (const [label, file] of [['ALL', process.argv[2]], ['PRODUCTION', process.argv[3]]]) {
-            const data = JSON.parse(fs.readFileSync(file, 'utf8'))
-            console.log(`AUDIT ${label}: ${JSON.stringify(data.metadata?.vulnerabilities ?? {})}`)
-            for (const [name, issue] of Object.entries(data.vulnerabilities ?? {})) {
-              const via = (issue.via ?? []).map((item) => typeof item === 'string'
-                ? item
-                : `${item.name}: ${item.title} (${item.url})`)
-              console.log(JSON.stringify({
-                name, severity: issue.severity, direct: issue.isDirect,
-                range: issue.range, via, fixAvailable: issue.fixAvailable,
-              }))
-            }
-          }
-          NODE
+      - name: Cache Bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('awesomeclaudeplugins.com/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
 
-      - name: Enforce no high or critical advisories in production or development
+      - name: Install dependencies
         working-directory: awesomeclaudeplugins.com
-        run: |
-          npm audit --omit=dev --audit-level=high
-          npm audit --audit-level=high
+        run: bun install --frozen-lockfile
+
+      - name: Enforce no high or critical advisories
+        working-directory: awesomeclaudeplugins.com
+        run: bun audit --audit-level=high

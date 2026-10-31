@@ -21,6 +21,7 @@
 
 # production
 /build
+/.indexnow-cache/
 
 # misc
 .DS_Store
