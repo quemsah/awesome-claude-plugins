@@ -1,0 +1,3 @@
+[install]
+# Preserve the shared node_modules layout used by tooling and native Node.js addons.
+linker = "hoisted"
