@@ -229,7 +229,7 @@ it('caps invocations at 20 requests and resumes an interrupted partition from pa
 it('resumes an unfinished rolling leaf at its persisted page and discovers a page-two candidate', async () => {
   const db = database()
   const query = repositorySearchQueries[0]
-  const oldWindow = { field: 'pushed' as const, start: '2026-08-13', end: '2026-08-13' }
+  const oldWindow = { field: 'pushed' as const, start: '2026-10-15', end: '2026-10-15' }
   const oldPartition = ensureRepositorySearchPartition(db, query.queryId, oldWindow)
   Object.assign(oldPartition, {
     status: 'incomplete',
@@ -240,7 +240,7 @@ it('resumes an unfinished rolling leaf at its persisted page and discovers a pag
   })
   saveRepositorySearchPartition(db, oldPartition)
 
-  const oldQuery = `${query.queryText} pushed:2026-08-13..2026-08-13`
+  const oldQuery = `${query.queryText} pushed:2026-10-15..2026-10-15`
   const calls: Array<[string, number]> = []
   await discoverRepositories(
     db,
