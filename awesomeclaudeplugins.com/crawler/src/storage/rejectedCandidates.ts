@@ -22,18 +22,20 @@ export function isUnchangedRejectedCandidate(
   const rejected = db
     .prepare(`
     SELECT rejected_at FROM rejected_repository_candidates
-    WHERE html_url = ? COLLATE NOCASE OR (github_node_id IS NOT NULL AND github_node_id = ?)
+    WHERE (html_url = ? COLLATE NOCASE AND (github_node_id IS NULL OR ? IS NULL OR github_node_id = ?))
+       OR (github_node_id IS NOT NULL AND github_node_id = ?)
     ORDER BY rejected_at DESC LIMIT 1
   `)
-    .get(htmlUrl, githubNodeId ?? null) as { rejected_at: string } | undefined
+    .get(htmlUrl, githubNodeId ?? null, githubNodeId ?? null, githubNodeId ?? null) as { rejected_at: string } | undefined
   if (!rejected) return false
   const pushed = pushedAt ? Date.parse(pushedAt) : Number.NaN
   const rejectedTime = Date.parse(rejected.rejected_at)
   if (Number.isFinite(pushed) && Number.isFinite(rejectedTime) && pushed > rejectedTime) {
     db.prepare(`
       DELETE FROM rejected_repository_candidates
-      WHERE html_url = ? COLLATE NOCASE OR (github_node_id IS NOT NULL AND github_node_id = ?)
-    `).run(htmlUrl, githubNodeId ?? null)
+      WHERE (html_url = ? COLLATE NOCASE AND (github_node_id IS NULL OR ? IS NULL OR github_node_id = ?))
+         OR (github_node_id IS NOT NULL AND github_node_id = ?)
+    `).run(htmlUrl, githubNodeId ?? null, githubNodeId ?? null, githubNodeId ?? null)
     return false
   }
   return true

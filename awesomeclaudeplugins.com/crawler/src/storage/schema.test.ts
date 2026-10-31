@@ -21,7 +21,9 @@ it('upgrades a populated #404 v16 catalog without losing its catalog timestamps'
   const db = new Database(':memory:')
   try {
     initializeSchema(db)
-    db.prepare('INSERT INTO repositories (html_url, plugins_count, catalog_updated_at, createdAt, updatedAt, license, archived, repo_updated, plugins_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+    db.prepare(
+      'INSERT INTO repositories (html_url, plugins_count, catalog_updated_at, createdAt, updatedAt, license, archived, repo_updated, plugins_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    ).run(
       'https://github.com/example/older-marketplace',
       2,
       '2026-01-01T00:00:00.000Z',
@@ -32,10 +34,14 @@ it('upgrades a populated #404 v16 catalog without losing its catalog timestamps'
       '2026-01-01T01:00:00Z',
       '[{"name":"sample-plugin"}]',
     )
-    db.exec('DROP TABLE discovery_candidates; DROP TABLE repository_search_partitions; DROP TABLE rejected_repository_candidates; PRAGMA user_version = 16;')
+    db.exec(
+      'DROP TABLE discovery_candidates; DROP TABLE repository_search_partitions; DROP TABLE rejected_repository_candidates; PRAGMA user_version = 16;',
+    )
     initializeSchema(db)
     expect(db.pragma('user_version', { simple: true })).toBe(19)
-    expect(db.prepare('SELECT catalog_updated_at, plugins_count, license, archived, repo_updated, plugins_json FROM repositories').get()).toEqual({
+    expect(
+      db.prepare('SELECT catalog_updated_at, plugins_count, license, archived, repo_updated, plugins_json FROM repositories').get(),
+    ).toEqual({
       catalog_updated_at: '2026-01-01T00:00:00.000Z',
       plugins_count: 2,
       license: 'MIT',
