@@ -86,7 +86,7 @@ The earlier focused generic-query check retrieved `human-stuff/prodready`; anoth
 - [ ] CI on the final commit passes: typecheck, lint, tests and integration contracts.
 - [ ] All actionable human/CodeRabbit/CodeFactor review comments are resolved.
 - [ ] Local bounded multi-run dry-run evidence is recorded in the PR.
-- [ ] After #404 is merged, DB upgrade from a populated #404 v16 database to the final #405 v19 schema verified on an isolated copy; lastmod, license, archived flags and catalog data unchanged.
+- [ ] DB upgrade from a populated #404 v16 database to the final #405 v19 schema verified on an isolated copy; lastmod, license, archived flags and catalog data unchanged.
 - [ ] Confirm `rejected_repository_candidates` exists after v16 → v19, and inspect unresolved expired rolling gaps; if any exist, plan and verify a bounded replay before declaring the configured sweep complete.
 - [ ] No unexplained changes to catalog identities, plugin counts or indexability.
 - [ ] Mark the draft PR ready and merge only after those gates pass.
