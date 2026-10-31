@@ -13,6 +13,7 @@ import {
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import type { Log } from '../logging.js'
 import { recordDiscoveryCandidate } from '../storage/discoveryCandidates.js'
+import { isUnchangedRejectedCandidate } from '../storage/rejectedCandidates.js'
 import { recordDiscoverySourceOutcome } from '../storage/discoverySources.js'
 import { createDiscoveryWriter } from '../storage/repositories.js'
 import {
@@ -347,6 +348,7 @@ export async function discoverRepositories(
         runWhileActive(db, runId, () => {
           for (const item of result.items) {
             if (item.private || !parseRepositoryUrl(item.html_url)) continue
+            if (isUnchangedRejectedCandidate(db, item.html_url, item.node_id, item.pushed_at)) continue
             const key = item.html_url.toLowerCase()
             let id = countedUrls.get(key)
             if (id === undefined) {
