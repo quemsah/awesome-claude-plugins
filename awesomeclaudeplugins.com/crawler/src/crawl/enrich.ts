@@ -1,5 +1,4 @@
 import type Database from 'better-sqlite3'
-import { recordRejectedCandidate } from '../storage/rejectedCandidates.js'
 import type { GitHubGraphQLMarketplaceBlob } from '../github/client.js'
 import { GitHubFatalError, type GitHubGraphQLRepo, type GitHubReader, type GitHubRepo, type RepoResult } from '../github/client.js'
 import { isValidGitHubPathSegment, parseGitHubOwnerUrl } from '../github/identifiers.js'
@@ -13,6 +12,7 @@ import { parsePluginSummariesJson, serializePluginSummaries } from '../github/pl
 import type { GitHubRetryReason } from '../github/rateBudget.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import type { Log } from '../logging.js'
+import { recordRejectedCandidate } from '../storage/rejectedCandidates.js'
 import {
   deleteById,
   deleteCanonicalRows,
