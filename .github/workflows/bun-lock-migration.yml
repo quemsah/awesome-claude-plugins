@@ -1,0 +1,32 @@
+name: Generate Bun migration lockfile
+
+on:
+  push:
+    branches: [bun-6-x-m]
+    paths:
+      - '.github/workflows/bun-lock-migration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.1
+      - name: Migrate npm lockfile
+        working-directory: awesomeclaudeplugins.com
+        run: |
+          bun install --lockfile-only
+          test -s bun.lock
+          rm package-lock.json
+      - name: Commit migrated lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add awesomeclaudeplugins.com/bun.lock awesomeclaudeplugins.com/package-lock.json
+          git commit -m "chore(bun): replace npm lockfile with bun.lock" || exit 0
+          git push origin HEAD:bun-6-x-m
