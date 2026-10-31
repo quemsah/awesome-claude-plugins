@@ -51,6 +51,14 @@ export function saveRepositorySearchPartition(db: Database.Database, partition: 
   `).run(partition)
 }
 
+/** Once a rolling pushed partition falls entirely outside the active 30-day window,
+ * its unfinished work is superseded by newer windows and must not accumulate forever. */
+export function pruneExpiredPushedPartitions(db: Database.Database, activeWindowStart: string): number {
+  return db.prepare(`DELETE FROM repository_search_partitions
+    WHERE query_version = ? AND date_field = 'pushed' AND date_end < ?`)
+    .run(repositorySearchQueryVersion, activeWindowStart).changes
+}
+
 /** Pending leaves from earlier rolling roots remain resumable as the 30-day window moves. */
 export function pendingPushedPartitions(db: Database.Database): RepositorySearchPartition[] {
   const currentQueries = new Set(repositorySearchQueries.map(({ queryId }) => queryId))
