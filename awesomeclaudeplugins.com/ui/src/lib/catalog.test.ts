@@ -154,6 +154,22 @@ describe('formatCatalogRepo', () => {
     const formatted = formatCatalogRepo(rawRepo)
     expect(formatted.plugins).toBeUndefined()
   })
+
+  it('never guesses a missing license, but preserves an explicitly provided license state', () => {
+    const repo: CatalogRepo = {
+      id: 999,
+      owner: 'example',
+      repo_name: 'repo',
+      description: 'No license information collected yet',
+      stargazers_count: 1,
+      forks_count: 0,
+      subscribers_count: 0,
+      plugins_count: null,
+    }
+    expect(formatCatalogRepo(repo)).not.toHaveProperty('license')
+    expect(formatCatalogRepo({ ...repo, license: null })).toHaveProperty('license', null)
+    expect(formatCatalogRepo({ ...repo, license: 'MIT' })).toHaveProperty('license', 'MIT')
+  })
 })
 
 describe('archived-aware sorting', () => {
