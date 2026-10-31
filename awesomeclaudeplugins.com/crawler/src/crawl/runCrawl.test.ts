@@ -21,7 +21,11 @@ import {
   saveRunDraft,
 } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
-import { runCrawl } from './runCrawl.js'
+import { runCrawl as runCrawlImpl, type RunCrawlOptions } from './runCrawl.js'
+
+// Existing integration scenarios explicitly opt into Repository Search.
+const runCrawl = (db: Database.Database, reader: GitHubReader, runId: string, options: RunCrawlOptions = {}) =>
+  runCrawlImpl(db, reader, runId, { repositorySearchEnabled: true, ...options })
 
 const databases: Database.Database[] = []
 const firstRange: SizeRange = [0, 150]
@@ -66,6 +70,32 @@ function reader(overrides: Partial<GitHubReader> = {}): GitHubReader {
     ...overrides,
   }
 }
+
+it('does not call Repository Search without explicit opt-in', async () => {
+  const db = database()
+  const client = reader({
+    searchRepositories: async () => {
+      throw new Error('Optional search must stay disabled')
+    },
+  })
+  const result = await runCrawlImpl(db, client, 'disabled-repo-search', { ranges: [firstRange] })
+  expect(result.discovery.sources.repo_search.state).toBe('not_due')
+  expect(result.status).toBe('completed')
+})
+
+it('isolates an optional Repository Search API error from healthy Code Search', async () => {
+  const db = database()
+  const client = reader({
+    searchRepositories: async () => {
+      throw new GitHubFatalError('invalid repository search', 422)
+    },
+  })
+  const result = await runCrawl(db, client, 'optional-search-error', { ranges: [firstRange] })
+  expect(result.discovery.sources.repo_search.state).toBe('incomplete')
+  expect(result.discovery.sources.repo_search.warnings).toContain('optional-source-error')
+  expect(result.discovery.successfulRanges).toBeGreaterThan(0)
+  expect(result.status).toBe('completed')
+})
 
 it('runs discovery before enrichment and completes with a typed report and stored error counts', async () => {
   const db = database()

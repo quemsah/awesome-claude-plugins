@@ -27,6 +27,7 @@ export type RunCrawlOptions = {
   now?: () => Date
   signal?: AbortSignal
   started?: boolean
+  repositorySearchEnabled?: boolean
   log?: Log
   onPhase?: (phase: 'discovery' | 'enrichment') => void
 }
@@ -135,7 +136,40 @@ async function crawlAndComplete(
   const previousAcceptedUrls = new Set(previousAccepted.map(({ html_url }) => html_url?.toLowerCase()))
   const codeMetrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0 }
   const code = await discover(db, reader, runId, options.ranges ?? [[0, 400_000]], heartbeat, now, options.log, codeMetrics)
-  const repo = await discoverRepositories(db, reader, runId, heartbeat, now, options.log)
+  const emptyRepo = {
+    state: 'not_due' as const,
+    totalResults: 0,
+    partitions: 0,
+    saturatedPartitions: 0,
+    incompleteRollingPartitions: 0,
+    warnings: [] as string[],
+    pagesFetched: 0,
+    uniqueCandidates: 0,
+    newUrls: 0,
+    existingUrls: 0,
+    completedPartitions: 0,
+    incompletePartitions: 0,
+  }
+  let repo: typeof emptyRepo | Awaited<ReturnType<typeof discoverRepositories>> = emptyRepo
+  if (options.repositorySearchEnabled) {
+    try {
+      repo = await discoverRepositories(db, reader, runId, heartbeat, now, options.log)
+    } catch (error) {
+      // A failed optional source must not abort successful Code Search coverage.
+      // Shutdown and loss of database ownership still propagate.
+      if (error instanceof ShutdownError || error instanceof RunNotActiveError || options.signal?.aborted) throw error
+      options.log?.({
+        level: 'warn',
+        event: 'crawl.repository_search.optional_failure',
+        phase: 'discovery',
+        category: 'optional_source_failed',
+        runId,
+        message: 'Repository Search failed; continuing with Code Search results',
+        reason: error instanceof Error ? error.message : 'unknown',
+      })
+      repo = { ...emptyRepo, state: 'incomplete', incompletePartitions: 1, warnings: ['optional-source-error'] }
+    }
+  }
   const emptyYield = { uniqueCandidates: 0, acceptedMarketplaces: 0, rejectedCandidates: 0, pendingCandidates: 0 }
   const discovery: CrawlDiscoverySummary = {
     ...code,

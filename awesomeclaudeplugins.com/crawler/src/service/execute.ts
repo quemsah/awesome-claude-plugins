@@ -35,6 +35,7 @@ export type ExecuteOptions = {
 export type CrawlOptions = ExecuteOptions & {
   ranges?: readonly SizeRange[]
   dryRun: boolean
+  repositorySearchEnabled?: boolean
   started?: boolean
   git?: GitHubGit
   rateBuckets?: () => GitHubRateBuckets
@@ -520,6 +521,7 @@ async function crawlAndPrepare(
     now,
     signal: options.signal,
     started: options.started,
+    repositorySearchEnabled: options.repositorySearchEnabled,
     log: options.log,
     onPhase,
   })

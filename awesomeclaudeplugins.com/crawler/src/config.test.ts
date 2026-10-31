@@ -5,11 +5,18 @@ const base = { DB_PATH: 'catalog.sqlite', GITHUB_READ_TOKEN: 'read-secret' }
 
 describe('parseConfig', () => {
   it('defaults to a disabled pilot', () => {
-    expect(parseConfig('crawl', base)).toMatchObject({ publishEnabled: false, readToken: 'read-secret' })
+    expect(parseConfig('crawl', base)).toMatchObject({ publishEnabled: false, repositorySearchEnabled: false, readToken: 'read-secret' })
   })
 
   it.each(['TRUE', '1', 'maybe', ''])('refuses invalid PUBLISH_ENABLED=%j', (value) => {
     expect(() => parseConfig('crawl', { ...base, PUBLISH_ENABLED: value })).toThrow(/configuration/)
+  })
+
+  it('requires an explicit repository-search opt-in', () => {
+    expect(parseConfig('crawl', { ...base, REPOSITORY_SEARCH_ENABLED: 'true' }).repositorySearchEnabled).toBe(true)
+    for (const value of ['TRUE', '1', 'yes', '']) {
+      expect(() => parseConfig('crawl', { ...base, REPOSITORY_SEARCH_ENABLED: value })).toThrow(/configuration/)
+    }
   })
 
   it('requires both Telegram credentials for production and refuses partial credentials in pilot', () => {

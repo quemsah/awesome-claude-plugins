@@ -292,6 +292,7 @@ async function runCrawl(
       rateBuckets: () => rates.buckets,
       signal: dependencies.signal,
       started: true,
+      repositorySearchEnabled: config.repositorySearchEnabled,
       log,
     })
     output(JSON.stringify(result))

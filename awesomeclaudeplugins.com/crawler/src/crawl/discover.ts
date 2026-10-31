@@ -7,6 +7,7 @@ import type { Log } from '../logging.js'
 import { recordDiscoveryCandidate } from '../storage/discoveryCandidates.js'
 import { listCachedDiscoveryRanges, replaceCachedDiscoveryRanges } from '../storage/discoveryRanges.js'
 import { recordDiscoverySourceOutcome } from '../storage/discoverySources.js'
+import { isUnchangedRejectedCandidate } from '../storage/rejectedCandidates.js'
 import { createDiscoveryWriter } from '../storage/repositories.js'
 import { recordRunError, runWhileActive } from '../storage/runs.js'
 
@@ -151,6 +152,8 @@ function processItems(
         warn(db, state, 'invalid-url', 0, { repositoryUrl: url })
         continue
       }
+      // Code Search omits pushed_at: retry rejected repositories on an age-based TTL.
+      if (isUnchangedRejectedCandidate(db, url, repository.node_id, undefined, state.now())) continue
       const countKey = url.toLowerCase()
       if (state.countedUrls.has(countKey)) {
         const row = db.prepare('SELECT id FROM repositories WHERE html_url = ? COLLATE NOCASE').get(url) as { id: number }

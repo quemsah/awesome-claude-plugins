@@ -18,6 +18,7 @@ export function isUnchangedRejectedCandidate(
   htmlUrl: string,
   githubNodeId: string | null | undefined,
   pushedAt: string | null | undefined,
+  now?: string,
 ): boolean {
   const rejected = db
     .prepare(`
@@ -30,7 +31,9 @@ export function isUnchangedRejectedCandidate(
   if (!rejected) return false
   const pushed = pushedAt ? Date.parse(pushedAt) : Number.NaN
   const rejectedTime = Date.parse(rejected.rejected_at)
-  if (Number.isFinite(pushed) && Number.isFinite(rejectedTime) && pushed > rejectedTime) {
+  // Code Search has no pushed_at; give a previously rejected repository a new chance after 90 days.
+  const recheckDue = now !== undefined && Number.isFinite(rejectedTime) && Date.parse(now) - rejectedTime >= 90 * 86_400_000
+  if ((Number.isFinite(pushed) && Number.isFinite(rejectedTime) && pushed > rejectedTime) || recheckDue) {
     db.prepare(`
       DELETE FROM rejected_repository_candidates
       WHERE (html_url = ? COLLATE NOCASE AND (github_node_id IS NULL OR ? IS NULL OR github_node_id = ?))
