@@ -389,12 +389,14 @@ export async function discoverRepositories(
               saveRepositorySearchPartition(db, partition)
               const remaining = work.slice(index + 1)
               remaining.push(
-                ...children.filter((child) => child.field !== 'pushed' || child.end >= activePushedStart).map((child) => ({
-                  query,
-                  window: child,
-                  partition: ensureRepositorySearchPartition(db, query.queryId, child),
-                  resumedRolling: work[index].resumedRolling,
-                })),
+                ...children
+                  .filter((child) => child.field !== 'pushed' || child.end >= activePushedStart)
+                  .map((child) => ({
+                    query,
+                    window: child,
+                    partition: ensureRepositorySearchPartition(db, query.queryId, child),
+                    resumedRolling: work[index].resumedRolling,
+                  })),
               )
               const scheduled = [
                 ...schedulePushedWork(
