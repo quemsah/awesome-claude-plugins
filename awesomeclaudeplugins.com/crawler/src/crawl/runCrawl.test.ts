@@ -270,6 +270,40 @@ it('fails rather than completing when both discovery sources fail, even if enric
   expect(errors.at(-1)).toMatchObject({ phase: 'crawl', error_type: 'no_successful_ranges' })
 })
 
+it('retains partial Repository Search candidates when its later API request fails and Code Search is unavailable', async () => {
+  const db = database()
+  const candidateUrl = 'https://github.com/team/partial-discovery'
+  const client = reader({
+    searchCode: async () => {
+      throw new GitHubTemporaryError('Code Search unavailable', 503)
+    },
+    searchRepositories: async (query) => {
+      if (query.startsWith('topic:claude-plugin is:public pushed:')) {
+        return {
+          items: [{ html_url: candidateUrl, description: 'from the first page', node_id: 'partial-node', private: false }],
+          total_count: 1,
+          incomplete_results: false,
+        }
+      }
+      throw new GitHubFatalError('Repository Search rejected later query', 422)
+    },
+  })
+
+  const result = await runCrawl(db, client, 'partial-repo-fatal', { ranges: [firstRange] })
+
+  expect(result.status).toBe('completed')
+  expect(result.discovery.successfulRanges).toBe(0)
+  expect(result.discovery.sources.repo_search).toMatchObject({
+    state: 'incomplete',
+    uniqueCandidates: 1,
+    newUrls: 1,
+    warnings: expect.arrayContaining(['optional-source-error']),
+  })
+  expect(result.discovery.uniqueCandidates).toBe(1)
+  expect(result.enrichment.conclusive).toBe(1)
+  expect(db.prepare('SELECT plugins_count FROM repositories WHERE html_url = ?').get(candidateUrl)).toEqual({ plugins_count: 1 })
+})
+
 it('completes from Repository Search when every Code Search range fails', async () => {
   const db = database()
   const repoSearchUrl = 'https://github.com/team/repo-search-only'

@@ -65,6 +65,17 @@ if ($LASTEXITCODE -ne 0) { throw "Inspect failed with exit code $LASTEXITCODE" }
 
 Run it **at least twice on the same disposable DB** to check continuation and fair progress. Repeat on a different UTC date if checking shifted rolling windows. Stop if errors or API-budget usage are abnormal; stopping a run leaves incomplete checkpoints to be retried.
 
+### Explicit bounded expired-window reconciliation
+
+An expired unfinished pushed window is stored as a distinct exact date range with its pagination cursor; `inspect` reports every still-unverified window as a gap. **Ordinary scheduled crawls never replay expired windows automatically.** After examining these gaps and obtaining separate approval for backfill, use the same isolated database and read-only token:
+
+```bash
+npm run crawl --workspace=catalog-crawler -- --dry-run --reconcile-expired-gaps
+npm run inspect --workspace=catalog-crawler
+```
+
+The flag is accepted only with `--dry-run` and `REPOSITORY_SEARCH_ENABLED=true`. This command uses the standard **20 Repository Search HTTP attempts per run** and persists progress for the next explicitly requested replay. A gap is removed **only after a successful page-one-verified scan**; saturated windows are split into exact smaller ranges. Repeat under operator control until verified or investigate any remaining gaps. A dry run writes to `DB_PATH` but never publishes. Never use a production or actively written database for this audit.
+
 ## 3. Collect evidence before merge
 
 Record for each run:
@@ -76,7 +87,7 @@ Record for each run:
 | Fair scheduling | Rolling work progresses; when historical work is due, its reserved budget is respected |
 | Candidate funnel | Raw results, unique new URLs, accepted marketplaces, rejected/non-plugin candidates and deferrals reported separately |
 | Catalog integrity | Existing canonical repositories, plugin counts/identities, shared parser output and publication preview do not regress |
-| Coverage clarity | `inspect` shows incomplete/stale partitions **and unresolved gaps from expired rolling leaves**; these must be reconciled by a bounded backfill before claiming coverage |
+| Coverage clarity | `inspect` retains exact expired rolling gaps until the explicitly enabled bounded replay verifies each; unreconciled gaps keep freshness incomplete |
 | API behavior | Retry-After, search quotas, errors and runtime are acceptable for normal scheduled crawls |
 
 The earlier focused generic-query check retrieved `human-stuff/prodready`; another isolated page-2 cursor check retrieved `mnemoverse/claude-plugin`. Neither is manually seeded in production. **Do not claim normal full-crawl scheduler reachability until verified by the bounded multi-run audit**; reaching the relevant partition may require multiple scheduled runs.

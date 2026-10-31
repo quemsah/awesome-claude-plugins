@@ -52,37 +52,94 @@ export function saveRepositorySearchPartition(db: Database.Database, partition: 
   `).run(partition)
 }
 
-/** Keep an immutable, bounded summary of expired unfinished rolling work.
- * Removing a checkpoint must never silently assert that its range was enumerated. */
-type ExpiredGap = { firstDate: string; lastDate: string; expiredLeaves: number }
+/** Persist the exact expired pushed leaves: a merged min/max span loses distinct gaps.
+ * Replays are opt-in and bounded by the normal per-run Repository Search budget. */
+export type ExpiredGap = {
+  queryId: string
+  dateStart: string
+  dateEnd: string
+  nextPage: number
+  totalCount: number
+  lastAttempt: string | null
+}
 const gapSetting = `repo_search_expired_gaps_v${repositorySearchQueryVersion}`
+function gapKey(queryId: string, start: string, end: string): string {
+  return `${queryId}/${partitionKey({ field: 'pushed', start, end })}`
+}
 
 export function expiredPushedGaps(db: Database.Database): Record<string, ExpiredGap> {
   const saved = getSetting(db, gapSetting)
-  return saved ? (JSON.parse(saved) as Record<string, ExpiredGap>) : {}
+  if (!saved) return {}
+  const parsed = JSON.parse(saved) as Record<string, ExpiredGap | { firstDate: string; lastDate: string; expiredLeaves: number }>
+  const gaps: Record<string, ExpiredGap> = {}
+  for (const [key, value] of Object.entries(parsed)) {
+    // Conservative compatibility for databases used with the earlier pre-merge
+    // prototype. Exact disjoint ranges cannot be reconstructed; replay their envelope.
+    if ('firstDate' in value) {
+      const newKey = gapKey(key, value.firstDate, value.lastDate)
+      gaps[newKey] = {
+        queryId: key, dateStart: value.firstDate, dateEnd: value.lastDate,
+        nextPage: 1, totalCount: 0, lastAttempt: null,
+      }
+    } else gaps[key] = value
+  }
+  return gaps
 }
 
 export function expiredPushedGapCount(db: Database.Database): number {
-  return Object.values(expiredPushedGaps(db)).reduce((count, gap) => count + gap.expiredLeaves, 0)
+  return Object.keys(expiredPushedGaps(db)).length
 }
 
-/** Prune old checkpoints only after recording any unfinished time ranges.
- * Their gaps remain visible until an explicitly verified reconciliation/backfill. */
+export function clearVerifiedExpiredGap(db: Database.Database, queryId: string, window: DateWindow): void {
+  const gaps = expiredPushedGaps(db)
+  const key = gapKey(queryId, window.start, window.end)
+  if (!Object.hasOwn(gaps, key)) return
+  delete gaps[key]
+  setSetting(db, gapSetting, JSON.stringify(gaps))
+}
+
+/** A saturated expired leaf needs smaller exact gaps, not a falsely cleared parent. */
+export function splitExpiredGap(db: Database.Database, queryId: string, parent: DateWindow, children: readonly DateWindow[]): void {
+  const gaps = expiredPushedGaps(db)
+  const key = gapKey(queryId, parent.start, parent.end)
+  if (!Object.hasOwn(gaps, key)) return
+  delete gaps[key]
+  for (const child of children) {
+    gaps[gapKey(queryId, child.start, child.end)] = {
+      queryId, dateStart: child.start, dateEnd: child.end,
+      nextPage: 1, totalCount: 0, lastAttempt: null,
+    }
+  }
+  setSetting(db, gapSetting, JSON.stringify(gaps))
+}
+
+/** Prune expired checkpoints only after atomically recording their exact dates,
+ * pagination cursor and latest attempt for a later explicitly enabled replay. */
 export function pruneExpiredPushedPartitions(db: Database.Database, activeWindowStart: string): number {
   return db.transaction(() => {
     const rows = db
-      .prepare(`SELECT query_id, date_start, date_end FROM repository_search_partitions
+      .prepare(`SELECT query_id, date_start, date_end, next_page, total_count, last_attempt_at
+        FROM repository_search_partitions
         WHERE query_version = ? AND date_field = 'pushed'
           AND date_end < ? AND status IN ('pending', 'incomplete')`)
-      .all(repositorySearchQueryVersion, activeWindowStart) as Array<{ query_id: string; date_start: string; date_end: string }>
+      .all(repositorySearchQueryVersion, activeWindowStart) as Array<{
+        query_id: string
+        date_start: string
+        date_end: string
+        next_page: number
+        total_count: number
+        last_attempt_at: string | null
+      }>
     if (rows.length) {
       const gaps = expiredPushedGaps(db)
       for (const row of rows) {
-        const existing = gaps[row.query_id]
-        gaps[row.query_id] = {
-          firstDate: existing && existing.firstDate < row.date_start ? existing.firstDate : row.date_start,
-          lastDate: existing && existing.lastDate > row.date_end ? existing.lastDate : row.date_end,
-          expiredLeaves: (existing?.expiredLeaves ?? 0) + 1,
+        gaps[gapKey(row.query_id, row.date_start, row.date_end)] = {
+          queryId: row.query_id,
+          dateStart: row.date_start,
+          dateEnd: row.date_end,
+          nextPage: row.next_page,
+          totalCount: row.total_count,
+          lastAttempt: row.last_attempt_at,
         }
       }
       setSetting(db, gapSetting, JSON.stringify(gaps))

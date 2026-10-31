@@ -257,6 +257,27 @@ describe('CLI', () => {
     expect(opened).toBe(false)
   })
 
+  it('requires an explicit dry-run and enabled repository search for expired-gap replay', async () => {
+    let opened = false
+    await expect(
+      runCli(['crawl', '--reconcile-expired-gaps'], {
+        env: { DB_PATH: 'db', GITHUB_READ_TOKEN: 'token', REPOSITORY_SEARCH_ENABLED: 'true' },
+        open: () => {
+          opened = true
+          throw new Error('unexpected')
+        },
+      }),
+    ).rejects.toThrow(/dry-run/)
+    expect(opened).toBe(false)
+
+    const path = databasePath()
+    await expect(
+      runCli(['crawl', '--dry-run', '--reconcile-expired-gaps'], {
+        env: { DB_PATH: path, GITHUB_READ_TOKEN: 'token', REPOSITORY_SEARCH_ENABLED: 'false' },
+      }),
+    ).rejects.toThrow(/REPOSITORY_SEARCH_ENABLED/)
+  })
+
   it('runs despite a recent publication and supports a read-only draft', async () => {
     const path = databasePath()
     populateTestDatabase(path)

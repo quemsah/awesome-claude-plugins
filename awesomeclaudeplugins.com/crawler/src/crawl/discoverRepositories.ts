@@ -17,12 +17,15 @@ import { recordDiscoverySourceOutcome } from '../storage/discoverySources.js'
 import { isUnchangedRejectedCandidate } from '../storage/rejectedCandidates.js'
 import { createDiscoveryWriter } from '../storage/repositories.js'
 import {
+  clearVerifiedExpiredGap,
   ensureRepositorySearchPartition,
   expiredPushedGapCount,
+  expiredPushedGaps,
   pendingPushedPartitions,
   pruneExpiredPushedPartitions,
   type RepositorySearchPartition,
   saveRepositorySearchPartition,
+  splitExpiredGap,
 } from '../storage/repositorySearch.js'
 import { runWhileActive } from '../storage/runs.js'
 
@@ -52,6 +55,7 @@ type Work = {
   window: DateWindow
   partition: RepositorySearchPartition
   resumedRolling: boolean
+  gapRecovery?: boolean
 }
 
 function compareLastAttempt(left: Work, right: Work): number {
@@ -162,7 +166,7 @@ type SearchContext = {
   writeDiscovery: ReturnType<typeof createDiscoveryWriter>
 }
 
-function prepareRepositoryWork(db: Database.Database, runId: string, at: string): Work[] {
+function prepareRepositoryWork(db: Database.Database, runId: string, at: string, reconcileExpiredGaps: boolean): Work[] {
   const work: Work[] = []
   const refreshBefore = Date.parse(at) - 90 * 86_400_000
   const activePushedStart = rollingPushedWindow(at).start
@@ -201,6 +205,25 @@ function prepareRepositoryWork(db: Database.Database, runId: string, at: string)
         resumedRolling: true,
       })
       currentWork.add(identity)
+    }
+    if (reconcileExpiredGaps) {
+      for (const gap of Object.values(expiredPushedGaps(db))) {
+        const query = queriesById.get(gap.queryId)
+        if (!query) continue
+        const window: DateWindow = { field: 'pushed', start: gap.dateStart, end: gap.dateEnd }
+        const partition = ensureRepositorySearchPartition(db, query.queryId, window)
+        const identity = `${query.queryId}/${partition.partition_key}`
+        if (currentWork.has(identity)) continue
+        Object.assign(partition, {
+          status: 'incomplete',
+          next_page: gap.nextPage,
+          total_count: gap.totalCount,
+          last_attempt_at: gap.lastAttempt,
+        })
+        saveRepositorySearchPartition(db, partition)
+        work.push({ query, window, partition, resumedRolling: true, gapRecovery: true })
+        currentWork.add(identity)
+      }
     }
   })
   const initialPushed = schedulePushedWork(work)
@@ -255,13 +278,9 @@ function createSearchReporter(context: SearchContext) {
       warnings.add('expired-rolling-gaps-require-reconciliation')
       summary.warnings = [...warnings]
     }
-    summary.state = expiredGaps
-      ? 'incomplete'
-      : work.length === 0
-        ? 'not_due'
-        : summary.incompletePartitions === 0
-          ? 'complete'
-          : 'incomplete'
+    if (failure || expiredGaps) summary.state = 'incomplete'
+    else if (work.length === 0) summary.state = 'not_due'
+    else summary.state = summary.incompletePartitions === 0 ? 'complete' : 'incomplete'
     recordDiscoverySourceOutcome(
       db,
       runId,
@@ -365,21 +384,23 @@ function persistSearchPage(
 
 function splitSaturatedPartition(context: SearchContext, index: number): void {
   const { db, runId, work, activePushedStart } = context
-  const { query, window, partition } = work[index]
+  const { query, window, partition, gapRecovery } = work[index]
   const children = splitDateWindow(window)
   if (!children) return
   runWhileActive(db, runId, () => {
     partition.status = 'split'
     saveRepositorySearchPartition(db, partition)
+    if (gapRecovery) splitExpiredGap(db, query.queryId, window, children)
     const remaining = work.slice(index + 1)
     remaining.push(
       ...children
-        .filter((child) => child.field !== 'pushed' || child.end >= activePushedStart)
+        .filter((child) => gapRecovery || child.field !== 'pushed' || child.end >= activePushedStart)
         .map((child) => ({
           query,
           window: child,
           partition: ensureRepositorySearchPartition(db, query.queryId, child),
           resumedRolling: work[index].resumedRolling,
+          gapRecovery,
         })),
     )
     const scheduled = [
@@ -490,8 +511,10 @@ async function scanRepositoryPartition(context: SearchContext, index: number, re
     reason = 'verification-required'
     runWhileActive(db, runId, () => saveRepositorySearchPartition(db, partition))
   }
-  if (partition.status === 'complete') completed.add(partition)
-  else if (partition.status !== 'split') warnings.add(reason)
+  if (partition.status === 'complete') {
+    if (work[index].gapRecovery) runWhileActive(db, runId, () => clearVerifiedExpiredGap(db, query.queryId, window))
+    completed.add(partition)
+  } else if (partition.status !== 'split') warnings.add(reason)
   emitPartition(work[index], reason)
   onProgress?.()
 }
@@ -503,6 +526,8 @@ export async function discoverRepositories(
   onProgress?: () => void,
   now: () => string = () => new Date().toISOString(),
   log?: Log,
+  reconcileExpiredGaps = false,
+  onPartial?: (summary: RepositoryDiscoverySummary) => void,
 ): Promise<RepositoryDiscoverySummary> {
   const at = now()
   const summary: RepositoryDiscoverySummary = {
@@ -523,7 +548,7 @@ export async function discoverRepositories(
   const countedUrls = new Map<string, number>()
   const completed = new Set<RepositorySearchPartition>()
   const attempted = new Set<RepositorySearchPartition>()
-  const work = prepareRepositoryWork(db, runId, at)
+  const work = prepareRepositoryWork(db, runId, at, reconcileExpiredGaps)
   const activePushedStart = rollingPushedWindow(at).start
   const context: SearchContext = {
     db,
@@ -557,6 +582,7 @@ export async function discoverRepositories(
     }
   } catch (error) {
     reporter.finish(true)
+    onPartial?.({ ...summary, warnings: [...summary.warnings] })
     throw error
   }
   reporter.finish()

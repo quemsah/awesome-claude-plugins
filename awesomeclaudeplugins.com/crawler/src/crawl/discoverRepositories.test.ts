@@ -12,6 +12,8 @@ import { recordRejectedCandidate } from '../storage/rejectedCandidates.js'
 import {
   ensureRepositorySearchPartition,
   expiredPushedGapCount,
+  expiredPushedGaps,
+  pruneExpiredPushedPartitions,
   repositorySearchCoverage,
   saveRepositorySearchPartition,
 } from '../storage/repositorySearch.js'
@@ -1110,6 +1112,89 @@ it('does not rediscover unchanged marketplace 404 rejections but retries after a
   expect(second.uniqueCandidates).toBe(1)
   expect(db.prepare('SELECT COUNT(*) AS n FROM repositories').get()).toEqual({ n: 1 })
   expect(db.prepare('SELECT COUNT(*) AS n FROM rejected_repository_candidates').get()).toEqual({ n: 0 })
+})
+
+it('replays exact disjoint expired windows only when explicitly enabled and clears verified leaves individually', async () => {
+  const db = database()
+  const first = { field: 'pushed' as const, start: '2026-08-01', end: '2026-08-01' }
+  const second = { field: 'pushed' as const, start: '2026-08-03', end: '2026-08-03' }
+  for (const window of [first, second]) {
+    const partition = ensureRepositorySearchPartition(db, firstQuery.queryId, window)
+    Object.assign(partition, { status: 'incomplete', last_attempt_at: at })
+    saveRepositorySearchPartition(db, partition)
+  }
+  pruneExpiredPushedPartitions(db, '2026-09-01')
+  expect(Object.values(expiredPushedGaps(db)).map(({ dateStart }) => dateStart).sort()).toEqual(['2026-08-01', '2026-08-03'])
+  expect(expiredPushedGapCount(db)).toBe(2)
+
+  const firstQueryText = `${firstQuery.queryText} pushed:${first.start}..${first.end}`
+  const secondQueryText = `${firstQuery.queryText} pushed:${second.start}..${second.end}`
+  const calls: string[] = []
+  const client = reader(async (query) => {
+    calls.push(query)
+    if (query === firstQueryText) return page([item('recovered-first')])
+    if (query === secondQueryText) throw new GitHubTemporaryError('recovery unavailable', 503)
+    return page()
+  })
+  await discoverRepositories(db, client, 'run', undefined, () => at)
+  expect(calls).not.toContain(firstQueryText)
+  expect(calls).not.toContain(secondQueryText)
+  expect(expiredPushedGapCount(db)).toBe(2)
+
+  calls.length = 0
+  await discoverRepositories(db, client, 'run', undefined, () => at, undefined, true)
+  expect(calls).toContain(firstQueryText)
+  expect(calls).toContain(secondQueryText)
+  expect(expiredPushedGapCount(db)).toBe(1)
+  expect(Object.values(expiredPushedGaps(db))[0]?.dateStart).toBe(second.start)
+  expect(repositorySearchCoverage(db, at).warnings).toContain('expired_rolling_gaps_require_reconciliation')
+
+  calls.length = 0
+  await discoverRepositories(
+    db,
+    reader(async (query) => {
+      calls.push(query)
+      return page()
+    }),
+    'run',
+    undefined,
+    () => at,
+    undefined,
+    true,
+  )
+  expect(calls).toContain(secondQueryText)
+  expect(expiredPushedGapCount(db)).toBe(0)
+  expect(repositorySearchCoverage(db, at).warnings).not.toContain('expired_rolling_gaps_require_reconciliation')
+})
+
+it('splits saturated expired gaps into exact child windows without prematurely clearing coverage', async () => {
+  const db = database()
+  const window = { field: 'pushed' as const, start: '2026-08-01', end: '2026-08-04' }
+  const partition = ensureRepositorySearchPartition(db, firstQuery.queryId, window)
+  partition.status = 'incomplete'
+  saveRepositorySearchPartition(db, partition)
+  pruneExpiredPushedPartitions(db, '2026-09-01')
+  const queryText = `${firstQuery.queryText} pushed:${window.start}..${window.end}`
+  await discoverRepositories(
+    db,
+    reader(async (query) =>
+      query === queryText ? page(Array.from({ length: 100 }, (_, index) => item(`saturated-${index}`)), 1000) : page([], 1000),
+    ),
+    'run',
+    undefined,
+    () => at,
+    undefined,
+    true,
+  )
+  const remaining = Object.values(expiredPushedGaps(db)).filter(({ queryId }) => queryId === firstQuery.queryId)
+  expect(remaining.some(({ dateStart, dateEnd }) => dateStart === window.start && dateEnd === window.end)).toBe(false)
+  expect(remaining).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ dateStart: '2026-08-01', dateEnd: '2026-08-02' }),
+      expect.objectContaining({ dateStart: '2026-08-03', dateEnd: '2026-08-04' }),
+    ]),
+  )
+  expect(repositorySearchCoverage(db, at).freshness).toBe('incomplete')
 })
 
 it('bounds the pushed backlog over consecutive saturated days', async () => {

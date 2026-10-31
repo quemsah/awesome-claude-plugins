@@ -28,6 +28,7 @@ export type RunCrawlOptions = {
   signal?: AbortSignal
   started?: boolean
   repositorySearchEnabled?: boolean
+  reconcileExpiredGaps?: boolean
   log?: Log
   onPhase?: (phase: 'discovery' | 'enrichment') => void
 }
@@ -140,12 +141,23 @@ async function discoverOptionalRepositories(
     incompletePartitions: 0,
   }
   let repo: RepositorySearchResult = emptyRepo
+  if (options.reconcileExpiredGaps && !options.repositorySearchEnabled) throw new Error('Gap replay requires Repository Search')
   if (options.repositorySearchEnabled) {
+    const partial: { current: RepositorySearchResult | null } = { current: null }
     try {
-      repo = await discoverRepositories(db, reader, runId, heartbeat, now, options.log)
+      repo = await discoverRepositories(
+        db,
+        reader,
+        runId,
+        heartbeat,
+        now,
+        options.log,
+        options.reconcileExpiredGaps,
+        (summary) => {
+          partial.current = summary
+        },
+      )
     } catch (error) {
-      // A failed optional source must not abort successful Code Search coverage.
-      // Shutdown and loss of database ownership still propagate.
       if (error instanceof ShutdownError || error instanceof RunNotActiveError || options.signal?.aborted) throw error
       if (!(error instanceof GitHubFatalError || error instanceof GitHubTemporaryError)) throw error
       options.log?.({
@@ -155,9 +167,11 @@ async function discoverOptionalRepositories(
         category: 'optional_source_failed',
         runId,
         message: 'Repository Search failed; continuing with Code Search results',
-        reason: error instanceof Error ? error.message : 'unknown',
+        reason: error.message,
       })
-      repo = { ...emptyRepo, state: 'incomplete', incompletePartitions: 1, warnings: ['optional-source-error'] }
+      repo = partial.current
+        ? { ...partial.current, state: 'incomplete', warnings: [...new Set([...partial.current.warnings, 'optional-source-error'])] }
+        : { ...emptyRepo, state: 'incomplete', incompletePartitions: 1, warnings: ['optional-source-error'] }
     }
   }
   return repo

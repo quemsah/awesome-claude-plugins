@@ -70,6 +70,7 @@ function notifierFor(config: RuntimeConfig, dependencies: CliDependencies): Noti
 type CliCommand = 'inspect' | 'inspect-progress' | 'crawl' | 'publish' | 'recover-crawl' | 'export' | 'maintenance'
 type ParsedOptions = {
   dryRun: boolean
+  reconcileExpiredGaps: boolean
   publishId?: string
   exportId?: string
   exportDirectory?: string
@@ -77,13 +78,17 @@ type ParsedOptions = {
   recoverPublication: boolean
 }
 
-function parseCrawlOptions(args: string[]): Pick<ParsedOptions, 'dryRun'> {
+function parseCrawlOptions(args: string[]): Pick<ParsedOptions, 'dryRun' | 'reconcileExpiredGaps'> {
   const seen = new Set<string>()
   for (const option of args) {
-    if (option !== '--dry-run' || seen.has(option)) throw new Error('Unknown or repeated crawl option')
+    if (!['--dry-run', '--reconcile-expired-gaps'].includes(option) || seen.has(option))
+      throw new Error('Unknown or repeated crawl option')
     seen.add(option)
   }
-  return { dryRun: seen.has('--dry-run') }
+  const dryRun = seen.has('--dry-run')
+  const reconcileExpiredGaps = seen.has('--reconcile-expired-gaps')
+  if (reconcileExpiredGaps && !dryRun) throw new Error('Gap reconciliation requires --dry-run')
+  return { dryRun, reconcileExpiredGaps }
 }
 
 function parsePublishOptions(args: string[]): Pick<ParsedOptions, 'publishId' | 'recoverPublication'> {
@@ -103,7 +108,7 @@ function parseRunId(args: string[], command: 'recover-crawl' | 'export'): string
 }
 
 function parseOptions(command: CliCommand, args: string[]): ParsedOptions {
-  const defaults: ParsedOptions = { dryRun: false, recoverPublication: false }
+  const defaults: ParsedOptions = { dryRun: false, reconcileExpiredGaps: false, recoverPublication: false }
   if (command === 'crawl') return { ...defaults, ...parseCrawlOptions(args) }
   if (command === 'publish') return { ...defaults, ...parsePublishOptions(args) }
   if (command === 'recover-crawl') return { ...defaults, recoverId: parseRunId(args, command) }
@@ -262,7 +267,7 @@ async function runCrawl(
   db: Database.Database,
   config: RuntimeConfig,
   dependencies: CliDependencies,
-  options: Pick<ParsedOptions, 'dryRun'>,
+  options: Pick<ParsedOptions, 'dryRun' | 'reconcileExpiredGaps'>,
   runId: string,
   now: () => Date,
   output: (line: string) => void,
@@ -293,6 +298,7 @@ async function runCrawl(
       signal: dependencies.signal,
       started: true,
       repositorySearchEnabled: config.repositorySearchEnabled,
+      reconcileExpiredGaps: options.reconcileExpiredGaps,
       log,
     })
     output(JSON.stringify(result))
@@ -315,10 +321,12 @@ async function runCrawlCommand(
   db: Database.Database,
   config: RuntimeConfig,
   dependencies: CliDependencies,
-  options: Pick<ParsedOptions, 'dryRun'>,
+  options: Pick<ParsedOptions, 'dryRun' | 'reconcileExpiredGaps'>,
   now: () => Date,
   output: (line: string) => void,
 ): Promise<void> {
+  if (options.reconcileExpiredGaps && !config.repositorySearchEnabled)
+    throw new Error('Gap reconciliation requires REPOSITORY_SEARCH_ENABLED=true')
   const activeRunId = await ensureCrawlAvailable(db, config, dependencies, now)
   if (activeRunId) {
     output(JSON.stringify({ status: 'skipped', reason: 'active_run', runId: activeRunId }))
