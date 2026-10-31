@@ -1430,6 +1430,9 @@ it('deletes a repository only when REST confirms a null GraphQL marketplace OID 
 
   expect(counts).toMatchObject({ deleted404: 1, conclusive: 1 })
   expect(db.prepare('SELECT id FROM repositories WHERE id = ?').get(id)).toBeUndefined()
+  expect(db.prepare('SELECT html_url, github_node_id FROM rejected_repository_candidates').all()).toEqual([
+    { html_url: 'https://github.com/team/repo', github_node_id: 'legacy-node-id' },
+  ])
 })
 
 it('heartbeats immediately before a GraphQL marketplace REST fetch', async () => {
@@ -1859,6 +1862,9 @@ it('skips a canonical duplicate deleted after a renamed repository marketplace 4
   expect(getMarketplace).toHaveBeenCalledTimes(1)
   expect(getMarketplace).toHaveBeenCalledWith('new-team', 'new-repo', undefined, { maxAttempts: 1 })
   expect(db.prepare('SELECT id FROM repositories WHERE id IN (?, ?)').all(originalId, duplicateId)).toEqual([])
+  expect(db.prepare('SELECT html_url FROM rejected_repository_candidates').all()).toEqual([
+    { html_url: 'https://github.com/new-team/new-repo' },
+  ])
 })
 
 it.each(['name', 'owner', 'html_url', 'owner_url'] as const)(
