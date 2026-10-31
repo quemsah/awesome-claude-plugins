@@ -10,7 +10,7 @@ function publicTimestamp(value: string | null | undefined): string | undefined {
   if (!value) return undefined
   // Date.parse accepts date-only strings and normalizes impossible dates (e.g. February 30).
   // GitHub timestamps and first-seen dates must be full ISO-8601 instants.
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/.exec(value)
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/.exec(value)
   if (!match) return undefined
   const [, year, month, day, hour, minute, second, zone] = match
   const y = Number(year)
