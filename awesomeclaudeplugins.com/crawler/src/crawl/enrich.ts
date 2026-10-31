@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { recordRejectedCandidate } from '../storage/rejectedCandidates.js'
 import type { GitHubGraphQLMarketplaceBlob } from '../github/client.js'
 import { GitHubFatalError, type GitHubGraphQLRepo, type GitHubReader, type GitHubRepo, type RepoResult } from '../github/client.js'
 import { isValidGitHubPathSegment, parseGitHubOwnerUrl } from '../github/identifiers.js'
@@ -328,10 +329,13 @@ function removeLoadedRepository(
   loaded: LoadedRepository,
   counts: EnrichmentCounts,
   removedIds: Set<number>,
+  now: () => string,
   log?: Log,
   writes?: EnrichmentWriteBatch,
 ): void {
   const remove = (): number | null => {
+    // Keep this record when deletion succeeds, including in the GraphQL write batch.
+    recordRejectedCandidate(db, loaded.canonical.htmlUrl, loaded.githubNodeId ?? row.github_node_id, now())
     if (loaded.moved) return deleteCanonicalRows(db, row.id, loaded.canonical.htmlUrl)
     if (writes) writes.deleteRepository.run(row.id)
     else deleteById(db, row.id)
@@ -733,7 +737,7 @@ async function loadLegacyMarketplace(
     throw error
   }
   if (result.kind === 'not-found') {
-    removeLoadedRepository(db, runId, row, loaded, counts, removedIds, log, writes)
+    removeLoadedRepository(db, runId, row, loaded, counts, removedIds, now, log, writes)
     return null
   }
   if (result.kind === 'temporary-error') {
@@ -1031,7 +1035,7 @@ async function loadGraphQLMarketplaceViaRest(
     throw error
   }
   if (result.kind === 'not-found') {
-    removeLoadedRepository(db, runId, row, loaded, counts, removedIds, log, writes)
+    removeLoadedRepository(db, runId, row, loaded, counts, removedIds, now, log, writes)
     return null
   }
   if (result.kind === 'temporary-error') {
