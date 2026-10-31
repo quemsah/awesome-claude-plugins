@@ -34,27 +34,39 @@ function sortDateValue(value: string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function stars(repo: CatalogRepo): number {
+  return repo.stargazers_count ?? 0
+}
+
+function compareStars(left: CatalogRepo, right: CatalogRepo): number {
+  const descriptionSignal = (repo: CatalogRepo) => (repo.description?.trim() ? 1 : 0)
+  return stars(right) - stars(left) || descriptionSignal(right) - descriptionSignal(left)
+}
+
+function comparePlugins(left: CatalogRepo, right: CatalogRepo): number {
+  const pluginSignal = (repo: CatalogRepo) => (repo.plugins_count ?? 0) * Math.log10(stars(repo) + 10)
+  return pluginSignal(right) - pluginSignal(left) || (right.plugins_count ?? 0) - (left.plugins_count ?? 0)
+}
+
+function compareDates(left: CatalogRepo, right: CatalogRepo, field: 'pushed_at' | 'catalog_added_at'): number {
+  return sortDateValue(right[field]) - sortDateValue(left[field]) || stars(right) - stars(left)
+}
+
 /** Keep archived repositories at the end of every search/browse ordering. */
 export function compareCatalogRepos(left: CatalogRepo, right: CatalogRepo, sortOption: SortOption): number {
   const archivedDiff = Number(isArchivedRepo(left)) - Number(isArchivedRepo(right))
   if (archivedDiff !== 0) return archivedDiff
-  const descriptionSignal = (repo: CatalogRepo) => (repo.description?.trim() ? 1 : 0)
   switch (sortOption) {
     case 'forks-desc':
       return (right.forks_count ?? 0) - (left.forks_count ?? 0)
-    case 'plugins-desc': {
-      const pluginSignal = (repo: CatalogRepo) => (repo.plugins_count ?? 0) * Math.log10((repo.stargazers_count ?? 0) + 10)
-      return pluginSignal(right) - pluginSignal(left) || (right.plugins_count ?? 0) - (left.plugins_count ?? 0)
-    }
+    case 'plugins-desc':
+      return comparePlugins(left, right)
     case 'updated-desc':
-      return sortDateValue(right.pushed_at) - sortDateValue(left.pushed_at) || (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0)
+      return compareDates(left, right, 'pushed_at')
     case 'created-desc':
-      return (
-        sortDateValue(right.catalog_added_at) - sortDateValue(left.catalog_added_at) ||
-        (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0)
-      )
+      return compareDates(left, right, 'catalog_added_at')
     default:
-      return (right.stargazers_count ?? 0) - (left.stargazers_count ?? 0) || descriptionSignal(right) - descriptionSignal(left)
+      return compareStars(left, right)
   }
 }
 
