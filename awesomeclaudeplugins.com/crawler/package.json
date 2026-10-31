@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "typecheck:integration": "tsc --noEmit -p tsconfig.integration.json",
     "lint": "biome check .",
-    "test": "npm run build && vitest run --exclude 'dist/**' --exclude 'test/integration/**'",
+    "test": "bun run build && vitest run --exclude 'dist/**' --exclude 'test/integration/**'",
     "test:integration": "vitest run test/integration",
     "inspect": "node dist/cli.js inspect",
     "inspect:progress": "node dist/cli.js inspect-progress",

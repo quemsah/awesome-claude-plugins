@@ -99,7 +99,8 @@ jobs:
           fi
 
       - name: Submit IndexNow URLs
-        run: npm run indexnow
+        # The script imports only node: builtins and its own siblings, so it needs no installed dependencies.
+        run: node scripts/indexnow.mjs
         working-directory: awesomeclaudeplugins.com/ui
         env:
           INDEXNOW_SITE_URL: ${{ vars.INDEXNOW_SITE_URL || 'https://awesomeclaudeplugins.com' }}

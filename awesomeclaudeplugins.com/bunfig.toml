@@ -1,0 +1,5 @@
+# Bun resolves dependencies into a single hoisted node_modules, the same layout npm produced.
+# Bun 1.3 defaults to the stricter "isolated" layout; pinning keeps module resolution unchanged
+# for the tools that read node_modules paths (Next.js, tsc, Biome, Playwright, husky's pre-commit guard).
+[install]
+linker = "hoisted"
