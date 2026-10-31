@@ -393,8 +393,22 @@ type RangeFinish = {
 }
 
 async function finishSearchRange({
-  db, reader, runId, queryFamily, writeDiscovery, range, summary, now, coverage, onProgress,
-  countedUrls, state, found, lastTotalCount, sawShortPage, rangeComplete,
+  db,
+  reader,
+  runId,
+  queryFamily,
+  writeDiscovery,
+  range,
+  summary,
+  now,
+  coverage,
+  onProgress,
+  countedUrls,
+  state,
+  found,
+  lastTotalCount,
+  sawShortPage,
+  rangeComplete,
 }: RangeFinish): Promise<void> {
   const [min, max] = range
   if (sawShortPage && found < lastTotalCount) {
@@ -485,8 +499,22 @@ async function searchRange(
     if (result.items.length === 0 || found >= result.total_count) break
   }
   await finishSearchRange({
-    db, reader, runId, queryFamily, writeDiscovery, range, summary, now, coverage, onProgress,
-    countedUrls, state, found, lastTotalCount, sawShortPage, rangeComplete,
+    db,
+    reader,
+    runId,
+    queryFamily,
+    writeDiscovery,
+    range,
+    summary,
+    now,
+    coverage,
+    onProgress,
+    countedUrls,
+    state,
+    found,
+    lastTotalCount,
+    sawShortPage,
+    rangeComplete,
   })
 }
 

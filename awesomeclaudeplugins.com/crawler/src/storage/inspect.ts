@@ -23,11 +23,7 @@ function repositorySourceStatus(repo: SourceState, coverage: RepositoryCoverage)
   return {
     ...coverage,
     freshness:
-      repo.state === 'incomplete'
-        ? 'incomplete'
-        : coverage.freshness === 'never_run' && repo.lastAttempt
-          ? 'stale'
-          : coverage.freshness,
+      repo.state === 'incomplete' ? 'incomplete' : coverage.freshness === 'never_run' && repo.lastAttempt ? 'stale' : coverage.freshness,
     due: repo.state === 'incomplete' || coverage.due,
     incompletePartitions: Math.max(coverage.incompletePartitions, repo.incompletePartitions ?? 0),
     warnings: [...new Set([...coverage.warnings, ...(repo.warnings ?? [])])],

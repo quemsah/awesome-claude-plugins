@@ -2045,8 +2045,18 @@ type EnrichmentPageContext = {
 async function enrichPage(
   rows: RepositoryRow[],
   {
-    db, reader, runId, counts, removedIds, pendingCandidateIds, retryQueue, batchState, now,
-    onProgress, log, markRepositoryProcessed,
+    db,
+    reader,
+    runId,
+    counts,
+    removedIds,
+    pendingCandidateIds,
+    retryQueue,
+    batchState,
+    now,
+    onProgress,
+    log,
+    markRepositoryProcessed,
   }: EnrichmentPageContext,
 ): Promise<void> {
   const eligibleRows: RepositoryRow[] = []
@@ -2133,8 +2143,18 @@ export async function enrichRepositories(
     if (rows.length === 0) break
     for (const row of rows) lastId = row.id
     await enrichPage(rows, {
-      db, reader, runId, counts, removedIds, pendingCandidateIds, retryQueue,
-      batchState, now, onProgress, log, markRepositoryProcessed,
+      db,
+      reader,
+      runId,
+      counts,
+      removedIds,
+      pendingCandidateIds,
+      retryQueue,
+      batchState,
+      now,
+      onProgress,
+      log,
+      markRepositoryProcessed,
     })
     onProgress?.()
   }
