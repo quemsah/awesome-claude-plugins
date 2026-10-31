@@ -18,6 +18,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      checks: read
 
     outputs:
       app: ${{ steps.filter.outputs.app }}
@@ -28,6 +29,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Temporary CodeFactor diagnostics (remove after review)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api repos/quemsah/awesome-claude-plugins/check-runs/124492332582/annotations --jq '.[] | {path, start_line, end_line, annotation_level, title, message}'
 
       - name: Detect affected areas
         id: filter
