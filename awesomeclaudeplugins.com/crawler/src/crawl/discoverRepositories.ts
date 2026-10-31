@@ -146,33 +146,23 @@ function scheduleCreatedWork(entries: Work[]): Work[] {
   return [...incomplete, ...complete]
 }
 
-export async function discoverRepositories(
-  db: Database.Database,
-  reader: GitHubReader,
-  runId: string,
-  onProgress?: () => void,
-  now: () => string = () => new Date().toISOString(),
-  log?: Log,
-): Promise<RepositoryDiscoverySummary> {
-  const at = now()
-  const summary: RepositoryDiscoverySummary = {
-    state: 'incomplete',
-    totalResults: 0,
-    partitions: 0,
-    saturatedPartitions: 0,
-    incompleteRollingPartitions: 0,
-    warnings: [],
-    pagesFetched: 0,
-    uniqueCandidates: 0,
-    newUrls: 0,
-    existingUrls: 0,
-    completedPartitions: 0,
-    incompletePartitions: 0,
-  }
-  const writeDiscovery = createDiscoveryWriter(db)
-  const countedUrls = new Map<string, number>()
-  const completed = new Set<RepositorySearchPartition>()
-  const attempted = new Set<RepositorySearchPartition>()
+type SearchContext = {
+  db: Database.Database
+  reader: GitHubReader
+  runId: string
+  onProgress?: () => void
+  now: () => string
+  log?: Log
+  summary: RepositoryDiscoverySummary
+  work: Work[]
+  countedUrls: Map<string, number>
+  completed: Set<RepositorySearchPartition>
+  attempted: Set<RepositorySearchPartition>
+  activePushedStart: string
+  writeDiscovery: ReturnType<typeof createDiscoveryWriter>
+}
+
+function prepareRepositoryWork(db: Database.Database, runId: string, at: string): Work[] {
   const work: Work[] = []
   const refreshBefore = Date.parse(at) - 90 * 86_400_000
   const activePushedStart = rollingPushedWindow(at).start
@@ -217,6 +207,11 @@ export async function discoverRepositories(
   const initialCreated = scheduleCreatedWork(work.filter(({ window }) => window.field === 'created'))
   work.splice(0, work.length, ...initialPushed, ...initialCreated)
 
+  return work
+}
+
+function createSearchReporter(context: SearchContext) {
+  const { db, runId, summary, work, completed, attempted, now, log } = context
   const warnings = new Set<string>()
   const emitPartition = (entry: Work, reason: string) =>
     log?.({
@@ -293,6 +288,220 @@ export async function discoverRepositories(
       ...summary,
     })
   }
+  return { warnings, emitPartition, finish }
+}
+
+type SearchReporter = ReturnType<typeof createSearchReporter>
+
+function persistSearchPage(
+  { db, runId, summary, countedUrls, writeDiscovery, now }: SearchContext,
+  query: RepositorySearchQuery,
+  partition: RepositorySearchPartition,
+  page: number,
+  result: RepositorySearchPage,
+  candidates: Set<number>,
+): { resultCountChanged: boolean; shortPageBeforeExpectedEnd: boolean } {
+  const resultCountChanged = page > 1 && partition.total_count > 0 && partition.total_count !== result.total_count
+  partition.total_count = result.total_count
+  partition.incomplete_results ||= Number(result.incomplete_results)
+  partition.saturated ||= Number(result.total_count >= 1000)
+  const shortPageBeforeExpectedEnd = result.items.length < 100 && page * 100 < result.total_count
+  runWhileActive(db, runId, () => {
+    for (const item of result.items) {
+      if (item.private || !parseRepositoryUrl(item.html_url)) continue
+      if (isUnchangedRejectedCandidate(db, item.html_url, item.node_id, item.pushed_at)) continue
+      const key = item.html_url.toLowerCase()
+      let id = countedUrls.get(key)
+      if (id === undefined) {
+        const written = writeDiscovery(item.html_url, item.description, now(), item.node_id)
+        id = written.id
+        countedUrls.set(key, id)
+        summary.uniqueCandidates++
+        if (written.existing) summary.existingUrls++
+        else summary.newUrls++
+      }
+      candidates.add(id)
+      recordDiscoveryCandidate(db, runId, id, 'repo_search', query.queryId)
+    }
+    partition.candidate_count = candidates.size
+    partition.next_page = page + 1
+    if (partition.incomplete_results || resultCountChanged || shortPageBeforeExpectedEnd) partition.next_page = 1
+    if (
+      !partition.incomplete_results &&
+      !partition.saturated &&
+      !resultCountChanged &&
+      !shortPageBeforeExpectedEnd &&
+      (result.items.length < 100 || page * 100 >= result.total_count)
+    ) {
+      partition.status = 'complete'
+      partition.last_completed_at = now()
+    }
+    saveRepositorySearchPartition(db, partition)
+  })
+  return { resultCountChanged, shortPageBeforeExpectedEnd }
+}
+
+function splitSaturatedPartition(context: SearchContext, index: number): void {
+  const { db, runId, work, activePushedStart } = context
+  const { query, window, partition } = work[index]
+  const children = splitDateWindow(window)
+  if (!children) return
+  runWhileActive(db, runId, () => {
+    partition.status = 'split'
+    saveRepositorySearchPartition(db, partition)
+    const remaining = work.slice(index + 1)
+    remaining.push(
+      ...children
+        .filter((child) => child.field !== 'pushed' || child.end >= activePushedStart)
+        .map((child) => ({
+          query,
+          window: child,
+          partition: ensureRepositorySearchPartition(db, query.queryId, child),
+          resumedRolling: work[index].resumedRolling,
+        })),
+    )
+    const scheduled = [
+      ...schedulePushedWork(
+        remaining.filter(({ window: pendingWindow }) => pendingWindow.field === 'pushed'),
+        query.queryId,
+      ),
+      ...scheduleCreatedWork(remaining.filter(({ window: pendingWindow }) => pendingWindow.field === 'created')),
+    ]
+    work.splice(index + 1, work.length - index - 1, ...scheduled)
+  })
+}
+
+function repositoryPageStopReason(
+  partition: RepositorySearchPartition,
+  result: RepositorySearchPage,
+  resultCountChanged: boolean,
+  shortPageBeforeExpectedEnd: boolean,
+): string | null {
+  if (partition.incomplete_results) return 'incomplete-results'
+  if (resultCountChanged) return 'result-count-changed'
+  if (shortPageBeforeExpectedEnd) return 'short-page-before-end'
+  if (partition.status === 'complete') return 'complete'
+  if (result.items.length < 100) return 'short-page'
+  return null
+}
+
+async function scanRepositoryPartition(context: SearchContext, index: number, reporter: SearchReporter): Promise<void> {
+  const { db, reader, runId, onProgress, now, log, summary, work, completed, attempted } = context
+  const { warnings, emitPartition } = reporter
+  const { query, window, partition } = work[index]
+  if (summary.pagesFetched >= MAX_REPOSITORY_SEARCH_REQUESTS) return
+  log?.({
+    level: 'info',
+    event: 'crawl.repository_search.started',
+    phase: 'discovery',
+    category: 'partition_started',
+    runId,
+    source: 'repo_search',
+    queryId: query.queryId,
+    queryVersion: repositorySearchQueryVersion,
+    partitionKey: partition.partition_key,
+    nextPage: partition.next_page,
+  })
+  attempted.add(partition)
+  let reason = 'request-budget'
+  const requestLimit =
+    window.field === 'pushed' &&
+    work.some((entry, pendingIndex) => pendingIndex > index && entry.window.field === 'created' && entry.partition.status !== 'split')
+      ? ROLLING_REQUEST_BUDGET
+      : MAX_REPOSITORY_SEARCH_REQUESTS
+  const firstPage = partition.status === 'complete' || partition.next_page < 1 || partition.next_page > 10 ? 1 : partition.next_page
+  Object.assign(partition, {
+    status: 'incomplete',
+    last_attempt_at: now(),
+    pages_fetched: 0,
+    next_page: firstPage,
+    candidate_count: 0,
+    incomplete_results: 0,
+    saturated: 0,
+  })
+  runWhileActive(db, runId, () => saveRepositorySearchPartition(db, partition))
+  const candidates = new Set<number>()
+  for (let page = firstPage; page <= 10 && summary.pagesFetched < requestLimit; page++) {
+    onProgress?.()
+    summary.pagesFetched++
+    partition.pages_fetched++
+    runWhileActive(db, runId, () => saveRepositorySearchPartition(db, partition))
+    let result: RepositorySearchPage
+    try {
+      const options = window.field === 'pushed' ? { maxAttempts: 1, sort: 'updated' as const } : { maxAttempts: 1 }
+      result = await reader.searchRepositories(buildRepositorySearchQuery(query, window), page, options)
+    } catch (error) {
+      if (!(error instanceof GitHubTemporaryError) || error.status === 401 || error.status === 422) {
+        emitPartition(work[index], 'fatal-error')
+        throw error
+      }
+      reason = 'temporary-error'
+      break
+    }
+    summary.totalResults += result.items.length
+    const { resultCountChanged, shortPageBeforeExpectedEnd } = persistSearchPage(context, query, partition, page, result, candidates)
+    if (partition.saturated) {
+      summary.saturatedPartitions++
+      reason = 'saturated'
+      splitSaturatedPartition(context, index)
+      break
+    }
+    const stopReason = repositoryPageStopReason(partition, result, resultCountChanged, shortPageBeforeExpectedEnd)
+    if (stopReason) {
+      reason = stopReason
+      break
+    }
+  }
+  // GitHub result ordering can change between runs even when total_count is identical.
+  // A resumed page sequence therefore cannot certify full coverage: only a scan that
+  // started at page 1 can mark a partition complete. Preserve progress as provisional.
+  if (partition.status === 'complete' && firstPage > 1) {
+    partition.status = 'incomplete'
+    partition.last_completed_at = null
+    partition.next_page = 1
+    reason = 'verification-required'
+    runWhileActive(db, runId, () => saveRepositorySearchPartition(db, partition))
+  }
+  if (partition.status === 'complete') completed.add(partition)
+  else if (partition.status !== 'split') warnings.add(reason)
+  emitPartition(work[index], reason)
+  onProgress?.()
+}
+
+export async function discoverRepositories(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  onProgress?: () => void,
+  now: () => string = () => new Date().toISOString(),
+  log?: Log,
+): Promise<RepositoryDiscoverySummary> {
+  const at = now()
+  const summary: RepositoryDiscoverySummary = {
+    state: 'incomplete',
+    totalResults: 0,
+    partitions: 0,
+    saturatedPartitions: 0,
+    incompleteRollingPartitions: 0,
+    warnings: [],
+    pagesFetched: 0,
+    uniqueCandidates: 0,
+    newUrls: 0,
+    existingUrls: 0,
+    completedPartitions: 0,
+    incompletePartitions: 0,
+  }
+  const writeDiscovery = createDiscoveryWriter(db)
+  const countedUrls = new Map<string, number>()
+  const completed = new Set<RepositorySearchPartition>()
+  const attempted = new Set<RepositorySearchPartition>()
+  const work = prepareRepositoryWork(db, runId, at)
+  const activePushedStart = rollingPushedWindow(at).start
+  const context: SearchContext = {
+    db, reader, runId, onProgress, now, log, summary, work, countedUrls,
+    completed, attempted, activePushedStart, writeDiscovery,
+  }
+  const reporter = createSearchReporter(context)
   try {
     for (let index = 0; index < work.length; index++) {
       if (summary.pagesFetched >= MAX_REPOSITORY_SEARCH_REQUESTS) break
@@ -305,166 +514,13 @@ export async function discoverRepositories(
           if (createdWork) work.splice(index, 0, createdWork)
         }
       }
-      const { query, window, partition } = work[index]
-      if (summary.pagesFetched >= MAX_REPOSITORY_SEARCH_REQUESTS) break
-      log?.({
-        level: 'info',
-        event: 'crawl.repository_search.started',
-        phase: 'discovery',
-        category: 'partition_started',
-        runId,
-        source: 'repo_search',
-        queryId: query.queryId,
-        queryVersion: repositorySearchQueryVersion,
-        partitionKey: partition.partition_key,
-        nextPage: partition.next_page,
-      })
-      attempted.add(partition)
-      let reason = 'request-budget'
-      const requestLimit =
-        window.field === 'pushed' &&
-        work.some((entry, pendingIndex) => pendingIndex > index && entry.window.field === 'created' && entry.partition.status !== 'split')
-          ? ROLLING_REQUEST_BUDGET
-          : MAX_REPOSITORY_SEARCH_REQUESTS
-      const firstPage = partition.status === 'complete' || partition.next_page < 1 || partition.next_page > 10 ? 1 : partition.next_page
-      Object.assign(partition, {
-        status: 'incomplete',
-        last_attempt_at: now(),
-        pages_fetched: 0,
-        next_page: firstPage,
-        candidate_count: 0,
-        incomplete_results: 0,
-        saturated: 0,
-      })
-      runWhileActive(db, runId, () => saveRepositorySearchPartition(db, partition))
-      const candidates = new Set<number>()
-      for (let page = firstPage; page <= 10 && summary.pagesFetched < requestLimit; page++) {
-        onProgress?.()
-        summary.pagesFetched++
-        partition.pages_fetched++
-        runWhileActive(db, runId, () => saveRepositorySearchPartition(db, partition))
-        let result: RepositorySearchPage
-        try {
-          const options = window.field === 'pushed' ? { maxAttempts: 1, sort: 'updated' as const } : { maxAttempts: 1 }
-          result = await reader.searchRepositories(buildRepositorySearchQuery(query, window), page, options)
-        } catch (error) {
-          if (!(error instanceof GitHubTemporaryError) || error.status === 401 || error.status === 422) {
-            emitPartition(work[index], 'fatal-error')
-            throw error
-          }
-          reason = 'temporary-error'
-          break
-        }
-        summary.totalResults += result.items.length
-        const resultCountChanged = page > 1 && partition.total_count > 0 && partition.total_count !== result.total_count
-        partition.total_count = result.total_count
-        partition.incomplete_results ||= Number(result.incomplete_results)
-        partition.saturated ||= Number(result.total_count >= 1000)
-        const shortPageBeforeExpectedEnd = result.items.length < 100 && page * 100 < result.total_count
-        runWhileActive(db, runId, () => {
-          for (const item of result.items) {
-            if (item.private || !parseRepositoryUrl(item.html_url)) continue
-            if (isUnchangedRejectedCandidate(db, item.html_url, item.node_id, item.pushed_at)) continue
-            const key = item.html_url.toLowerCase()
-            let id = countedUrls.get(key)
-            if (id === undefined) {
-              const written = writeDiscovery(item.html_url, item.description, now(), item.node_id)
-              id = written.id
-              countedUrls.set(key, id)
-              summary.uniqueCandidates++
-              if (written.existing) summary.existingUrls++
-              else summary.newUrls++
-            }
-            candidates.add(id)
-            recordDiscoveryCandidate(db, runId, id, 'repo_search', query.queryId)
-          }
-          partition.candidate_count = candidates.size
-          partition.next_page = page + 1
-          if (partition.incomplete_results || resultCountChanged || shortPageBeforeExpectedEnd) partition.next_page = 1
-          if (
-            !partition.incomplete_results &&
-            !partition.saturated &&
-            !resultCountChanged &&
-            !shortPageBeforeExpectedEnd &&
-            (result.items.length < 100 || page * 100 >= result.total_count)
-          ) {
-            partition.status = 'complete'
-            partition.last_completed_at = now()
-          }
-          saveRepositorySearchPartition(db, partition)
-        })
-        if (partition.saturated) {
-          summary.saturatedPartitions++
-          reason = 'saturated'
-          const children = splitDateWindow(window)
-          if (children) {
-            runWhileActive(db, runId, () => {
-              partition.status = 'split'
-              saveRepositorySearchPartition(db, partition)
-              const remaining = work.slice(index + 1)
-              remaining.push(
-                ...children
-                  .filter((child) => child.field !== 'pushed' || child.end >= activePushedStart)
-                  .map((child) => ({
-                    query,
-                    window: child,
-                    partition: ensureRepositorySearchPartition(db, query.queryId, child),
-                    resumedRolling: work[index].resumedRolling,
-                  })),
-              )
-              const scheduled = [
-                ...schedulePushedWork(
-                  remaining.filter(({ window: pendingWindow }) => pendingWindow.field === 'pushed'),
-                  query.queryId,
-                ),
-                ...scheduleCreatedWork(remaining.filter(({ window: pendingWindow }) => pendingWindow.field === 'created')),
-              ]
-              work.splice(index + 1, work.length - index - 1, ...scheduled)
-            })
-          }
-          break
-        }
-        if (partition.incomplete_results) {
-          reason = 'incomplete-results'
-          break
-        }
-        if (resultCountChanged) {
-          reason = 'result-count-changed'
-          break
-        }
-        if (shortPageBeforeExpectedEnd) {
-          reason = 'short-page-before-end'
-          break
-        }
-        if (partition.status === 'complete') {
-          reason = 'complete'
-          break
-        }
-        if (result.items.length < 100) {
-          reason = 'short-page'
-          break
-        }
-      }
-      // GitHub result ordering can change between runs even when total_count is identical.
-      // A resumed page sequence therefore cannot certify full coverage: only a scan that
-      // started at page 1 can mark a partition complete. Preserve progress as provisional.
-      if (partition.status === 'complete' && firstPage > 1) {
-        partition.status = 'incomplete'
-        partition.last_completed_at = null
-        partition.next_page = 1
-        reason = 'verification-required'
-        runWhileActive(db, runId, () => saveRepositorySearchPartition(db, partition))
-      }
-      if (partition.status === 'complete') completed.add(partition)
-      else if (partition.status !== 'split') warnings.add(reason)
-      emitPartition(work[index], reason)
-      onProgress?.()
+      await scanRepositoryPartition(context, index, reporter)
     }
   } catch (error) {
-    finish(true)
+    reporter.finish(true)
     throw error
   }
-  finish()
+  reporter.finish()
 
   return summary
 }
