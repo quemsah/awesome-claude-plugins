@@ -256,8 +256,14 @@ it('omits malformed GitHub timestamps rather than interpreting them as midnight 
   try {
     const id = upsertDiscovery(db, 'https://github.com/example/dates', null, '2026-10-30T10:30:00.000Z')
     updateEnriched(db, id, {
-      owner: 'example', repo_name: 'dates', owner_url: 'https://github.com/example',
-      description: null, stargazers_count: 1, forks_count: 0, subscribers_count: 0, plugins_count: 1,
+      owner: 'example',
+      repo_name: 'dates',
+      owner_url: 'https://github.com/example',
+      description: null,
+      stargazers_count: 1,
+      forks_count: 0,
+      subscribers_count: 0,
+      plugins_count: 1,
       repo_updated: '2026-02-30T12:00:00Z',
     })
     const rows = listPublishable(db)
@@ -279,10 +285,18 @@ it('preserves old published bytes with catalog_updated_at and plugins but no new
   try {
     const id = upsertDiscovery(db, 'https://github.com/example/metadata', null, '2026-10-30T10:30:00.000Z')
     updateEnriched(db, id, {
-      owner: 'example', repo_name: 'metadata', owner_url: 'https://github.com/example',
-      description: null, stargazers_count: 1, forks_count: 0, subscribers_count: 0,
-      plugins_count: 1, plugins_json: JSON.stringify([{ name: 'plugin' }]),
-      repo_updated: '2026-10-30T10:00:00Z', license: 'MIT', archived: 1,
+      owner: 'example',
+      repo_name: 'metadata',
+      owner_url: 'https://github.com/example',
+      description: null,
+      stargazers_count: 1,
+      forks_count: 0,
+      subscribers_count: 0,
+      plugins_count: 1,
+      plugins_json: JSON.stringify([{ name: 'plugin' }]),
+      repo_updated: '2026-10-30T10:00:00Z',
+      license: 'MIT',
+      archived: 1,
     })
     const old = JSON.parse(renderRepos(listPublishable(db), { includeNewCatalogMetadata: false }))[0]
     expect(old).toHaveProperty('plugins')
