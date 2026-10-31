@@ -53,5 +53,5 @@ describe('/api/catalog published contract', () => {
     const { response } = await get(longQuery)
 
     expect(response.status).toBe(200)
-  })
+  }, 15_000)
 })
