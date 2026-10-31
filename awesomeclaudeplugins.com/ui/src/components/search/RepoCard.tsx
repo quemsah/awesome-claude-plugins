@@ -72,7 +72,7 @@ function RepoCardMetadata({ repo }: { repo: Repo }) {
   const addedAge = formatRelativeTime(repo.catalog_added_at)
   const updatedText = updatedAge ? `updated ${updatedAge}` : null
   const addedText = addedAge ? `added ${addedAge}` : null
-  if (!updatedText && !addedText && !repo.license) return null
+  if (!(updatedText || addedText) && !repo.license) return null
   return (
     <div className="text-muted-foreground mb-3 flex flex-wrap items-center gap-2 text-xs">
       {updatedText ? <span suppressHydrationWarning>{updatedText}</span> : null}
@@ -186,7 +186,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <RepoCardHeading repo={repo} isHovered={isHovered} />
+      <RepoCardHeading isHovered={isHovered} repo={repo} />
       <CardContent className="flex h-full flex-col">
         <div className="grow">
           <p className="text-muted-foreground mb-4 line-clamp-2 text-sm">{repo.description?.trim() || 'No description available.'}</p>
@@ -204,7 +204,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
             </Link>
           </Button>
         </div>
-        <RepoCardCopyCommand marketplaceCommand={marketplaceCommand} isCopied={isCopied} onCopyClick={handleCopyClick} />
+        <RepoCardCopyCommand isCopied={isCopied} marketplaceCommand={marketplaceCommand} onCopyClick={handleCopyClick} />
       </CardContent>
       <span aria-atomic="true" aria-live="polite" className="sr-only">
         {copyError ?? (isCopied ? 'Marketplace command copied' : '')}
