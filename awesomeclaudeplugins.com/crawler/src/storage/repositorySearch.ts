@@ -78,8 +78,12 @@ export function expiredPushedGaps(db: Database.Database): Record<string, Expired
     if ('firstDate' in value) {
       const newKey = gapKey(key, value.firstDate, value.lastDate)
       gaps[newKey] = {
-        queryId: key, dateStart: value.firstDate, dateEnd: value.lastDate,
-        nextPage: 1, totalCount: 0, lastAttempt: null,
+        queryId: key,
+        dateStart: value.firstDate,
+        dateEnd: value.lastDate,
+        nextPage: 1,
+        totalCount: 0,
+        lastAttempt: null,
       }
     } else gaps[key] = value
   }
@@ -106,8 +110,12 @@ export function splitExpiredGap(db: Database.Database, queryId: string, parent: 
   delete gaps[key]
   for (const child of children) {
     gaps[gapKey(queryId, child.start, child.end)] = {
-      queryId, dateStart: child.start, dateEnd: child.end,
-      nextPage: 1, totalCount: 0, lastAttempt: null,
+      queryId,
+      dateStart: child.start,
+      dateEnd: child.end,
+      nextPage: 1,
+      totalCount: 0,
+      lastAttempt: null,
     }
   }
   setSetting(db, gapSetting, JSON.stringify(gaps))
@@ -123,13 +131,13 @@ export function pruneExpiredPushedPartitions(db: Database.Database, activeWindow
         WHERE query_version = ? AND date_field = 'pushed'
           AND date_end < ? AND status IN ('pending', 'incomplete')`)
       .all(repositorySearchQueryVersion, activeWindowStart) as Array<{
-        query_id: string
-        date_start: string
-        date_end: string
-        next_page: number
-        total_count: number
-        last_attempt_at: string | null
-      }>
+      query_id: string
+      date_start: string
+      date_end: string
+      next_page: number
+      total_count: number
+      last_attempt_at: string | null
+    }>
     if (rows.length) {
       const gaps = expiredPushedGaps(db)
       for (const row of rows) {

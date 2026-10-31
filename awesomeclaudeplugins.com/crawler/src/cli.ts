@@ -81,8 +81,7 @@ type ParsedOptions = {
 function parseCrawlOptions(args: string[]): Pick<ParsedOptions, 'dryRun' | 'reconcileExpiredGaps'> {
   const seen = new Set<string>()
   for (const option of args) {
-    if (!['--dry-run', '--reconcile-expired-gaps'].includes(option) || seen.has(option))
-      throw new Error('Unknown or repeated crawl option')
+    if (!['--dry-run', '--reconcile-expired-gaps'].includes(option) || seen.has(option)) throw new Error('Unknown or repeated crawl option')
     seen.add(option)
   }
   const dryRun = seen.has('--dry-run')

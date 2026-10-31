@@ -1124,7 +1124,11 @@ it('replays exact disjoint expired windows only when explicitly enabled and clea
     saveRepositorySearchPartition(db, partition)
   }
   pruneExpiredPushedPartitions(db, '2026-09-01')
-  expect(Object.values(expiredPushedGaps(db)).map(({ dateStart }) => dateStart).sort()).toEqual(['2026-08-01', '2026-08-03'])
+  expect(
+    Object.values(expiredPushedGaps(db))
+      .map(({ dateStart }) => dateStart)
+      .sort(),
+  ).toEqual(['2026-08-01', '2026-08-03'])
   expect(expiredPushedGapCount(db)).toBe(2)
 
   const firstQueryText = `${firstQuery.queryText} pushed:${first.start}..${first.end}`
@@ -1177,9 +1181,16 @@ it('splits saturated expired gaps into exact child windows without prematurely c
   const queryText = `${firstQuery.queryText} pushed:${window.start}..${window.end}`
   await discoverRepositories(
     db,
-    reader(async (query) =>
-      query === queryText ? page(Array.from({ length: 100 }, (_, index) => item(`saturated-${index}`)), 1000) : page([], 1000),
-    ),
+    reader(async (query) => {
+      if (query === queryText) {
+        return page(
+          Array.from({ length: 100 }, (_, index) => item(`saturated-${index}`)),
+          1000,
+        )
+      }
+      if (query.includes(' pushed:2026-08-')) throw new GitHubTemporaryError('deferred gap child', 503)
+      return page()
+    }),
     'run',
     undefined,
     () => at,
