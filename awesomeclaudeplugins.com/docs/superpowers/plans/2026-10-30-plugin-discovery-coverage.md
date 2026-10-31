@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript, GitHub REST API, SQLite (`better-sqlite3`), Vitest.
 
-**Spec:** `docs/research/2026-10-30-github-plugin-discovery.md`
+**Spec:** `awesomeclaudeplugins.com/docs/research/2026-10-30-github-plugin-discovery.md`
 
 ## Global Constraints
 
@@ -121,8 +121,8 @@
 ### Task 4: Validate recall and tune the catalog without hand-added repositories
 
 **Files:**
-- Modify: `docs/research/2026-10-30-github-plugin-discovery.md`
-- Modify: `docs/superpowers/plans/2026-10-30-plugin-discovery-coverage.md` only if the query design changes after evidence
+- Modify: `awesomeclaudeplugins.com/docs/research/2026-10-30-github-plugin-discovery.md`
+- Modify: `awesomeclaudeplugins.com/docs/superpowers/plans/2026-10-30-plugin-discovery-coverage.md` only if the query design changes after evidence
 
 - [x] Run a read-only query audit for the known missed plugin examples `mnemoverse/claude-plugin` and `human-stuff/prodready`. The check measures whether generic query families return them; it must not write either repository into the crawler database or hard-code them into production queries. **Result:** Prodready was returned by generic topic queries; Mnemoverse remained absent from the bounded capture.
 - [x] Run the initial scan against a copy of the crawler database with the 20-page cap; record API requests, candidate funnel, valid marketplace yield, incomplete partitions, added runtime, and whether both examples arrive through generic queries. **Result:** See the bounded audit table above; Mnemoverse partitions stayed incomplete at the request cap.
