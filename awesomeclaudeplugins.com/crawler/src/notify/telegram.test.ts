@@ -142,6 +142,7 @@ describe('TelegramNotifier', () => {
         deletedBlankUrl: 5,
         conclusive: 30,
         warnings: 2,
+        deferredCandidates: 0,
         knownInvalidSkipped: 318,
       },
       errorCategories: { marketplace_rate_limited: 2, repository_identity_mismatch: 1 },
@@ -400,7 +401,7 @@ describe('truncateTelegramMessage and payload safety', () => {
     ...summary,
     // Ranges are intentionally budgeted already. Oversized category names exercise the actual
     // overflow path that can be triggered by optional, unbounded summary details.
-    errorCategories: { ['category_' + 'x'.repeat(5000)]: 1 },
+    errorCategories: { [`category_${'x'.repeat(5000)}`]: 1 },
   }
 
   it('truncates a genuinely oversized dry-run payload without losing the run identity', async () => {
@@ -431,6 +432,6 @@ describe('truncateTelegramMessage and payload safety', () => {
     expect(text.length).toBeLessThanOrEqual(4096)
     expect(text).toContain('run_id: run-17')
     expect(text).toContain('\n... (truncated)')
-    expect(text.endsWith('\nconfirmed Git SHA: ' + sha)).toBe(true)
+    expect(text.endsWith(`\nconfirmed Git SHA: ${sha}`)).toBe(true)
   })
 })

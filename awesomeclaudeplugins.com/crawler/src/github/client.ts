@@ -38,6 +38,11 @@ export type GitHubGraphQLRepo = GitHubRepo & {
   marketplace_byte_size?: number | null
   marketplace_is_binary?: boolean | null
 }
+export type RepositorySearchPage = {
+  total_count: number
+  incomplete_results: boolean
+  items: Array<Pick<GitHubRepo, 'html_url' | 'description' | 'node_id' | 'private'> & { pushed_at?: string | null }>
+}
 export type GraphQLRateLimit = { cost: number; remaining: number; resetAt: string; limit: number; used: number }
 type GraphQLResult<T> =
   | { kind: 'found'; data: Array<T | null>; rateLimit: GraphQLRateLimit }
@@ -94,9 +99,10 @@ type GraphQLRequestAction<T> =
   | { kind: 'retry' }
   | { kind: 'result'; result: GraphQLResult<T> }
 
-export type GitHubRequestOptions = { maxAttempts?: number }
+export type GitHubRequestOptions = { maxAttempts?: number; sort?: 'updated' }
 
 export interface GitHubReader {
+  searchRepositories(query: string, page: number, options?: GitHubRequestOptions): Promise<RepositorySearchPage>
   searchCode(query: string, page: number): Promise<SearchPage>
   getRepository(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<GitHubRepo>>
   getMarketplace(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<Marketplace>>
@@ -182,6 +188,27 @@ function parseSearch(value: unknown): SearchPage {
     throw new Error('Invalid code search response')
   }
   return value as SearchPage
+}
+
+function parseRepositorySearch(value: unknown): RepositorySearchPage {
+  if (
+    !record(value) ||
+    !count(value.total_count) ||
+    typeof value.incomplete_results !== 'boolean' ||
+    !Array.isArray(value.items) ||
+    !value.items.every(
+      (item: unknown) =>
+        record(item) &&
+        nonempty(item.html_url) &&
+        description(item.description) &&
+        (item.node_id === undefined || nonempty(item.node_id)) &&
+        (item.private === undefined || typeof item.private === 'boolean') &&
+        (item.pushed_at === undefined || item.pushed_at === null || typeof item.pushed_at === 'string'),
+    )
+  ) {
+    throw new Error('Invalid repository search response')
+  }
+  return value as RepositorySearchPage
 }
 
 function parseRepository(value: unknown): GitHubRepo {
@@ -391,6 +418,29 @@ export class GitHubClient implements GitHubReader {
     if (result.kind === 'temporary-error') throw new GitHubTemporaryError(result.reason, result.status, result.retryCount)
     if (result.kind === 'invalid-content') throw new GitHubTemporaryError(result.reason, result.status, result.retryCount)
     if (result.kind === 'not-modified') throw new GitHubTemporaryError('Unexpected code search 304', 304)
+    return result.data
+  }
+
+  async searchRepositories(query: string, page: number, options?: GitHubRequestOptions): Promise<RepositorySearchPage> {
+    if (!Number.isInteger(page) || page < 1 || page > 10) throw new GitHubFatalError('Repository search page must be 1..10', null)
+    const params = new URLSearchParams({ q: query, per_page: '100', page: String(page) })
+    if (options?.sort === 'updated') {
+      params.set('sort', 'updated')
+      params.set('order', 'desc')
+    }
+    const result = await this.request(
+      'repo_search',
+      `/search/repositories?${params}`,
+      parseRepositorySearch,
+      'application/vnd.github+json',
+      undefined,
+      false,
+      requestAttempts(options?.maxAttempts),
+    )
+    if (result.kind === 'not-found') throw new GitHubTemporaryError('Repository search not found', 404, result.retryCount ?? 0)
+    if (result.kind === 'temporary-error') throw new GitHubTemporaryError(result.reason, result.status, result.retryCount)
+    if (result.kind === 'invalid-content') throw new GitHubTemporaryError(result.reason, result.status, result.retryCount)
+    if (result.kind === 'not-modified') throw new GitHubTemporaryError('Unexpected repository search 304', 304)
     return result.data
   }
 

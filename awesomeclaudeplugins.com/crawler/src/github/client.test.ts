@@ -55,6 +55,118 @@ function manifest(value: unknown) {
 }
 
 describe('GitHubClient', () => {
+  it.each([
+    ['network failure', () => new Error('offline')],
+    ['HTTP 503', () => new Response('', { status: 503 })],
+    ['rate limit', () => new Response('', { status: 429, headers: { 'retry-after': '2' } })],
+    ['malformed payload', () => Response.json({ total_count: -1, incomplete_results: false, items: [] })],
+  ])('limits Repository Search to one HTTP attempt after %s when requested', async (_name, failure) => {
+    const test = harness([failure(), Response.json({ total_count: 0, incomplete_results: false, items: [] })])
+    await expect(test.client.searchRepositories('claude', 1, { maxAttempts: 1 })).rejects.toMatchObject({
+      name: 'GitHubTemporaryError',
+      retryCount: 0,
+    })
+    expect(test.requests).toHaveLength(1)
+  })
+
+  it.each([0, 4, 1.5, NaN])('rejects Repository Search maxAttempts=%s before sending an HTTP request', async (maxAttempts) => {
+    const test = harness([])
+    await expect(test.client.searchRepositories('claude', 1, { maxAttempts })).rejects.toBeInstanceOf(GitHubFatalError)
+    expect(test.requests).toHaveLength(0)
+  })
+
+  it('honors repository search Retry-After without delaying code search', async () => {
+    const result = { total_count: 0, incomplete_results: false, items: [] }
+    const test = harness([
+      Response.json(result, { headers: { 'x-ratelimit-resource': 'search', 'retry-after': '7' } }),
+      Response.json(page),
+      Response.json(result),
+    ])
+    await test.client.searchRepositories('claude', 1)
+    await test.client.searchCode('marketplace.json', 1)
+    await test.client.searchRepositories('claude', 2)
+    expect(test.requests.map(({ time }) => time)).toEqual([0, 0, 7_000])
+  })
+
+  it('retries repository search primary limits at the server reset', async () => {
+    const result = { total_count: 0, incomplete_results: false, items: [] }
+    const test = harness([
+      new Response('', {
+        status: 403,
+        headers: {
+          'x-ratelimit-resource': 'search',
+          'x-ratelimit-remaining': '0',
+          'x-ratelimit-reset': '12',
+        },
+      }),
+      Response.json(result),
+    ])
+    await expect(test.client.searchRepositories('claude', 1)).resolves.toEqual(result)
+    expect(test.requests.map(({ time }) => time)).toEqual([0, 13_000])
+    expect(test.logs).toContainEqual({ bucket: 'repo_search', retryReason: 'primary_rate_limit', retryWaitMs: 13_000 })
+  })
+
+  it.each([401, 422])('rejects repository search HTTP %s without retrying', async (status) => {
+    const test = harness([new Response('', { status })])
+    await expect(test.client.searchRepositories('claude', 1)).rejects.toMatchObject({ name: 'GitHubFatalError', status })
+    expect(test.requests).toHaveLength(1)
+  })
+
+  it.each([304, 404])('reports unexpected repository search HTTP %s as temporary', async (status) => {
+    const test = harness([new Response(null, { status })])
+    await expect(test.client.searchRepositories('claude', 1)).rejects.toMatchObject({ name: 'GitHubTemporaryError', status })
+    expect(test.requests).toHaveLength(1)
+  })
+
+  it.each([0, 11, 1.5, NaN])('rejects repository search page %s before sending a request', async (pageNumber) => {
+    const test = harness([])
+    await expect(test.client.searchRepositories('claude', pageNumber)).rejects.toBeInstanceOf(GitHubFatalError)
+    expect(test.requests).toHaveLength(0)
+  })
+
+  it.each([
+    { total_count: -1, incomplete_results: false, items: [] },
+    { total_count: 1, items: [] },
+    { total_count: 1, incomplete_results: false, items: [{ html_url: '', description: null }] },
+    { total_count: 1, incomplete_results: false, items: [{ html_url: repo.html_url, description: 3 }] },
+    { total_count: 1, incomplete_results: false, items: [{ html_url: repo.html_url, description: null, node_id: '' }] },
+    { total_count: 1, incomplete_results: false, items: [{ html_url: repo.html_url, description: null, private: 'false' }] },
+  ])('retries malformed repository search payload %j before reporting a temporary error', async (payload) => {
+    const test = harness(Array.from({ length: 3 }, () => Response.json(payload)))
+    await expect(test.client.searchRepositories('claude', 1)).rejects.toMatchObject({
+      name: 'GitHubTemporaryError',
+      retryCount: 2,
+    })
+    expect(test.requests).toHaveLength(3)
+  })
+
+  it.each([false, true])('fetches repository search results preserving incomplete_results=%s', async (incomplete) => {
+    const result = {
+      total_count: 1,
+      incomplete_results: incomplete,
+      items: [{ html_url: repo.html_url, description: null, node_id: 'R_catalog', private: false }],
+    }
+    const test = harness([Response.json(result)])
+
+    expect(await test.client.searchRepositories('claude plugin in:readme', 10)).toEqual(result)
+    const url = new URL(test.requests[0].url)
+    expect(url.origin + url.pathname).toBe('https://api.github.com/search/repositories')
+    expect(url.searchParams.getAll('q')).toEqual(['claude plugin in:readme'])
+    expect(url.searchParams.get('per_page')).toBe('100')
+    expect(url.searchParams.get('page')).toBe('10')
+    expect(url.searchParams.get('sort')).toBeNull()
+    expect(url.searchParams.get('order')).toBeNull()
+    expect(test.logs).toContainEqual({ bucket: 'repo_search', request: true })
+  })
+
+  it('sorts repository searches by most recently updated only when requested', async () => {
+    const test = harness([Response.json({ total_count: 0, incomplete_results: false, items: [] })])
+    await test.client.searchRepositories('topic:claude-plugin', 1, { sort: 'updated' })
+    const url = new URL(test.requests[0].url)
+    expect(url.searchParams.get('sort')).toBe('updated')
+    expect(url.searchParams.get('order')).toBe('desc')
+  })
+
   it('sends encoded code search with one q, a page and a bearer token', async () => {
     const test = harness([Response.json(page)])
     expect(await test.client.searchCode('filename:marketplace.json path:.claude-plugin size:0..150', 2)).toEqual(page)

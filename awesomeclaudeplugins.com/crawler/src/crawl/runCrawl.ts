@@ -1,8 +1,10 @@
 import type Database from 'better-sqlite3'
 import { GitHubFatalError, type GitHubReader, GitHubTemporaryError } from '../github/client.js'
+import { repositorySearchQueries } from '../github/repositorySearchQueries.js'
 import type { SizeRange } from '../github/sizeRanges.js'
 import type { Log } from '../logging.js'
 import { ShutdownError, throwIfShutdown } from '../shutdown.js'
+import { discoveryYield } from '../storage/discoveryCandidates.js'
 import {
   beginRun,
   completeRun,
@@ -17,21 +19,47 @@ import {
   terminateRun,
 } from '../storage/runs.js'
 import { type DiscoverySummary, discover } from './discover.js'
-import { type EnrichmentCounts, enrichRepositories } from './enrich.js'
+import { discoverRepositories } from './discoverRepositories.js'
+import { type EnrichmentCounts, enrichRepositories, MAX_PENDING_CANDIDATES_PER_RUN } from './enrich.js'
 
 export type RunCrawlOptions = {
   ranges?: readonly SizeRange[]
   now?: () => Date
   signal?: AbortSignal
   started?: boolean
+  repositorySearchEnabled?: boolean
+  reconcileExpiredGaps?: boolean
   log?: Log
   onPhase?: (phase: 'discovery' | 'enrichment') => void
+}
+
+export type DiscoverySourceSummary = {
+  state: 'complete' | 'incomplete' | 'not_due'
+  pagesFetched: number
+  totalResults: number
+  queries: number
+  partitions: number
+  incompletePartitions: number
+  uniqueCandidates: number
+  newUrls: number
+  acceptedMarketplaces: number
+  rejectedCandidates: number
+  pendingCandidates: number
+  saturatedPartitions: number
+  warnings: string[]
+}
+
+export type CrawlDiscoverySummary = DiscoverySummary & {
+  coverageScope: 'configured_query_catalog'
+  sources: Record<'code_search' | 'repo_search', DiscoverySourceSummary>
+  uniqueCandidates: number
+  uniqueCatalogAdditions: number
 }
 
 export type CrawlSummary = {
   runId: string
   status: 'completed'
-  discovery: DiscoverySummary
+  discovery: CrawlDiscoverySummary
   enrichment: EnrichmentCounts
   warningCount: number
   errorCategories: Record<string, number>
@@ -88,6 +116,58 @@ function beginCrawl(db: Database.Database, runId: string, now: () => string): vo
   }
 }
 
+type RepositorySearchResult = Awaited<ReturnType<typeof discoverRepositories>>
+
+async function discoverOptionalRepositories(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  options: RunCrawlOptions,
+  heartbeat: () => void,
+  now: () => string,
+): Promise<RepositorySearchResult> {
+  const emptyRepo = {
+    state: 'not_due' as const,
+    totalResults: 0,
+    partitions: 0,
+    saturatedPartitions: 0,
+    incompleteRollingPartitions: 0,
+    warnings: [] as string[],
+    pagesFetched: 0,
+    uniqueCandidates: 0,
+    newUrls: 0,
+    existingUrls: 0,
+    completedPartitions: 0,
+    incompletePartitions: 0,
+  }
+  let repo: RepositorySearchResult = emptyRepo
+  if (options.reconcileExpiredGaps && !options.repositorySearchEnabled) throw new Error('Gap replay requires Repository Search')
+  if (options.repositorySearchEnabled) {
+    const partial: { current: RepositorySearchResult | null } = { current: null }
+    try {
+      repo = await discoverRepositories(db, reader, runId, heartbeat, now, options.log, options.reconcileExpiredGaps, (summary) => {
+        partial.current = summary
+      })
+    } catch (error) {
+      if (error instanceof ShutdownError || error instanceof RunNotActiveError || options.signal?.aborted) throw error
+      if (!(error instanceof GitHubFatalError || error instanceof GitHubTemporaryError)) throw error
+      options.log?.({
+        level: 'warn',
+        event: 'crawl.repository_search.optional_failure',
+        phase: 'discovery',
+        category: 'optional_source_failed',
+        runId,
+        message: 'Repository Search failed; continuing with Code Search results',
+        reason: error.message,
+      })
+      repo = partial.current
+        ? { ...partial.current, state: 'incomplete', warnings: [...new Set([...partial.current.warnings, 'optional-source-error'])] }
+        : { ...emptyRepo, state: 'incomplete', incompletePartitions: 1, warnings: ['optional-source-error'] }
+    }
+  }
+  return repo
+}
+
 async function crawlAndComplete(
   db: Database.Database,
   reader: GitHubReader,
@@ -102,7 +182,33 @@ async function crawlAndComplete(
   throwIfShutdown(options.signal)
   startRunPhase(db, runId, 'discovery', now())
   options.onPhase?.('discovery')
-  const discovery = await discover(db, reader, runId, options.ranges ?? [[0, 400_000]], heartbeat, now, options.log)
+  const acceptedRepositories = () =>
+    db.prepare('SELECT id, html_url FROM repositories WHERE plugins_count > 0').all() as { id: number; html_url: string | null }[]
+  const previousAccepted = acceptedRepositories()
+  const previousAcceptedIds = new Set(previousAccepted.map(({ id }) => id))
+  const previousAcceptedUrls = new Set(previousAccepted.map(({ html_url }) => html_url?.toLowerCase()))
+  const codeMetrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0 }
+  const code = await discover(db, reader, runId, options.ranges ?? [[0, 400_000]], heartbeat, now, options.log, codeMetrics)
+  const repo = await discoverOptionalRepositories(db, reader, runId, options, heartbeat, now)
+  const emptyYield = { uniqueCandidates: 0, acceptedMarketplaces: 0, rejectedCandidates: 0, pendingCandidates: 0 }
+  const discovery: CrawlDiscoverySummary = {
+    ...code,
+    coverageScope: 'configured_query_catalog',
+    uniqueCandidates: 0,
+    uniqueCatalogAdditions: 0,
+    sources: {
+      code_search: {
+        ...codeMetrics,
+        ...emptyYield,
+        state: codeMetrics.incompletePartitions ? 'incomplete' : codeMetrics.partitions ? 'complete' : 'not_due',
+        queries: 2,
+        newUrls: code.newUrls,
+        saturatedPartitions: code.warnings.filter(({ category }) => category === 'saturated').length,
+        warnings: [...new Set(code.warnings.map(({ category }) => category))],
+      },
+      repo_search: { ...repo, ...emptyYield, uniqueCandidates: repo.uniqueCandidates, queries: repositorySearchQueries.length },
+    },
+  }
   options.log?.({
     level: 'info',
     event: 'crawl.phase_completed',
@@ -120,27 +226,49 @@ async function crawlAndComplete(
   const enrichmentTotal = (db.prepare('SELECT COUNT(*) AS count FROM repositories').get() as { count: number }).count
   startRunPhase(db, runId, 'enrichment', now(), enrichmentTotal)
   options.onPhase?.('enrichment')
-  const enrichment = await enrichRepositories(db, reader, runId, heartbeat, now, options.log)
+  const enrichment = await enrichRepositories(db, reader, runId, heartbeat, now, options.log, MAX_PENDING_CANDIDATES_PER_RUN)
   options.log?.({
     level: 'info',
     event: 'crawl.phase_completed',
     phase: 'enrichment',
     category: 'phase_completed',
     runId,
-    message: `Enrichment completed: ${enrichment.conclusive} conclusive, ${enrichment.unchangedOnError} kept unchanged after errors, ${enrichment.newIncomplete} incomplete`,
+    message: `Enrichment completed: ${enrichment.conclusive} conclusive, ${enrichment.unchangedOnError} kept unchanged after errors, ${enrichment.newIncomplete} incomplete, ${enrichment.deferredCandidates} candidates deferred by cap`,
     ...enrichment,
   })
   heartbeat()
-  if (discovery.successfulRanges === 0) throw new CrawlError('no_successful_ranges')
-  if (enrichment.conclusive === 0) throw new CrawlError('no_conclusive_enrichment')
+  // Either discovery channel can sustain the run; Repository Search may be bounded/incomplete if it returned candidates.
+  if (discovery.successfulRanges === 0 && repo.completedPartitions === 0 && repo.uniqueCandidates === 0)
+    throw new CrawlError('no_successful_ranges')
+  // An empty completed search has nothing to enrich; fail only when enrichment ran but no repository was conclusive.
+  if (enrichment.conclusive === 0 && (enrichment.newIncomplete > 0 || enrichment.unchangedOnError > 0))
+    throw new CrawlError('no_conclusive_enrichment')
 
+  for (const source of ['code_search', 'repo_search'] as const) Object.assign(discovery.sources[source], discoveryYield(db, runId, source))
+  discovery.uniqueCandidates = discoveryYield(db, runId).uniqueCandidates
+  // A canonical merge can replace the row ID; a rename without a merge retains it.
+  discovery.uniqueCatalogAdditions = acceptedRepositories().filter(
+    ({ id, html_url }) => !previousAcceptedIds.has(id) && !previousAcceptedUrls.has(html_url?.toLowerCase()),
+  ).length
+  options.log?.({
+    level: 'info',
+    event: 'crawl.discovery_yield',
+    phase: 'discovery',
+    category: 'accepted_marketplaces',
+    runId,
+    coverageScope: discovery.coverageScope,
+    sources: discovery.sources,
+    uniqueCandidates: discovery.uniqueCandidates,
+    uniqueCatalogAdditions: discovery.uniqueCatalogAdditions,
+  })
   const errors = listRunErrors(db, runId)
   const errorCategories: Record<string, number> = {}
   for (const error of errors) {
     errorCategories[error.error_type] = (Object.hasOwn(errorCategories, error.error_type) ? errorCategories[error.error_type] : 0) + 1
   }
-  if (!completeRun(db, runId, now(), errors.length)) throw new CrawlError('run_not_active')
-  return { runId, status: 'completed', discovery, enrichment, warningCount: errors.length, errorCategories }
+  const warningCount = errors.length + Number(repo.state === 'incomplete')
+  if (!completeRun(db, runId, now(), warningCount)) throw new CrawlError('run_not_active')
+  return { runId, status: 'completed', discovery, enrichment, warningCount, errorCategories }
 }
 
 function failCrawl(db: Database.Database, runId: string, error: unknown, category: CrawlFailureCategory, now: () => string): CrawlError {
