@@ -8,13 +8,27 @@ import { assertValidStatsDraft, type StatsRecord } from './statsDraft.js'
 /** Convert real GitHub/first-seen dates into the strict public UTC representation. */
 function publicTimestamp(value: string | null | undefined): string | undefined {
   if (!value) return undefined
+  // Date.parse accepts date-only strings and normalizes impossible dates (e.g. February 30).
+  // GitHub timestamps and first-seen dates must be full ISO-8601 instants.
+  const match = /^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d{1,3})?(Z|[+-]\\d{2}:\\d{2})$/.exec(value)
+  if (!match) return undefined
+  const [, year, month, day, hour, minute, second, zone] = match
+  const y = Number(year)
+  const m = Number(month)
+  const d = Number(day)
+  if (
+    y < 1000 || m < 1 || m > 12 || d < 1 ||
+    d > new Date(Date.UTC(y, m, 0)).getUTCDate() ||
+    Number(hour) > 23 || Number(minute) > 59 || Number(second) > 59 ||
+    (zone !== 'Z' && (Number(zone.slice(1, 3)) > 23 || Number(zone.slice(4)) > 59))
+  ) return undefined
   const parsed = Date.parse(value)
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : undefined
 }
 
 export function renderRepos(
   rows: readonly PublishableRepository[],
-  options: { includeCatalogUpdatedAt?: boolean; legacyUrls?: boolean } = {},
+  options: { includeCatalogUpdatedAt?: boolean; includeNewCatalogMetadata?: boolean; legacyUrls?: boolean } = {},
 ): string {
   if (options.legacyUrls === true) {
     const legacyRepositories = rows.map((row) => ({
@@ -44,14 +58,14 @@ export function renderRepos(
       plugins_count: row.plugins_count,
       ...(options.includeCatalogUpdatedAt === false || plugins === null ? {} : { plugins }),
       ...(options.includeCatalogUpdatedAt === false ? {} : { catalog_updated_at: row.catalog_updated_at }),
-      ...(options.includeCatalogUpdatedAt === false || !publicTimestamp(row.pushed_at)
+      ...((options.includeCatalogUpdatedAt === false || options.includeNewCatalogMetadata === false) || !publicTimestamp(row.pushed_at)
         ? {}
         : { pushed_at: publicTimestamp(row.pushed_at) }),
-      ...(options.includeCatalogUpdatedAt === false || !publicTimestamp(row.catalog_added_at)
+      ...((options.includeCatalogUpdatedAt === false || options.includeNewCatalogMetadata === false) || !publicTimestamp(row.catalog_added_at)
         ? {}
         : { catalog_added_at: publicTimestamp(row.catalog_added_at) }),
-      ...(options.includeCatalogUpdatedAt === false || !row.license ? {} : { license: row.license }),
-      ...(options.includeCatalogUpdatedAt === false || row.archived == null
+      ...((options.includeCatalogUpdatedAt === false || options.includeNewCatalogMetadata === false) || !row.license ? {} : { license: row.license }),
+      ...((options.includeCatalogUpdatedAt === false || options.includeNewCatalogMetadata === false) || row.archived == null
         ? {}
         : { archived: row.archived === true || row.archived === 1 }),
       id: row.id,
