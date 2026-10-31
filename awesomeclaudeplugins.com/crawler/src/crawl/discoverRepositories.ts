@@ -293,49 +293,71 @@ function createSearchReporter(context: SearchContext) {
 
 type SearchReporter = ReturnType<typeof createSearchReporter>
 
-function persistSearchPage(
+function recordFetchedCandidates(
   { db, runId, summary, countedUrls, writeDiscovery, now }: SearchContext,
+  query: RepositorySearchQuery,
+  result: RepositorySearchPage,
+  candidates: Set<number>,
+): void {
+  for (const item of result.items) {
+    if (item.private || !parseRepositoryUrl(item.html_url)) continue
+    if (isUnchangedRejectedCandidate(db, item.html_url, item.node_id, item.pushed_at)) continue
+    const key = item.html_url.toLowerCase()
+    let id = countedUrls.get(key)
+    if (id === undefined) {
+      const written = writeDiscovery(item.html_url, item.description, now(), item.node_id)
+      id = written.id
+      countedUrls.set(key, id)
+      summary.uniqueCandidates++
+      if (written.existing) summary.existingUrls++
+      else summary.newUrls++
+    }
+    candidates.add(id)
+    recordDiscoveryCandidate(db, runId, id, 'repo_search', query.queryId)
+  }
+}
+
+function updateFetchedPartitionState(
+  partition: RepositorySearchPartition,
+  page: number,
+  result: RepositorySearchPage,
+  candidates: Set<number>,
+  now: () => string,
+  resultCountChanged: boolean,
+  shortPageBeforeExpectedEnd: boolean,
+): void {
+  partition.candidate_count = candidates.size
+  partition.next_page = page + 1
+  if (partition.incomplete_results || resultCountChanged || shortPageBeforeExpectedEnd) partition.next_page = 1
+  if (
+    !partition.incomplete_results &&
+    !partition.saturated &&
+    !resultCountChanged &&
+    !shortPageBeforeExpectedEnd &&
+    (result.items.length < 100 || page * 100 >= result.total_count)
+  ) {
+    partition.status = 'complete'
+    partition.last_completed_at = now()
+  }
+}
+
+function persistSearchPage(
+  context: SearchContext,
   query: RepositorySearchQuery,
   partition: RepositorySearchPartition,
   page: number,
   result: RepositorySearchPage,
   candidates: Set<number>,
 ): { resultCountChanged: boolean; shortPageBeforeExpectedEnd: boolean } {
+  const { db, runId, now } = context
   const resultCountChanged = page > 1 && partition.total_count > 0 && partition.total_count !== result.total_count
   partition.total_count = result.total_count
   partition.incomplete_results ||= Number(result.incomplete_results)
   partition.saturated ||= Number(result.total_count >= 1000)
   const shortPageBeforeExpectedEnd = result.items.length < 100 && page * 100 < result.total_count
   runWhileActive(db, runId, () => {
-    for (const item of result.items) {
-      if (item.private || !parseRepositoryUrl(item.html_url)) continue
-      if (isUnchangedRejectedCandidate(db, item.html_url, item.node_id, item.pushed_at)) continue
-      const key = item.html_url.toLowerCase()
-      let id = countedUrls.get(key)
-      if (id === undefined) {
-        const written = writeDiscovery(item.html_url, item.description, now(), item.node_id)
-        id = written.id
-        countedUrls.set(key, id)
-        summary.uniqueCandidates++
-        if (written.existing) summary.existingUrls++
-        else summary.newUrls++
-      }
-      candidates.add(id)
-      recordDiscoveryCandidate(db, runId, id, 'repo_search', query.queryId)
-    }
-    partition.candidate_count = candidates.size
-    partition.next_page = page + 1
-    if (partition.incomplete_results || resultCountChanged || shortPageBeforeExpectedEnd) partition.next_page = 1
-    if (
-      !partition.incomplete_results &&
-      !partition.saturated &&
-      !resultCountChanged &&
-      !shortPageBeforeExpectedEnd &&
-      (result.items.length < 100 || page * 100 >= result.total_count)
-    ) {
-      partition.status = 'complete'
-      partition.last_completed_at = now()
-    }
+    recordFetchedCandidates(context, query, result, candidates)
+    updateFetchedPartitionState(partition, page, result, candidates, now, resultCountChanged, shortPageBeforeExpectedEnd)
     saveRepositorySearchPartition(db, partition)
   })
   return { resultCountChanged, shortPageBeforeExpectedEnd }
@@ -385,6 +407,17 @@ function repositoryPageStopReason(
   return null
 }
 
+function repositoryPartitionLimits(work: readonly Work[], index: number) {
+  const { window, partition } = work[index]
+  const requestLimit =
+    window.field === 'pushed' &&
+    work.some((entry, pendingIndex) => pendingIndex > index && entry.window.field === 'created' && entry.partition.status !== 'split')
+      ? ROLLING_REQUEST_BUDGET
+      : MAX_REPOSITORY_SEARCH_REQUESTS
+  const firstPage = partition.status === 'complete' || partition.next_page < 1 || partition.next_page > 10 ? 1 : partition.next_page
+  return { requestLimit, firstPage }
+}
+
 async function scanRepositoryPartition(context: SearchContext, index: number, reporter: SearchReporter): Promise<void> {
   const { db, reader, runId, onProgress, now, log, summary, work, completed, attempted } = context
   const { warnings, emitPartition } = reporter
@@ -404,12 +437,7 @@ async function scanRepositoryPartition(context: SearchContext, index: number, re
   })
   attempted.add(partition)
   let reason = 'request-budget'
-  const requestLimit =
-    window.field === 'pushed' &&
-    work.some((entry, pendingIndex) => pendingIndex > index && entry.window.field === 'created' && entry.partition.status !== 'split')
-      ? ROLLING_REQUEST_BUDGET
-      : MAX_REPOSITORY_SEARCH_REQUESTS
-  const firstPage = partition.status === 'complete' || partition.next_page < 1 || partition.next_page > 10 ? 1 : partition.next_page
+  const { requestLimit, firstPage } = repositoryPartitionLimits(work, index)
   Object.assign(partition, {
     status: 'incomplete',
     last_attempt_at: now(),
