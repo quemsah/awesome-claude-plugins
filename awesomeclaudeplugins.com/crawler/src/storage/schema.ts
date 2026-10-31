@@ -378,23 +378,30 @@ function migrateTo16(db: Database.Database): void {
   db.pragma('user_version = 16')
 }
 
+// Keep the migration sequence explicit while avoiding a growing chain of conditional branches.
+const migrations: readonly ((db: Database.Database) => void)[] = [
+  migrateTo2,
+  migrateTo3,
+  migrateTo4,
+  migrateTo5,
+  migrateTo6,
+  migrateTo7,
+  migrateTo8,
+  migrateTo9,
+  migrateTo10,
+  migrateTo11,
+  migrateTo12,
+  migrateTo13,
+  migrateTo14,
+  migrateTo15,
+  migrateTo16,
+]
+
 function migrateSchema(db: Database.Database, version: number): void {
   if (version === 0) createSchema(db)
-  if (version < 2) migrateTo2(db)
-  if (version < 3) migrateTo3(db)
-  if (version < 4) migrateTo4(db)
-  if (version < 5) migrateTo5(db)
-  if (version < 6) migrateTo6(db)
-  if (version < 7) migrateTo7(db)
-  if (version < 8) migrateTo8(db)
-  if (version < 9) migrateTo9(db)
-  if (version < 10) migrateTo10(db)
-  if (version < 11) migrateTo11(db)
-  if (version < 12) migrateTo12(db)
-  if (version < 13) migrateTo13(db)
-  if (version < 14) migrateTo14(db)
-  if (version < 15) migrateTo15(db)
-  if (version < 16) migrateTo16(db)
+  for (const [index, migrate] of migrations.entries()) {
+    if (version < index + 2) migrate(db)
+  }
 }
 
 export function initializeSchema(db: Database.Database): void {
