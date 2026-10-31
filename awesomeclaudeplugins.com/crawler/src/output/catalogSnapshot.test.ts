@@ -250,3 +250,45 @@ it('publishes normalized GitHub freshness and first-seen date without changing l
     db.close()
   }
 })
+
+it('omits malformed GitHub timestamps rather than interpreting them as midnight or normalized dates', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const id = upsertDiscovery(db, 'https://github.com/example/dates', null, '2026-10-30T10:30:00.000Z')
+    updateEnriched(db, id, {
+      owner: 'example', repo_name: 'dates', owner_url: 'https://github.com/example',
+      description: null, stargazers_count: 1, forks_count: 0, subscribers_count: 0, plugins_count: 1,
+      repo_updated: '2026-02-30T12:00:00Z',
+    })
+    const rows = listPublishable(db)
+    expect(JSON.parse(renderRepos(rows))[0]).not.toHaveProperty('pushed_at')
+    expect(JSON.parse(renderRepos(rows))[0]).toHaveProperty('catalog_added_at', '2026-10-30T10:30:00.000Z')
+    for (const invalid of ['2026-10-30', '2026-02-30T12:00:00Z', '2026-13-01T00:00:00Z', '2026-01-01T25:00:00Z']) {
+      db.prepare('UPDATE repositories SET repo_updated = ? WHERE id = ?').run(invalid, id)
+      expect(JSON.parse(renderRepos(listPublishable(db)))[0]).not.toHaveProperty('pushed_at')
+    }
+    db.prepare('UPDATE repositories SET repo_updated = ? WHERE id = ?').run('2026-10-30T13:15:00+03:00', id)
+    expect(JSON.parse(renderRepos(listPublishable(db)))[0]).toHaveProperty('pushed_at', '2026-10-30T10:15:00.000Z')
+  } finally {
+    db.close()
+  }
+})
+
+it('preserves old published bytes with catalog_updated_at and plugins but no new metadata', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const id = upsertDiscovery(db, 'https://github.com/example/metadata', null, '2026-10-30T10:30:00.000Z')
+    updateEnriched(db, id, {
+      owner: 'example', repo_name: 'metadata', owner_url: 'https://github.com/example',
+      description: null, stargazers_count: 1, forks_count: 0, subscribers_count: 0,
+      plugins_count: 1, plugins_json: JSON.stringify([{ name: 'plugin' }]),
+      repo_updated: '2026-10-30T10:00:00Z', license: 'MIT', archived: 1,
+    })
+    const old = JSON.parse(renderRepos(listPublishable(db), { includeNewCatalogMetadata: false }))[0]
+    expect(old).toHaveProperty('plugins')
+    expect(old).toHaveProperty('catalog_updated_at')
+    for (const key of ['pushed_at', 'catalog_added_at', 'license', 'archived']) expect(old).not.toHaveProperty(key)
+  } finally {
+    db.close()
+  }
+})
