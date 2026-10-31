@@ -88,6 +88,9 @@ jobs:
         run: bun install --frozen-lockfile
         working-directory: awesomeclaudeplugins.com
 
+      - name: Verify Husky pre-commit hook is installed
+        run: test "$(git config --local --get core.hooksPath)" = "awesomeclaudeplugins.com/ui/.husky/_"
+
       - name: Run typecheck
         run: bun run typecheck
         working-directory: awesomeclaudeplugins.com/ui
@@ -108,9 +111,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-next-${{ hashFiles('awesomeclaudeplugins.com/bun.lock') }}-
 
-      - name: Build Next.js app
-        run: bun run build
-        working-directory: awesomeclaudeplugins.com/ui
+      - name: Build Next.js app using Railway command
+        run: bun run build:ui
+        working-directory: awesomeclaudeplugins.com
         env:
           GITHUB_API_URL: http://127.0.0.1:3100
           GITHUB_RAW_URL: http://127.0.0.1:3100
@@ -179,9 +182,9 @@ jobs:
         run: bun install --frozen-lockfile
         working-directory: awesomeclaudeplugins.com
 
-      - name: Smoke test native SQLite bindings
-        run: bun run smoke:sqlite
-        working-directory: awesomeclaudeplugins.com/crawler
+      - name: Build crawler and smoke native SQLite using Railway command
+        run: bun run build:crawler
+        working-directory: awesomeclaudeplugins.com
 
       - name: Run crawler typecheck
         run: bun run typecheck

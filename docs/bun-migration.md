@@ -25,6 +25,8 @@ bun audit --prod --audit-level=high
 bun audit --audit-level=high
 ```
 
+The root `prepare` script installs the existing Husky hook from the Git repository root; the GitHub Actions app job verifies `core.hooksPath` after a fresh Bun install.
+
 The committed `bun.lock` is generated from the prior npm lockfile with `bun install --lockfile-only`, not recreated manually. `better-sqlite3` is listed in `trustedDependencies` because Bun does not execute arbitrary third-party install scripts.
 
 ## Railway: coordinated cutover required

@@ -13,7 +13,8 @@
     "build:ui": "bun run --filter awesome-claude-plugins build",
     "start:ui": "bun run --filter awesome-claude-plugins start",
     "build:crawler": "bun run --filter catalog-crawler build && bun run --filter catalog-crawler smoke:sqlite",
-    "start:crawler": "bun run --filter catalog-crawler crawl"
+    "start:crawler": "bun run --filter catalog-crawler crawl",
+    "prepare": "cd .. && husky awesomeclaudeplugins.com/ui/.husky"
   },
   "packageManager": "bun@1.4.4",
   "trustedDependencies": [
