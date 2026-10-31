@@ -10,6 +10,7 @@ import {
 } from '../github/repositorySearchQueries.js'
 import { ensureRepositorySearchPartition, saveRepositorySearchPartition } from '../storage/repositorySearch.js'
 import { beginRun, completeRun } from '../storage/runs.js'
+import { recordRejectedCandidate } from '../storage/rejectedCandidates.js'
 import { initializeSchema } from '../storage/schema.js'
 import { discoverRepositories } from './discoverRepositories.js'
 
@@ -1024,4 +1025,51 @@ it('logs the partition outcome before propagating fatal Repository Search errors
       reason: 'fatal-error',
     }),
   )
+})
+
+it('does not rediscover unchanged marketplace 404 rejections but retries after a new push', async () => {
+  const db = database()
+  recordRejectedCandidate(db, 'https://github.com/example/rejected', 'node-rejected', at)
+  const oldPush = '2026-10-29T11:00:00Z'
+  const newPush = '2026-10-31T11:00:00Z'
+  const current = () => '2026-10-30T12:30:00Z'
+  const first = await discoverRepositories(
+    db,
+    reader(async (query) => query === firstPushed ? page([item('rejected', { pushed_at: oldPush })]) : page()),
+    'run', undefined, current,
+  )
+  expect(first.uniqueCandidates).toBe(0)
+  expect(db.prepare('SELECT COUNT(*) AS n FROM repositories').get()).toEqual({ n: 0 })
+  const second = await discoverRepositories(
+    db,
+    reader(async (query) => query === firstPushed ? page([item('rejected', { pushed_at: newPush })]) : page()),
+    'run', undefined, current,
+  )
+  expect(second.uniqueCandidates).toBe(1)
+  expect(db.prepare('SELECT COUNT(*) AS n FROM repositories').get()).toEqual({ n: 1 })
+  expect(db.prepare('SELECT COUNT(*) AS n FROM rejected_repository_candidates').get()).toEqual({ n: 0 })
+})
+
+it('bounds the pushed backlog over consecutive saturated days', async () => {
+  const db = database()
+  const origin = Date.parse(at)
+  for (let day = 0; day < 65; day++) {
+    const now = new Date(origin + day * 86_400_000).toISOString()
+    await discoverRepositories(
+      db,
+      reader(async (query) => query.includes(' pushed:') ? page([], 1000) : page()),
+      'run', undefined, () => now,
+    )
+    const activeStart = rollingPushedWindow(now).start
+    const expired = db.prepare(`
+      SELECT COUNT(*) AS n FROM repository_search_partitions
+      WHERE date_field = 'pushed' AND date_end < ?
+    `).get(activeStart) as { n: number }
+    expect(expired.n).toBe(0)
+    const pending = db.prepare(`
+      SELECT COUNT(*) AS n FROM repository_search_partitions
+      WHERE date_field = 'pushed' AND status IN ('pending', 'incomplete')
+    `).get() as { n: number }
+    expect(pending.n).toBeLessThan(2000)
+  }
 })
