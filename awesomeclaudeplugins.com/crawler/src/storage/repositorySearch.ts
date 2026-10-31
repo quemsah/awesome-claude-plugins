@@ -150,7 +150,7 @@ export function repositorySearchCoverage(db: Database.Database, at: string) {
         Date.parse(row.last_completed_at) <= Date.parse(at) - (row.date_field === 'created' ? 90 : 1) * 86_400_000),
   )
   const neverRun = leaves.every(({ row }) => !row?.last_attempt_at && !row?.last_completed_at)
-  const freshness = expiredLeafCount || incomplete.length ? 'incomplete' : neverRun ? 'never_run' : stale ? 'stale' : 'fresh'
+  const freshness = expiredLeafCount ? 'incomplete' : neverRun ? 'never_run' : incomplete.length ? 'incomplete' : stale ? 'stale' : 'fresh'
   return {
     queryVersion: repositorySearchQueryVersion,
     freshness,

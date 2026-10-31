@@ -850,9 +850,15 @@ it.each(['code_search', 'repo_search'] as const)(
             },
           },
     )
-    await expect(runCrawl(db, client, 'fatal-source', { ranges: [[0, 1]], now: () => failedAt })).rejects.toMatchObject({
-      category: 'github_fatal_error',
-    })
+    if (source === 'code_search') {
+      await expect(runCrawl(db, client, 'fatal-source', { ranges: [[0, 1]], now: () => failedAt })).rejects.toMatchObject({
+        category: 'github_fatal_error',
+      })
+    } else {
+      const result = await runCrawl(db, client, 'fatal-source', { ranges: [[0, 1]], now: () => failedAt })
+      expect(result.status).toBe('completed')
+      expect(result.discovery.sources.repo_search).toMatchObject({ state: 'incomplete', warnings: ['optional-source-error'] })
+    }
     const coverage = inspect(db, failedAt)
     expect(coverage.sources[source]).toMatchObject({
       freshness: 'incomplete',
@@ -879,7 +885,9 @@ it('persists consecutive fatal rolling attempts and alerts before propagating th
     },
   })
   for (let attempt = 1; attempt <= 2; attempt++) {
-    await expect(runCrawl(db, client, `fatal-rolling-${attempt}`, options)).rejects.toMatchObject({ category: 'github_fatal_error' })
+    const result = await runCrawl(db, client, `fatal-rolling-${attempt}`, options)
+    expect(result.status).toBe('completed')
+    expect(result.discovery.sources.repo_search.state).toBe('incomplete')
     expect(inspect(db, options.now()).sources.repo_search).toMatchObject({ freshness: 'incomplete', rollingIncompleteStreak: attempt })
   }
   expect(log).toHaveBeenCalledWith(

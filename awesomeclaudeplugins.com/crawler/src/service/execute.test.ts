@@ -60,7 +60,7 @@ describe('orchestration', () => {
         db,
         { ...reader, searchRepositories: async () => ({ items: [], total_count: 0, incomplete_results: true }) },
         'source-report',
-        { now, ranges: range, dryRun: true, log },
+        { now, ranges: range, dryRun: true, repositorySearchEnabled: true, log },
       )
       expect(result.report.discovery).toMatchObject({
         coverageScope: 'configured_query_catalog',
