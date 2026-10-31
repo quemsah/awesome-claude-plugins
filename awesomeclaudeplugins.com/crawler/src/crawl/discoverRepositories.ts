@@ -13,8 +13,8 @@ import {
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import type { Log } from '../logging.js'
 import { recordDiscoveryCandidate } from '../storage/discoveryCandidates.js'
-import { isUnchangedRejectedCandidate } from '../storage/rejectedCandidates.js'
 import { recordDiscoverySourceOutcome } from '../storage/discoverySources.js'
+import { isUnchangedRejectedCandidate } from '../storage/rejectedCandidates.js'
 import { createDiscoveryWriter } from '../storage/repositories.js'
 import {
   ensureRepositorySearchPartition,
