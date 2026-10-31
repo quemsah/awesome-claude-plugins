@@ -1061,8 +1061,10 @@ it('bounds the pushed backlog over consecutive saturated days', async () => {
     const now = new Date(origin + day * 86_400_000).toISOString()
     await discoverRepositories(
       db,
-      reader(async (query) => query.includes(' pushed:') ? page([], 1000) : page()),
-      'run', undefined, () => now,
+      reader(async (query) => (query.includes(' pushed:') ? page([], 1000) : page())),
+      'run',
+      undefined,
+      () => now,
     )
     const activeStart = rollingPushedWindow(now).start
     const expired = db
