@@ -10,12 +10,10 @@
     "shared/*"
   ],
   "scripts": {
-    "build:ui": "npm run build --workspace=awesome-claude-plugins",
-    "start:ui": "npm run start --workspace=awesome-claude-plugins",
-    "build:crawler": "npm run build --workspace=catalog-crawler && npm run smoke:sqlite --workspace=catalog-crawler",
-    "start:crawler": "npm run crawl --workspace=catalog-crawler"
+    "build:ui": "bun run --filter awesome-claude-plugins build",
+    "start:ui": "bun run --filter awesome-claude-plugins start",
+    "build:crawler": "bun run --filter catalog-crawler build && bun run --filter catalog-crawler smoke:sqlite",
+    "start:crawler": "bun run --filter catalog-crawler crawl"
   },
-  "allowScripts": {
-    "better-sqlite3@12.11.1": true
-  }
+  "packageManager": "bun@1.4.4"
 }
