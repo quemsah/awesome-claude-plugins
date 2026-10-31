@@ -256,6 +256,25 @@ it('still rejects catalog changes when a persisted draft uses the legacy three-f
   expect(git.events).toEqual([])
 })
 
+it.each([true, false])('recovers pre-metadata saved draft with markdown sidecar: %s', async (withPaths) => {
+  const db = fixture()
+  const git = new Branch()
+  db.prepare('UPDATE repositories SET repo_updated = ? WHERE id = 18').run('2026-10-30T10:00:00Z')
+  prepareDraft(db, 'r1', timestamp)
+  const currentFiles = readDraftSnapshot(db, 'r1')
+  const oldRepos = renderRepos(listPublishable(db), { includeNewCatalogMetadata: false })
+  expect(JSON.parse(oldRepos)[0]).toHaveProperty('catalog_updated_at')
+  expect(JSON.parse(oldRepos)[0]).not.toHaveProperty('pushed_at')
+  expect(JSON.parse(currentFiles.reposJson)[0]).toHaveProperty('pushed_at')
+  const parts = [currentFiles.readme, oldRepos, currentFiles.statsJson]
+  if (withPaths) parts.push(currentFiles.markdownPathsJson)
+  const savedHash = createHash('sha256').update(JSON.stringify(parts), 'utf8').digest('hex')
+  db.prepare('UPDATE runs SET draft_hash = ? WHERE run_id = ?').run(savedHash, 'r1')
+  expect(readDraftSnapshot(db, 'r1').reposJson).toBe(oldRepos)
+  await publishRun(db, git, 'r1', { writeEnabled: true })
+  expect(git.files[0].reposJson).toBe(oldRepos)
+})
+
 it('recovers the previous eight-field multiline catalog serialization', async () => {
   const db = fixture()
   const git = new Branch()
