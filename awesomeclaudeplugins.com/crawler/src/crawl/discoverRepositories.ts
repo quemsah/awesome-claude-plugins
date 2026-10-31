@@ -498,8 +498,19 @@ export async function discoverRepositories(
   const work = prepareRepositoryWork(db, runId, at)
   const activePushedStart = rollingPushedWindow(at).start
   const context: SearchContext = {
-    db, reader, runId, onProgress, now, log, summary, work, countedUrls,
-    completed, attempted, activePushedStart, writeDiscovery,
+    db,
+    reader,
+    runId,
+    onProgress,
+    now,
+    log,
+    summary,
+    work,
+    countedUrls,
+    completed,
+    attempted,
+    activePushedStart,
+    writeDiscovery,
   }
   const reporter = createSearchReporter(context)
   try {
