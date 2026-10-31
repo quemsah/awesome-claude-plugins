@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 17
+const schemaVersion = 18
 
 function createSchema(db: Database.Database): void {
   db.exec(`
@@ -405,6 +405,19 @@ function migrateTo17(db: Database.Database): void {
   db.pragma('user_version = 17')
 }
 
+function migrateTo18(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS rejected_repository_candidates (
+      html_url TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,
+      github_node_id TEXT,
+      rejected_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS rejected_repository_candidates_node_id
+      ON rejected_repository_candidates(github_node_id) WHERE github_node_id IS NOT NULL;
+    PRAGMA user_version = 18;
+  `)
+}
+
 function migrateSchema(db: Database.Database, version: number): void {
   if (version === 0) createSchema(db)
   if (version < 2) migrateTo2(db)
@@ -423,6 +436,7 @@ function migrateSchema(db: Database.Database, version: number): void {
   if (version < 15) migrateTo15(db)
   if (version < 16) migrateTo16(db)
   if (version < 17) migrateTo17(db)
+  if (version < 18) migrateTo18(db)
 }
 
 export function initializeSchema(db: Database.Database): void {
