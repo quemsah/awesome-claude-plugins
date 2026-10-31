@@ -28,7 +28,9 @@ npm run typecheck:integration --workspace=catalog-crawler
 npm run test:integration --workspace=catalog-crawler
 ```
 
-The crawler tests cover capped pagination, saved next-page cursors, retry/reset behavior, temporal partitions, deduplication, source coverage and SQLite schema migration v15 → v17. Re-run these before investigating any live API mismatch.
+The crawler tests cover capped pagination, saved next-page cursors, retry/reset behavior, temporal partitions, deduplication, source coverage and SQLite schema migration v15 → v18 in the current standalone branch. Re-run these before investigating any live API mismatch.
+
+**Merge-order dependency:** #404 is merged first and owns SQLite schema v16 (license/archived). Before #405 can merge, incorporate #404 into this branch, renumber its Repository Search migrations from v16/v17/v18 to **v17/v18/v19**, and add a migration test that starts from a populated #404 v16 database. The current v18 instructions apply only to this branch *before* that integration.
 
 ## 2. Bounded local end-to-end dry-run
 
@@ -81,7 +83,7 @@ The earlier focused generic-query check retrieved `human-stuff/prodready`; anoth
 - [ ] CI on the final commit passes: typecheck, lint, tests and integration contracts.
 - [ ] All actionable human/CodeRabbit/CodeFactor review comments are resolved.
 - [ ] Local bounded multi-run dry-run evidence is recorded in the PR.
-- [ ] DB upgrade from production v15 to v17 verified on an isolated copy; lastmod/catalog data unchanged.
+- [ ] After #404 is merged, DB upgrade from a populated #404 v16 database to the final #405 v19 schema verified on an isolated copy; lastmod, license, archived flags and catalog data unchanged.
 - [ ] No unexplained changes to catalog identities, plugin counts or indexability.
 - [ ] Mark the draft PR ready and merge only after those gates pass.
 - [ ] **Separate approval** to enable production discovery and any historical backfill; watch rate budget, backlog age, accepted marketplace yield and failure rate.
