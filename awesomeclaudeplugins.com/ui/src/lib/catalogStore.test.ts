@@ -85,6 +85,8 @@ describe('catalogStore', () => {
       expect(readCatalogFiles(indexPath, reposPath)).toEqual(canonical)
       rmSync(reposPath)
       expect(() => readCatalogFiles(indexPath, reposPath)).toThrow('no canonical repository snapshot')
+      rmSync(indexPath)
+      expect(() => readCatalogFiles(indexPath, reposPath)).toThrow('Missing compact catalog and canonical repository snapshot')
     } finally {
       rmSync(folder, { recursive: true, force: true })
     }
