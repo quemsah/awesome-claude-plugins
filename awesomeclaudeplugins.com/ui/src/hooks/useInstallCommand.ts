@@ -20,6 +20,10 @@ export type UseInstallCommandOptions = {
 
 export type CopiedCommandTarget = 'plugin' | 'marketplace' | 'both' | null
 
+/**
+ * Hook that manages install command generation, copy actions, and feedback states
+ * for Claude Code plugins and external marketplaces.
+ */
 export function useInstallCommand(
   pluginNameOrOptions?: string | UseInstallCommandOptions,
   marketplaceNameParam?: string,

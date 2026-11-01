@@ -362,10 +362,10 @@ test('repo detail page displays two-step install instructions for external marke
 
   const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Example Plugin@1.2.3' }) })
 
-  await expect(plugin.getByText('Step 1: Add marketplace')).toBeVisible()
-  await expect(plugin.getByText('/plugin marketplace add ykdojo/claude-code-tips')).toBeVisible()
-  await expect(plugin.getByText('Step 2: Install plugin')).toBeVisible()
-  await expect(plugin.getByText('/plugin install example-plugin@ykdojo')).toBeVisible()
+  await expect(plugin.getByText('Step 1: Add marketplace', { exact: true })).toBeVisible()
+  await expect(plugin.getByText('/plugin marketplace add ykdojo/claude-code-tips', { exact: true })).toBeVisible()
+  await expect(plugin.getByText('Step 2: Install plugin', { exact: true })).toBeVisible()
+  await expect(plugin.getByText('/plugin install example-plugin@ykdojo', { exact: true })).toBeVisible()
 
   await plugin.getByRole('button', { name: 'Copy marketplace add command' }).click()
   await expect.poll(() => copiedText(page)).toBe('/plugin marketplace add ykdojo/claude-code-tips')

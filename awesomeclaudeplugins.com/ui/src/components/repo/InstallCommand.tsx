@@ -22,6 +22,9 @@ interface SingleInstallCommandProps {
   isVerified: boolean
 }
 
+/**
+ * Renders a single-step plugin installation command.
+ */
 function SingleInstallCommand({
   copyError,
   handleCopyPlugin,
@@ -63,6 +66,9 @@ function SingleInstallCommand({
   )
 }
 
+/**
+ * Renders Step 1: Add marketplace command with individual copy action.
+ */
 function MarketplaceStep({
   marketplaceAddCommand,
   isMarketplaceCopied,
@@ -95,6 +101,9 @@ function MarketplaceStep({
   )
 }
 
+/**
+ * Renders Step 2: Install plugin command with individual copy action and verification indicator.
+ */
 function PluginInstallStep({
   installCommand,
   isPluginCopied,
@@ -139,6 +148,9 @@ function PluginInstallStep({
   )
 }
 
+/**
+ * Resolves the appropriate status message based on copy action states and errors.
+ */
 function getTwoStepFeedback(
   copyError: string | null,
   isBothCopied: boolean,
@@ -167,6 +179,12 @@ interface TwoStepInstallCommandProps {
   marketplaceAddCommand: string | null
 }
 
+/**
+ * Renders the two-step installation flow for external marketplaces:
+ * Step 1: Add marketplace
+ * Step 2: Install plugin
+ * With an optional "Copy both commands" action.
+ */
 function TwoStepInstallCommand({
   combinedCommand,
   copyError,
@@ -228,6 +246,10 @@ function TwoStepInstallCommand({
   )
 }
 
+/**
+ * Main InstallCommand component that renders either a single-step or two-step
+ * installation guide depending on whether the plugin belongs to an external marketplace.
+ */
 export function InstallCommand(props: InstallCommandProps) {
   const {
     combinedCommand,
