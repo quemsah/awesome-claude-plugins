@@ -27,6 +27,9 @@ export interface RepositoryRow {
   createdAt: string
   updatedAt: string
   last_health_check_at: string | null
+  manifest_kind?: 'marketplace' | 'standalone-plugin' | null
+  plugin_manifest_etag?: string | null
+  plugin_manifest_parser_version?: number | null
 }
 
 export type EnrichmentFields = Pick<
@@ -52,6 +55,9 @@ export type EnrichmentFields = Pick<
       | 'plugins_json'
       | 'license'
       | 'archived'
+      | 'manifest_kind'
+      | 'plugin_manifest_etag'
+      | 'plugin_manifest_parser_version'
     >
   >
 
@@ -74,6 +80,7 @@ export type PublishableRepository = Pick<
   catalog_added_at?: string | null
   license?: string | null
   archived?: boolean | number | null
+  manifest_kind?: 'marketplace' | 'standalone-plugin' | null
 }
 
 export function createDiscoveryWriter(db: Database.Database) {
@@ -124,11 +131,16 @@ const enrichedUpdateSql = `
     archived = COALESCE(@archived, archived),
     plugins_count = @plugins_count,
     plugins_json = COALESCE(@plugins_json, plugins_json),
+    manifest_kind = COALESCE(@manifest_kind, manifest_kind),
+    plugin_manifest_etag = CASE WHEN @manifest_kind = 'marketplace' THEN NULL ELSE COALESCE(@plugin_manifest_etag, plugin_manifest_etag) END,
+    plugin_manifest_parser_version = CASE WHEN @manifest_kind = 'marketplace' THEN NULL ELSE COALESCE(@plugin_manifest_parser_version, plugin_manifest_parser_version) END,
+    marketplace_failed_oid = CASE WHEN @manifest_kind = 'standalone-plugin' THEN NULL ELSE marketplace_failed_oid END,
+    marketplace_failed_parser_version = CASE WHEN @manifest_kind = 'standalone-plugin' THEN NULL ELSE marketplace_failed_parser_version END,
     github_node_id = COALESCE(@github_node_id, github_node_id),
-    marketplace_oid = COALESCE(@marketplace_oid, marketplace_oid),
+    marketplace_oid = CASE WHEN @manifest_kind = 'standalone-plugin' THEN NULL ELSE COALESCE(@marketplace_oid, marketplace_oid) END,
     repository_etag = COALESCE(@repository_etag, repository_etag),
-    marketplace_etag = COALESCE(@marketplace_etag, marketplace_etag),
-    marketplace_parser_version = COALESCE(@marketplace_parser_version, marketplace_parser_version),
+    marketplace_etag = CASE WHEN @manifest_kind = 'standalone-plugin' THEN NULL ELSE COALESCE(@marketplace_etag, marketplace_etag) END,
+    marketplace_parser_version = CASE WHEN @manifest_kind = 'standalone-plugin' THEN NULL ELSE COALESCE(@marketplace_parser_version, marketplace_parser_version) END,
     updatedAt = @updatedAt
   WHERE id = @id
 `
@@ -145,6 +157,9 @@ export function prepareEnrichedUpdate(db: Database.Database) {
 
     const result = update.run({
       ...fields,
+      manifest_kind: fields.manifest_kind ?? null,
+      plugin_manifest_etag: fields.plugin_manifest_etag ?? null,
+      plugin_manifest_parser_version: fields.plugin_manifest_parser_version ?? null,
       github_node_id: fields.github_node_id ?? null,
       marketplace_oid: fields.marketplace_oid ?? null,
       repository_etag: fields.repository_etag ?? null,
@@ -200,12 +215,12 @@ export function rebindCanonicalUrl(
           stargazers_count, forks_count, subscribers_count, description, repo_updated,
           license, archived, plugins_count, plugins_json, github_node_id,
           repository_etag, marketplace_etag, marketplace_oid, marketplace_parser_version,
-          marketplace_failed_oid, marketplace_failed_parser_version
+          marketplace_failed_oid, marketplace_failed_parser_version, manifest_kind, plugin_manifest_etag, plugin_manifest_parser_version
         ) = (
           SELECT stargazers_count, forks_count, subscribers_count, description, repo_updated,
                  license, archived, plugins_count, plugins_json, github_node_id,
                  repository_etag, marketplace_etag, marketplace_oid, marketplace_parser_version,
-                 marketplace_failed_oid, marketplace_failed_parser_version
+                 marketplace_failed_oid, marketplace_failed_parser_version, manifest_kind, plugin_manifest_etag, plugin_manifest_parser_version
           FROM repositories WHERE id = @removedId
         )
         WHERE id = @keepId
@@ -288,7 +303,7 @@ export function listCoreComplete(db: Database.Database): PublishableRepository[]
     .prepare(`
     SELECT id, html_url, stargazers_count, forks_count, subscribers_count,
            description, owner, owner_url, repo_name, plugins_count, plugins_json, catalog_updated_at,
-           repo_updated AS pushed_at, createdAt AS catalog_added_at, license, archived
+           repo_updated AS pushed_at, createdAt AS catalog_added_at, license, archived, manifest_kind
     FROM repositories
     WHERE html_url IS NOT NULL AND owner IS NOT NULL AND repo_name IS NOT NULL AND owner_url IS NOT NULL
       AND stargazers_count IS NOT NULL AND forks_count IS NOT NULL
