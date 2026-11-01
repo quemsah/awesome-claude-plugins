@@ -221,10 +221,16 @@ export function readCatalogSearchFields(
   expectedCount = getCatalog().length
 ): Partial<Repo>[] {
   try {
-    const index: unknown = JSON.parse(readFileSync(indexPath, 'utf8'))
-    if (!isValidSearchIndex(index)) throw new Error('Invalid search index schema')
-    const fields: unknown = JSON.parse(gunzipSync(Buffer.from(index.search, 'base64')).toString('utf8'))
-    if (!Array.isArray(fields) || fields.length !== index.rows.length || fields.length !== expectedCount) {
+    // The validated V1 serializer always writes search last. Extract only its
+    // base64 payload: reparsing 19 MB of index rows here spikes search RSS.
+    const content = readFileSync(indexPath, 'utf8')
+    const marker = ',"search":"'
+    const start = content.lastIndexOf(marker)
+    if (start < 0 || !content.endsWith('"}')) throw new Error('Missing compressed search payload')
+    const encoded = content.slice(start + marker.length, -2)
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) throw new Error('Invalid compressed search payload')
+    const fields: unknown = JSON.parse(gunzipSync(Buffer.from(encoded, 'base64')).toString('utf8'))
+    if (!Array.isArray(fields) || fields.length !== expectedCount) {
       throw new Error('Misaligned search metadata')
     }
     return fields as Partial<Repo>[]
