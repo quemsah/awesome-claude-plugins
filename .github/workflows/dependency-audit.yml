@@ -37,9 +37,9 @@ jobs:
 
       - name: Enforce no high or critical advisories in production
         working-directory: awesomeclaudeplugins.com
-        run: bun audit --prod --audit-level=high
+        run: bun audit --prod --audit-level=high --json
 
       - name: Enforce no high or critical advisories in the complete dependency graph
         if: success() || failure()
         working-directory: awesomeclaudeplugins.com
-        run: bun audit --audit-level=high
+        run: bun audit --audit-level=high --json
