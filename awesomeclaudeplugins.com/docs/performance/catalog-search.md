@@ -76,3 +76,17 @@ search cache strategies. It **does not measure the full Next.js production proce
 separate server bundles can initialize more than one module/index instance. RSS
 also does not directly determine Railway charges; use production memory metrics
 and Railway's actual billing model for a cost estimate.
+
+## Production Next.js cold-start A/B
+
+The `Catalog search memory A/B` workflow also builds both revisions with
+`bun run build:ui` and runs fresh production `node next start` processes.
+It checks both request orders: API-first and homepage-first. The first response
+includes startup and lazy module/index initialization; the second response
+checks that the other route works. Each run records response times, process-tree
+RSS, and 250-ms sampled peak memory.
+
+The GitHub Actions job summary compares both revisions and uploads four JSON
+reports. RSS sums Linux process-tree resident sizes, which can double-count
+shared pages; sampled peaks can miss brief spikes. Use these as comparative
+diagnostics, not as a Railway billing estimate.
