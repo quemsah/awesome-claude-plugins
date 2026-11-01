@@ -13,7 +13,6 @@ describe('temporary memory comparison for PR 425', () => {
         encoding: 'utf8',
         timeout,
         maxBuffer: 1024 * 1024 * 4,
-        env: { ...process.env, HUSKY: '0' },
       })
       if (result.status !== 0) {
         throw new Error(`${cmd} failed: ${result.error ?? ''}\n${result.stdout}\n${result.stderr}`)
@@ -23,13 +22,18 @@ describe('temporary memory comparison for PR 425', () => {
 
     try {
       const oldRepo = join(temp, 'old')
-      run('git', ['clone', '--depth', '1', '--branch', 'main', '--quiet',
-        'https://github.com/quemsah/awesome-claude-plugins.git', oldRepo], temp)
+      run(
+        'git',
+        ['clone', '--depth', '1', '--branch', 'main', '--quiet', 'https://github.com/quemsah/awesome-claude-plugins.git', oldRepo],
+        temp
+      )
       const baseline = run('git', ['rev-parse', 'HEAD'], oldRepo)
       run('bun', ['install', '--frozen-lockfile'], join(oldRepo, 'awesomeclaudeplugins.com'))
 
       const probe = join(temp, 'probe.mjs')
-      writeFileSync(probe, `
+      writeFileSync(
+        probe,
+        `
         import { join } from 'node:path'
         import { pathToFileURL } from 'node:url'
         const cwd = process.argv[2]
@@ -54,18 +58,24 @@ describe('temporary memory comparison for PR 425', () => {
         console.log('MEMORY_PROBE', JSON.stringify({ beforeImport, afterImport, afterSearch, loadMs, searchMs,
           importedExtra: Number((afterImport-beforeImport).toFixed(2)),
           warmedExtra: Number((afterSearch-beforeImport).toFixed(2)) }))
-      `)
+      `
+      )
 
       const current = process.cwd()
       const old = run('node', ['--expose-gc', probe, join(oldRepo, 'awesomeclaudeplugins.com/ui')], current)
       const next = run('node', ['--expose-gc', probe, current], current)
       const oldMetrics = JSON.parse(old.split('MEMORY_PROBE ')[1] ?? '{}')
       const newMetrics = JSON.parse(next.split('MEMORY_PROBE ')[1] ?? '{}')
-      console.log('MEMORY_BENCHMARK_RESULT', JSON.stringify({
-        baseline, candidate: 'fc3a3e904c5f0774a2f27e308666d39cd65b9047',
-        old: oldMetrics, next: newMetrics,
-        warmedDeltaMiB: Number((newMetrics.afterSearch - oldMetrics.afterSearch).toFixed(2))
-      }))
+      console.log(
+        'MEMORY_BENCHMARK_RESULT',
+        JSON.stringify({
+          baseline,
+          candidate: 'fc3a3e904c5f0774a2f27e308666d39cd65b9047',
+          old: oldMetrics,
+          next: newMetrics,
+          warmedDeltaMiB: Number((newMetrics.afterSearch - oldMetrics.afterSearch).toFixed(2)),
+        })
+      )
       expect(oldMetrics.afterSearch).toBeGreaterThan(0)
       expect(newMetrics.afterSearch).toBeGreaterThan(0)
     } finally {
