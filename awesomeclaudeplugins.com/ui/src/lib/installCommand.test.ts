@@ -101,21 +101,15 @@ describe('getDirectPluginInstallCommand', () => {
   })
 
   it('falls back to a safe normalized plugin name when the plugin ID is absent', () => {
-    expect(
-      getDirectPluginInstallCommand({ pluginName: '  Nice  Plugin ', owner: 'example', repoName: 'plugins' })
-    ).toBe('/plugin install nice-plugin --marketplace example/plugins')
+    expect(getDirectPluginInstallCommand({ pluginName: '  Nice  Plugin ', owner: 'example', repoName: 'plugins' })).toBe(
+      '/plugin install nice-plugin --marketplace example/plugins'
+    )
   })
 
   it('rejects missing and malicious repository identifiers and plugin IDs', () => {
     expect(getDirectPluginInstallCommand({ pluginId: 'safe', owner: 'owner' })).toBeNull()
-    expect(
-      getDirectPluginInstallCommand({ pluginId: 'safe', owner: 'owner', repoName: 'repo\n/plugin exploit' })
-    ).toBeNull()
-    expect(
-      getDirectPluginInstallCommand({ pluginId: 'bad/name', owner: 'owner', repoName: 'repo' })
-    ).toBeNull()
-    expect(
-      getDirectPluginInstallCommand({ pluginName: 'bad/name', owner: 'owner', repoName: 'repo' })
-    ).toBeNull()
+    expect(getDirectPluginInstallCommand({ pluginId: 'safe', owner: 'owner', repoName: 'repo\n/plugin exploit' })).toBeNull()
+    expect(getDirectPluginInstallCommand({ pluginId: 'bad/name', owner: 'owner', repoName: 'repo' })).toBeNull()
+    expect(getDirectPluginInstallCommand({ pluginName: 'bad/name', owner: 'owner', repoName: 'repo' })).toBeNull()
   })
 })
