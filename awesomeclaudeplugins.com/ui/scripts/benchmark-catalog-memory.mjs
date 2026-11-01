@@ -47,7 +47,7 @@ if (values.baseline || values.candidate) {
     '',
     'Catalog records: ' + sizes[0] + '; runs per revision: main=' + base.length + ', PR=' + pr.length,
     '',
-    '| Measurement | main / Fuse.js | PR / FTS5 | PR - main |',
+    '| Measurement | main / FTS5 | PR / FTS5 | PR - main |',
     '| --- | ---: | ---: | ---: |',
   ]
   for (const [name, metric] of rows) {
@@ -65,6 +65,17 @@ if (values.baseline || values.candidate) {
   )
   const output = md.join('\n')
   process.stdout.write(output + '\n')
+  // CI protects the optimization from future memory regressions. An on-demand index
+  // may use more transient memory, but it must stay within a bounded overhead.
+  const baselineImport = median(base.map(snapshotValue('afterImport')))
+  const candidateImport = median(pr.map(snapshotValue('afterImport')))
+  const baselineWarm = median(base.map(snapshotValue('afterQueries')))
+  const candidateWarm = median(pr.map(snapshotValue('afterQueries')))
+  const baselinePeak = median(base.map((run) => run.phases.afterQueries.peakRssMiB))
+  const candidatePeak = median(pr.map((run) => run.phases.afterQueries.peakRssMiB))
+  assert(candidateImport <= baselineImport * 0.9, 'Catalog initialization must reduce RSS at least 10%')
+  assert(candidateWarm <= baselineWarm * 1.1, 'Warm search RSS regression exceeds 10%')
+  assert(candidatePeak <= baselinePeak * 1.2, 'Peak RSS regression exceeds 20%')
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, output + '\n')
 } else {
   assert(global.gc, 'Run with node --expose-gc')
