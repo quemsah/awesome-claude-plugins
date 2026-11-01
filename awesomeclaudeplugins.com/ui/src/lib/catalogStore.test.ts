@@ -7,13 +7,31 @@ describe('catalogStore', () => {
       format: 'v1' as const,
       fields: ['id', 'owner', 'repo_name', 'description', 'manifest_kind'],
       search: '',
-      rows: [[123, 'example', 'demo', 12, 3, 5, null, 'MIT', false, null, 2, null,
-        'Correct visible description of a plugin repository.', 'standalone-plugin']],
+      rows: [
+        [
+          123,
+          'example',
+          'demo',
+          12,
+          3,
+          5,
+          null,
+          'MIT',
+          false,
+          null,
+          2,
+          null,
+          'Correct visible description of a plugin repository.',
+          'standalone-plugin',
+        ],
+      ],
     }
     expect(parseSearchIndex(example)).toEqual([
       expect.objectContaining({
-        id: 123, description: 'Correct visible description of a plugin repository.',
-        manifest_kind: 'standalone-plugin', plugins_count: 5,
+        id: 123,
+        description: 'Correct visible description of a plugin repository.',
+        manifest_kind: 'standalone-plugin',
+        plugins_count: 5,
       }),
     ])
   })
@@ -28,7 +46,7 @@ describe('catalogStore', () => {
     const cacheKey = Symbol.for('awesome-claude-plugins.shard-cache')
     const holder = globalThis as unknown as Record<symbol, unknown>
     const previous = holder[cacheKey]
-    const records = new Map<number, typeof getCatalog extends () => readonly (infer R)[] ? R : never>()
+    const records = new Map<number, (ReturnType<typeof getCatalog>)[number]>()
     for (const repo of getCatalog()) {
       const shardId = Math.abs(repo.id % 100)
       if (!records.has(shardId)) records.set(shardId, repo)
