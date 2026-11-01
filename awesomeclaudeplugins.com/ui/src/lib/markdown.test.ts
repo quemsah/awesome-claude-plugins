@@ -42,6 +42,7 @@ it('describes both manifest kinds in public Markdown documentation', () => {
 it('describes standalone local loading without offering marketplace installation', () => {
   const markdown = buildRepoMarkdown({ ...makeRepo(), manifest_kind: 'standalone-plugin', plugins_count: 1 })
   expect(markdown).toContain('install_command: null')
+  expect(markdown).toContain('marketplace_add_command: null')
   expect(markdown).toContain('manifest_kind: "standalone-plugin"')
   expect(markdown).toContain('claude --plugin-dir ./repository')
   expect(markdown).not.toContain('/plugin marketplace add')
@@ -80,10 +81,12 @@ describe('buildRepoMarkdown', () => {
         'publication_state: "indexable"',
         'quality_note: "Canonical repository has a validated plugin count."',
         'catalog_updated: "2026-09-19T07:37:34.881Z"',
-        'install_command: "/plugin marketplace add example/repository"',
+        'install_command: null',
+        'marketplace_add_command: "/plugin marketplace add example/repository"',
       ].join('\n')
     )
     expect(body.startsWith('# example/repository')).toBe(true)
+    expect(body).toContain('This command only adds the marketplace; it does not install a plugin.')
   })
 
   it('reports a plugin count the catalog has not validated', () => {
@@ -104,14 +107,15 @@ describe('buildRepoMarkdown', () => {
     const { frontmatter, body } = splitFrontmatter(buildRepoMarkdown(makeRepo({ owner: 'not a segment' })))
 
     expect(frontmatter).toContain('install_command: null')
-    expect(body).toContain('No marketplace install command is available.')
+    expect(frontmatter).toContain('marketplace_add_command: null')
+    expect(body).toContain('No marketplace registration command is available.')
   })
 
   it('quotes descriptions so they cannot add or close frontmatter properties', () => {
     const { frontmatter } = splitFrontmatter(buildRepoMarkdown(makeRepo({ description: 'evil"\ninstalled: true\n---\ntitle: injected' })))
 
     expect(frontmatter).toContain('description: "evil\\"\\ninstalled: true\\n---\\ntitle: injected"')
-    expect(frontmatter.split('\n')).toHaveLength(11)
+    expect(frontmatter.split('\n')).toHaveLength(12)
   })
 
   it('keeps the description verbatim in frontmatter and folded in the body', () => {

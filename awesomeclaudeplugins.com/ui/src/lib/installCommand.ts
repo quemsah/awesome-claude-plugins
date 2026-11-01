@@ -1,3 +1,5 @@
+import { isSafePluginId } from '@awesome-claude-plugins/catalog-contract'
+
 /**
  * Install command types for Claude Code plugins.
  */
@@ -9,7 +11,18 @@ export type PluginInstallCommandInput = {
   marketplaceName?: string
 }
 
-const PLUGIN_COMMAND_TOKEN_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i
+// CLI install identifiers are stricter than the catalog's safe display identifiers.
+// See https://code.claude.com/docs/en/plugins/marketplace-reference
+const INSTALL_TOKEN_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i
+const REPOSITORY_COMMAND_TOKEN_PATTERN = INSTALL_TOKEN_PATTERN
+
+function isInstallablePluginId(value: string): boolean {
+  return isSafePluginId(value) && INSTALL_TOKEN_PATTERN.test(value)
+}
+
+function isInstallableMarketplaceName(value: string): boolean {
+  return isInstallablePluginId(value) && !value.includes('..')
+}
 
 /**
  * Normalizes a plugin name for CLI usage.
@@ -20,7 +33,7 @@ const PLUGIN_COMMAND_TOKEN_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i
  */
 export function normalizePluginName(pluginName?: string): string {
   const normalized = typeof pluginName === 'string' ? pluginName.trim().toLowerCase().replace(/\s+/g, '-') : ''
-  return PLUGIN_COMMAND_TOKEN_PATTERN.test(normalized) ? normalized : ''
+  return isInstallablePluginId(normalized) ? normalized : ''
 }
 
 /**
@@ -32,7 +45,7 @@ export function isPluginInstallCommandVerified(pluginName?: string, marketplaceN
   const normalizedPluginName = normalizePluginName(pluginName)
   const normalizedMarketplaceName = typeof marketplaceName === 'string' ? marketplaceName.trim() : ''
 
-  return Boolean(normalizedPluginName && normalizedMarketplaceName && PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedMarketplaceName))
+  return Boolean(normalizedPluginName && isInstallableMarketplaceName(normalizedMarketplaceName))
 }
 
 /**
@@ -49,10 +62,10 @@ export function isPluginInstallCommandVerified(pluginName?: string, marketplaceN
 export function getPluginInstallCommand({ pluginName, pluginId, marketplaceName }: PluginInstallCommandInput): string | null {
   const normalizedName = normalizePluginName(pluginName)
   const normalizedPluginId = typeof pluginId === 'string' ? pluginId.trim() : undefined
-  if (normalizedPluginId && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedPluginId)) return null
+  if (normalizedPluginId && !isInstallablePluginId(normalizedPluginId)) return null
   const normalizedMarketplaceName = typeof marketplaceName === 'string' ? marketplaceName.trim() : undefined
 
-  if (normalizedMarketplaceName && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedMarketplaceName)) {
+  if (normalizedMarketplaceName && !isInstallableMarketplaceName(normalizedMarketplaceName)) {
     return null
   }
 
@@ -71,23 +84,50 @@ export function getPluginInstallCommand({ pluginName, pluginId, marketplaceName 
 /**
  * Generates a `/plugin marketplace add` command from repository metadata.
  *
- * Verified when both `owner` and `repoName` are present.
- * Returns `null` when required data is missing.
+ * Verified when both `owner` and `repoName` are present (or passed as "owner/repo").
+ * Returns `null` when required data is missing or invalid.
  */
 export function getMarketplaceAddCommand(owner?: string | null, repoName?: string | null): string | null {
-  const trimmedOwner = typeof owner === 'string' ? owner.trim() || null : null
-  const trimmedRepoName = typeof repoName === 'string' ? repoName.trim() || null : null
+  let trimmedOwner = typeof owner === 'string' ? owner.trim() || null : null
+  let trimmedRepoName = typeof repoName === 'string' ? repoName.trim() || null : null
+
+  if (trimmedOwner && !trimmedRepoName && trimmedOwner.includes('/')) {
+    const parts = trimmedOwner.split('/')
+    if (parts.length === 2) {
+      trimmedOwner = parts[0]?.trim() || null
+      trimmedRepoName = parts[1]?.trim() || null
+    }
+  }
 
   if (
     !(
       trimmedOwner &&
       trimmedRepoName &&
-      PLUGIN_COMMAND_TOKEN_PATTERN.test(trimmedOwner) &&
-      PLUGIN_COMMAND_TOKEN_PATTERN.test(trimmedRepoName)
+      REPOSITORY_COMMAND_TOKEN_PATTERN.test(trimmedOwner) &&
+      REPOSITORY_COMMAND_TOKEN_PATTERN.test(trimmedRepoName)
     )
   ) {
     return null
   }
 
   return `/plugin marketplace add ${trimmedOwner}/${trimmedRepoName}`
+}
+/**
+ * Builds a one-step, in-session install command from a GitHub marketplace source.
+ * Claude Code v2.1.275+ can register an unknown marketplace during this flow.
+ * Never use display text or repository fields without token validation.
+ */
+export function getDirectPluginInstallCommand({
+  pluginName,
+  pluginId,
+  marketplaceName,
+  owner,
+  repoName,
+}: PluginInstallCommandInput & { owner?: string | null; repoName?: string | null }): string | null {
+  if (marketplaceName !== undefined && !isInstallableMarketplaceName(marketplaceName)) return null
+  const sourceCommand = getMarketplaceAddCommand(owner, repoName)
+  const pluginCommand = getPluginInstallCommand({ pluginName, pluginId })
+  if (!(sourceCommand && pluginCommand)) return null
+
+  return `${pluginCommand} --marketplace ${sourceCommand.slice('/plugin marketplace add '.length)}`
 }

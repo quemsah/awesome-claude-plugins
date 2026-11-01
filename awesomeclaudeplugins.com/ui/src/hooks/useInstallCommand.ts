@@ -1,9 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import { trackEvent } from '../lib/analytics.ts'
+import { trackCopyPluginInstall } from '../lib/analytics.ts'
 import { copyText } from '../lib/clipboard.ts'
-import { getPluginInstallCommand, isPluginInstallCommandVerified } from '../lib/installCommand.ts'
+import { getDirectPluginInstallCommand, getPluginInstallCommand, isPluginInstallCommandVerified } from '../lib/installCommand.ts'
 
-export function useInstallCommand(pluginName?: string, marketplaceName?: string, pluginId?: string) {
+export type UseInstallCommandOptions = {
+  pluginName?: string
+  marketplaceName?: string
+  pluginId?: string
+  repoPath?: string
+  owner?: string
+  repoName?: string
+}
+
+/** Generates a verified one-step install command and manages copy feedback. */
+export function useInstallCommand(options: UseInstallCommandOptions) {
   const [isCopied, setIsCopied] = useState(false)
   const [copyError, setCopyError] = useState<string | null>(null)
   const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -17,25 +27,39 @@ export function useInstallCommand(pluginName?: string, marketplaceName?: string,
     }
   }, [])
 
-  const installCommand = getPluginInstallCommand({ pluginName, marketplaceName, pluginId })
-  const isVerified = isPluginInstallCommandVerified(pluginId ?? pluginName, marketplaceName)
+  const { pluginName, marketplaceName, pluginId, repoPath, owner, repoName } = options
+  const [pathOwner, pathRepo] = (repoPath ?? '').split('/')
+  const marketplaceIsInstallable = isPluginInstallCommandVerified(pluginId ?? pluginName, marketplaceName)
+  const directCommand = marketplaceIsInstallable
+    ? getDirectPluginInstallCommand({
+        pluginName,
+        pluginId,
+        marketplaceName,
+        owner: owner ?? pathOwner,
+        repoName: repoName ?? pathRepo,
+      })
+    : null
+  const fallbackCommand = getPluginInstallCommand({ pluginName, pluginId, marketplaceName })
+  const installCommand = directCommand ?? fallbackCommand
+  const isVerified = Boolean(directCommand) || marketplaceIsInstallable
 
   const handleCopyClick = async () => {
     if (!(installCommand && isVerified)) return
-
     const copied = await copyText(installCommand)
     if (!isMounted.current) return
 
     if (copied) {
       setCopyError(null)
       setIsCopied(true)
-      trackEvent('copy_plugin_install')
+      trackCopyPluginInstall()
       clearTimeout(resetTimer.current)
-      resetTimer.current = setTimeout(() => setIsCopied(false), 2_000)
+      resetTimer.current = setTimeout(() => {
+        if (isMounted.current) setIsCopied(false)
+      }, 2_000)
     } else {
       setCopyError('Unable to copy the install command. Select and copy it manually.')
     }
   }
 
-  return { copyError, getInstallCommand: () => installCommand, handleCopyClick, installCommand, isCopied, isVerified }
+  return { copyError, handleCopyClick, installCommand, isCopied, isVerified, isDirectInstall: Boolean(directCommand) }
 }

@@ -119,7 +119,7 @@ test('repo detail page refreshes repository and marketplace data in the browser'
   )
   expect(JSON.stringify(jsonLd)).not.toContain('"Unknown"')
   const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Example Plugin@1.2.3' }) })
-  await expect(plugin.getByText('/plugin install example-plugin@ykdojo')).toBeVisible()
+  await expect(plugin.getByText('/plugin install example-plugin --marketplace ykdojo/claude-code-tips')).toBeVisible()
   await expect(plugin.getByRole('link', { name: 'Open ./commands/example.md in a new tab' })).toHaveAttribute(
     'href',
     'https://github.com/ykdojo/claude-code-tips/blob/main/plugins/example-plugin/commands/example.md'
@@ -129,7 +129,7 @@ test('repo detail page refreshes repository and marketplace data in the browser'
     'https://github.com/ykdojo/claude-code-tips/blob/main/plugins/example-plugin/agents/reviewer.md'
   )
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
-  await expect.poll(() => copiedText(page)).toBe('/plugin install example-plugin@ykdojo')
+  await expect.poll(() => copiedText(page)).toBe('/plugin install example-plugin --marketplace ykdojo/claude-code-tips')
   await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem('lastPluginInstallEvent'))).toBe('copy_plugin_install')
 })
 
@@ -138,9 +138,9 @@ test('repo detail page uses the official plugin and marketplace names for instal
   await page.goto('/ykdojo/claude-code-tips')
 
   const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Fallback Install Target' }) })
-  await expect(plugin.getByText('/plugin install fallback-install-target@ykdojo')).toBeVisible()
+  await expect(plugin.getByText('/plugin install fallback-install-target --marketplace ykdojo/claude-code-tips')).toBeVisible()
   await plugin.getByRole('button', { name: 'Copy installation command' }).click()
-  await expect.poll(() => copiedText(page)).toBe('/plugin install fallback-install-target@ykdojo')
+  await expect.poll(() => copiedText(page)).toBe('/plugin install fallback-install-target --marketplace ykdojo/claude-code-tips')
   await expect(plugin.getByRole('link', { name: 'Open source repository elsewhere/shared-plugins in a new tab' })).toHaveAttribute(
     'href',
     'https://github.com/elsewhere/shared-plugins/tree/0123456789abcdef0123456789abcdef01234567'
@@ -177,7 +177,7 @@ test('repo detail page installs a marketplace entry under the marketplace name',
   await page.goto('/mksglu/context-mode')
 
   await expect(page.getByRole('heading', { name: 'Example Plugin@1.2.3' })).toBeVisible()
-  await expect(page.getByText('/plugin install example-plugin@context-mode')).toBeVisible()
+  await expect(page.getByText('/plugin install example-plugin --marketplace mksglu/context-mode')).toBeVisible()
 })
 
 test('repo detail page resolves a git-subdir source and its components', async ({ page }) => {
@@ -354,4 +354,64 @@ test('unrecognized multi-segment paths render a generic 404', async ({ page }) =
   await expect(page.getByText('Page not found')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Check on GitHub' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Go home' })).toBeVisible()
+})
+
+test('repo detail page provides one-step plugin installation for external marketplaces', async ({ page }) => {
+  await mockClipboard(page)
+  await page.addInitScript(() => {
+    window.sa_event = (event) => {
+      if (event === 'copy_plugin_install') window.sessionStorage.setItem('lastPluginInstallEvent', event)
+    }
+  })
+  await page.goto('/ykdojo/claude-code-tips')
+
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Example Plugin@1.2.3' }) })
+  const command = '/plugin install example-plugin --marketplace ykdojo/claude-code-tips'
+
+  await expect(plugin.getByText(command, { exact: true })).toBeVisible()
+  await expect(plugin.getByText('Requires Claude Code 2.1.275 or later. Adds the marketplace if needed.')).toBeVisible()
+  await expect(plugin.getByText('Step 1: Add marketplace')).toHaveCount(0)
+  await expect(plugin.getByRole('button', { name: 'Copy both commands' })).toHaveCount(0)
+
+  await plugin.getByRole('button', { name: 'Copy installation command' }).click()
+  await expect.poll(() => copiedText(page)).toBe(command)
+  await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem('lastPluginInstallEvent'))).toBe('copy_plugin_install')
+})
+
+test('repo detail disables installation for plugin IDs unsupported by Claude Code', async ({ page }) => {
+  await page.route('**/ykdojo/claude-code-tips/HEAD/.claude-plugin/marketplace.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        name: 'valid-marketplace',
+        owner: { name: 'ykdojo' },
+        plugins: [{ name: '_review', source: './plugins/review' }],
+      }),
+    })
+  )
+  await page.goto('/ykdojo/claude-code-tips')
+
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: '_review' }) })
+  await expect(plugin.getByText('Install command unavailable')).toBeVisible()
+  await expect(plugin.getByRole('button', { name: 'Copy install command unavailable' })).toBeDisabled()
+})
+
+test('repo detail disables installation for marketplace names unsupported by Claude Code', async ({ page }) => {
+  await page.route('**/ykdojo/claude-code-tips/HEAD/.claude-plugin/marketplace.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        name: 'invalid..marketplace',
+        owner: { name: 'ykdojo' },
+        plugins: [{ name: 'review', source: './plugins/review' }],
+      }),
+    })
+  )
+  await page.goto('/ykdojo/claude-code-tips')
+
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'review' }) })
+  await expect(plugin.getByText('Install command unavailable')).toBeVisible()
+  await expect(plugin.getByRole('button', { name: 'Copy install command unavailable' })).toBeDisabled()
 })
