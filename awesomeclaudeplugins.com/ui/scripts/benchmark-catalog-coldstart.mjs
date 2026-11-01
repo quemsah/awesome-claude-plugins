@@ -44,7 +44,12 @@ if (values.baseline || values.candidate) {
     const mainRuns = base.filter((entry) => entry.first === first)
     const prRuns = pr.filter((entry) => entry.first === first)
     assert(mainRuns.length === prRuns.length && mainRuns.length >= 3, 'Need three paired runs for ' + first)
-    lines.push('### ' + first + ' first (' + mainRuns.length + ' runs, median)', '', '| Metric | main | PR | PR - main |', '| --- | ---: | ---: | ---: |')
+    lines.push(
+      '### ' + first + ' first (' + mainRuns.length + ' runs, median)',
+      '',
+      '| Metric | main | PR | PR - main |',
+      '| --- | ---: | ---: | ---: |'
+    )
     for (const [name, key] of metrics) {
       const a = median(mainRuns.map((entry) => entry[key]))
       const b = median(prRuns.map((entry) => entry[key]))
