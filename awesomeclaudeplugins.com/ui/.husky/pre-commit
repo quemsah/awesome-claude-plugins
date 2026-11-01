@@ -10,7 +10,7 @@ if git diff --cached --name-only -- awesomeclaudeplugins.com/crawler/ | grep -q 
     done
   done
   if [ -z "$biome" ]; then
-    echo 'Crawler dependencies are missing. Run: bun install --frozen-lockfile' >&2
+    echo 'Crawler dependencies are missing. From the repository root, run: cd awesomeclaudeplugins.com && bun install --frozen-lockfile' >&2
     exit 1
   fi
   bun run --cwd awesomeclaudeplugins.com/crawler lint || exit $?
