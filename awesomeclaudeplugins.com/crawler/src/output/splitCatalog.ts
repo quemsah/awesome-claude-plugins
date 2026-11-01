@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { gzipSync } from 'node:zlib'
 
 export type SearchIndexV1 = {
@@ -5,6 +6,7 @@ export type SearchIndexV1 = {
   fields: string[]
   rows: unknown[][]
   search: string
+  canonicalSha256?: string
 }
 
 export type CatalogRecordInput = {
@@ -45,7 +47,7 @@ export const SEARCH_INDEX_FIELDS = [
   'manifest_kind',
 ] as const
 
-export function buildSearchIndex(repos: readonly CatalogRecordInput[]): string {
+export function buildSearchIndex(repos: readonly CatalogRecordInput[], canonicalJson?: string): string {
   const rows = repos.map((r) => {
     return [
       r.id,
@@ -69,6 +71,7 @@ export function buildSearchIndex(repos: readonly CatalogRecordInput[]): string {
     format: 'v1',
     fields: [...SEARCH_INDEX_FIELDS],
     rows,
+    ...(canonicalJson === undefined ? {} : { canonicalSha256: createHash('sha256').update(canonicalJson).digest('hex') }),
     // Descriptions already live in compact rows; avoid inflating them twice
     // while building the FTS index. Plugin metadata is decompressed on demand.
     search: gzipSync(
