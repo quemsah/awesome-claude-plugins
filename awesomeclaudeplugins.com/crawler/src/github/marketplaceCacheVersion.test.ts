@@ -10,7 +10,7 @@ const PARSER_BLOB_SHA_BY_CACHE_VERSION: Readonly<Record<number, string>> = {
   6: '42a1223f4233f4a0fa923d6f66eaefae25780706',
   7: '101a3a2da595897b0e96a1c869407a09758deeff',
   8: '0ee9b64a9ac8dbb147b8a0ec6ad47506161145f9',
-  9: '799ad07f18254de0120e713a4c0916ebcfd18170',
+  9: 'd217cd0e0fc7f17cbc765dd90f6b78725efa494d',
 }
 
 function gitBlobSha(content: Buffer): string {

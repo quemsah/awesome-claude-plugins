@@ -42,20 +42,96 @@ export function resolveMarketplacePluginDisplayName(entry) {
   return typeof entry.name === 'string' ? entry.name : undefined
 }
 
+function isValidGitCommit(value) {
+  return typeof value === 'string' && /^[A-Fa-f0-9]{7,64}$/.test(value)
+}
+
+function isSourceRepoValid(source) {
+  return source.repo === undefined || (typeof source.repo === 'string' && GITHUB_REPO_PATH_PATTERN.test(source.repo))
+}
+
+function isSourceUrlValid(source) {
+  return source.url === undefined || isSafeSourceUrl(source.url)
+}
+
+function isSourceRefValid(ref) {
+  return ref === undefined || isSafePath(ref)
+}
+
+function isSourceCommitValid(commit) {
+  return commit === undefined || isValidGitCommit(commit)
+}
+
 export function isValidSource(value) {
   if (isSafePath(value)) return true
   if (!isRecord(value) || !isSafePath(value.source)) return false
+  if (value.source === 'github' && typeof value.repo !== 'string') return false
+  if (value.source === 'url' && typeof value.url !== 'string') return false
 
   return (
-    (value.source !== 'github' || typeof value.repo === 'string') &&
-    (value.source !== 'url' || typeof value.url === 'string') &&
-    (value.repo === undefined || (typeof value.repo === 'string' && GITHUB_REPO_PATH_PATTERN.test(value.repo))) &&
-    (value.url === undefined || isSafeSourceUrl(value.url)) &&
-    (value.path === undefined || isSafePath(value.path)) &&
-    (value.branch === undefined || isSafePath(value.branch)) &&
-    (value.ref === undefined || isSafePath(value.ref)) &&
-    (value.commit === undefined || (typeof value.commit === 'string' && /^[A-Fa-f0-9]{7,64}$/.test(value.commit))) &&
-    (value.sha === undefined || (typeof value.sha === 'string' && /^[A-Fa-f0-9]{7,64}$/.test(value.sha)))
+    isSourceRepoValid(value) &&
+    isSourceUrlValid(value) &&
+    isSourceRefValid(value.path) &&
+    isSourceRefValid(value.branch) &&
+    isSourceRefValid(value.ref) &&
+    isSourceCommitValid(value.commit) &&
+    isSourceCommitValid(value.sha)
+  )
+}
+
+function checkSourceRepoIssue(source) {
+  const needsRepo = source.source === 'github'
+  const hasRepo = source.repo !== undefined
+  if (needsRepo || hasRepo) {
+    if (typeof source.repo !== 'string' || !GITHUB_REPO_PATH_PATTERN.test(source.repo)) {
+      return { message: 'Must be a GitHub repository path', path: ['source', 'repo'] }
+    }
+  }
+  return undefined
+}
+
+function checkSourceUrlIssue(source) {
+  const needsUrl = source.source === 'url'
+  const hasUrl = source.url !== undefined
+  if (needsUrl || hasUrl) {
+    if (typeof source.url !== 'string' || !isSafeSourceUrl(source.url)) {
+      return { message: 'Must be a safe HTTP(S) URL', path: ['source', 'url'] }
+    }
+  }
+  return undefined
+}
+
+function checkSourceRefsIssue(source) {
+  if (source.path !== undefined && !isSafePath(source.path)) {
+    return { message: 'Must be a safe repository path', path: ['source', 'path'] }
+  }
+  if (source.branch !== undefined && !isSafePath(source.branch)) {
+    return { message: 'Must be a safe source ref', path: ['source', 'branch'] }
+  }
+  if (source.ref !== undefined && !isSafePath(source.ref)) {
+    return { message: 'Must be a safe source ref', path: ['source', 'ref'] }
+  }
+  return undefined
+}
+
+function checkSourceCommitIssue(source) {
+  if (source.commit !== undefined && !isValidGitCommit(source.commit)) {
+    return { message: 'Must be a valid source commit', path: ['source', 'commit'] }
+  }
+  if (source.sha !== undefined && !isValidGitCommit(source.sha)) {
+    return { message: 'Must be a valid source commit', path: ['source', 'sha'] }
+  }
+  return undefined
+}
+
+function checkSourceObjectIssue(source) {
+  if (!isRecord(source)) return { message: 'Must be a safe repository path', path: ['source'] }
+  if (!isSafePath(source.source)) return { message: 'Must be a safe repository path', path: ['source', 'source'] }
+  return (
+    checkSourceRepoIssue(source) ||
+    checkSourceUrlIssue(source) ||
+    checkSourceRefsIssue(source) ||
+    checkSourceCommitIssue(source)
   )
 }
 
@@ -65,54 +141,10 @@ export function getMarketplacePluginIssue(value) {
   if (value.source === undefined) return { message: 'Must be a safe repository path', path: ['source'] }
 
   if (typeof value.source === 'string') {
-    if (!isSafePath(value.source)) return { message: 'Must be a safe repository path', path: ['source'] }
-    return undefined
+    return isSafePath(value.source) ? undefined : { message: 'Must be a safe repository path', path: ['source'] }
   }
 
-  if (!isRecord(value.source)) return { message: 'Must be a safe repository path', path: ['source'] }
-  if (!isSafePath(value.source.source)) return { message: 'Must be a safe repository path', path: ['source', 'source'] }
-
-  if (value.source.source === 'github') {
-    if (typeof value.source.repo !== 'string' || !GITHUB_REPO_PATH_PATTERN.test(value.source.repo)) {
-      return { message: 'Must be a GitHub repository path', path: ['source', 'repo'] }
-    }
-  }
-
-  if (value.source.source === 'url') {
-    if (typeof value.source.url !== 'string' || !isSafeSourceUrl(value.source.url)) {
-      return { message: 'Must be a safe HTTP(S) URL', path: ['source', 'url'] }
-    }
-  }
-
-  if (value.source.repo !== undefined && (typeof value.source.repo !== 'string' || !GITHUB_REPO_PATH_PATTERN.test(value.source.repo))) {
-    return { message: 'Must be a GitHub repository path', path: ['source', 'repo'] }
-  }
-
-  if (value.source.url !== undefined && (typeof value.source.url !== 'string' || !isSafeSourceUrl(value.source.url))) {
-    return { message: 'Must be a safe HTTP(S) URL', path: ['source', 'url'] }
-  }
-
-  if (value.source.path !== undefined && !isSafePath(value.source.path)) {
-    return { message: 'Must be a safe repository path', path: ['source', 'path'] }
-  }
-
-  if (value.source.branch !== undefined && !isSafePath(value.source.branch)) {
-    return { message: 'Must be a safe source ref', path: ['source', 'branch'] }
-  }
-
-  if (value.source.ref !== undefined && !isSafePath(value.source.ref)) {
-    return { message: 'Must be a safe source ref', path: ['source', 'ref'] }
-  }
-
-  if (value.source.commit !== undefined && (typeof value.source.commit !== 'string' || !/^[A-Fa-f0-9]{7,64}$/.test(value.source.commit))) {
-    return { message: 'Must be a valid source commit', path: ['source', 'commit'] }
-  }
-
-  if (value.source.sha !== undefined && (typeof value.source.sha !== 'string' || !/^[A-Fa-f0-9]{7,64}$/.test(value.source.sha))) {
-    return { message: 'Must be a valid source commit', path: ['source', 'sha'] }
-  }
-
-  return undefined
+  return checkSourceObjectIssue(value.source)
 }
 
 export function getMarketplacePluginRejection(value) {
