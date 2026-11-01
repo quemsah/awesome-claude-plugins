@@ -1,17 +1,29 @@
 /** biome-ignore-all lint/style/useNamingConvention: test fixtures mirror catalog snake_case fields */
 
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { gzipSync } from 'node:zlib'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.unmock('./catalogStore.ts')
 
-import { getCatalog, getRepoDetails, hydrateCatalogRepo, parseSearchIndex } from './catalogStore.ts'
+import {
+  getCatalog,
+  getRepoDetails,
+  hydrateCatalogRepo,
+  parseSearchIndex,
+  readCatalogFiles,
+  readCatalogSearchFields,
+  SEARCH_INDEX_FIELDS,
+} from './catalogStore.ts'
 
 describe('catalogStore', () => {
   it('restores exact card descriptions and manifest kind from v1 compact rows', () => {
     const example = {
       format: 'v1' as const,
-      fields: ['id', 'owner', 'repo_name', 'description', 'manifest_kind'],
-      search: '',
+      fields: [...SEARCH_INDEX_FIELDS],
+      search: 'compressed-metadata',
       rows: [
         [
           123,
@@ -42,6 +54,63 @@ describe('catalogStore', () => {
     ])
     expect(Object.keys(parsed[0])).not.toContain('searchRow')
     expect(JSON.stringify(parsed[0])).not.toContain('searchRow')
+  })
+
+
+  it('rejects reordered V1 fields and truncated or incomplete records', () => {
+    const row = [123, 'sample', 'repo', 1, 0, 2, null, null, false, null, 1, null, 'original description', 'marketplace']
+    const index = { format: 'v1' as const, fields: [...SEARCH_INDEX_FIELDS], rows: [row], search: 'compressed-metadata' }
+    expect(parseSearchIndex(index)[0].description).toBe('original description')
+
+    const reordered = { ...index, fields: [...index.fields] }
+    ;[reordered.fields[12], reordered.fields[13]] = [reordered.fields[13], reordered.fields[12]]
+    expect(() => parseSearchIndex(reordered)).toThrow('Incompatible compact catalog format')
+    expect(() => parseSearchIndex({ ...index, fields: index.fields.slice(0, -1) })).toThrow()
+    expect(() => parseSearchIndex({ ...index, rows: [row.slice(0, -1)] })).toThrow()
+    expect(() => parseSearchIndex({ ...index, search: '' })).toThrow()
+  })
+
+  it('loads canonical data when a compact index is corrupt or incompatible', () => {
+    const folder = mkdtempSync(join(tmpdir(), 'catalog-fallback-'))
+    const indexPath = join(folder, 'search-index.json')
+    const reposPath = join(folder, 'repos.json')
+    const canonical = [{ id: 234, owner: 'fresh', repo_name: 'repo', description: 'Current canonical description' }]
+    try {
+      writeFileSync(reposPath, JSON.stringify(canonical))
+      writeFileSync(indexPath, '{broken JSON')
+      const restored = readCatalogFiles(indexPath, reposPath)
+      expect(restored).toEqual(canonical)
+      expect(hydrateCatalogRepo(restored[0])).toBe(restored[0])
+
+      writeFileSync(indexPath, JSON.stringify({ format: 'v1', fields: ['id'], rows: [[234]], search: 'invalid' }))
+      expect(readCatalogFiles(indexPath, reposPath)).toEqual(canonical)
+      rmSync(reposPath)
+      expect(() => readCatalogFiles(indexPath, reposPath)).toThrow('no canonical repository snapshot')
+    } finally {
+      rmSync(folder, { recursive: true, force: true })
+    }
+  })
+
+  it('recovers corrupt gzip search metadata without losing plugin names', () => {
+    const folder = mkdtempSync(join(tmpdir(), 'catalog-search-fallback-'))
+    const indexPath = join(folder, 'search-index.json')
+    const reposPath = join(folder, 'repos.json')
+    const canonical = [{ id: 123, owner: 'sample', repo_name: 'repo', plugins: [{ name: 'special-plugin' }] }]
+    const index = {
+      format: 'v1',
+      fields: [...SEARCH_INDEX_FIELDS],
+      rows: [[123, 'sample', 'repo', 1, 0, 1, null, null, false, null, 0, null, null, 'marketplace']],
+      search: gzipSync(JSON.stringify([])).toString('base64'),
+    }
+    try {
+      writeFileSync(reposPath, JSON.stringify(canonical))
+      writeFileSync(indexPath, JSON.stringify(index))
+      expect(readCatalogSearchFields(indexPath, reposPath, 1)).toEqual(canonical)
+      writeFileSync(indexPath, JSON.stringify({ ...index, search: 'invalid-gzip' }))
+      expect(readCatalogSearchFields(indexPath, reposPath, 1)).toEqual(canonical)
+    } finally {
+      rmSync(folder, { recursive: true, force: true })
+    }
   })
 
   it('does not return another repository when the supplied identity disagrees', () => {
