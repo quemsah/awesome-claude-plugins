@@ -1,6 +1,7 @@
 /** biome-ignore-all lint/style/useNamingConvention: test fixtures mirror catalog snake_case fields */
 
 import { describe, expect, it, vi } from 'vitest'
+
 vi.unmock('./catalogStore.ts')
 
 import { getCatalog, getRepoDetails, hydrateCatalogRepo, parseSearchIndex } from './catalogStore.ts'
