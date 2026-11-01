@@ -124,14 +124,11 @@ describe('getDirectPluginInstallCommand', () => {
     ).toBe('/plugin install community-plugin --marketplace anthropics/claude-plugins-community')
   })
 
-  it.each(['.review', '_review', '-review'])(
-    'builds a one-step install command for shared-contract plugin ID %s',
-    (pluginId) => {
-      expect(getDirectPluginInstallCommand({ pluginId, owner: 'example', repoName: 'plugins' })).toBe(
-        `/plugin install ${pluginId} --marketplace example/plugins`
-      )
-    }
-  )
+  it.each(['.review', '_review', '-review'])('builds a one-step install command for shared-contract plugin ID %s', (pluginId) => {
+    expect(getDirectPluginInstallCommand({ pluginId, owner: 'example', repoName: 'plugins' })).toBe(
+      `/plugin install ${pluginId} --marketplace example/plugins`
+    )
+  })
 
   it('falls back to a safe normalized plugin name when the plugin ID is absent', () => {
     expect(getDirectPluginInstallCommand({ pluginName: '  Nice  Plugin ', owner: 'example', repoName: 'plugins' })).toBe(
