@@ -59,6 +59,19 @@ describe('createCatalogSearchIndex', () => {
     expect(index.search('claude c').matches.map((match) => match.item.id)).toEqual([3])
   })
 
+  it('keeps mixed symbolic identifiers and leading hashtags as whole FTS terms', () => {
+    const index = createCatalogSearchIndex([
+      { ...baseRepo, id: 1, repo_name: 'language-17', owner: 'cpp17', description: 'C++17 libraries' },
+      { ...baseRepo, id: 2, repo_name: 'language-standard', owner: 'cpp', description: 'C++ libraries' },
+      { ...baseRepo, id: 3, repo_name: 'hashtag-repo', owner: 'tags', description: '#devtools plugin' },
+      { ...baseRepo, id: 4, repo_name: 'regular-repo', owner: 'tags', description: 'devtools plugin' },
+    ])
+    expect(index.search('C++17').matches.map((match) => match.item.id)).toEqual([1])
+    expect(index.search('C++').matches.map((match) => match.item.id)).toEqual([1, 2])
+    expect(index.search('#devtools').matches.map((match) => match.item.id)).toEqual([3])
+    expect(index.search('devtools').matches.map((match) => match.item.id)).toEqual([4])
+  })
+
   it('paginates matching rows in metric order with accurate totals and archived rows last', () => {
     const repos: Repo[] = [
       { ...baseRepo, id: 1, stargazers_count: 4, plugins_count: 2 },

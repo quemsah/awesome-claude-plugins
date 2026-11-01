@@ -7,7 +7,7 @@ query-result cache, so novel queries take the same path as repeated ones. Equal
 metric keys are assigned a shared rank at initialization; BM25 is calculated only
 for groups through the requested page's boundary, including every tied candidate.
 
-Search uses Unicode words, AND between words and a prefix on the final word. All
+Search uses Unicode words (preserving +/# in technical identifiers such as C++, C++17, C#, and #devtools), AND between words and a prefix on the final word. All
 repository and plugin search fields remain indexed, including legacy summaries and
 plugins beyond the first 30. URLs are excluded. Quotes and FTS operators are treated
 as literal input. The published 32-character cap remains unchanged.

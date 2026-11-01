@@ -3,9 +3,9 @@ import type { Repo } from '../schemas/repo.schema.ts'
 import { isArchivedRepo } from './repoMetadata.ts'
 import type { SortOption } from './sortOptions.ts'
 
-// Keep + and # inside technical identifiers (C++, C#, F#, foo+bar).
+// Mirror FTS5 tokenchars for identifiers such as C++, C++17, C#, F#, #devtools, and foo+bar.
 // Other punctuation remains a separator and cannot turn a one-letter search into a broad prefix.
-const queryTerms = /[\p{L}\p{N}\p{M}]+(?:[+#][\p{L}\p{N}\p{M}]+|[+#]+)*/gu
+const queryTerms = /[+#]*[\p{L}\p{N}\p{M}]+(?:[+#]+[\p{L}\p{N}\p{M}]+|[+#]+)*/gu
 const sortSql: Record<SortOption, string> = {
   'stars-desc': 'stars DESC, description DESC',
   'forks-desc': 'forks DESC',
