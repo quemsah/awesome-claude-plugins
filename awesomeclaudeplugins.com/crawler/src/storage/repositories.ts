@@ -226,9 +226,11 @@ export function rebindCanonicalUrl(
         WHERE id = @keepId
           AND (stargazers_count IS NULL OR forks_count IS NULL OR subscribers_count IS NULL OR plugins_count IS NULL)
           AND EXISTS (
-            SELECT 1 FROM repositories WHERE id = @removedId
-              AND stargazers_count IS NOT NULL AND forks_count IS NOT NULL
-              AND subscribers_count IS NOT NULL
+            SELECT 1 FROM repositories AS incoming WHERE id = @removedId
+              AND incoming.stargazers_count IS NOT NULL AND incoming.forks_count IS NOT NULL
+              AND incoming.subscribers_count IS NOT NULL
+              AND (repositories.plugins_count IS NULL OR incoming.plugins_count IS NOT NULL)
+              AND (repositories.plugins_json IS NULL OR incoming.plugins_json IS NOT NULL)
           )
       `).run({ keepId, removedId })
       db.prepare(`

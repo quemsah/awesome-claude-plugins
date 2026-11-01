@@ -3,8 +3,37 @@ import Database from 'better-sqlite3'
 import { expect, it } from 'vitest'
 import { renderRepos } from '../output/catalogSnapshot.js'
 import { isUnchangedRejectedCandidate } from './rejectedCandidates.js'
-import { listPublishable, updateEnriched, upsertDiscovery } from './repositories.js'
+import { getRepositoryById, listPublishable, rebindCanonicalUrl, updateEnriched, upsertDiscovery } from './repositories.js'
 import { initializeSchema } from './schema.js'
+
+it.each([null, 1])('keeps the standalone snapshot when a canonical duplicate has no summary (incoming count: %s)', (pluginsCount) => {
+  const db = new Database(':memory:')
+  try {
+    initializeSchema(db)
+    const keeper = upsertDiscovery(db, 'https://github.com/acme/old', null)
+    const duplicate = upsertDiscovery(db, 'https://github.com/acme/reviewer', null)
+    db.prepare(`UPDATE repositories SET plugins_count = 1, plugins_json = '[{"name":"reviewer"}]',
+      manifest_kind = 'standalone-plugin', plugin_manifest_etag = 'plugin-etag', plugin_manifest_parser_version = 1,
+      repository_etag = 'keeper-repo-etag' WHERE id = ?`).run(keeper)
+    db.prepare(`UPDATE repositories SET stargazers_count = 5, forks_count = 2, subscribers_count = 0,
+      plugins_count = ?, marketplace_etag = 'incomplete-marketplace-etag', repository_etag = 'incoming-repo-etag'
+      WHERE id = ?`).run(pluginsCount, duplicate)
+    expect(rebindCanonicalUrl(db, keeper, 'https://github.com/acme/reviewer')).toEqual({ id: keeper, removedId: duplicate })
+    expect(getRepositoryById(db, keeper)).toMatchObject({
+      html_url: 'https://github.com/acme/reviewer',
+      plugins_count: 1,
+      plugins_json: '[{"name":"reviewer"}]',
+      manifest_kind: 'standalone-plugin',
+      plugin_manifest_etag: 'plugin-etag',
+      plugin_manifest_parser_version: 1,
+      marketplace_etag: null,
+      repository_etag: 'keeper-repo-etag',
+    })
+    expect(getRepositoryById(db, duplicate)).toBeNull()
+  } finally {
+    db.close()
+  }
+})
 
 it('publishes standalone provenance and clears cache validators on kind transitions', () => {
   const db = new Database(':memory:')
