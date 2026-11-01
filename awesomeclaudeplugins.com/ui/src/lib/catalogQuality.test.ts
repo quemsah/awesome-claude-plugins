@@ -66,7 +66,9 @@ describe('getCatalogQuality', () => {
   })
 
   it('treats validated standalone plugins as indexable', () => {
-    expect(getCatalogQuality({ ...baseRepo, manifest_kind: 'standalone-plugin', plugins_count: 1 }, true).publicationState).toBe('indexable')
+    expect(getCatalogQuality({ ...baseRepo, manifest_kind: 'standalone-plugin', plugins_count: 1 }, true).publicationState).toBe(
+      'indexable'
+    )
   })
 
   it('marks non-canonical duplicate records as redirects', () => {
