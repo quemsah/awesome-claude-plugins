@@ -52,6 +52,40 @@ function notifier() {
 }
 
 describe('orchestration', () => {
+  it('persists health-check outcomes and includes deletions in draft and replayed publication summaries', async () => {
+    const db = await dbFixture()
+    try {
+      const notify = notifier()
+      const result = await executeCrawl(
+        db,
+        {
+          ...reader,
+          checkRepository: async (owner, repo) =>
+            owner === 'alpha' ? { kind: 'found', data: { html_url: `https://github.com/${owner}/${repo}` } } : { kind: 'not-found' },
+        },
+        'health-report',
+        { now, ranges: range, dryRun: true, notifier: notify },
+      )
+      expect(result.report.healthCheck).toEqual({ checked: 3, deleted: 2, renamed: 0, warnings: 0 })
+      expect(JSON.parse(getSetting(db, 'run_report_health-report') ?? 'null').healthCheck).toEqual(result.report.healthCheck)
+      expect(notify.notifyDryRun).toHaveBeenCalledWith(expect.objectContaining({ deletedCount: 4, healthCheck: result.report.healthCheck }))
+      const git = {
+        getBranchHead: async () => ({ sha: 'a'.repeat(40), treeSha: 'b'.repeat(40) }),
+        createTree: async () => 'c'.repeat(40),
+        createCommit: async () => 'd'.repeat(40),
+        updateBranch: async () => {},
+        isCommitReachable: async () => false,
+      }
+      const published = await executePublish(db, git, 'health-report', { now, notifier: notify, writeEnabled: true })
+      expect(published.report?.healthCheck).toEqual(result.report.healthCheck)
+      expect(notify.notifySuccess).toHaveBeenCalledWith(
+        expect.objectContaining({ deletedCount: 4, healthCheck: result.report.healthCheck }),
+      )
+    } finally {
+      db.close()
+    }
+  })
+
   it('persists and round-trips bounded source status without treating incomplete repo search as crawl failure', async () => {
     const db = await dbFixture()
     try {

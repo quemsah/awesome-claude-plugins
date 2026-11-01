@@ -293,25 +293,20 @@ export const MarketplacePluginsSchema: z.ZodMiniType<MarketplacePluginsResult> =
       }
     }
     result.invalidPluginCount++
+    // The shared contract owns ID/source diagnostics. Keep unrelated Zod
+    // failures but avoid duplicate issues and scanning the full result array.
     if (!parsed.success) {
-      result.issues.push(...parsed.error.issues.map((i) => ({ ...i, path: ['plugins', index, ...i.path] })))
+      for (const parsedIssue of parsed.error.issues) {
+        if (issue && parsedIssue.path[0] === issue.path[0]) continue
+        result.issues.push({ ...parsedIssue, path: ['plugins', index, ...parsedIssue.path] })
+      }
     }
     if (issue) {
-      const alreadyHasIssue = result.issues.some(
-        (existing) =>
-          existing.message === issue.message &&
-          existing.path.length === issue.path.length + 2 &&
-          existing.path[0] === 'plugins' &&
-          existing.path[1] === index &&
-          issue.path.every((segment, segIdx) => existing.path[segIdx + 2] === segment)
-      )
-      if (!alreadyHasIssue) {
-        result.issues.push({
-          code: 'custom',
-          message: issue.message,
-          path: ['plugins', index, ...issue.path],
-        })
-      }
+      result.issues.push({
+        code: 'custom',
+        message: issue.message,
+        path: ['plugins', index, ...issue.path],
+      })
     }
   })
   return result

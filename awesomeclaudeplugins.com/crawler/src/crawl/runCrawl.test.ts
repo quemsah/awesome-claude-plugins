@@ -6,7 +6,7 @@ import { repositorySearchQueries, repositorySearchQueryVersion } from '../github
 import type { SizeRange } from '../github/sizeRanges.js'
 import { replaceCachedDiscoveryRanges } from '../storage/discoveryRanges.js'
 import { inspect } from '../storage/inspect.js'
-import { upsertDiscovery } from '../storage/repositories.js'
+import { getRepositoryById, upsertDiscovery } from '../storage/repositories.js'
 import { ensureRepositorySearchPartition, saveRepositorySearchPartition } from '../storage/repositorySearch.js'
 import {
   beginRun,
@@ -70,6 +70,20 @@ function reader(overrides: Partial<GitHubReader> = {}): GitHubReader {
     ...overrides,
   }
 }
+
+it('health-checks old stored links before discovery even when no search returns them', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/obsolete/deleted', null, '2020-01-01T00:00:00Z')
+  const client = reader({
+    checkRepository: async () => ({ kind: 'not-found' }),
+    searchCode: async () => {
+      expect(getRepositoryById(db, id)).toBeNull()
+      return { items: [], total_count: 0, incomplete_results: false }
+    },
+  })
+  const result = await runCrawlImpl(db, client, 'old-links', { ranges: [firstRange] })
+  expect(result).toMatchObject({ status: 'completed', healthCheck: { checked: 1, deleted: 1 } })
+})
 
 it('does not call Repository Search without explicit opt-in', async () => {
   const db = database()

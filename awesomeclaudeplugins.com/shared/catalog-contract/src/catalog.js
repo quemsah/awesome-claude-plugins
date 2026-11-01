@@ -73,7 +73,7 @@ export const PublishedRepoSchema = z
     owner: GitHubSegmentSchema,
     repo_name: GitHubSegmentSchema,
     plugins_count: SafeCountSchema.nullable(),
-    plugins: z.array(PublishedPluginSummarySchema).max(30).optional(),
+    plugins: z.array(PublishedPluginSummarySchema).max(500).optional(),
     catalog_updated_at: UtcTimestampSchema,
     pushed_at: UtcTimestampSchema.nullable().optional(),
     catalog_added_at: UtcTimestampSchema.nullable().optional(),

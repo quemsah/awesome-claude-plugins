@@ -1,0 +1,6 @@
+# Keep the Bun toolchain byte-stable across checkouts. ui/ and crawler/ already pin LF for
+# themselves; these files sit at the workspace root, where a core.autocrlf=true checkout would
+# otherwise hand the installer and CI a CRLF lockfile and a CRLF tool-version file.
+bun.lock text eol=lf
+bunfig.toml text eol=lf
+.bun-version text eol=lf

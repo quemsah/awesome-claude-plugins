@@ -38,6 +38,16 @@ it('uses the public plugin-summary contract when validating parsed snapshots', (
   expect(() => validateSnapshot(JSON.stringify(malformed), JSON.stringify(validStats))).toThrow(/invalid public plugin summary/)
 })
 
+it('validates public plugin summary counts up to 500 and rejects beyond 500', () => {
+  const plugins500 = Array.from({ length: 500 }, (_, i) => ({ name: `plugin-${i + 1}` }))
+  const valid = [{ ...validRepo, plugins: plugins500, plugins_count: 500 }]
+  expect(() => validateSnapshot(JSON.stringify(valid), JSON.stringify(validStats))).not.toThrow()
+
+  const plugins501 = Array.from({ length: 501 }, (_, i) => ({ name: `plugin-${i + 1}` }))
+  const overLimit = [{ ...validRepo, plugins: plugins501, plugins_count: 501 }]
+  expect(() => validateSnapshot(JSON.stringify(overLimit), JSON.stringify(validStats))).toThrow(/repos\[0\]\.plugins/)
+})
+
 it('keeps diagnostic paths but excludes arbitrary field names that could contain secrets', () => {
   const malformed = { ...validRepo, stargazers_count: -1, 'token-private-value': true }
   let thrown: unknown

@@ -316,6 +316,43 @@ describe('MarketplacePluginsSchema', () => {
       )
     }
   })
+  it('reports one canonical issue per invalid source or ID without global issue scans', () => {
+    const plugins = Array.from({ length: 250 }, (_, index) =>
+      index % 2 === 0
+        ? { name: `invalid-${index}`, source: { source: 'github' } }
+        : { name: `invalid name ${index}`, source: './plugins/demo' }
+    )
+    const result = MarketplacePluginsSchema.safeParse({
+      name: 'catalog',
+      owner: { name: 'Maintainer' },
+      plugins,
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.plugins).toHaveLength(0)
+      expect(result.data.invalidPluginCount).toBe(250)
+      expect(result.data.issues).toHaveLength(250)
+      result.data.issues.forEach((issue, index) => {
+        expect(issue.path).toEqual(index % 2 === 0 ? ['plugins', index, 'source', 'repo'] : ['plugins', index, 'id'])
+        expect(issue.message).toBe(index % 2 === 0 ? 'Must be a GitHub repository path' : 'Must be a safe plugin identifier')
+      })
+    }
+  })
+
+  it('retains unrelated metadata diagnostics alongside canonical identity errors', () => {
+    const result = MarketplacePluginsSchema.safeParse({
+      name: 'catalog',
+      owner: { name: 'Maintainer' },
+      plugins: [{ name: 'invalid name', source: './plugins/demo', description: 42 }],
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.invalidPluginCount).toBe(1)
+      expect(result.data.issues.filter((issue) => issue.path[2] === 'id')).toHaveLength(1)
+      expect(result.data.issues.some((issue) => issue.path[2] === 'description')).toBe(true)
+    }
+  })
+
 })
 
 describe('getMarketplaceDescription', () => {

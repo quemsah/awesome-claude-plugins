@@ -42,7 +42,7 @@ export default async function Home({ searchParams }: HomeProps) {
   const params = await searchParams
   const initialSearchTerm = getParam(params?.q)
   const initialSortOption = parseSortOption(getParam(params?.sort))
-  const searchResult = searchCatalogRepos(initialSearchTerm, initialSortOption, 0, CATALOG_PAGE_SIZE)
+  const searchResult = searchCatalogRepos(initialSearchTerm, initialSortOption, 0, CATALOG_PAGE_SIZE, { summaries: 'omit' })
 
   return (
     <main className="bg-background min-h-dvh" id="main-content" tabIndex={-1}>

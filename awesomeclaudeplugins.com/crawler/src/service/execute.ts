@@ -43,6 +43,7 @@ export type CrawlOptions = ExecuteOptions & {
 }
 
 export type RunReport = Pick<CrawlSummary, 'enrichment' | 'warningCount' | 'errorCategories'> & {
+  healthCheck?: CrawlSummary['healthCheck']
   discovery: DiscoverySummary &
     Partial<Pick<CrawlDiscoverySummary, 'coverageScope' | 'sources' | 'uniqueCandidates' | 'uniqueCatalogAdditions'>>
   rateBuckets?: GitHubRateBuckets
@@ -274,9 +275,17 @@ function storedReport(db: Database.Database, runId: string): Partial<RunReport> 
   const rate = value.rateBuckets
   if (rate !== undefined && !validRateBuckets(rate)) throw new Error('Invalid stored GitHub rate report')
   if (value.durationMs !== undefined && !nonnegative(value.durationMs)) throw new Error('Invalid stored crawl duration')
+  if (
+    value.healthCheck !== undefined &&
+    (!record(value.healthCheck) ||
+      !['checked', 'deleted', 'renamed', 'warnings'].every((key) => nonnegative((value.healthCheck as Record<string, unknown>)[key])))
+  ) {
+    throw new Error('Invalid stored health-check report')
+  }
   return {
     discovery: normalizeDiscovery(value.discovery as StoredDiscoverySummary),
     enrichment: value.enrichment,
+    ...(value.healthCheck === undefined ? {} : { healthCheck: value.healthCheck as CrawlSummary['healthCheck'] }),
     warningCount: value.warningCount,
     errorCategories: value.errorCategories as Record<string, number>,
     ...(rate === undefined ? {} : { rateBuckets: rate as GitHubRateBuckets }),
@@ -338,6 +347,10 @@ function progressSnapshot(db: Database.Database, runId: string, log: (event: Log
   }
 }
 
+function deletedCount(enrichment: EnrichmentCounts | undefined, health: CrawlSummary['healthCheck'] | undefined): number {
+  return (enrichment?.deleted404 ?? 0) + (enrichment?.deletedBlankUrl ?? 0) + (health?.deleted ?? 0)
+}
+
 function summary(
   db: Database.Database,
   runId: string,
@@ -349,14 +362,16 @@ function summary(
   const run = getRun(db, runId)
   const saved = storedReport(db, runId)
   const report = counts?.enrichment ?? saved?.enrichment
+  const health = counts?.healthCheck ?? saved?.healthCheck
   const categories = errorCategories(errors, counts, saved)
   return {
     runId,
     catalogSize: run?.draft_size ?? listPublishable(db).length,
     newCount: report?.newReady ?? 0,
-    deletedCount: (report?.deleted404 ?? 0) + (report?.deletedBlankUrl ?? 0),
+    deletedCount: deletedCount(report, health),
     skippedCount: (report?.unchangedOnError ?? 0) + (report?.newIncomplete ?? 0),
     ...(report ? { enrichment: report } : {}),
+    ...(health ? { healthCheck: health } : {}),
     ...(counts || saved || Object.keys(categories).length ? { errorCategories: categories } : {}),
     ...((buckets ?? saved?.rateBuckets) ? { rateBuckets: buckets ?? saved?.rateBuckets } : {}),
     ...(saved?.durationMs === undefined ? {} : { durationMs: saved.durationMs }),
@@ -532,6 +547,7 @@ async function crawlAndPrepare(
   const report: RunReport = {
     discovery: counts.discovery,
     enrichment: counts.enrichment,
+    healthCheck: counts.healthCheck,
     warningCount: counts.warningCount,
     errorCategories: counts.errorCategories,
     ...(options.rateBuckets ? { rateBuckets: options.rateBuckets() } : {}),
