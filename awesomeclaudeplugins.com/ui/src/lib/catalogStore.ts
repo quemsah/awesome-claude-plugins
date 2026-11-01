@@ -2,25 +2,23 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { gunzipSync } from 'node:zlib'
 import type { Repo } from '../schemas/repo.schema.ts'
 
 const CATALOG_KEY = Symbol.for('awesome-claude-plugins.catalog')
 const SHARD_CACHE_KEY = Symbol.for('awesome-claude-plugins.shard-cache')
-const DETAILS_CACHE_KEY = Symbol.for('awesome-claude-plugins.details-cache')
 
 type ShardCache = Map<number, Record<string, Partial<Repo>>>
-type DetailsCache = Map<number, Partial<Repo>>
-
 type CatalogGlobal = typeof globalThis & {
   [CATALOG_KEY]?: readonly Repo[]
   [SHARD_CACHE_KEY]?: ShardCache
-  [DETAILS_CACHE_KEY]?: DetailsCache
 }
 
 export type SearchIndexV1 = {
   format: 'v1'
   fields: string[]
-  rows: (string | number | boolean | null | string[])[][]
+  rows: unknown[][]
+  search: string
 }
 
 function parseSearchIndex(content: string): Repo[] {
@@ -30,7 +28,7 @@ function parseSearchIndex(content: string): Repo[] {
   }
   if (parsed && parsed.format === 'v1' && Array.isArray(parsed.rows)) {
     const v1 = parsed as SearchIndexV1
-    return v1.rows.map((row) => {
+    return v1.rows.map((row, searchRow) => {
       const id = row[0] as number
       const owner = row[1] as string
       const repo_name = row[2] as string
@@ -39,10 +37,15 @@ function parseSearchIndex(content: string): Repo[] {
       const plugins_count = (row[5] as number | null) ?? null
       const pushed_at = (row[6] as string | null) ?? null
       const license = (row[7] as string | null) ?? null
-      const archived = Boolean(row[8])
+      const archived = (row[8] as boolean | null) ?? null
       const catalog_added_at = (row[9] as string | null) ?? null
-      const tokens = Array.isArray(row[10]) ? (row[10] as string[]) : null
-      const has_desc = Boolean(row[11])
+      const descriptionQuality = row[10] as number
+      const description =
+        descriptionQuality === 2
+          ? 'Description available in repository details.'
+          : descriptionQuality === 1
+            ? 'Description available.'
+            : null
 
       return {
         id,
@@ -55,8 +58,9 @@ function parseSearchIndex(content: string): Repo[] {
         license,
         archived,
         catalog_added_at,
-        plugin_name: tokens && tokens.length > 0 ? tokens.join(', ') : undefined,
-        description: has_desc ? 'has_description' : null,
+        searchRow,
+        description,
+        catalog_updated_at: (row[11] as string | null) ?? undefined,
         subscribers_count: null,
       } as Repo
     })
@@ -95,19 +99,7 @@ function getShardCache(): ShardCache {
   return root[SHARD_CACHE_KEY]
 }
 
-function getDetailsCache(): DetailsCache {
-  const root = globalThis as CatalogGlobal
-  if (!root[DETAILS_CACHE_KEY]) {
-    root[DETAILS_CACHE_KEY] = new Map()
-  }
-  return root[DETAILS_CACHE_KEY]
-}
-
 export function getRepoDetails(id: number, _owner?: string | null, _repoName?: string | null): Partial<Repo> | null {
-  const detailsCache = getDetailsCache()
-  const cached = detailsCache.get(id)
-  if (cached !== undefined) return cached
-
   // Check sharded files: repo-details/${shard}.json
   const shardId = Math.abs(id % 100)
   const shardCache = getShardCache()
@@ -118,7 +110,7 @@ export function getRepoDetails(id: number, _owner?: string | null, _repoName?: s
     if (existsSync(shardPath)) {
       try {
         shard = JSON.parse(readFileSync(shardPath, 'utf8')) as Record<string, Partial<Repo>>
-        if (shardCache.size > 50) {
+        if (shardCache.size >= 10) {
           const firstKey = shardCache.keys().next().value
           if (firstKey !== undefined) shardCache.delete(firstKey)
         }
@@ -131,7 +123,6 @@ export function getRepoDetails(id: number, _owner?: string | null, _repoName?: s
 
   if (shard?.[id]) {
     const details = shard[id]
-    detailsCache.set(id, details)
     return details
   }
 
@@ -140,7 +131,6 @@ export function getRepoDetails(id: number, _owner?: string | null, _repoName?: s
   if (existsSync(idPath)) {
     try {
       const details = JSON.parse(readFileSync(idPath, 'utf8')) as Partial<Repo>
-      detailsCache.set(id, details)
       return details
     } catch {
       // ignore
@@ -154,8 +144,7 @@ export function getRepoDetails(id: number, _owner?: string | null, _repoName?: s
     const repos = root[CATALOG_KEY]
     if (repos) {
       const found = repos.find((r) => r.id === id)
-      if (found && (found.plugins !== undefined || (found.description !== null && found.description !== 'has_description'))) {
-        detailsCache.set(id, found)
+      if (found) {
         return found
       }
     }
@@ -165,26 +154,18 @@ export function getRepoDetails(id: number, _owner?: string | null, _repoName?: s
 }
 
 export function hydrateCatalogRepo<T extends Repo>(repo: T): T {
-  if (repo.plugins && repo.plugins.length > 0 && repo.description !== 'has_description') {
-    return repo
-  }
-
   const details = getRepoDetails(repo.id, repo.owner, repo.repo_name)
-  if (!details) {
-    return {
-      ...repo,
-      description: repo.description === 'has_description' ? null : repo.description,
-    }
-  }
+  return details ? (details as T) : repo
+}
 
-  return {
-    ...repo,
-    description: details.description ?? (repo.description === 'has_description' ? null : repo.description),
-    plugins: details.plugins ?? repo.plugins,
-    subscribers_count: details.subscribers_count ?? repo.subscribers_count,
-    catalog_updated_at: details.catalog_updated_at ?? repo.catalog_updated_at,
-    ...(details.pushed_at ? { pushed_at: details.pushed_at } : {}),
-    ...(details.catalog_added_at ? { catalog_added_at: details.catalog_added_at } : {}),
-    ...(details.license ? { license: details.license } : {}),
-  }
+export type SearchCatalogRepo = Repo & { searchRow: number }
+
+export function isSearchCatalogRepo(repo: Repo): repo is SearchCatalogRepo {
+  return 'searchRow' in repo
+}
+
+/** Transient search fields: never retained by the catalog or the result cache. */
+export function readCatalogSearchFields(): Partial<Repo>[] {
+  const index = JSON.parse(readFileSync(join(process.cwd(), 'src/data/search-index.json'), 'utf8')) as SearchIndexV1
+  return JSON.parse(gunzipSync(Buffer.from(index.search, 'base64')).toString('utf8')) as Partial<Repo>[]
 }

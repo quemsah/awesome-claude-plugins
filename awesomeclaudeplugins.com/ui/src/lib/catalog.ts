@@ -44,7 +44,6 @@ function searchIndexedCatalogQuery(query: string, sortOption: SortOption, page: 
   }
   return getCatalogSearchIndex().search(query, sortOption, page, pageSize)
 }
-
 const indexableCatalogRepos = canonicalCatalogRepos.filter((repo) => getCatalogQuality(repo, true).publicationState === 'indexable')
 const catalogReposByPath = new Map<string, CatalogRepo>()
 for (const repo of catalogRepos) {
@@ -175,9 +174,7 @@ export function searchCatalogRepos(
   return {
     hasMore: start + pageSize < total,
     pluginsCount,
-    repos: repos.map((repo) =>
-      options.summaries === 'omit' ? withoutPluginSummaries(hydrate(repo)) : formatCatalogRepo(hydrate(repo))
-    ),
+    repos: repos.map((repo) => (options.summaries === 'omit' ? withoutPluginSummaries(hydrate(repo)) : formatCatalogRepo(hydrate(repo)))),
     total,
   }
 }

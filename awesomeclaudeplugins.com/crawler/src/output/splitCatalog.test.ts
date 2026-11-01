@@ -44,20 +44,20 @@ describe('splitCatalog', () => {
     expect(index.format).toBe('v1')
     expect(index.fields).toContain('id')
     expect(index.fields).toContain('stars')
-    expect(index.fields).toContain('tokens')
+    expect(index.fields).toContain('description_quality')
     expect(index.rows).toHaveLength(2)
+    expect(typeof index.search).toBe('string')
 
     const [row1, row2] = index.rows
     expect(row1[0]).toBe(1)
     expect(row1[1]).toBe('ykdojo')
     expect(row1[2]).toBe('claude-code-tips')
     expect(row1[3]).toBe(100)
-    expect(row1[10]).toEqual(['tip-runner'])
-    expect(row1[11]).toBe(1) // has_desc
+    expect(row1[10]).toBe(1) // description_quality
 
     expect(row2[0]).toBe(2)
-    expect(row2[8]).toBe(1) // archived
-    expect(row2[11]).toBe(0) // no desc
+    expect(row2[8]).toBe(true) // archived
+    expect(row2[10]).toBe(0) // no desc
   })
 
   it('partitions repository details into shards by id', () => {

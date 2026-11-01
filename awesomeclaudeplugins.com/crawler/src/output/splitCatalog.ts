@@ -1,7 +1,10 @@
+import { gzipSync } from 'node:zlib'
+
 export type SearchIndexV1 = {
   format: 'v1'
   fields: string[]
-  rows: (string | number | boolean | null | string[])[][]
+  rows: unknown[][]
+  search: string
 }
 
 export type CatalogRecordInput = {
@@ -12,6 +15,9 @@ export type CatalogRecordInput = {
   forks_count?: number | null
   plugins_count?: number | null
   plugins?: Array<{ name?: string | null; description?: string | null }>
+  plugin_summaries?: Array<{ name?: string; description?: string }>
+  plugin_name?: string
+  plugin_description?: string
   pushed_at?: string | null
   license?: string | null
   archived?: boolean | null
@@ -32,25 +38,12 @@ export const SEARCH_INDEX_FIELDS = [
   'license',
   'archived',
   'catalog_added_at',
-  'tokens',
-  'has_desc',
+  'description_quality',
+  'catalog_updated_at',
 ] as const
 
 export function buildSearchIndex(repos: readonly CatalogRecordInput[]): string {
   const rows = repos.map((r) => {
-    const tokens = r.plugins
-      ? r.plugins
-          .map((p) => p?.name)
-          .filter(
-            (n): n is string =>
-              Boolean(n) &&
-              typeof n === 'string' &&
-              n.toLowerCase() !== (r.repo_name || '').toLowerCase() &&
-              n.toLowerCase() !== (r.owner || '').toLowerCase(),
-          )
-          .slice(0, 3)
-      : []
-
     return [
       r.id,
       r.owner ?? null,
@@ -58,12 +51,12 @@ export function buildSearchIndex(repos: readonly CatalogRecordInput[]): string {
       r.stargazers_count ?? 0,
       r.forks_count ?? 0,
       r.plugins_count ?? null,
-      r.pushed_at ? String(r.pushed_at).slice(0, 10) : null,
+      r.pushed_at ?? null,
       r.license ?? null,
-      r.archived ? 1 : 0,
-      r.catalog_added_at ? String(r.catalog_added_at).slice(0, 10) : null,
-      tokens.length > 0 ? tokens : null,
-      r.description && String(r.description).trim().length > 0 ? 1 : 0,
+      r.archived ?? /^\[archived\]/i.test(r.description?.trim() ?? ''),
+      r.catalog_added_at ?? null,
+      r.description?.trim() ? (r.description.trim().length >= 40 ? 2 : 1) : 0,
+      r.catalog_updated_at ?? null,
     ]
   })
 
@@ -71,6 +64,18 @@ export function buildSearchIndex(repos: readonly CatalogRecordInput[]): string {
     format: 'v1',
     fields: [...SEARCH_INDEX_FIELDS],
     rows,
+    // Search text is lossless and read only when a new query needs a Fuse scan.
+    search: gzipSync(
+      JSON.stringify(
+        repos.map((r) => ({
+          description: r.description,
+          plugins: r.plugins,
+          plugin_summaries: r.plugin_summaries,
+          plugin_name: r.plugin_name,
+          plugin_description: r.plugin_description,
+        })),
+      ),
+    ).toString('base64'),
   }
   return JSON.stringify(index)
 }
@@ -83,15 +88,7 @@ export function buildRepoDetailsShards(repos: readonly CatalogRecordInput[], num
 
   for (const r of repos) {
     const shardId = Math.abs(Number(r.id) % numShards)
-    shards[shardId][r.id] = {
-      description: r.description ?? null,
-      plugins: r.plugins ?? [],
-      subscribers_count: r.subscribers_count ?? null,
-      catalog_updated_at: r.catalog_updated_at,
-      pushed_at: r.pushed_at ?? null,
-      catalog_added_at: r.catalog_added_at ?? null,
-      license: r.license ?? null,
-    }
+    shards[shardId][r.id] = { ...r }
   }
 
   const result: Record<string, string> = {}

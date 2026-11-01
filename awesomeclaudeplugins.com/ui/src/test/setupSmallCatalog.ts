@@ -13,5 +13,7 @@ vi.mock('../lib/catalogStore.ts', async () => {
       const found = repos.find((r) => r.id === repo.id)
       return (found ? { ...repo, ...found } : repo) as T
     },
+    isSearchCatalogRepo: (_repo: unknown): boolean => false,
+    readCatalogSearchFields: () => [],
   }
 })

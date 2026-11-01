@@ -43,7 +43,10 @@ const { fixtureRepos } = vi.hoisted(() => ({
 
 vi.mock('../../../lib/catalogStore.ts', () => ({
   getCatalog: () => fixtureRepos,
+  getRepoDetails: (id: number) => fixtureRepos.find((r) => r.id === id) ?? null,
   hydrateCatalogRepo: <T>(repo: T): T => repo,
+  isSearchCatalogRepo: (_repo: unknown): boolean => false,
+  readCatalogSearchFields: () => [],
 }))
 
 import { searchCatalogRepos } from '../../../lib/catalog.ts'
