@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "owner": "acme",
+    "repo_name": "capsule",
+    "description": null,
+    "stargazers_count": 0,
+    "forks_count": 0,
+    "subscribers_count": 0,
+    "plugins_count": 1,
+    "manifest_kind": "standalone-plugin",
+    "plugins": [
+      {
+        "name": "Nebula Review Tools",
+        "description": "Nebula review automation provides precise, independent change summaries for plugin authors and maintainers."
+      }
+    ],
+    "catalog_updated_at": "2026-11-01T00:00:00.000Z"
+  },
+  {
+    "id": 2,
+    "owner": "acme",
+    "repo_name": "market-hub",
+    "description": "A marketplace fixture with exactly one plugin and conventional installation commands.",
+    "stargazers_count": 0,
+    "forks_count": 0,
+    "subscribers_count": 0,
+    "plugins_count": 1,
+    "plugins": [{ "name": "market-helper", "description": "Helps marketplace authors validate their releases." }],
+    "catalog_updated_at": "2026-11-01T00:00:00.000Z"
+  }
+]

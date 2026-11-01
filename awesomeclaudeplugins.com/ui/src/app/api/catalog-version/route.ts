@@ -5,7 +5,7 @@ import { join } from 'node:path'
 export const dynamic = 'force-static'
 
 function getCatalogVersionHash(): string {
-  const reposFile = join(process.cwd(), 'src/data/repos.json')
+  const reposFile = process.env.CATALOG_DATA_PATH || join(process.cwd(), 'src/data/repos.json')
   if (!existsSync(reposFile)) return ''
   try {
     const repos = JSON.parse(readFileSync(reposFile, 'utf8'))

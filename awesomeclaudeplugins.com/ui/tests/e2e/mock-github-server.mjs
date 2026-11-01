@@ -78,6 +78,24 @@ const unnamedPlugin = {
  * anything that is not catalogued before it ever reaches GitHub.
  */
 const fixtures = {
+  'acme/capsule': {
+    repository: { status: 200, body: buildRepository('acme', 'capsule', { description: null, default_branch: 'trunk' }) },
+    marketplace: { status: 404, body: { message: 'Not Found' } },
+    plugin: {
+      status: 200,
+      body: {
+        name: 'Nebula Review Tools',
+        description: 'Nebula review automation provides precise, independent change summaries for plugin authors and maintainers.',
+        commands: './commands/review.md',
+      },
+    },
+  },
+  'acme/market-hub': {
+    marketplace: {
+      status: 200,
+      body: { name: 'market-hub', owner: { name: 'acme' }, plugins: [{ name: 'market-helper', source: './' }] },
+    },
+  },
   'ykdojo/claude-code-tips': {
     marketplace: {
       status: 200,
@@ -106,6 +124,7 @@ const fixtures = {
 
 const REPOSITORY_PATH_PATTERN = /^\/repos\/([^/]+)\/([^/]+)$/
 const MARKETPLACE_PATH_PATTERN = /^\/([^/]+)\/([^/]+)\/[^/]+\/\.claude-plugin\/marketplace\.json$/
+const PLUGIN_PATH_PATTERN = /^\/([^/]+)\/([^/]+)\/[^/]+\/\.claude-plugin\/plugin\.json$/
 
 function sendJson(response, status, payload) {
   response.writeHead(status, {
@@ -118,7 +137,8 @@ function sendJson(response, status, payload) {
 }
 
 const server = createServer((request, response) => {
-  const pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname
+  const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1')
+  const { pathname } = requestUrl
   if (request.method === 'OPTIONS') {
     response.writeHead(204, {
       'access-control-allow-origin': '*',
@@ -161,6 +181,21 @@ const server = createServer((request, response) => {
       return
     }
     sendJson(response, marketplace.status, marketplace.body)
+    return
+  }
+
+  const pluginMatch = PLUGIN_PATH_PATTERN.exec(pathname)
+  if (pluginMatch) {
+    if (requestUrl.searchParams.get('interrupt-body') === '1') {
+      response.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' })
+      response.flushHeaders()
+      response.write('{"name":')
+      setTimeout(() => response.destroy(), 50)
+      return
+    }
+    const [, owner, name] = pluginMatch
+    const plugin = fixtures[`${owner}/${name}`]?.plugin
+    sendJson(response, plugin?.status ?? 404, plugin?.body ?? { message: 'Not Found' })
     return
   }
 

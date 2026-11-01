@@ -116,13 +116,15 @@ it.each(['found', 'invalid-content', 'temporary-error'] as const)('does not try 
   await enrichRepositories(db, api, 'crawl-1')
 })
 
-it.each([true, false])('recovers plugin 304 only with usable cached standalone data: %s', async (usable) => {
+it.each(['valid', 'invalid-summary', 'stale-parser'])('recovers plugin 304 only with usable cached standalone data: %s', async (cache) => {
+  const usable = cache === 'valid'
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/team/repo', null)
   ready(db, id)
   db.prepare(
     "UPDATE repositories SET manifest_kind = 'standalone-plugin', plugins_count = 1, plugins_json = ?, plugin_manifest_etag = '\"plugin\"', plugin_manifest_parser_version = 1 WHERE id = ?",
-  ).run(usable ? '[{"name":"reviewer"}]' : '[]', id)
+  ).run(cache === 'invalid-summary' ? '[]' : '[{"name":"reviewer"}]', id)
+  if (cache === 'stale-parser') db.prepare('UPDATE repositories SET plugin_manifest_parser_version = 2 WHERE id = ?').run(id)
   const api = reader(undefined, async () => ({ kind: 'not-found' }))
   let requests = 0
   api.getPluginManifest = async (_owner, _repo, etag) => {

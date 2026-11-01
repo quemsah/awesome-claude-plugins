@@ -270,6 +270,14 @@ function normalizeDiscovery(value: StoredDiscoverySummary): DiscoverySummary {
   }
 }
 
+function normalizeStoredDiscovery(value: StoredDiscoverySummary): RunReport['discovery'] {
+  const discovery: RunReport['discovery'] = normalizeDiscovery(value)
+  if (discovery.sources) {
+    for (const source of Object.values(discovery.sources)) source.acceptedStandalonePlugins ??= 0
+  }
+  return discovery
+}
+
 function storedReport(db: Database.Database, runId: string): Partial<RunReport> | null {
   const raw = getSetting(db, `run_report_${runId}`)
   if (raw === null) return null
@@ -302,7 +310,7 @@ function storedReport(db: Database.Database, runId: string): Partial<RunReport> 
     throw new Error('Invalid stored health-check report')
   }
   return {
-    discovery: normalizeDiscovery(value.discovery as StoredDiscoverySummary),
+    discovery: normalizeStoredDiscovery(value.discovery as StoredDiscoverySummary),
     enrichment: value.enrichment,
     ...(value.healthCheck === undefined ? {} : { healthCheck: value.healthCheck as CrawlSummary['healthCheck'] }),
     warningCount: value.warningCount,

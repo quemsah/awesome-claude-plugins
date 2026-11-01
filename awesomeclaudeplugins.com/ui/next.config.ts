@@ -16,6 +16,7 @@ const scriptSource = [
 const GITHUB_RAW_URL = process.env.GITHUB_RAW_URL ?? 'https://raw.githubusercontent.com'
 const GITHUB_API_URL = process.env.GITHUB_API_URL ?? 'https://api.github.com'
 const release = process.env.NEXT_PUBLIC_RELEASE ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? ''
+const standaloneE2e = process.env.STANDALONE_E2E === '1'
 
 function extractConnectOrigin(url: string, fallback: string): string {
   try {
@@ -46,6 +47,8 @@ const connectSource = [
 ].join(' ')
 
 const nextConfig: NextConfig = {
+  distDir: standaloneE2e ? '.next-standalone-e2e' : '.next',
+  typescript: { tsconfigPath: standaloneE2e ? 'tsconfig.standalone.json' : 'tsconfig.json' },
   reactStrictMode: true,
   poweredByHeader: false,
   outputFileTracingIncludes: {

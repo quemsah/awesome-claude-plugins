@@ -1,6 +1,24 @@
 import { expect, it } from 'vitest'
 import { loadRepositoryManifest, repositoryManifestErrorMessage } from './repositoryManifest.ts'
 
+it.each(['.claude-plugin/marketplace.json', '.claude-plugin/plugin.json'])(
+  'keeps an interrupted %s response distinct from invalid JSON',
+  async (failedPath) => {
+    const result = await loadRepositoryManifest(async (path) =>
+      path !== failedPath
+        ? new Response(null, { status: 404 })
+        : new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.error(new TypeError('Connection terminated while reading the body'))
+              },
+            })
+          )
+    )
+    expect(result).toEqual({ kind: 'error', path: failedPath, reason: 'network' })
+  }
+)
+
 it('loads a root plugin only after marketplace 404', async () => {
   const paths: string[] = []
   const result = await loadRepositoryManifest(async (path) => {
@@ -9,6 +27,13 @@ it('loads a root plugin only after marketplace 404', async () => {
   })
   expect(paths).toEqual(['.claude-plugin/marketplace.json', '.claude-plugin/plugin.json'])
   expect(result).toMatchObject({ kind: 'standalone-plugin', manifest: { name: 'Review Tools' } })
+})
+
+it.each(['.claude-plugin/marketplace.json', '.claude-plugin/plugin.json'])('still rejects malformed JSON from %s', async (failedPath) => {
+  const result = await loadRepositoryManifest(async (path) =>
+    path === failedPath ? new Response('{"name":') : new Response(null, { status: 404 })
+  )
+  expect(result).toEqual({ kind: 'error', path: failedPath, reason: 'invalid-content' })
 })
 
 it.each([429, 503])('does not hide marketplace HTTP %s with a plugin fallback', async (status) => {

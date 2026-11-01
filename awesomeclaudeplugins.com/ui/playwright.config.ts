@@ -10,6 +10,7 @@ const appCommand = process.env.PLAYWRIGHT_PREBUILT === '1' ? 'bun run start' : '
 
 export default defineConfig({
   testDir: './tests/e2e',
+  testIgnore: 'standalone-plugin.spec.ts',
   timeout: 30_000,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

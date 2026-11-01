@@ -17,6 +17,7 @@
 
 # next.js
 /.next/
+/.next-standalone-e2e/
 /out/
 
 # production
