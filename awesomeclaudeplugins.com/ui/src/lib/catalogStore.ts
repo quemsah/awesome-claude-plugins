@@ -8,7 +8,6 @@ import type { Repo } from '../schemas/repo.schema.ts'
 const CATALOG_KEY = Symbol.for('awesome-claude-plugins.catalog')
 const SHARD_CACHE_KEY = Symbol.for('awesome-claude-plugins.shard-cache')
 const FALLBACK_REPOS_KEY = Symbol.for('awesome-claude-plugins.canonical-fallback')
-const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/
 
 type ShardCache = Map<number, Record<string, Partial<Repo>>>
 type CatalogGlobal = typeof globalThis & {
@@ -222,14 +221,10 @@ export function readCatalogSearchFields(
   expectedCount = getCatalog().length
 ): Partial<Repo>[] {
   try {
-    // The validated V1 serializer always writes search last. Extract only its
-    // base64 payload: reparsing 19 MB of index rows here spikes search RSS.
-    const content = readFileSync(indexPath, 'utf8')
-    const marker = ',"search":"'
-    const start = content.lastIndexOf(marker)
-    if (start < 0 || !content.endsWith('"}')) throw new Error('Missing compressed search payload')
-    const encoded = content.slice(start + marker.length, -2)
-    if (!BASE64_PATTERN.test(encoded)) throw new Error('Invalid compressed search payload')
+    // getCatalog already validates V1 rows. Decode only the search metadata
+    // here, without retaining the large rows object during decompression.
+    const encoded = (JSON.parse(readFileSync(indexPath, 'utf8')) as SearchIndexV1).search
+    if (typeof encoded !== 'string') throw new Error('Missing compressed search payload')
     const fields: unknown = JSON.parse(gunzipSync(Buffer.from(encoded, 'base64')).toString('utf8'))
     if (!Array.isArray(fields) || fields.length !== expectedCount) {
       throw new Error('Misaligned search metadata')
