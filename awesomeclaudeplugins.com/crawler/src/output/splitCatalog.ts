@@ -97,7 +97,8 @@ export function buildRepoDetailsShards(repos: readonly CatalogRecordInput[], num
     if (previous) {
       // Case-only aliases of one GitHub repository must preserve the first canonical record.
       // The same id for a different path is invalid and must not silently overwrite details.
-      const key = (record: { owner?: unknown; repo_name?: unknown }) => `${String(record.owner ?? '').toLowerCase()}/${String(record.repo_name ?? '').toLowerCase()}`
+      const key = (record: { owner?: unknown; repo_name?: unknown }) =>
+        `${String(record.owner ?? '').toLowerCase()}/${String(record.repo_name ?? '').toLowerCase()}`
       if (key(previous) !== key(r)) {
         throw new Error(`Conflicting repository identity for GitHub id ${r.id}`)
       }
