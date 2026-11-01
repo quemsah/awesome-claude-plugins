@@ -849,6 +849,56 @@ it('publishes bounded plugin summaries without splitting or preserving malformed
   expect(published?.plugins_json).not.toContain('\\udc00')
 })
 
+it('fully indexes marketplace repositories with more than 30 plugins up to 500 into SQLite', async () => {
+  const db = database()
+  const nodeId = 'node-large-marketplace'
+  const id = upsertDiscovery(db, 'https://github.com/team/large-repo', 'old', new Date().toISOString(), nodeId)
+  const oid = 'large-marketplace-oid'
+  const plugins = Array.from({ length: 75 }, (_, index) => ({
+    name: `plugin-${index + 1}`,
+    description: `Description for plugin ${index + 1}`,
+    source: `./plugins/plugin-${index + 1}`,
+  }))
+  const manifest = {
+    name: 'large-catalog',
+    owner: { name: 'maintainer' },
+    plugins,
+  }
+  const text = JSON.stringify(manifest)
+  const client = {
+    ...reader(),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [
+        {
+          ...githubRepo('team', 'large-repo'),
+          node_id: nodeId,
+          marketplace_oid: oid,
+          marketplace_byte_size: text.length,
+          marketplace_is_binary: false,
+        },
+      ],
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+    getMarketplaceBlobsByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [graphQLMarketplaceBlob(nodeId, oid, { text })],
+      rateLimit: { cost: 1, remaining: 4_998, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 2 },
+    }),
+  }
+
+  const counts = await enrichRepositories(db, client, 'crawl-1')
+  const published = listPublishable(db).find((repository) => repository.id === id)
+
+  expect(counts).toMatchObject({ newReady: 1, conclusive: 1, warnings: 0 })
+  expect(published?.plugins_count).toBe(75)
+  const parsed = JSON.parse(published?.plugins_json ?? '[]')
+  expect(parsed).toHaveLength(75)
+  expect(parsed[0].name).toBe('plugin-1')
+  expect(parsed[30].name).toBe('plugin-31')
+  expect(parsed[74].name).toBe('plugin-75')
+})
+
 it.each([
   ['malformed JSON', '{"plugins":['],
   ['old unmatched surrogate', JSON.stringify([{ description: `old${'\ud800'}` }])],

@@ -17,6 +17,27 @@ const { fixtureRepos } = vi.hoisted(() => ({
       plugins_count: 1,
       plugins: [{ name: 'zerogravityplugin', description: 'aurora system diagnostics' }],
     },
+    {
+      id: 999_002,
+      html_url: 'https://github.com/catalog-fixture/large-marketplace',
+      owner: 'catalog-fixture',
+      owner_url: 'https://github.com/catalog-fixture',
+      repo_name: 'large-marketplace',
+      description: 'A large marketplace with many plugins',
+      stargazers_count: 5,
+      forks_count: 1,
+      subscribers_count: 1,
+      plugins_count: 50,
+      plugins: Array.from({ length: 50 }, (_, i) => ({
+        name: i === 30 ? 'thirtyfirstplugin' : i === 49 ? 'fiftiethplugin' : `plugin-${i + 1}`,
+        description:
+          i === 30
+            ? 'unique thirty-first plugin capability'
+            : i === 49
+              ? 'unique fiftieth plugin capability'
+              : `description for plugin ${i + 1}`,
+      })),
+    },
   ],
 }))
 
@@ -69,5 +90,21 @@ describe('/api/catalog plugin metadata search', () => {
     expect(server.repos.map(({ id, owner, repo_name, plugins }) => ({ id, owner, repo_name, plugins }))).toEqual([expectedRepo])
     expect(api).toEqual(server)
     expect(api.repos.map(({ id, owner, repo_name, plugins }) => ({ id, owner, repo_name, plugins }))).toEqual([expectedRepo])
+  })
+
+  it.each([
+    ['thirtyfirstplugin', '31st plugin name'],
+    ['unique thirty-first plugin capability', '31st plugin description'],
+    ['fiftiethplugin', '50th plugin name'],
+    ['unique fiftieth plugin capability', '50th plugin description'],
+  ])('finds parent repository by %s (%s) beyond initial 30 plugins', async (query) => {
+    const server = serverSearch(query)
+    const api = await apiSearch(query)
+
+    expect(server.total).toBe(1)
+    expect(server.repos).toHaveLength(1)
+    expect(server.repos[0]?.id).toBe(999_002)
+    expect(server.repos[0]?.repo_name).toBe('large-marketplace')
+    expect(api).toEqual(server)
   })
 })
