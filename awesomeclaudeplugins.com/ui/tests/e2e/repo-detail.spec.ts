@@ -10,6 +10,7 @@ const mdserveCanonicalPattern = /\/jfernandez\/mdserve$/
 const repoCanonicalPattern = /\/ykdojo\/claude-code-tips$/
 const repoMarkdownAlternatePattern = /\/ykdojo\/claude-code-tips\.md$/
 const repoOpenGraphImagePattern = /\/og\/ykdojo\/claude-code-tips$/
+const dxPluginHeadingPattern = /^dx@/
 const mockGithubApiUrl = `http://127.0.0.1:${process.env.MOCK_GITHUB_PORT ?? '3100'}`
 
 // Next.js may serialize the public GitHub API origin into the server-rendered page.
@@ -312,4 +313,22 @@ test('unrecognized multi-segment paths render a generic 404', async ({ page }) =
   await expect(page.getByText('Page not found')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Check on GitHub' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Go home' })).toBeVisible()
+})
+
+test('repo detail page displays two-step install instructions for external marketplace', async ({ page }) => {
+  await mockClipboard(page)
+  await page.goto('/ykdojo/claude-code-tips')
+
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: dxPluginHeadingPattern }) })
+
+  await expect(plugin.getByText('Step 1: Add marketplace')).toBeVisible()
+  await expect(plugin.getByText('/plugin marketplace add ykdojo/claude-code-tips')).toBeVisible()
+  await expect(plugin.getByText('Step 2: Install plugin')).toBeVisible()
+  await expect(plugin.getByText('/plugin install dx@ykdojo')).toBeVisible()
+
+  await plugin.getByRole('button', { name: 'Copy marketplace add command' }).click()
+  await expect.poll(() => copiedText(page)).toBe('/plugin marketplace add ykdojo/claude-code-tips')
+
+  await plugin.getByRole('button', { name: 'Copy both commands' }).click()
+  await expect.poll(() => copiedText(page)).toBe('/plugin marketplace add ykdojo/claude-code-tips\n/plugin install dx@ykdojo')
 })

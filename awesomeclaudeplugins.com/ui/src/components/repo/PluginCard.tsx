@@ -18,10 +18,23 @@ type PluginCardProps = {
 }
 
 export function PluginCard({ marketplaceName, plugin, repoPath, repo }: PluginCardProps) {
+  const [ownerFromPath, repoFromPath] = repoPath.split('/')
+  const owner = repo?.owner?.login ?? ownerFromPath
+  const repoName = repo?.name ?? repoFromPath
+
   return (
     <Card className="group hover:border-primary/30 hover:from-muted hover:to-background w-full transition-all duration-300 hover:bg-linear-to-tl">
       <PluginHeader category={plugin.category} name={plugin.name} version={plugin.version} />
-      {plugin.name ? <InstallCommand marketplaceName={marketplaceName} pluginId={plugin.id} pluginName={plugin.name} /> : null}
+      {plugin.name ? (
+        <InstallCommand
+          marketplaceName={marketplaceName}
+          owner={owner}
+          pluginId={plugin.id}
+          pluginName={plugin.name}
+          repoName={repoName}
+          repoPath={repoPath}
+        />
+      ) : null}
       <CardContent className="pt-1">
         <dl className="space-y-2">
           <PluginDescription description={plugin.description} />

@@ -71,12 +71,20 @@ export function getPluginInstallCommand({ pluginName, pluginId, marketplaceName 
 /**
  * Generates a `/plugin marketplace add` command from repository metadata.
  *
- * Verified when both `owner` and `repoName` are present.
- * Returns `null` when required data is missing.
+ * Verified when both `owner` and `repoName` are present (or passed as "owner/repo").
+ * Returns `null` when required data is missing or invalid.
  */
 export function getMarketplaceAddCommand(owner?: string | null, repoName?: string | null): string | null {
-  const trimmedOwner = typeof owner === 'string' ? owner.trim() || null : null
-  const trimmedRepoName = typeof repoName === 'string' ? repoName.trim() || null : null
+  let trimmedOwner = typeof owner === 'string' ? owner.trim() || null : null
+  let trimmedRepoName = typeof repoName === 'string' ? repoName.trim() || null : null
+
+  if (trimmedOwner && !trimmedRepoName && trimmedOwner.includes('/')) {
+    const parts = trimmedOwner.split('/')
+    if (parts.length === 2) {
+      trimmedOwner = parts[0]?.trim() || null
+      trimmedRepoName = parts[1]?.trim() || null
+    }
+  }
 
   if (
     !(
@@ -90,4 +98,57 @@ export function getMarketplaceAddCommand(owner?: string | null, repoName?: strin
   }
 
   return `/plugin marketplace add ${trimmedOwner}/${trimmedRepoName}`
+}
+
+export type OfficialMarketplaceInput = {
+  owner?: string | null
+  repoName?: string | null
+  marketplaceName?: string | null
+  repoPath?: string | null
+}
+
+/**
+ * Determines whether a marketplace is the official Anthropic marketplace.
+ * The official Anthropic marketplace is pre-configured in Claude Code CLI,
+ * so users do not need to run `/plugin marketplace add` before installing.
+ *
+ * Official marketplaces must be owned by the Anthropic GitHub organization
+ * ('anthropics' or 'anthropic').
+ */
+export function isOfficialMarketplace(input?: OfficialMarketplaceInput | null): boolean {
+  if (!input) return false
+
+  let owner = typeof input.owner === 'string' ? input.owner.trim().toLowerCase() : ''
+  const repoName = typeof input.repoName === 'string' ? input.repoName.trim().toLowerCase() : ''
+
+  if (!(owner || repoName) && typeof input.repoPath === 'string') {
+    const parts = input.repoPath.split('/')
+    if (parts.length === 2) {
+      owner = parts[0]?.trim().toLowerCase() ?? ''
+    }
+  }
+
+  // Official Anthropic GitHub organizations
+  return owner === 'anthropics' || owner === 'anthropic'
+}
+
+/**
+ * Combines the marketplace add command and plugin install command.
+ *
+ * When both commands are available, joins them using the specified delimiter (default: "\n" for Claude Code CLI prompts).
+ * Returns a single command string, or null if neither command is valid.
+ */
+export function getCombinedInstallCommand(
+  marketplaceAddCommand?: string | null,
+  pluginInstallCommand?: string | null,
+  delimiter: '\n' | ' && ' = '\n'
+): string | null {
+  const trimmedAdd = typeof marketplaceAddCommand === 'string' ? marketplaceAddCommand.trim() || null : null
+  const trimmedInstall = typeof pluginInstallCommand === 'string' ? pluginInstallCommand.trim() || null : null
+
+  if (trimmedAdd && trimmedInstall) {
+    return `${trimmedAdd}${delimiter}${trimmedInstall}`
+  }
+
+  return trimmedInstall ?? trimmedAdd ?? null
 }
