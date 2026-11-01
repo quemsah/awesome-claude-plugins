@@ -54,10 +54,21 @@ describe('splitCatalog', () => {
     expect(row1[2]).toBe('claude-code-tips')
     expect(row1[3]).toBe(100)
     expect(row1[10]).toBe(1) // description_quality
+    expect(row1[12]).toBe('Useful tips for claude')
+    expect(row1[13]).toBeNull()
 
     expect(row2[0]).toBe(2)
     expect(row2[8]).toBe(true) // archived
     expect(row2[10]).toBe(0) // no desc
+  })
+
+  it('keeps the first canonical case alias and rejects different paths sharing an ID', () => {
+    const samePath = { ...sampleRepos[0], owner: 'YKDOJO', repo_name: 'CLAUDE-CODE-TIPS', description: 'Wrong alias' }
+    const shards = buildRepoDetailsShards([sampleRepos[0], samePath], 10)
+    expect(JSON.parse(shards['1.json'])['1'].description).toBe('Useful tips for claude')
+    expect(() => buildRepoDetailsShards([sampleRepos[0], { ...sampleRepos[0], owner: 'unrelated' }], 10)).toThrow(
+      'Conflicting repository identity'
+    )
   })
 
   it('partitions repository details into shards by id', () => {
