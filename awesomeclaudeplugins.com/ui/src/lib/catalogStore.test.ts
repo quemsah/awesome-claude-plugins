@@ -1,5 +1,6 @@
 /** biome-ignore-all lint/style/useNamingConvention: test fixtures mirror catalog snake_case fields */
 
+import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -87,6 +88,32 @@ describe('catalogStore', () => {
       expect(() => readCatalogFiles(indexPath, reposPath)).toThrow('no canonical repository snapshot')
       rmSync(indexPath)
       expect(() => readCatalogFiles(indexPath, reposPath)).toThrow('Missing compact catalog and canonical repository snapshot')
+    } finally {
+      rmSync(folder, { recursive: true, force: true })
+    }
+  })
+
+  it('falls back to the canonical data when the index was built from another snapshot with the same number of rows', () => {
+    const folder = mkdtempSync(join(tmpdir(), 'catalog-mismatch-'))
+    const indexPath = join(folder, 'search-index.json')
+    const reposPath = join(folder, 'repos.json')
+    const oldCanonical = JSON.stringify([{ id: 123, owner: 'old', repo_name: 'sample' }])
+    const freshCanonical = [{ id: 123, owner: 'fresh', repo_name: 'sample' }]
+    const index = {
+      format: 'v1' as const,
+      fields: [...SEARCH_INDEX_FIELDS],
+      rows: [[123, 'old', 'sample', 1, 0, null, null, null, false, null, 1, null, 'Old details', null]],
+      search: gzipSync(JSON.stringify([{}])).toString('base64'),
+      canonicalSha256: createHash('sha256').update(oldCanonical).digest('hex'),
+    }
+
+    try {
+      writeFileSync(indexPath, JSON.stringify(index))
+      writeFileSync(reposPath, oldCanonical)
+      expect(readCatalogFiles(indexPath, reposPath)[0].owner).toBe('old')
+
+      writeFileSync(reposPath, JSON.stringify(freshCanonical))
+      expect(readCatalogFiles(indexPath, reposPath)).toEqual(freshCanonical)
     } finally {
       rmSync(folder, { recursive: true, force: true })
     }
