@@ -1,0 +1,82 @@
+name: Catalog search memory A/B
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/catalog-memory.yml'
+      - 'awesomeclaudeplugins.com/ui/scripts/benchmark-catalog-memory.mjs'
+      - 'awesomeclaudeplugins.com/ui/src/lib/catalog.ts'
+      - 'awesomeclaudeplugins.com/ui/src/lib/fuzzySearch.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  memory-ab:
+    name: Compare main vs PR RSS
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout baseline commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || 'main' }}
+          path: baseline
+          persist-credentials: false
+      - name: Checkout candidate commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: candidate
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: candidate/awesomeclaudeplugins.com/ui/.nvmrc
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: candidate/awesomeclaudeplugins.com/.bun-version
+      - name: Install baseline dependencies
+        working-directory: baseline/awesomeclaudeplugins.com
+        run: bun install --frozen-lockfile
+      - name: Install candidate dependencies
+        working-directory: candidate/awesomeclaudeplugins.com
+        run: bun install --frozen-lockfile
+      - name: Check identical catalog inputs
+        shell: bash
+        run: |
+          sha256sum baseline/awesomeclaudeplugins.com/ui/src/data/repos.json candidate/awesomeclaudeplugins.com/ui/src/data/repos.json
+          cmp baseline/awesomeclaudeplugins.com/ui/src/data/repos.json candidate/awesomeclaudeplugins.com/ui/src/data/repos.json
+      - name: Measure RAM (three independent processes per revision)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/memory-results"
+          for iteration in 1 2 3; do
+            (
+              cd baseline/awesomeclaudeplugins.com/ui
+              node --expose-gc "$GITHUB_WORKSPACE/candidate/awesomeclaudeplugins.com/ui/scripts/benchmark-catalog-memory.mjs" \
+                --label main --out "$GITHUB_WORKSPACE/memory-results/main-$iteration.json"
+            )
+            (
+              cd candidate/awesomeclaudeplugins.com/ui
+              node --expose-gc scripts/benchmark-catalog-memory.mjs \
+                --label pr --out "$GITHUB_WORKSPACE/memory-results/pr-$iteration.json"
+            )
+          done
+      - name: Publish RSS comparison
+        run: |
+          node candidate/awesomeclaudeplugins.com/ui/scripts/benchmark-catalog-memory.mjs \
+            --baseline memory-results/main-1.json,memory-results/main-2.json,memory-results/main-3.json \
+            --candidate memory-results/pr-1.json,memory-results/pr-2.json,memory-results/pr-3.json
+      - name: Upload raw measurements
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: catalog-memory-ab-${{ github.run_id }}
+          path: memory-results/*.json
+          if-no-files-found: ignore
+          retention-days: 7

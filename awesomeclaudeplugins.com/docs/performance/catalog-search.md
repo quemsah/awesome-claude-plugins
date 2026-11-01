@@ -49,3 +49,30 @@ all 3,000 requests had matches. HTTP p50 was 11.50 ms, p95 24.95 ms and maximum 
 Window p95 values were 25.83, 24.85, 24.02 ms, with no accumulating delay.
 The ten-query concurrent burst completed in 75.57 ms. These are local measurements,
 not a guarantee for other hardware or catalog sizes.
+
+## RAM A/B vs main
+
+The RAM benchmark compares the exact PR head with its current base commit on one
+GitHub Actions runner. It installs both revisions independently and executes three
+separate Node 24 processes for each revision (alternating main/PR). The
+`Catalog search memory A/B` workflow publishes median RSS and RSS deltas in the
+Actions job summary, and uploads per-process JSON with heap, external and peak RSS.
+
+Snapshots are taken after explicit GC: before loading `catalog.ts`, immediately
+after import (FTS5 initialized in the PR, but not Fuse in main), after the first
+query, and after six *different* searches. The benchmark checks that both revisions
+use the identical checked-in `repos.json` file. Run locally by checking out
+both revisions, installing dependencies in each root, then from each `ui`
+directory invoking the PR's shared script with Node 24:
+
+```sh
+node --expose-gc /path/to/pr/ui/scripts/benchmark-catalog-memory.mjs --label main --out /tmp/main-memory.json
+node --expose-gc /path/to/pr/ui/scripts/benchmark-catalog-memory.mjs --label pr --out /tmp/pr-memory.json
+node /path/to/pr/ui/scripts/benchmark-catalog-memory.mjs --baseline /tmp/main-memory.json --candidate /tmp/pr-memory.json
+```
+
+This isolates the incremental footprint of the catalog module and different
+search cache strategies. It **does not measure the full Next.js production process**:
+separate server bundles can initialize more than one module/index instance. RSS
+also does not directly determine Railway charges; use production memory metrics
+and Railway's actual billing model for a cost estimate.
