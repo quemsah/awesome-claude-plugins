@@ -26,7 +26,8 @@ describe('catalogStore', () => {
         ],
       ],
     }
-    expect(parseSearchIndex(example)).toEqual([
+    const parsed = parseSearchIndex(example)
+    expect(parsed).toEqual([
       expect.objectContaining({
         id: 123,
         description: 'Correct visible description of a plugin repository.',
@@ -34,6 +35,8 @@ describe('catalogStore', () => {
         plugins_count: 5,
       }),
     ])
+    expect(Object.keys(parsed[0])).not.toContain('searchRow')
+    expect(JSON.stringify(parsed[0])).not.toContain('searchRow')
   })
 
   it('does not return another repository when the supplied identity disagrees', () => {
