@@ -69,11 +69,11 @@ export function buildSearchIndex(repos: readonly CatalogRecordInput[]): string {
     format: 'v1',
     fields: [...SEARCH_INDEX_FIELDS],
     rows,
-    // Search text is lossless and read only when a new query needs a Fuse scan.
+    // Descriptions already live in compact rows; avoid inflating them twice
+    // while building the FTS index. Plugin metadata is decompressed on demand.
     search: gzipSync(
       JSON.stringify(
         repos.map((r) => ({
-          description: r.description,
           plugins: r.plugins,
           plugin_summaries: r.plugin_summaries,
           plugin_name: r.plugin_name,
