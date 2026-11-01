@@ -61,8 +61,12 @@ describe('getCatalogQuality', () => {
     expect(getCatalogQuality({ ...baseRepo, description: null, plugins_count: null }, true, strongFallbackDescription)).toEqual({
       descriptionQuality: 'strong',
       publicationState: 'needs-review',
-      qualityReason: 'Validated marketplace plugin count is unavailable.',
+      qualityReason: 'Validated plugin count is unavailable.',
     })
+  })
+
+  it('treats validated standalone plugins as indexable', () => {
+    expect(getCatalogQuality({ ...baseRepo, manifest_kind: 'standalone-plugin', plugins_count: 1 }, true).publicationState).toBe('indexable')
   })
 
   it('marks non-canonical duplicate records as redirects', () => {

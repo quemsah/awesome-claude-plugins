@@ -32,7 +32,7 @@ export default function AboutPage() {
             </p>
             <p className="flex gap-2">
               <CheckCircle2 className="text-primary mt-1 h-4 w-4 shrink-0" />
-              Plugin counts reflect marketplace manifests we can validate, not endorsements.
+              Plugin counts reflect marketplace and standalone plugin manifests we can validate, not endorsements.
             </p>
             <p className="flex gap-2">
               <CheckCircle2 className="text-primary mt-1 h-4 w-4 shrink-0" />

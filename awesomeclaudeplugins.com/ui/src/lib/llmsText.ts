@@ -81,7 +81,7 @@ This website provides a generated catalog of GitHub repositories related to Clau
 - **Plugin Discovery**: Search the catalog by repository text and sort results by stars, forks, or plugin count
 - **Repository Details**: Open catalog entries to view repository metadata and any available plugin manifest entries
 - **Statistics**: View historical repository-count snapshots
-- **Install Commands**: Copy a marketplace install command when the catalog entry exposes a plugin repository
+- **Installation Guidance**: Copy marketplace install commands for marketplace entries; standalone entries provide session-local loading instructions
 - **Repository Catalog**: Browse GitHub repository records and open their source repositories
 
 ## Primary Resources
@@ -116,7 +116,7 @@ Every HTML page announces its Markdown rendition with a \`<link rel="alternate" 
 - Browse GitHub repository records from the generated catalog.
 - Search the visible catalog by repository text.
 - Sort repositories by stars, forks, and plugin count.
-- Copy \`/plugin marketplace add owner/repo\` install commands from repository cards.
+- Copy \`/plugin marketplace add owner/repo\` only for marketplace entries; standalone plugins instead provide session-local loading instructions.
 - View basic repository details and plugin entries when GitHub and raw repository data are available.
 - View historical catalog-size statistics from checked-in snapshot data.
 

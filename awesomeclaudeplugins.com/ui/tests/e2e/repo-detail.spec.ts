@@ -3,7 +3,7 @@ import { copiedText, mockClipboard } from './helpers.ts'
 
 const noPluginsText = 'No Claude Code plugins found in this repository.'
 const marketplaceErrorText = 'Failed to load marketplace manifest.'
-const marketplaceMissingText = 'No marketplace manifest was found in this repository.'
+const marketplaceMissingText = 'No marketplace or standalone plugin manifest was found in this repository.'
 const staleRepositoryText = 'Live GitHub data is temporarily unavailable.'
 const unavailableRepositoryText = 'no longer available on GitHub'
 const mdserveCanonicalPattern = /\/jfernandez\/mdserve$/
@@ -64,6 +64,10 @@ test('loads a standalone root plugin without suggesting marketplace installation
   await page.goto('/mksglu/context-mode')
   await expect(page.getByRole('heading', { name: 'Review Tools' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Load locally' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Open source repository mksglu/context-mode in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/mksglu/context-mode'
+  )
   await expect(page.locator('article')).toHaveCount(1)
   await expect(page.getByText('Loads the plugin for this Claude Code session.')).toBeVisible()
   await expect(page.getByRole('link', { name: 'View plugin.json' })).toHaveAttribute('href', standaloneManifestPattern)

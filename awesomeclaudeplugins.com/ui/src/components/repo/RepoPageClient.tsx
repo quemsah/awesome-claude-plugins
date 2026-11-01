@@ -191,7 +191,7 @@ export function RepoPageClient({
               </p>
             ) : pluginsStatus === 'missing' ? (
               <p className="text-muted-foreground py-4 text-center" role="status">
-                No marketplace manifest was found in this repository.
+                No marketplace or standalone plugin manifest was found in this repository.
               </p>
             ) : pluginsError ? (
               <div className="flex flex-wrap items-center justify-center gap-3 py-4" role="alert">
