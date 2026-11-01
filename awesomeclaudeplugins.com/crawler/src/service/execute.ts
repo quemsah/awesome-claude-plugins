@@ -347,6 +347,10 @@ function progressSnapshot(db: Database.Database, runId: string, log: (event: Log
   }
 }
 
+function deletedCount(enrichment: EnrichmentCounts | undefined, health: CrawlSummary['healthCheck'] | undefined): number {
+  return (enrichment?.deleted404 ?? 0) + (enrichment?.deletedBlankUrl ?? 0) + (health?.deleted ?? 0)
+}
+
 function summary(
   db: Database.Database,
   runId: string,
@@ -364,7 +368,7 @@ function summary(
     runId,
     catalogSize: run?.draft_size ?? listPublishable(db).length,
     newCount: report?.newReady ?? 0,
-    deletedCount: (report?.deleted404 ?? 0) + (report?.deletedBlankUrl ?? 0) + (health?.deleted ?? 0),
+    deletedCount: deletedCount(report, health),
     skippedCount: (report?.unchangedOnError ?? 0) + (report?.newIncomplete ?? 0),
     ...(report ? { enrichment: report } : {}),
     ...(health ? { healthCheck: health } : {}),

@@ -489,36 +489,7 @@ export class GitHubClient implements GitHubReader {
         if (delay !== null) this.publicHeadBudget.defer('core', delay)
         if (response.status === 404 || response.status === 410) {
           // A second, authenticated source must agree before the catalog can delete a link.
-          await this.budget.acquire('core', signal)
-          signal.throwIfAborted()
-          const confirmation = await this.transport(
-            `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
-            {
-              signal,
-              headers: {
-                Authorization: `Bearer ${this.token}`,
-                Accept: 'application/vnd.github+json',
-                'X-GitHub-Api-Version': '2022-11-28',
-              },
-            },
-          )
-          signal.throwIfAborted()
-          this.budget.observe('core', confirmation.headers)
-          const apiDelay = retryAfter(confirmation.headers, this.clock.now())
-          if (apiDelay !== null) this.budget.defer('core', apiDelay)
-          if (confirmation.status === 404 || confirmation.status === 410) {
-            await confirmation.body?.cancel()
-            return { kind: 'not-found' }
-          }
-          if (confirmation.status === 200) {
-            const data: unknown = await confirmation.json()
-            signal.throwIfAborted()
-            if (record(data) && data.private === false && typeof data.html_url === 'string' && parseRepositoryUrl(data.html_url)) {
-              return { kind: 'found', data: { html_url: data.html_url } }
-            }
-          }
-          if (!confirmation.bodyUsed) await confirmation.body?.cancel()
-          return temporary(confirmation.status, 'Repository removal was not confirmed by GitHub API')
+          return await this.confirmRepositoryRemoval(owner, repo, signal)
         }
         if (response.status === 200) return { kind: 'found', data: { html_url: url } }
         if (response.status !== 301 && response.status !== 302) return temporary(response.status, 'GitHub health check HTTP error')
@@ -541,6 +512,37 @@ export class GitHubClient implements GitHubReader {
       return temporary(null, 'GitHub health check network error or deadline exceeded')
     } finally {
       clearTimeout(timer)
+    }
+  }
+
+  private async confirmRepositoryRemoval(owner: string, repo: string, signal: AbortSignal): Promise<RepoResult<{ html_url: string }>> {
+    await this.budget.acquire('core', signal)
+    signal.throwIfAborted()
+    const confirmation = await this.transport(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, {
+      signal,
+      headers: { Authorization: `Bearer ${this.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+    })
+    signal.throwIfAborted()
+    this.budget.observe('core', confirmation.headers)
+    const delay = retryAfter(confirmation.headers, this.clock.now())
+    if (delay !== null) this.budget.defer('core', delay)
+    if (confirmation.status === 404 || confirmation.status === 410) {
+      await confirmation.body?.cancel()
+      return { kind: 'not-found' }
+    }
+    if (confirmation.status === 200) {
+      const data: unknown = await confirmation.json()
+      signal.throwIfAborted()
+      if (record(data) && data.private === false && typeof data.html_url === 'string' && parseRepositoryUrl(data.html_url)) {
+        return { kind: 'found', data: { html_url: data.html_url } }
+      }
+    }
+    if (!confirmation.bodyUsed) await confirmation.body?.cancel()
+    return {
+      kind: 'temporary-error',
+      status: confirmation.status,
+      reason: 'Repository removal was not confirmed by GitHub API',
+      retryCount: 0,
     }
   }
 

@@ -62,7 +62,7 @@ describe('GitHubClient', () => {
     expect(test.time).toBe(0)
   })
 
-  it('applies one ten-second deadline to an entire redirect chain', async () => {
+  it.each(['redirect', 'API confirmation'])('applies one ten-second deadline to an entire %s chain', async (chain) => {
     vi.useFakeTimers()
     try {
       let requests = 0
@@ -83,7 +83,12 @@ describe('GitHubClient', () => {
             const timer = setTimeout(() => {
               signal?.removeEventListener('abort', abort)
               active--
-              resolve(new Response(null, { status: 302, headers: { location: `/next/project-${requests}` } }))
+              resolve(
+                new Response(
+                  null,
+                  chain === 'redirect' ? { status: 302, headers: { location: `/next/project-${requests}` } } : { status: 404 },
+                ),
+              )
             }, 6_000)
             signal?.addEventListener('abort', abort, { once: true })
           })
