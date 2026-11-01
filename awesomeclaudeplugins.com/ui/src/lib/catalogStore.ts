@@ -60,37 +60,37 @@ export function parseSearchIndex(content: string | SearchIndexV1): Repo[] {
   const parsed: unknown = typeof content === 'string' ? JSON.parse(content) : content
   if (!isValidSearchIndex(parsed)) throw new Error('Incompatible compact catalog format')
   return parsed.rows.map((row, searchRow) => {
-      const id = row[0] as number
-      const owner = row[1] as string
-      const repo_name = row[2] as string
-      const stargazers_count = (row[3] as number) ?? 0
-      const forks_count = (row[4] as number) ?? 0
-      const plugins_count = (row[5] as number | null) ?? null
-      const pushed_at = (row[6] as string | null) ?? null
-      const license = (row[7] as string | null) ?? null
-      const archived = (row[8] as boolean | null) ?? null
-      const catalog_added_at = (row[9] as string | null) ?? null
-      const description = (row[12] as string | null) ?? null
-      const manifest_kind = (row[13] as Repo['manifest_kind']) ?? undefined
+    const id = row[0] as number
+    const owner = row[1] as string
+    const repo_name = row[2] as string
+    const stargazers_count = (row[3] as number) ?? 0
+    const forks_count = (row[4] as number) ?? 0
+    const plugins_count = (row[5] as number | null) ?? null
+    const pushed_at = (row[6] as string | null) ?? null
+    const license = (row[7] as string | null) ?? null
+    const archived = (row[8] as boolean | null) ?? null
+    const catalog_added_at = (row[9] as string | null) ?? null
+    const description = (row[12] as string | null) ?? null
+    const manifest_kind = (row[13] as Repo['manifest_kind']) ?? undefined
 
-      const record = {
-        id,
-        owner,
-        repo_name,
-        stargazers_count,
-        forks_count,
-        plugins_count,
-        pushed_at,
-        license,
-        archived,
-        catalog_added_at,
-        description,
-        manifest_kind,
-        catalog_updated_at: (row[11] as string | null) ?? undefined,
-        subscribers_count: null,
-      } as Repo
-      // FTS metadata must not leak into the public API or client-side React props.
-      return Object.defineProperty(record, 'searchRow', { value: searchRow, enumerable: false })
+    const record = {
+      id,
+      owner,
+      repo_name,
+      stargazers_count,
+      forks_count,
+      plugins_count,
+      pushed_at,
+      license,
+      archived,
+      catalog_added_at,
+      description,
+      manifest_kind,
+      catalog_updated_at: (row[11] as string | null) ?? undefined,
+      subscribers_count: null,
+    } as Repo
+    // FTS metadata must not leak into the public API or client-side React props.
+    return Object.defineProperty(record, 'searchRow', { value: searchRow, enumerable: false })
   })
 }
 
@@ -228,12 +228,12 @@ export function readCatalogSearchFields(
       throw new Error('Misaligned search metadata')
     }
     return fields as Partial<Repo>[]
-  } catch {
+  } catch (error) {
     // Corrupt compressed metadata must not disable plugin-name search. This
     // rare recovery path can afford to read the full canonical snapshot.
     const repos: unknown = JSON.parse(readFileSync(reposPath, 'utf8'))
     if (!Array.isArray(repos) || repos.length !== expectedCount) {
-      throw new Error('Cannot recover search metadata from the canonical snapshot')
+      throw new Error('Cannot recover search metadata from the canonical snapshot', { cause: error })
     }
     return repos as Partial<Repo>[]
   }
