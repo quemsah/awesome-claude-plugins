@@ -98,7 +98,12 @@ function RepoCardStats({ repo }: { repo: Repo }) {
       {repo.plugins_count !== null && (
         <div className="flex items-center gap-1">
           <ClaudeIcon aria-hidden="true" />
-          <span className="text-xs">{formatNumber(repo.plugins_count ?? 0)}</span>
+          <span
+            className="text-xs"
+            title={repo.plugins_count > 500 ? 'Only the first 500 plugins can be found by catalog search.' : undefined}
+          >
+            {formatNumber(repo.plugins_count ?? 0)}
+          </span>
           <span className="sr-only">plugins</span>
         </div>
       )}
