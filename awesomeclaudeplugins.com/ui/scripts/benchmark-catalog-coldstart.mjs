@@ -8,6 +8,11 @@ import { dirname, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
 
+const median = (values) => {
+  const ordered = [...values].sort((a, b) => a - b)
+  const middle = Math.floor(ordered.length / 2)
+  return ordered.length % 2 ? ordered[middle] : (ordered[middle - 1] + ordered[middle]) / 2
+}
 const pidPattern = /^\d+$/
 const parentPattern = /^PPid:\s*(\d+)/m
 const rssPattern = /^VmRSS:\s*(\d+)/m
@@ -35,20 +40,21 @@ if (values.baseline || values.candidate) {
     ['Sampled peak RSS (MiB)', 'sampledPeakRssMiB'],
   ]
   const lines = ['## Next.js production cold-start A/B', '']
-  for (const first of ['api', 'home']) {
-    const mainRun = base.find((entry) => entry.first === first)
-    const prRun = pr.find((entry) => entry.first === first)
-    assert(mainRun && prRun, 'Missing measurements for ' + first)
-    lines.push('### ' + first + ' first', '', '| Metric | main | PR | PR - main |', '| --- | ---: | ---: | ---: |')
+  for (const first of ['api', 'home', 'search']) {
+    const mainRuns = base.filter((entry) => entry.first === first)
+    const prRuns = pr.filter((entry) => entry.first === first)
+    assert(mainRuns.length === prRuns.length && mainRuns.length >= 3, 'Need three paired runs for ' + first)
+    lines.push('### ' + first + ' first (' + mainRuns.length + ' runs, median)', '', '| Metric | main | PR | PR - main |', '| --- | ---: | ---: | ---: |')
     for (const [name, key] of metrics) {
-      const a = mainRun[key]
-      const b = prRun[key]
+      const a = median(mainRuns.map((entry) => entry[key]))
+      const b = median(prRuns.map((entry) => entry[key]))
       lines.push('| ' + name + ' | ' + a.toFixed(1) + ' | ' + b.toFixed(1) + ' | ' + (b - a).toFixed(1) + ' |')
     }
     lines.push('')
   }
   lines.push(
-    'Node 24, built Next.js, fresh server per route, same GitHub Actions runner.',
+    'Node 24, built Next.js, three fresh servers per request order and revision.',
+    'api-first and search-first exercise SSR plus API search in one process; home-first measures browsing before API search.',
     'First response includes startup and lazy route initialization; this is not index time alone.',
     'RSS sums Linux process-tree resident sizes and may double-count shared pages.',
     'Peak RSS is sampled every 250 ms and may miss brief spikes. Not Railway billing data.',
@@ -59,15 +65,15 @@ if (values.baseline || values.candidate) {
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, output)
 } else {
   assert(values.cwd && values.label && values.out, 'Specify --cwd, --label and --out')
-  assert(['api', 'home'].includes(values.first), 'Invalid first route')
+  assert(['api', 'home', 'search'].includes(values.first), 'Invalid first route')
   assert(process.platform === 'linux', 'Process-tree RSS sampling requires Linux')
   const cwd = resolve(values.cwd)
   const resolver = createRequire(resolve(cwd, 'package.json'))
   const nextBin = resolve(dirname(resolver.resolve('next/package.json')), 'dist/bin/next')
   const url = 'http://127.0.0.1:39425'
-  const routes = { api: '/api/catalog?q=superpowers&view=cards', home: '/' }
+  const routes = { api: '/api/catalog?q=superpowers&view=cards', home: '/', search: '/?q=superpowers' }
   const first = values.first
-  const second = first === 'api' ? 'home' : 'api'
+  const second = first === 'api' ? 'search' : 'api'
   const server = spawn(process.execPath, [nextBin, 'start', '-p', '39425', '--hostname', '127.0.0.1'], {
     cwd,
     detached: true,
