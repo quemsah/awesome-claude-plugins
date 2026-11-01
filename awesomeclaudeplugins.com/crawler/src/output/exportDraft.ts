@@ -2,6 +2,7 @@ import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import type Database from 'better-sqlite3'
 import { readDraftSnapshot } from '../publish/publishRun.js'
+import { buildRepoDetailsShards, buildSearchIndex } from './splitCatalog.js'
 
 export class DraftExportError extends Error {
   constructor(readonly category: 'export_invalid_destination' | 'export_destination_exists' | 'export_write_failed') {
@@ -39,6 +40,17 @@ export function exportDraftSnapshot(db: Database.Database, runId: string, direct
     writeFileSync(resolve(data, 'repos.json'), files.reposJson, { flag: 'wx', mode: 0o600 })
     writeFileSync(resolve(data, 'stats.json'), files.statsJson, { flag: 'wx', mode: 0o600 })
     writeFileSync(resolve(data, 'markdown-paths.json'), files.markdownPathsJson, { flag: 'wx', mode: 0o600 })
+
+    const parsedRepos = JSON.parse(files.reposJson)
+    const searchIndex = buildSearchIndex(parsedRepos)
+    writeFileSync(resolve(data, 'search-index.json'), searchIndex, { flag: 'wx', mode: 0o600 })
+
+    const detailsDir = resolve(data, 'repo-details')
+    mkdirSync(detailsDir, { recursive: true })
+    const shards = buildRepoDetailsShards(parsedRepos)
+    for (const [shardName, content] of Object.entries(shards)) {
+      writeFileSync(resolve(detailsDir, shardName), content, { flag: 'wx', mode: 0o600 })
+    }
   } catch {
     rmSync(target, { recursive: true })
     throw new DraftExportError('export_write_failed')

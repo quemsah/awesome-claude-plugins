@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module'
 import type Database from 'better-sqlite3'
 import type { Repo } from '../schemas/repo.schema.ts'
+import { isSearchCatalogRepo, readCatalogSearchFields } from './catalogStore.ts'
 import { isArchivedRepo } from './repoMetadata.ts'
 import type { SortOption } from './sortOptions.ts'
 
@@ -53,15 +54,18 @@ export function createCatalogSearchIndex(repos: readonly Repo[]): CatalogSearchI
   const insertText = db.prepare('INSERT INTO search(rowid, text) VALUES (?, ?)')
   const insertMetadata = db.prepare('INSERT INTO metadata VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
   db.transaction(() => {
+    const hasSearchRow = repos.length > 0 && isSearchCatalogRepo(repos[0])
+    const searchFields = hasSearchRow ? readCatalogSearchFields() : null
     for (const [id, repo] of repos.entries()) {
+      const extra = searchFields ? searchFields[(repo as { searchRow: number }).searchRow] : null
       const text = [
         repo.repo_name,
         repo.owner,
-        repo.description,
-        repo.plugin_name,
-        repo.plugin_description,
-        ...(repo.plugins ?? []).flatMap((plugin) => [plugin.name, plugin.description]),
-        ...(repo.plugin_summaries ?? []).flatMap((plugin) => [plugin.name, plugin.description]),
+        extra?.description ?? repo.description,
+        extra?.plugin_name ?? repo.plugin_name,
+        extra?.plugin_description ?? repo.plugin_description,
+        ...((extra?.plugins ?? repo.plugins) ?? []).flatMap((plugin) => [plugin.name, plugin.description]),
+        ...((extra?.plugin_summaries ?? repo.plugin_summaries) ?? []).flatMap((plugin) => [plugin.name, plugin.description]),
       ].join(' ')
       // Source IDs need not be unique in arbitrary catalog inputs.
       insertText.run(id, text)

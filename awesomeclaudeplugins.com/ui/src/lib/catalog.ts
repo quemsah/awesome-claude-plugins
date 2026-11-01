@@ -5,7 +5,7 @@ import type { PluginSummary, Repo } from '../schemas/repo.schema.ts'
 import { getLatestValidStatsDate } from './catalogDates.ts'
 import { CATALOG_PAGE_SIZE } from './catalogPagination.ts'
 import { type CatalogQuality, getCatalogQuality } from './catalogQuality.ts'
-import { getCatalog } from './catalogStore.ts'
+import { getCatalog, hydrateCatalogRepo } from './catalogStore.ts'
 import { createCatalogSearchIndex, hasSearchableTerms } from './fuzzySearch.ts'
 import { isArchivedRepo } from './repoMetadata.ts'
 import { getGitHubRepoPath } from './repositoryIdentity.ts'
@@ -18,7 +18,7 @@ const catalogRepos: readonly CatalogRepo[] = getCatalog().filter(
   (repo): repo is CatalogRepo => repo.owner != null && repo.repo_name != null
 )
 const canonicalCatalogRepos = getUniqueCatalogRepos(catalogRepos)
-const canonicalCatalogRepoSet = new Set(canonicalCatalogRepos)
+const canonicalCatalogRepoIds = new Set(canonicalCatalogRepos.map((repo) => repo.id))
 // Different Next.js route bundles can have different module registries in the same process.
 // Key the shared index by the original catalog array, which catalogStore already shares globally.
 const CATALOG_SEARCH_INDEX_KEY = Symbol.for('awesome-claude-plugins.catalog-search-index')
@@ -137,7 +137,7 @@ export function getBrowsePageCount(): number {
 }
 
 export function getCatalogQualityForRepo(repo: CatalogRepo, fallbackDescription?: string | null): CatalogQuality {
-  return getCatalogQuality(repo, canonicalCatalogRepoSet.has(repo), fallbackDescription)
+  return getCatalogQuality(repo, canonicalCatalogRepoIds.has(repo.id), fallbackDescription)
 }
 
 function getUniqueCatalogRepos(repos: readonly CatalogRepo[]): readonly CatalogRepo[] {
@@ -171,10 +171,13 @@ export function searchCatalogRepos(
   const total = matches?.total ?? canonicalCatalogRepos.length
   const pluginsCount = matches?.pluginsCount ?? catalogPluginsCount
 
+  const hydrate = typeof hydrateCatalogRepo === 'function' ? hydrateCatalogRepo : <T>(r: T): T => r
   return {
     hasMore: start + pageSize < total,
     pluginsCount,
-    repos: repos.map((repo) => (options.summaries === 'omit' ? withoutPluginSummaries(repo) : formatCatalogRepo(repo))),
+    repos: repos.map((repo) =>
+      options.summaries === 'omit' ? withoutPluginSummaries(hydrate(repo)) : formatCatalogRepo(hydrate(repo))
+    ),
     total,
   }
 }
@@ -240,7 +243,10 @@ export function formatCatalogRepo(repo: CatalogRepo): CatalogRepo {
 }
 
 export function findCatalogRepo(repoPath: string) {
-  return catalogReposByPath.get(repoPath.toLowerCase())
+  const repo = catalogReposByPath.get(repoPath.toLowerCase())
+  if (!repo) return undefined
+  const hydrate = typeof hydrateCatalogRepo === 'function' ? hydrateCatalogRepo : <T>(r: T): T => r
+  return hydrate(repo)
 }
 
 export function getCatalogLastModified() {
