@@ -19,6 +19,16 @@ type SearchPage = { matches: { item: Repo; score: number }[]; total: number; plu
 type CatalogSearchIndex = { search: (query: string, sort?: SortOption, page?: number, pageSize?: number) => SearchPage }
 const indexes = new WeakMap<readonly Repo[], CatalogSearchIndex>()
 
+function getSearchTerms(query: string): string[] {
+  const terms = query.match(queryTerms) ?? []
+  return terms.length === 0 || (terms.length === 1 && [...terms[0]].length < 2) ? [] : terms
+}
+
+/** Check query validity before loading SQLite or constructing the catalog's FTS5 index. */
+export function hasSearchableTerms(query: string): boolean {
+  return getSearchTerms(query).length > 0
+}
+
 function dateValue(value: string | null | undefined): number {
   const parsed = value ? Date.parse(value) : 0
   return Number.isFinite(parsed) ? parsed : 0
@@ -107,8 +117,8 @@ export function createCatalogSearchIndex(repos: readonly Repo[]): CatalogSearchI
     search(query, sort = 'stars-desc', page = 0, pageSize = 24) {
       // Quote tokens so punctuation and FTS operators cannot become search syntax.
       // A lone letter plus ignored punctuation (e.g. "c?") must not search all c* words.
-      const terms = query.match(queryTerms) ?? []
-      if (terms.length === 0 || (terms.length === 1 && [...terms[0]].length < 2)) {
+      const terms = getSearchTerms(query)
+      if (terms.length === 0) {
         return { matches: [], total: 0, pluginsCount: 0 }
       }
       const expression = terms.map((term, i) => `"${term}"${i === terms.length - 1 ? '*' : ''}`).join(' AND ')
