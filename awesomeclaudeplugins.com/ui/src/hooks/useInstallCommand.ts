@@ -1,11 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { trackCopyPluginInstall } from '../lib/analytics.ts'
 import { copyText } from '../lib/clipboard.ts'
-import {
-  getDirectPluginInstallCommand,
-  getPluginInstallCommand,
-  isPluginInstallCommandVerified,
-} from '../lib/installCommand.ts'
+import { getDirectPluginInstallCommand, getPluginInstallCommand, isPluginInstallCommandVerified } from '../lib/installCommand.ts'
 
 export type UseInstallCommandOptions = {
   pluginName?: string
