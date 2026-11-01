@@ -56,7 +56,6 @@ describe('catalogStore', () => {
     expect(JSON.stringify(parsed[0])).not.toContain('searchRow')
   })
 
-
   it('rejects reordered V1 fields and truncated or incomplete records', () => {
     const row = [123, 'sample', 'repo', 1, 0, 2, null, null, false, null, 1, null, 'original description', 'marketplace']
     const index = { format: 'v1' as const, fields: [...SEARCH_INDEX_FIELDS], rows: [row], search: 'compressed-metadata' }
