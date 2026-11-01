@@ -1,6 +1,7 @@
 /** biome-ignore-all lint/style/useNamingConvention: catalog data uses snake_case fields */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { closeSync, existsSync, openSync, readFileSync, readSync } from 'node:fs'
 import { join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import type { Repo } from '../schemas/repo.schema.ts'
@@ -21,6 +22,7 @@ export type SearchIndexV1 = {
   fields: string[]
   rows: unknown[][]
   search: string
+  canonicalSha256?: string
 }
 
 // Search rows use positional fields: reject even a reordered V1 schema.
@@ -52,7 +54,8 @@ function isValidSearchIndex(value: unknown): value is SearchIndexV1 {
     Array.isArray(index.rows) &&
     index.rows.every((row) => Array.isArray(row) && row.length === SEARCH_INDEX_FIELDS.length && Number.isSafeInteger(row[0])) &&
     typeof index.search === 'string' &&
-    index.search.length > 0
+    index.search.length > 0 &&
+    (index.canonicalSha256 === undefined || (typeof index.canonicalSha256 === 'string' && /^[0-9a-f]{64}$/.test(index.canonicalSha256)))
   )
 }
 
@@ -94,11 +97,34 @@ export function parseSearchIndex(content: string | SearchIndexV1): Repo[] {
   })
 }
 
+/** Stream the canonical snapshot through SHA-256 instead of allocating another 42 MB buffer. */
+function hashCanonicalFile(path: string): string {
+  const hasher = createHash('sha256')
+  const buffer = Buffer.allocUnsafe(64 * 1024)
+  const fd = openSync(path, 'r')
+  try {
+    let bytesRead: number
+    while ((bytesRead = readSync(fd, buffer, 0, buffer.length, null)) > 0) {
+      hasher.update(buffer.subarray(0, bytesRead))
+    }
+  } finally {
+    closeSync(fd)
+  }
+  return hasher.digest('hex')
+}
+
 /** Recover invalid derived artifacts from the authoritative repos.json snapshot. */
 export function readCatalogFiles(indexPath: string, reposPath: string): Repo[] {
   if (existsSync(indexPath)) {
     try {
-      return parseSearchIndex(readFileSync(indexPath, 'utf8'))
+      const index = JSON.parse(readFileSync(indexPath, 'utf8')) as SearchIndexV1
+      const catalog = parseSearchIndex(index)
+      // Both artifacts are generated together. Detect a stale index without
+      // materializing the canonical JSON in memory during the normal path.
+      if (index.canonicalSha256 && existsSync(reposPath) && hashCanonicalFile(reposPath) !== index.canonicalSha256) {
+        throw new Error('Compact catalog does not match the canonical snapshot')
+      }
+      return catalog
     } catch {
       // A missing, truncated or incompatible index must not take down the catalog.
     }
