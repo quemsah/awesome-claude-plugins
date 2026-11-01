@@ -99,56 +99,20 @@ export function getMarketplaceAddCommand(owner?: string | null, repoName?: strin
 
   return `/plugin marketplace add ${trimmedOwner}/${trimmedRepoName}`
 }
-
-export type OfficialMarketplaceInput = {
-  owner?: string | null
-  repoName?: string | null
-  marketplaceName?: string | null
-  repoPath?: string | null
-}
-
 /**
- * Determines whether a marketplace is the official Anthropic marketplace.
- * The official Anthropic marketplace is pre-configured in Claude Code CLI,
- * so users do not need to run `/plugin marketplace add` before installing.
- *
- * Official marketplaces must be owned by the Anthropic GitHub organization
- * ('anthropics' or 'anthropic').
+ * Builds a one-step, in-session install command from a GitHub marketplace source.
+ * Claude Code v2.1.275+ can register an unknown marketplace during this flow.
+ * Never use display text or repository fields without token validation.
  */
-export function isOfficialMarketplace(input?: OfficialMarketplaceInput | null): boolean {
-  if (!input) return false
+export function getDirectPluginInstallCommand({
+  pluginName,
+  pluginId,
+  owner,
+  repoName,
+}: PluginInstallCommandInput & { owner?: string | null; repoName?: string | null }): string | null {
+  const sourceCommand = getMarketplaceAddCommand(owner, repoName)
+  const pluginCommand = getPluginInstallCommand({ pluginName, pluginId })
+  if (!sourceCommand || !pluginCommand) return null
 
-  let owner = typeof input.owner === 'string' ? input.owner.trim().toLowerCase() : ''
-  const repoName = typeof input.repoName === 'string' ? input.repoName.trim().toLowerCase() : ''
-
-  if (!(owner || repoName) && typeof input.repoPath === 'string') {
-    const parts = input.repoPath.split('/')
-    if (parts.length === 2) {
-      owner = parts[0]?.trim().toLowerCase() ?? ''
-    }
-  }
-
-  // Official Anthropic GitHub organizations
-  return owner === 'anthropics' || owner === 'anthropic'
-}
-
-/**
- * Combines the marketplace add command and plugin install command.
- *
- * When both commands are available, joins them using the specified delimiter (default: "\n" for Claude Code CLI prompts).
- * Returns a single command string, or null if neither command is valid.
- */
-export function getCombinedInstallCommand(
-  marketplaceAddCommand?: string | null,
-  pluginInstallCommand?: string | null,
-  delimiter: '\n' | ' && ' = '\n'
-): string | null {
-  const trimmedAdd = typeof marketplaceAddCommand === 'string' ? marketplaceAddCommand.trim() || null : null
-  const trimmedInstall = typeof pluginInstallCommand === 'string' ? pluginInstallCommand.trim() || null : null
-
-  if (trimmedAdd && trimmedInstall) {
-    return `${trimmedAdd}${delimiter}${trimmedInstall}`
-  }
-
-  return trimmedInstall ?? trimmedAdd ?? null
+  return `${pluginCommand} --marketplace ${sourceCommand.slice('/plugin marketplace add '.length)}`
 }
