@@ -45,7 +45,7 @@ export default async function BrowsePage({ params }: BrowsePageProps) {
     permanentRedirect('/')
   }
 
-  const result = searchCatalogRepos('', 'stars-desc', page - 1, CATALOG_PAGE_SIZE)
+  const result = searchCatalogRepos('', 'stars-desc', page - 1, CATALOG_PAGE_SIZE, { summaries: 'omit' })
   if (result.repos.length === 0) {
     notFound()
   }

@@ -54,7 +54,7 @@ function payload(request: { init: RequestInit | undefined }): unknown {
 }
 
 describe('GitHubGitClient', () => {
-  it('creates exactly four content blobs on the base tree and advances the ref without force', async () => {
+  it('publishes complete split catalog artifacts atomically with the original snapshot', async () => {
     const { client, requests } = mockClient([
       ref(baseSha),
       commit(baseSha, baseTree, [rootSha]),
@@ -83,7 +83,19 @@ describe('GitHubGitClient', () => {
       'X-GitHub-Api-Version': '2022-11-28',
     })
     expect(requests[2].init?.headers).toMatchObject({ 'Content-Type': 'application/json' })
-    expect(payload(requests[2])).toEqual({
+    const published = payload(requests[2]) as { base_tree: string; tree: Array<{ path: string; content: string }> }
+    expect(published.tree).toHaveLength(105)
+    const searchIndex = published.tree.find((entry) => entry.path.endsWith('/search-index.json'))
+    const decodedIndex = JSON.parse(searchIndex?.content ?? '{}') as { format: string; rows: unknown[][] }
+    expect(decodedIndex.format).toBe('v1')
+    expect(decodedIndex.rows).toHaveLength(1)
+    expect(decodedIndex.rows[0].slice(0, 6)).toEqual([1, null, null, 0, 0, null])
+    expect(published.tree.find((entry) => entry.path.endsWith('/repo-details/1.json'))).toBeDefined()
+    expect(published.tree.find((entry) => entry.path.endsWith('/repo-details/99.json'))).toBeDefined()
+    expect({
+      base_tree: published.base_tree,
+      tree: published.tree.filter((entry) => !entry.path.endsWith('/search-index.json') && !entry.path.includes('/repo-details/')),
+    }).toEqual({
       base_tree: baseTree,
       tree: [
         { path: 'README.md', mode: '100644', type: 'blob', content: '# Catalog\n' },
@@ -94,6 +106,53 @@ describe('GitHubGitClient', () => {
     })
     expect(payload(requests[3])).toEqual({ tree: treeSha, parents: [baseSha], message: 'Update catalog' })
     expect(payload(requests[4])).toEqual({ sha: pendingSha, force: false })
+  })
+
+  it('rebuilds derived artifacts for every new catalog revision', async () => {
+    const { client, requests } = mockClient([Response.json({ sha: treeSha }), Response.json({ sha: treeSha })])
+    await client.createTree(baseTree, { ...files, reposJson: '[{"id":1,"owner":"one","repo_name":"first","description":"Old"}]' })
+    await client.createTree(baseTree, { ...files, reposJson: '[{"id":2,"owner":"two","repo_name":"second","description":"New"}]' })
+    const entries = requests.map((request) => (payload(request) as { tree: Array<{ path: string; content: string }> }).tree)
+    const indexRows = entries.map((tree) => {
+      const index = tree.find((entry) => entry.path.endsWith('/search-index.json'))
+      return (JSON.parse(index?.content ?? '{}') as { rows: unknown[][] }).rows
+    })
+    expect(indexRows[0][0][0]).toBe(1)
+    expect(indexRows[1][0][0]).toBe(2)
+    const buckets = entries.map((tree, i) => {
+      const path = `/repo-details/${i + 1}.json`
+      return JSON.parse(tree.find((entry) => entry.path.endsWith(path))?.content ?? '{}') as Record<string, unknown>
+    })
+    expect(buckets[0]).toHaveProperty('1')
+    expect(buckets[1]).toHaveProperty('2')
+  })
+
+  it('batches large snapshots into intermediate Git trees before committing', async () => {
+    const large = {
+      ...files,
+      reposJson: JSON.stringify([{ id: 1, owner: 'one', repo_name: 'demo', description: 'a'.repeat(5 * 1024 * 1024) }]),
+    }
+    const { client, requests } = mockClient(Array.from({ length: 12 }, () => Response.json({ sha: treeSha })))
+    expect(await client.createTree(baseTree, large)).toBe(treeSha)
+    const trees = requests.map((request) => payload(request) as { base_tree: string; tree: Array<{ path: string; content: string }> })
+    expect(trees.length).toBeGreaterThan(2)
+    expect(trees[0].base_tree).toBe(baseTree)
+    for (const tree of trees.slice(1)) expect(tree.base_tree).toBe(treeSha)
+    expect(trees.flatMap((tree) => tree.tree)).toHaveLength(105)
+    for (const tree of trees) {
+      if (Buffer.byteLength(JSON.stringify(tree)) > 4 * 1024 * 1024) {
+        expect(tree.tree).toHaveLength(1) // The original large blob cannot be split.
+      }
+    }
+    expect(requests.every((request) => request.url.endsWith('/trees'))).toBe(true)
+  })
+
+  it('does not advance the ref when a later tree chunk fails', async () => {
+    const large = { ...files, reposJson: JSON.stringify([{ id: 1, description: 'a'.repeat(5 * 1024 * 1024) }]) }
+    const { client, requests } = mockClient([Response.json({ sha: treeSha }), new Response('', { status: 422 })])
+    await expect(client.createTree(baseTree, large)).rejects.toMatchObject({ status: 422 })
+    expect(requests).toHaveLength(2)
+    expect(requests.every((request) => request.url.endsWith('/trees'))).toBe(true)
   })
 
   it('requires explicit publishing credentials and repository identity before any request', () => {

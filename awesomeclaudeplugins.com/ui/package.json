@@ -7,8 +7,8 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build --webpack",
-    "build:analyze": "cross-env ANALYZE=true next build --webpack",
+    "build": "node scripts/split-catalog.mjs && next build --webpack",
+    "build:analyze": "node scripts/split-catalog.mjs && cross-env ANALYZE=true next build --webpack",
     "start": "next start",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "indexnow": "node scripts/indexnow.mjs",

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
@@ -36,6 +36,8 @@ it('exports exactly the verified README and JSON files to a new directory withou
     expect(JSON.parse(readFileSync(join(out, 'ui/src/data/repos.json'), 'utf8'))).toHaveLength(2)
     expect(JSON.parse(readFileSync(join(out, 'ui/src/data/stats.json'), 'utf8'))).toHaveLength(3)
     expect(JSON.parse(readFileSync(join(out, 'ui/src/data/markdown-paths.json'), 'utf8'))).toEqual([])
+    expect(JSON.parse(readFileSync(join(out, 'ui/src/data/search-index.json'), 'utf8')).rows).toHaveLength(2)
+    expect(existsSync(join(out, 'ui/src/data/repo-details'))).toBe(true)
     expect(db.serialize()).toEqual(before)
     expect(() => exportDraftSnapshot(db, 'prepared', out)).toThrow()
   } finally {

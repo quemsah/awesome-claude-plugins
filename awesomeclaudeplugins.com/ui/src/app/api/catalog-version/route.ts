@@ -1,9 +1,21 @@
 import { createHash } from 'node:crypto'
-import catalog from '../../../data/repos.json' with { type: 'json' }
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
-// Built from the deployed catalog, not the GitHub Actions checkout.
 export const dynamic = 'force-static'
-const sha256 = createHash('sha256').update(JSON.stringify(catalog)).digest('hex')
+
+function getCatalogVersionHash(): string {
+  const reposFile = join(process.cwd(), 'src/data/repos.json')
+  if (!existsSync(reposFile)) return ''
+  try {
+    const repos = JSON.parse(readFileSync(reposFile, 'utf8'))
+    return createHash('sha256').update(JSON.stringify(repos)).digest('hex')
+  } catch {
+    return ''
+  }
+}
+
+const sha256 = getCatalogVersionHash()
 
 export function GET() {
   return new Response(JSON.stringify({ sha256 }), {

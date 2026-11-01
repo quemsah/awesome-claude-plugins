@@ -9,6 +9,11 @@ on:
       - 'awesomeclaudeplugins.com/ui/scripts/benchmark-catalog-coldstart.mjs'
       - 'awesomeclaudeplugins.com/ui/src/lib/catalog.ts'
       - 'awesomeclaudeplugins.com/ui/src/lib/fuzzySearch.ts'
+      - 'awesomeclaudeplugins.com/ui/src/lib/catalogStore.ts'
+      - 'awesomeclaudeplugins.com/crawler/src/output/splitCatalog.ts'
+      - 'awesomeclaudeplugins.com/crawler/src/publish/githubGit.ts'
+      - 'awesomeclaudeplugins.com/ui/scripts/split-catalog.mjs'
+      - 'awesomeclaudeplugins.com/ui/package.json'
   workflow_dispatch:
 
 permissions:
@@ -51,6 +56,9 @@ jobs:
         run: |
           sha256sum baseline/awesomeclaudeplugins.com/ui/src/data/repos.json candidate/awesomeclaudeplugins.com/ui/src/data/repos.json
           cmp baseline/awesomeclaudeplugins.com/ui/src/data/repos.json candidate/awesomeclaudeplugins.com/ui/src/data/repos.json
+      - name: Regenerate candidate index before standalone benchmark
+        working-directory: candidate/awesomeclaudeplugins.com/ui
+        run: node scripts/split-catalog.mjs
       - name: Measure RAM (three independent processes per revision)
         shell: bash
         run: |
