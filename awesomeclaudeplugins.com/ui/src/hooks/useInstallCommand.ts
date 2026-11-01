@@ -74,7 +74,8 @@ export function useInstallCommand(
   const needsMarketplaceAdd = Boolean(!isOfficial && marketplaceName && rawMarketplaceAddCommand)
   const marketplaceAddCommand = needsMarketplaceAdd ? rawMarketplaceAddCommand : null
 
-  const combinedCommand = getCombinedInstallCommand(marketplaceAddCommand, installCommand)
+  const canCopyBoth = Boolean(marketplaceAddCommand && installCommand && isVerified)
+  const combinedCommand = canCopyBoth ? getCombinedInstallCommand(marketplaceAddCommand, installCommand) : null
 
   const copyWithFeedback = async (text: string | null, target: 'plugin' | 'marketplace' | 'both', onTrack: () => void) => {
     if (!text) return
@@ -105,7 +106,7 @@ export function useInstallCommand(
   }
 
   const handleCopyBoth = async () => {
-    if (!combinedCommand) return
+    if (!(canCopyBoth && combinedCommand)) return
     await copyWithFeedback(combinedCommand, 'both', () => {
       trackCopyMarketplaceAdd()
       trackCopyPluginInstall()
@@ -113,6 +114,7 @@ export function useInstallCommand(
   }
 
   return {
+    canCopyBoth,
     combinedCommand,
     copiedTarget,
     copyError,
