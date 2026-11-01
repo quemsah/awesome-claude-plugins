@@ -53,7 +53,11 @@ export function PluginSource({ source, repoPath, defaultBranch }: PluginSourcePr
   let ariaLabel = `Open source file ${sourcePath} in a new tab`
 
   if (typeof source === 'string') {
-    if (source.startsWith('github:')) {
+    if (source === '.' || source === './') {
+      // A root plugin points to the repository, not a fictitious /blob/{branch}/./ file.
+      sourceUrl = `https://github.com/${encodeGitHubPath(repoPath)}`
+      ariaLabel = `Open source repository ${repoPath} in a new tab`
+    } else if (source.startsWith('github:')) {
       const sourceRepo = source.slice('github:'.length)
       if (GITHUB_REPO_PATH_PATTERN.test(sourceRepo)) sourceUrl = `https://github.com/${sourceRepo}`
     } else if (SAFE_SOURCE_PATH_PATTERN.test(source) && defaultBranch) {

@@ -1,0 +1,21 @@
+import { readFileSync } from 'node:fs'
+import { parseStandalonePlugin, toStandaloneCatalogManifest } from '@awesome-claude-plugins/catalog-contract'
+import { expect, it } from 'vitest'
+import { getStandalonePluginForDisplay } from './plugin.type.ts'
+
+it('shares the crawler standalone identity contract and root source', () => {
+  const fixture = JSON.parse(
+    readFileSync(new URL('../../../../shared/fixtures/standalone-plugin/v1/minimal.json', import.meta.url), 'utf8')
+  )
+  expect(toStandaloneCatalogManifest(parseStandalonePlugin(fixture))).toEqual({
+    manifestKind: 'standalone-plugin',
+    plugins: [{ name: 'reviewer', source: './' }],
+  })
+})
+
+it('preserves a non-kebab-case plugin name without fabricating a CLI id', () => {
+  expect(getStandalonePluginForDisplay({ name: 'Review Tools', source: 'https://other.example', version: 123 })).toEqual({
+    name: 'Review Tools',
+    source: './',
+  })
+})

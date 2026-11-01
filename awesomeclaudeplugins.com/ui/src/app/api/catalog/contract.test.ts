@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { searchCatalogRepos } from '../../../lib/catalog.ts'
 import { catalogApiContract } from '../../../lib/discovery.ts'
 import { GET } from './route.ts'
 
@@ -16,6 +17,17 @@ async function get(search: string) {
  * handler rather than against the handler's own constants.
  */
 describe('/api/catalog published contract', () => {
+  it('answers an uncached query in less than 50 ms after catalog initialization', () => {
+    // Prime search machinery without executing the query whose request work is measured.
+    searchCatalogRepos('superpowers', 'stars-desc')
+    const start = performance.now()
+    const result = searchCatalogRepos('zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzy', 'stars-desc')
+    const elapsed = performance.now() - start
+
+    expect(result.total).toBe(0)
+    expect(elapsed).toBeLessThan(50)
+  }, 20_000)
+
   it('answers with exactly the documented envelope and media type', async () => {
     const { body, response } = await get('')
 

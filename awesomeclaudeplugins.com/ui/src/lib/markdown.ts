@@ -3,6 +3,7 @@ import { getCatalogLastModified, getCatalogQualityForRepo } from './catalog.ts'
 import { BASE_URL, SOURCE_REPOSITORY_URL } from './constants.ts'
 import { getMarketplaceAddCommand } from './installCommand.ts'
 import { getGitHubRepoPath, getGitHubRepoUrl } from './repositoryIdentity.ts'
+import { getStandalonePluginLoadInstructions } from './standalonePluginInstructions.ts'
 import { formatDate } from './utils.ts'
 
 export function buildHomeMarkdown(): string {
@@ -16,7 +17,7 @@ Search and sort the [repository catalog](${BASE_URL}/), or follow the [catalog b
 
 ## Inclusion and quality
 
-Entries are discovered from public GitHub data. Indexable entries have a validated marketplace plugin count; entries missing those signals remain available for review but are not promoted in search engines. Stars, forks, and plugin counts are descriptive signals, not endorsements.
+Entries are discovered from public GitHub data. Indexable entries have a validated plugin count from marketplace or standalone manifests; entries missing that signal remain available for review but are not promoted in search engines. Stars, forks, and plugin counts are descriptive signals, not endorsements.
 
 ## Corrections and source
 
@@ -35,7 +36,7 @@ export function buildAboutMarkdown(): string {
 
 Awesome Claude Plugins is a daily-updated directory of Claude Code plugins and tools, inspired by the "awesome" list movement.
 
-Repositories are discovered from public GitHub data and refreshed daily. Indexable entries require a validated marketplace plugin count. Plugin counts reflect manifests we can validate, not endorsements. Review code, licenses, and maintenance before installing.
+Repositories are discovered from public GitHub data and refreshed daily. Indexable entries require a validated plugin count from marketplace or standalone manifests. Plugin counts reflect manifests we can validate, not endorsements. Review code, licenses, and maintenance before installing.
 
 ## Provenance and corrections
 
@@ -112,7 +113,9 @@ export function buildRepoMarkdown(repo: Repo): string {
   const repoPath = getGitHubRepoPath(repo.owner, repo.repo_name)
   const canonicalUrl = `${BASE_URL}/${repoPath}`
   const repositoryUrl = getGitHubRepoUrl(repo.owner, repo.repo_name)
-  const marketplaceCommand = getMarketplaceAddCommand(repo.owner, repo.repo_name)
+  const standalone = repo.manifest_kind === 'standalone-plugin'
+  const localInstructions = standalone ? getStandalonePluginLoadInstructions(repo.owner, repo.repo_name) : null
+  const marketplaceCommand = standalone ? null : getMarketplaceAddCommand(repo.owner, repo.repo_name)
   const description = repo.description?.trim() || MISSING_DESCRIPTION
   const descriptionBody = toMarkdownText(foldToSingleLine(description))
   const pluginCount =
@@ -132,6 +135,7 @@ export function buildRepoMarkdown(repo: Repo): string {
     toYamlProperty('quality_note', quality.qualityReason),
     toYamlProperty('catalog_updated', getCatalogLastModified().toISOString()),
     toYamlProperty('install_command', marketplaceCommand),
+    ...(standalone ? [toYamlProperty('manifest_kind', 'standalone-plugin')] : []),
     '---',
   ].join('\n')
 
@@ -157,6 +161,6 @@ ${descriptionBody}
 
 ## Installation
 
-${marketplaceCommand ? `When this repository exposes a Claude Code marketplace, add it with:\n\n\`\`\`bash\n${marketplaceCommand}\n\`\`\`` : 'No marketplace install command is available.'}
+${localInstructions ? `Load locally for this Claude Code session:\n\n\`\`\`sh\n${localInstructions}\n\`\`\`` : marketplaceCommand ? `When this repository exposes a Claude Code marketplace, add it with:\n\n\`\`\`bash\n${marketplaceCommand}\n\`\`\`` : 'No marketplace install command is available.'}
 `
 }

@@ -3,15 +3,15 @@ import { copiedText, mockClipboard } from './helpers.ts'
 
 const noPluginsText = 'No Claude Code plugins found in this repository.'
 const marketplaceErrorText = 'Failed to load marketplace manifest.'
-const marketplaceMissingText = 'No marketplace manifest was found in this repository.'
+const marketplaceMissingText = 'No marketplace or standalone plugin manifest was found in this repository.'
 const staleRepositoryText = 'Live GitHub data is temporarily unavailable.'
 const unavailableRepositoryText = 'no longer available on GitHub'
 const mdserveCanonicalPattern = /\/jfernandez\/mdserve$/
 const repoCanonicalPattern = /\/ykdojo\/claude-code-tips$/
 const repoMarkdownAlternatePattern = /\/ykdojo\/claude-code-tips\.md$/
 const repoOpenGraphImagePattern = /\/og\/ykdojo\/claude-code-tips$/
-const dxPluginHeadingPattern = /^dx@/
 const mockGithubApiUrl = `http://127.0.0.1:${process.env.MOCK_GITHUB_PORT ?? '3100'}`
+const standaloneManifestPattern = /\/HEAD\/\.claude-plugin\/plugin\.json$/
 
 // Next.js may serialize the public GitHub API origin into the server-rendered page.
 // Keep browser-side repository requests deterministic regardless of that runtime prop.
@@ -45,6 +45,47 @@ test('repo detail page serves catalog repository data in its HTML without contac
   expect(html).not.toContain('>Unknown<')
   expect(html).not.toContain(staleRepositoryText)
   expect(html).not.toContain(unavailableRepositoryText)
+})
+
+test('loads a standalone root plugin without suggesting marketplace installation', async ({ page }, testInfo) => {
+  await mockClipboard(page)
+  await page.route('**/mksglu/context-mode/HEAD/.claude-plugin/marketplace.json', (route) => route.fulfill({ status: 404, body: '{}' }))
+  await page.route('**/mksglu/context-mode/HEAD/.claude-plugin/plugin.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        name: 'Review Tools',
+        description: 'A standalone plugin loaded from the repository root.',
+        commands: './commands/review.md',
+      }),
+    })
+  )
+  await page.goto('/mksglu/context-mode')
+  await expect(page.getByRole('heading', { name: 'Review Tools' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Load locally' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Open source repository mksglu/context-mode in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/mksglu/context-mode'
+  )
+  await expect(page.locator('article')).toHaveCount(1)
+  await expect(page.getByText('Loads the plugin for this Claude Code session.')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'View plugin.json' })).toHaveAttribute('href', standaloneManifestPattern)
+  await expect(page.getByRole('link', { name: 'Open ./commands/review.md in a new tab' })).toHaveAttribute(
+    'href',
+    'https://github.com/mksglu/context-mode/blob/main/commands/review.md'
+  )
+  await expect(page.getByText('/plugin marketplace add', { exact: false })).toHaveCount(0)
+  await expect(page.getByText('/plugin install', { exact: false })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Copy local loading instructions' }).click()
+  await expect
+    .poll(() => copiedText(page))
+    .toBe('git clone https://github.com/mksglu/context-mode.git ./context-mode\nclaude --plugin-dir ./context-mode')
+  await page.screenshot({ path: testInfo.outputPath('standalone-plugin.png'), fullPage: true })
+  await page
+    .locator('[data-slot="card"]')
+    .filter({ has: page.getByRole('heading', { name: 'Available plugins', exact: true }) })
+    .screenshot({ path: testInfo.outputPath('standalone-plugin-card.png') })
 })
 
 test('repo detail page refreshes repository and marketplace data in the browser', async ({ page }) => {
@@ -319,16 +360,16 @@ test('repo detail page displays two-step install instructions for external marke
   await mockClipboard(page)
   await page.goto('/ykdojo/claude-code-tips')
 
-  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: dxPluginHeadingPattern }) })
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Example Plugin@1.2.3' }) })
 
   await expect(plugin.getByText('Step 1: Add marketplace')).toBeVisible()
   await expect(plugin.getByText('/plugin marketplace add ykdojo/claude-code-tips')).toBeVisible()
   await expect(plugin.getByText('Step 2: Install plugin')).toBeVisible()
-  await expect(plugin.getByText('/plugin install dx@ykdojo')).toBeVisible()
+  await expect(plugin.getByText('/plugin install example-plugin@ykdojo')).toBeVisible()
 
   await plugin.getByRole('button', { name: 'Copy marketplace add command' }).click()
   await expect.poll(() => copiedText(page)).toBe('/plugin marketplace add ykdojo/claude-code-tips')
 
   await plugin.getByRole('button', { name: 'Copy both commands' }).click()
-  await expect.poll(() => copiedText(page)).toBe('/plugin marketplace add ykdojo/claude-code-tips\n/plugin install dx@ykdojo')
+  await expect.poll(() => copiedText(page)).toBe('/plugin marketplace add ykdojo/claude-code-tips\n/plugin install example-plugin@ykdojo')
 })

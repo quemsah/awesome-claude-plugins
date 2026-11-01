@@ -29,8 +29,10 @@ export function isPluginSummary(value: unknown): value is PluginSummary {
   return value.name !== undefined || value.description !== undefined
 }
 
+export const MAX_PLUGIN_SUMMARIES = 500
+
 export function isPluginSummaries(value: unknown): value is PluginSummary[] {
-  return Array.isArray(value) && value.length <= 30 && value.every(isPluginSummary)
+  return Array.isArray(value) && value.length <= MAX_PLUGIN_SUMMARIES && value.every(isPluginSummary)
 }
 
 export function parsePluginSummariesJson(value: string | null): PluginSummary[] | null {
@@ -48,10 +50,14 @@ export function serializePluginSummaries(items: readonly unknown[]): string {
   for (const item of items) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) continue
     const record = item as Record<string, unknown>
-    const name = typeof record.name === 'string' ? boundedDisplayText(record.name, 160) : ''
+    const displayName =
+      typeof record.displayName === 'string' && record.displayName.trim().length > 0 && record.displayName.length <= 160
+        ? record.displayName
+        : record.name
+    const name = typeof displayName === 'string' ? boundedDisplayText(displayName, 160) : ''
     const description = typeof record.description === 'string' ? boundedDisplayText(record.description, 300) : ''
     if (name || description) summaries.push({ ...(name ? { name } : {}), ...(description ? { description } : {}) })
-    if (summaries.length >= 30) break
+    if (summaries.length >= MAX_PLUGIN_SUMMARIES) break
   }
   return JSON.stringify(summaries)
 }

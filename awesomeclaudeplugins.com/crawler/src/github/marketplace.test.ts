@@ -1,5 +1,11 @@
 import { expect, it } from 'vitest'
-import { MarketplaceFormatError, parseMarketplace } from './marketplace.js'
+import {
+  getMarketplacePluginRejection,
+  isMarketplacePlugin,
+  MarketplaceFormatError,
+  parseMarketplace,
+  resolveMarketplacePluginDisplayName,
+} from './marketplace.js'
 
 it('counts only plugin entries with a name and source', () => {
   const marketplace = parseMarketplace({
@@ -27,6 +33,39 @@ it('counts only plugin entries with a name and source', () => {
     { name: 'valid-local', source: './plugins/valid' },
     { name: 'valid-github', source: { source: 'github', repo: 'team/tool' } },
   ])
+})
+
+it('rejects unsafe plugin identifiers such as names with spaces matching UI validation', () => {
+  const reproduction = {
+    name: 'demo',
+    owner: { name: 'Maintainer' },
+    plugins: [{ name: 'bad name', source: './plugins/demo' }],
+  }
+  const result = parseMarketplace(reproduction)
+  expect(result.plugins).toEqual([])
+  expect(isMarketplacePlugin(reproduction.plugins[0])).toBe(false)
+  expect(getMarketplacePluginRejection(reproduction.plugins[0])).toBe('Must be a safe plugin identifier')
+})
+
+it('preserves human-readable display names without rejecting valid canonical identifiers', () => {
+  const manifest = {
+    name: 'demo',
+    owner: { name: 'Maintainer' },
+    plugins: [
+      { name: 'valid-plugin', displayName: 'Human Readable Display Label', source: './plugins/demo' },
+      { name: 'another-plugin', displayName: '   ', source: './plugins/another' },
+    ],
+  }
+  const result = parseMarketplace(manifest)
+  expect(result.plugins.length).toBe(2)
+  expect(resolveMarketplacePluginDisplayName(manifest.plugins[0])).toBe('Human Readable Display Label')
+  expect(resolveMarketplacePluginDisplayName(manifest.plugins[1])).toBe('another-plugin')
+})
+
+it('rejects unsafe identifiers even when display name is provided', () => {
+  const entry = { name: 'bad name', displayName: 'Valid Display Label', source: './plugins/demo' }
+  expect(isMarketplacePlugin(entry)).toBe(false)
+  expect(getMarketplacePluginRejection(entry)).toBe('Must be a safe plugin identifier')
 })
 
 it('rejects a document without the required marketplace root fields', () => {

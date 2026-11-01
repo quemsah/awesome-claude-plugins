@@ -12,6 +12,7 @@ import { executeCrawl, executePublish } from './execute.js'
 const now = () => new Date('2026-09-23T12:00:00.000Z')
 const range = [[0, 150]] as const
 const reader: GitHubReader = {
+  getPluginManifest: async () => ({ kind: 'not-found' }),
   searchRepositories: async () => ({ items: [], total_count: 0, incomplete_results: false }),
   searchCode: vi.fn(async () => ({ items: [], total_count: 0, incomplete_results: false })),
   getRepository: vi.fn(async (owner: string, repo: string) =>
@@ -52,6 +53,40 @@ function notifier() {
 }
 
 describe('orchestration', () => {
+  it('persists health-check outcomes and includes deletions in draft and replayed publication summaries', async () => {
+    const db = await dbFixture()
+    try {
+      const notify = notifier()
+      const result = await executeCrawl(
+        db,
+        {
+          ...reader,
+          checkRepository: async (owner, repo) =>
+            owner === 'alpha' ? { kind: 'found', data: { html_url: `https://github.com/${owner}/${repo}` } } : { kind: 'not-found' },
+        },
+        'health-report',
+        { now, ranges: range, dryRun: true, notifier: notify },
+      )
+      expect(result.report.healthCheck).toEqual({ checked: 3, deleted: 2, renamed: 0, warnings: 0 })
+      expect(JSON.parse(getSetting(db, 'run_report_health-report') ?? 'null').healthCheck).toEqual(result.report.healthCheck)
+      expect(notify.notifyDryRun).toHaveBeenCalledWith(expect.objectContaining({ deletedCount: 4, healthCheck: result.report.healthCheck }))
+      const git = {
+        getBranchHead: async () => ({ sha: 'a'.repeat(40), treeSha: 'b'.repeat(40) }),
+        createTree: async () => 'c'.repeat(40),
+        createCommit: async () => 'd'.repeat(40),
+        updateBranch: async () => {},
+        isCommitReachable: async () => false,
+      }
+      const published = await executePublish(db, git, 'health-report', { now, notifier: notify, writeEnabled: true })
+      expect(published.report?.healthCheck).toEqual(result.report.healthCheck)
+      expect(notify.notifySuccess).toHaveBeenCalledWith(
+        expect.objectContaining({ deletedCount: 4, healthCheck: result.report.healthCheck }),
+      )
+    } finally {
+      db.close()
+    }
+  })
+
   it('persists and round-trips bounded source status without treating incomplete repo search as crawl failure', async () => {
     const db = await dbFixture()
     try {
@@ -142,7 +177,7 @@ describe('orchestration', () => {
       })
       expect(result).toMatchObject({
         report: {
-          discovery: { successfulRanges: 2 },
+          discovery: { successfulRanges: 3 },
           enrichment: { updated: 1, deleted404: 2, deletedBlankUrl: 2 },
           errorCategories: {},
           rateBuckets,
@@ -172,6 +207,7 @@ describe('orchestration', () => {
       searchCode: async () => {
         throw new GitHubTemporaryError('read-secret inside body', 503)
       },
+      getPluginManifest: async () => ({ kind: 'not-found' }),
       searchRepositories: async () => {
         throw new GitHubTemporaryError('read-secret inside body', 503)
       },
@@ -181,7 +217,11 @@ describe('orchestration', () => {
     expect(notify.notifyFailure).toHaveBeenCalledWith(
       expect.objectContaining({
         reason: 'no_successful_ranges',
-        problematicRanges: ['marketplace_filename_path size:0..150', 'marketplace_path_literal size:0..150'],
+        problematicRanges: [
+          'marketplace_filename_path size:0..150',
+          'marketplace_path_literal size:0..150',
+          'plugin_filename_path size:0..150',
+        ],
       }),
     )
     expect(JSON.stringify(listRunErrors(db, 'failed'))).not.toContain('read-secret')
@@ -209,7 +249,7 @@ describe('orchestration', () => {
     const result = await executePublish(db, git, 'prepared', { now, notifier: notify, log, writeEnabled: true })
     expect(result).toMatchObject({ status: 'published', sha: 'd'.repeat(40) })
     expect(result.report).toMatchObject({
-      discovery: { successfulRanges: 2 },
+      discovery: { successfulRanges: 3 },
       enrichment: { updated: 1 },
       warningCount: 0,
       errorCategories: {},
@@ -266,6 +306,7 @@ describe('orchestration', () => {
       families: {
         marketplace_filename_path: { successfulRanges: 4, warningCount: 1 },
         marketplace_path_literal: { successfulRanges: 0, warningCount: 0 },
+        plugin_filename_path: { successfulRanges: 0, warningCount: 0 },
       },
     })
     db.close()
@@ -409,6 +450,7 @@ describe('orchestration', () => {
       searchCode: async () => {
         throw new GitHubTemporaryError('read-secret', 503)
       },
+      getPluginManifest: async () => ({ kind: 'not-found' }),
       searchRepositories: async () => {
         throw new GitHubTemporaryError('read-secret', 503)
       },
@@ -439,6 +481,7 @@ describe('orchestration', () => {
       searchCode: async () => {
         throw new GitHubTemporaryError('read-secret', 503)
       },
+      getPluginManifest: async () => ({ kind: 'not-found' }),
       searchRepositories: async () => {
         throw new GitHubTemporaryError('read-secret', 503)
       },

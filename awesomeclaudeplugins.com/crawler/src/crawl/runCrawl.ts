@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import { GitHubFatalError, type GitHubReader, GitHubTemporaryError } from '../github/client.js'
 import { repositorySearchQueries } from '../github/repositorySearchQueries.js'
+import { discoverySearchFamilies } from '../github/searchFamilies.js'
 import type { SizeRange } from '../github/sizeRanges.js'
 import type { Log } from '../logging.js'
 import { ShutdownError, throwIfShutdown } from '../shutdown.js'
@@ -21,6 +22,7 @@ import {
 import { type DiscoverySummary, discover } from './discover.js'
 import { discoverRepositories } from './discoverRepositories.js'
 import { type EnrichmentCounts, enrichRepositories, MAX_PENDING_CANDIDATES_PER_RUN } from './enrich.js'
+import { type HealthCheckSummary, healthCheck } from './healthCheck.js'
 
 export type RunCrawlOptions = {
   ranges?: readonly SizeRange[]
@@ -43,6 +45,7 @@ export type DiscoverySourceSummary = {
   uniqueCandidates: number
   newUrls: number
   acceptedMarketplaces: number
+  acceptedStandalonePlugins: number
   rejectedCandidates: number
   pendingCandidates: number
   saturatedPartitions: number
@@ -61,6 +64,7 @@ export type CrawlSummary = {
   status: 'completed'
   discovery: CrawlDiscoverySummary
   enrichment: EnrichmentCounts
+  healthCheck: HealthCheckSummary
   warningCount: number
   errorCategories: Record<string, number>
 }
@@ -180,6 +184,7 @@ async function crawlAndComplete(
     if (!heartbeatRun(db, runId, now())) throw new CrawlError('run_not_active')
   }
   throwIfShutdown(options.signal)
+  const health = await healthCheck(db, reader, runId, heartbeat, now, options.log, { signal: options.signal })
   startRunPhase(db, runId, 'discovery', now())
   options.onPhase?.('discovery')
   const acceptedRepositories = () =>
@@ -187,10 +192,35 @@ async function crawlAndComplete(
   const previousAccepted = acceptedRepositories()
   const previousAcceptedIds = new Set(previousAccepted.map(({ id }) => id))
   const previousAcceptedUrls = new Set(previousAccepted.map(({ html_url }) => html_url?.toLowerCase()))
-  const codeMetrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0 }
+  const codeMetrics = {
+    pagesFetched: 0,
+    totalResults: 0,
+    partitions: 0,
+    incompletePartitions: 0,
+    pluginSearchHits: 0,
+    pluginNonRootHits: 0,
+    pluginSaturatedPages: 0,
+  }
   const code = await discover(db, reader, runId, options.ranges ?? [[0, 400_000]], heartbeat, now, options.log, codeMetrics)
   const repo = await discoverOptionalRepositories(db, reader, runId, options, heartbeat, now)
-  const emptyYield = { uniqueCandidates: 0, acceptedMarketplaces: 0, rejectedCandidates: 0, pendingCandidates: 0 }
+  options.log?.({
+    level: 'info',
+    event: 'crawl.standalone_discovery_coverage',
+    phase: 'discovery',
+    category: 'standalone_discovery_coverage',
+    runId,
+    message: `Standalone discovery examined ${codeMetrics.pluginSearchHits} hits, excluded ${codeMetrics.pluginNonRootHits} non-root paths, and encountered ${codeMetrics.pluginSaturatedPages} capped pages`,
+    pluginSearchHits: codeMetrics.pluginSearchHits,
+    pluginNonRootHits: codeMetrics.pluginNonRootHits,
+    pluginSaturatedPages: codeMetrics.pluginSaturatedPages,
+  })
+  const emptyYield = {
+    uniqueCandidates: 0,
+    acceptedMarketplaces: 0,
+    acceptedStandalonePlugins: 0,
+    rejectedCandidates: 0,
+    pendingCandidates: 0,
+  }
   const discovery: CrawlDiscoverySummary = {
     ...code,
     coverageScope: 'configured_query_catalog',
@@ -201,7 +231,7 @@ async function crawlAndComplete(
         ...codeMetrics,
         ...emptyYield,
         state: codeMetrics.incompletePartitions ? 'incomplete' : codeMetrics.partitions ? 'complete' : 'not_due',
-        queries: 2,
+        queries: discoverySearchFamilies.length,
         newUrls: code.newUrls,
         saturatedPartitions: code.warnings.filter(({ category }) => category === 'saturated').length,
         warnings: [...new Set(code.warnings.map(({ category }) => category))],
@@ -268,7 +298,7 @@ async function crawlAndComplete(
   }
   const warningCount = errors.length + Number(repo.state === 'incomplete')
   if (!completeRun(db, runId, now(), warningCount)) throw new CrawlError('run_not_active')
-  return { runId, status: 'completed', discovery, enrichment, warningCount, errorCategories }
+  return { runId, status: 'completed', discovery, enrichment, healthCheck: health, warningCount, errorCategories }
 }
 
 function failCrawl(db: Database.Database, runId: string, error: unknown, category: CrawlFailureCategory, now: () => string): CrawlError {

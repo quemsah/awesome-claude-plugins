@@ -29,7 +29,17 @@ export type DiscoverySummary = {
   families: Record<DiscoveryQueryFamily, DiscoveryFamilySummary>
 }
 
-export type CodeDiscoveryMetrics = { pagesFetched: number; totalResults: number; partitions: number; incompletePartitions: number }
+export type CodeDiscoveryMetrics = {
+  pagesFetched: number
+  totalResults: number
+  partitions: number
+  incompletePartitions: number
+  /** Examined Code Search results from the standalone plugin query family. */
+  pluginSearchHits?: number
+  pluginNonRootHits?: number
+  /** Search pages hitting the GitHub result cap, including ranges later split. */
+  pluginSaturatedPages?: number
+}
 
 type RangeState = {
   metrics?: CodeDiscoveryMetrics
@@ -143,9 +153,15 @@ function processItems(
   result: Awaited<ReturnType<GitHubReader['searchCode']>>,
   state: RangeState,
 ): void {
+  const expectedPath = discoverySearchFamilies.find(({ queryFamily }) => queryFamily === state.queryFamily)?.expectedPath
+  if (state.queryFamily === 'plugin_filename_path' && state.metrics) {
+    state.metrics.pluginSearchHits = (state.metrics.pluginSearchHits ?? 0) + result.items.length
+    state.metrics.pluginNonRootHits =
+      (state.metrics.pluginNonRootHits ?? 0) + result.items.filter(({ path }) => path !== expectedPath).length
+  }
   runWhileActive(db, state.runId, () => {
     for (const { path, repository } of result.items) {
-      if (state.queryFamily === 'marketplace_path_literal' && path !== '.claude-plugin/marketplace.json') continue
+      if (expectedPath && path !== expectedPath) continue
       if (repository.private === true) continue
       const url = repository.html_url
       if (!parseRepositoryUrl(url)) {
@@ -330,6 +346,13 @@ async function loadSearchRangePage(
   if (!result) return { kind: 'temporary-failure' }
 
   result = await retryUnexpectedShortPage(reader, state.query, page, db, state, onProgress, result, found)
+  if (
+    queryFamily === 'plugin_filename_path' &&
+    coverage.metrics &&
+    (result.total_count >= 1000 || (page === 10 && result.items.length === 100))
+  ) {
+    coverage.metrics.pluginSaturatedPages = (coverage.metrics.pluginSaturatedPages ?? 0) + 1
+  }
   if (
     await recoverIncompleteRange(
       db,
@@ -537,6 +560,7 @@ export async function discover(
     families: {
       marketplace_filename_path: { successfulRanges: 0, warningCount: 0 },
       marketplace_path_literal: { successfulRanges: 0, warningCount: 0 },
+      plugin_filename_path: { successfulRanges: 0, warningCount: 0 },
     },
   }
   const writeDiscovery = createDiscoveryWriter(db)

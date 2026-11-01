@@ -36,6 +36,15 @@ describe('generateMetadata', () => {
     vi.restoreAllMocks()
   })
 
+  it('uses standalone description after marketplace 404 without changing publication policy', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(Response.json({ name: 'reviewer', description: 'A standalone code reviewer' }))
+    const metadata = await generateMetadata({ params: Promise.resolve({ repo: ['chrisliu298', 'nanoresearch'] }) })
+    expect(metadata.description).toBe('A standalone code reviewer')
+    expect(metadata.robots).toEqual({ index: true, follow: true })
+  })
+
   it('includes the detail page Open Graph image', async () => {
     const metadata = await generateMetadata({ params: Promise.resolve({ repo: ['ykdojo', 'claude-code-tips'] }) })
 
@@ -50,6 +59,7 @@ describe('generateMetadata', () => {
       ok: true,
       json: async () => ({
         name: 'nanoresearch',
+        owner: { name: 'maintainer' },
         description: manifestDescription,
         plugins: [{ name: 'nanoresearch', source: './' }],
       }),
@@ -63,7 +73,7 @@ describe('generateMetadata', () => {
   })
 
   it('keeps publication stable when manifest description is unavailable', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,
       status: 404,
     } as Response)
@@ -79,6 +89,7 @@ describe('generateMetadata', () => {
       ok: true,
       json: async () => ({
         name: 'nanoresearch',
+        owner: { name: 'maintainer' },
         description: 'Short tool',
         plugins: [{ name: 'nanoresearch', source: './' }],
       }),

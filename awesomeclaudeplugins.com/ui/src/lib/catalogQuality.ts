@@ -25,7 +25,7 @@ export function getCatalogQuality(repo: Repo, isCanonical: boolean, fallbackDesc
     return {
       descriptionQuality,
       publicationState: 'needs-review',
-      qualityReason: 'Validated marketplace plugin count is unavailable.',
+      qualityReason: 'Validated plugin count is unavailable.',
     }
   }
 

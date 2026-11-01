@@ -6,7 +6,7 @@ import { getLatestValidStatsDate } from './catalogDates.ts'
 import { CATALOG_PAGE_SIZE } from './catalogPagination.ts'
 import { type CatalogQuality, getCatalogQuality } from './catalogQuality.ts'
 import { getCatalog } from './catalogStore.ts'
-import { createFuseIndex } from './fuzzySearch.ts'
+import { createCatalogSearchIndex, hasSearchableTerms } from './fuzzySearch.ts'
 import { isArchivedRepo } from './repoMetadata.ts'
 import { getGitHubRepoPath } from './repositoryIdentity.ts'
 import { normalizeSearchQuery } from './searchQuery.ts'
@@ -19,6 +19,32 @@ const catalogRepos: readonly CatalogRepo[] = getCatalog().filter(
 )
 const canonicalCatalogRepos = getUniqueCatalogRepos(catalogRepos)
 const canonicalCatalogRepoSet = new Set(canonicalCatalogRepos)
+// Different Next.js route bundles can have different module registries in the same process.
+// Key the shared index by the original catalog array, which catalogStore already shares globally.
+const CATALOG_SEARCH_INDEX_KEY = Symbol.for('awesome-claude-plugins.catalog-search-index')
+type SharedSearchIndex = { source: readonly CatalogRepo[]; index: ReturnType<typeof createCatalogSearchIndex> }
+type CatalogSearchGlobal = typeof globalThis & { [CATALOG_SEARCH_INDEX_KEY]?: SharedSearchIndex }
+
+/** Lazily create one FTS5 index per catalog and Node.js process, shared by SSR and API routes. */
+function getCatalogSearchIndex() {
+  const root = globalThis as CatalogSearchGlobal
+  const source = getCatalog()
+  const cached = root[CATALOG_SEARCH_INDEX_KEY]
+  if (cached?.source === source) return cached.index
+
+  const index = createCatalogSearchIndex(canonicalCatalogRepos)
+  root[CATALOG_SEARCH_INDEX_KEY] = { source, index }
+  return index
+}
+
+/** Non-searchable input is a zero-hit search, not a request to browse the full catalog. */
+function searchIndexedCatalogQuery(query: string, sortOption: SortOption, page: number, pageSize: number) {
+  if (!hasSearchableTerms(query)) {
+    return { matches: [], total: 0, pluginsCount: 0 }
+  }
+  return getCatalogSearchIndex().search(query, sortOption, page, pageSize)
+}
+
 const indexableCatalogRepos = canonicalCatalogRepos.filter((repo) => getCatalogQuality(repo, true).publicationState === 'indexable')
 const catalogReposByPath = new Map<string, CatalogRepo>()
 for (const repo of catalogRepos) {
@@ -126,109 +152,40 @@ function getUniqueCatalogRepos(repos: readonly CatalogRepo[]): readonly CatalogR
   })
 }
 
-type ScoredCatalogRepo = { repo: CatalogRepo; score: number }
-type SearchCacheEntry = { expiresAt: number; records: ScoredCatalogRepo[]; sorted?: Map<SortOption, ScoredCatalogRepo[]> }
+type CatalogSearchOptions = { summaries?: 'full' | 'omit' }
 
-// Same freshness window the catalog api already publishes to clients.
-const SEARCH_CACHE_TTL_MS = 60_000
-const SEARCH_CACHE_MAX_ENTRIES = 64
-// A broad term matches ~20k of the 40k records, so entries are bounded by total records too: without
-// it, 64 popular terms would hold a copy of the whole catalog several times over. Measured at the
-// cap: 250k wrappers add ~20MB of heap.
-const SEARCH_CACHE_MAX_RECORDS = 250_000
-const SEARCH_CACHE_GLOBAL_KEY = 'catalogSearchMatchesCache'
-
-/**
- * The home route and the catalog route handler are separate bundles, each with its own module
- * registry, so a module-level map would keep two private copies of the same scan.
- */
-function getSearchCache(): Map<string, SearchCacheEntry> {
-  const holder = globalThis as unknown as Record<string, Map<string, SearchCacheEntry> | undefined>
-  let cache = holder[SEARCH_CACHE_GLOBAL_KEY]
-  if (!cache) {
-    cache = new Map()
-    holder[SEARCH_CACHE_GLOBAL_KEY] = cache
-  }
-  return cache
-}
-
-function countCachedRecords(cache: Map<string, SearchCacheEntry>): number {
-  return [...cache.values()].reduce(
-    (total, entry) =>
-      total + entry.records.length + [...(entry.sorted?.values() ?? [])].reduce((count, records) => count + records.length, 0),
-    0
-  )
-}
-
-/**
- * The fuzzy scan is the only expensive step of a catalog request, and one search interaction runs it
- * twice within a second: once to server-render `/?q=…` and once for the `/api/catalog` call the
- * client fires for the same term. Keyed by the shared normalized query so sort and page variants,
- * and both entry points, reuse one scan.
- */
-function getScoredMatches(normalizedQuery: string, repos: readonly CatalogRepo[]): ScoredCatalogRepo[] {
-  const cache = getSearchCache()
-  const cached = cache.get(normalizedQuery)
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.records
-  }
-
-  const records = normalizedQuery
-    ? createFuseIndex(repos)
-        .search(normalizedQuery)
-        .map((result) => ({ repo: result.item, score: result.score ?? Number.POSITIVE_INFINITY }))
-    : repos.map((repo) => ({ repo, score: 0 }))
-
-  cache.set(normalizedQuery, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, records })
-  let cachedRecords = countCachedRecords(cache)
-  while (cache.size > SEARCH_CACHE_MAX_ENTRIES || cachedRecords > SEARCH_CACHE_MAX_RECORDS) {
-    const oldest = cache.keys().next()
-    if (oldest.done) {
-      break
-    }
-    cache.delete(oldest.value)
-    cachedRecords = countCachedRecords(cache)
-  }
-  return records
-}
-
-export function searchCatalogRepos(query: string, sortOption: SortOption, page = 0, pageSize = CATALOG_PAGE_SIZE): CatalogSearchResult {
+/** Keep public API summaries by default; the card UI opts into lightweight results. */
+export function searchCatalogRepos(
+  query: string,
+  sortOption: SortOption,
+  page = 0,
+  pageSize = CATALOG_PAGE_SIZE,
+  options: CatalogSearchOptions = {}
+): CatalogSearchResult {
   const normalizedQuery = normalizeSearchQuery(query)
-  const matchingRepos = normalizedQuery ? getScoredMatches(normalizedQuery, canonicalCatalogRepos) : undefined
-  let repos: CatalogRepo[]
-  if (!matchingRepos) {
-    repos = catalogReposBySort[sortOption].slice(page * pageSize, (page + 1) * pageSize)
-  } else {
-    const cacheEntry = getSearchCache().get(normalizedQuery)
-    const sortedMatches = cacheEntry?.sorted ?? new Map<SortOption, ScoredCatalogRepo[]>()
-    if (cacheEntry && !cacheEntry.sorted) {
-      cacheEntry.sorted = sortedMatches
-    }
-    let sorted = sortedMatches.get(sortOption)
-    if (!sorted) {
-      sorted = [...matchingRepos].sort((left, right) => compareCatalogRepos(left.repo, right.repo, sortOption) || left.score - right.score)
-      sortedMatches.set(sortOption, sorted)
-      const cache = getSearchCache()
-      let cachedRecords = countCachedRecords(cache)
-      while (cache.size > SEARCH_CACHE_MAX_ENTRIES || cachedRecords > SEARCH_CACHE_MAX_RECORDS) {
-        const oldest = cache.keys().next()
-        if (oldest.done) break
-        cache.delete(oldest.value)
-        cachedRecords = countCachedRecords(cache)
-      }
-    }
-    repos = sorted.slice(page * pageSize, (page + 1) * pageSize).map((result) => result.repo)
-  }
+  const matches = normalizedQuery ? searchIndexedCatalogQuery(normalizedQuery, sortOption, page, pageSize) : undefined
+  const repos = matches
+    ? matches.matches.map((match) => match.item)
+    : catalogReposBySort[sortOption].slice(page * pageSize, (page + 1) * pageSize)
   const start = page * pageSize
-  const total = matchingRepos?.length ?? canonicalCatalogRepos.length
-  const pluginsCount = matchingRepos?.reduce((sum, result) => sum + (result.repo.plugins_count ?? 0), 0) ?? catalogPluginsCount
+  const total = matches?.total ?? canonicalCatalogRepos.length
+  const pluginsCount = matches?.pluginsCount ?? catalogPluginsCount
 
   return {
     hasMore: start + pageSize < total,
     pluginsCount,
-    repos: repos.map((repo) => formatCatalogRepo(repo)),
+    repos: repos.map((repo) => (options.summaries === 'omit' ? withoutPluginSummaries(repo) : formatCatalogRepo(repo))),
     total,
   }
+}
+
+function withoutPluginSummaries(repo: CatalogRepo): CatalogRepo {
+  const card: CatalogRepo = { ...repo }
+  delete card.plugins
+  delete card.plugin_summaries
+  delete card.plugin_name
+  delete card.plugin_description
+  return card
 }
 
 export function extractPluginSummaries(repo: CatalogRepo): PluginSummary[] | undefined {

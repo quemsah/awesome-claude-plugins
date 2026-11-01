@@ -18,6 +18,171 @@ import { enrichRepositories } from './enrich.js'
 
 const databases: Database.Database[] = []
 
+it.each(['rest', 'graphql'])('reports the missing standalone manifest when removing through %s', async (transport) => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', null, undefined, 'node-standalone')
+  const api = reader(undefined, async () => ({ kind: 'not-found' }))
+  if (transport === 'graphql')
+    api.getRepositoriesByNodeId = async () => ({
+      kind: 'found',
+      data: [{ ...githubRepo('team', 'repo'), node_id: 'node-standalone', marketplace_oid: null }],
+      rateLimit: { cost: 1, remaining: 4999, resetAt: '2026-12-01T00:00:00Z', limit: 5000, used: 1 },
+    })
+  const log = vi.fn()
+  await enrichRepositories(db, api, 'crawl-1', undefined, undefined, log)
+  expect(db.prepare('SELECT id FROM repositories WHERE id = ?').get(id)).toBeUndefined()
+  expect(log).toHaveBeenCalledWith(
+    expect.objectContaining({
+      event: 'crawl.repository_removed',
+      category: 'plugin_manifest_not_found',
+      message: 'Plugin manifest not found for team/repo; removing repository',
+      request: 'GET /repos/team/repo/contents/.claude-plugin/plugin.json',
+    }),
+  )
+})
+
+it.each([null, 'marketplace'] as const)(
+  'keeps a selected canonical snapshot coherent after rename and invalid marketplace (kind %s)',
+  async (kind) => {
+    const db = database()
+    const oldId = upsertDiscovery(db, 'https://github.com/team/old', null)
+    const duplicateId = upsertDiscovery(db, 'https://github.com/team/canonical', null)
+    ready(db, oldId, 'team', 'old')
+    ready(db, duplicateId, 'team', 'canonical')
+    db.prepare(`UPDATE repositories SET manifest_kind = 'standalone-plugin', plugins_count = 1,
+    plugins_json = '[{"name":"old-plugin"}]', plugin_manifest_etag = '"old-plugin"', plugin_manifest_parser_version = 1 WHERE id = ?`).run(
+      oldId,
+    )
+    db.prepare(`UPDATE repositories SET manifest_kind = ?, plugins_count = 1,
+    plugins_json = '[{"name":"marketplace-plugin"}]', marketplace_oid = ?, marketplace_etag = '"marketplace"', marketplace_parser_version = ? WHERE id = ?`).run(
+      kind,
+      'a'.repeat(40),
+      MARKETPLACE_PARSER_VERSION,
+      duplicateId,
+    )
+    const api = reader(
+      async () => ({ kind: 'found', data: githubRepo('team', 'canonical') }),
+      async () => ({
+        kind: 'invalid-content',
+        failure: 'invalid-manifest',
+        status: 200,
+        reason: 'invalid marketplace',
+        retryCount: 0,
+      }),
+    )
+    await enrichRepositories(db, api, 'crawl-1')
+    const preserved = db
+      .prepare('SELECT id, manifest_kind, plugins_json, plugin_manifest_etag, plugin_manifest_parser_version FROM repositories')
+      .get()
+    completeRun(db, 'crawl-1', '2026-09-23T01:00:00Z', 0)
+    beginRun(db, 'crawl-2', '2026-09-24T00:00:00Z')
+    api.getMarketplace = async () => ({ kind: 'not-found' })
+    let pluginRequests = 0
+    api.getPluginManifest = async (_owner, _repo, etag) => {
+      pluginRequests++
+      expect(etag).toBeUndefined()
+      return pluginRequests === 1 ? { kind: 'not-modified' } : { kind: 'found', data: { name: 'actual-standalone' } }
+    }
+    await enrichRepositories(db, api, 'crawl-2')
+    expect(preserved).toEqual({
+      id: oldId,
+      manifest_kind: 'marketplace',
+      plugins_json: '[{"name":"marketplace-plugin"}]',
+      plugin_manifest_etag: null,
+      plugin_manifest_parser_version: null,
+    })
+    expect(pluginRequests).toBe(2)
+    expect(db.prepare('SELECT id, manifest_kind, plugins_json FROM repositories').get()).toEqual({
+      id: oldId,
+      manifest_kind: 'standalone-plugin',
+      plugins_json: '[{"name":"actual-standalone"}]',
+    })
+  },
+)
+
+it.each(['found', 'invalid-content', 'temporary-error'] as const)('does not try a plugin when marketplace is %s', async (kind) => {
+  const db = database()
+  upsertDiscovery(db, 'https://github.com/team/repo', null)
+  const result: RepoResult<Marketplace> =
+    kind === 'found'
+      ? { kind, data: { plugins: [] } }
+      : kind === 'invalid-content'
+        ? { kind, failure: 'invalid-manifest', status: 200, reason: 'bad', retryCount: 0 }
+        : { kind, status: 429, reason: 'limited', retryCount: 0, retryable: false }
+  const api = reader(undefined, async () => result)
+  api.getPluginManifest = async () => {
+    throw new Error('Plugin fallback must only follow marketplace 404')
+  }
+  await enrichRepositories(db, api, 'crawl-1')
+})
+
+it.each([true, false])('recovers plugin 304 only with usable cached standalone data: %s', async (usable) => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', null)
+  ready(db, id)
+  db.prepare(
+    "UPDATE repositories SET manifest_kind = 'standalone-plugin', plugins_count = 1, plugins_json = ?, plugin_manifest_etag = '\"plugin\"', plugin_manifest_parser_version = 1 WHERE id = ?",
+  ).run(usable ? '[{"name":"reviewer"}]' : '[]', id)
+  const api = reader(undefined, async () => ({ kind: 'not-found' }))
+  let requests = 0
+  api.getPluginManifest = async (_owner, _repo, etag) => {
+    requests++
+    if (usable) {
+      expect(etag).toBe('"plugin"')
+      return { kind: 'not-modified' }
+    }
+    expect(etag).toBeUndefined()
+    return requests === 1 ? { kind: 'not-modified' } : { kind: 'found', data: { name: 'recovered' } }
+  }
+  await enrichRepositories(db, api, 'crawl-1')
+  expect(db.prepare('SELECT plugins_count, plugins_json FROM repositories WHERE id = ?').get(id)).toEqual({
+    plugins_count: 1,
+    plugins_json: usable ? '[{"name":"reviewer"}]' : '[{"name":"recovered"}]',
+  })
+  expect(requests).toBe(usable ? 1 : 2)
+})
+
+it.each(['rest', 'graphql'])('accepts a root standalone plugin through %s fallback', async (transport) => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', null, undefined, 'node-standalone')
+  const api = reader(undefined, async () => ({ kind: 'not-found' }))
+  api.getPluginManifest = async () => ({ kind: 'found', data: { name: 'Review Tools', description: 'A reviewer' }, etag: '"plugin"' })
+  if (transport === 'graphql')
+    api.getRepositoriesByNodeId = async () => ({
+      kind: 'found',
+      data: [{ ...githubRepo('team', 'repo'), node_id: 'node-standalone', marketplace_oid: null }],
+      rateLimit: { cost: 1, remaining: 4999, resetAt: '2026-12-01T00:00:00Z', limit: 5000, used: 1 },
+    })
+  await enrichRepositories(db, api, 'crawl-1')
+  expect(
+    db
+      .prepare('SELECT plugins_count, manifest_kind, plugin_manifest_etag, marketplace_etag, plugins_json FROM repositories WHERE id = ?')
+      .get(id),
+  ).toEqual({
+    plugins_count: 1,
+    manifest_kind: 'standalone-plugin',
+    plugin_manifest_etag: '"plugin"',
+    marketplace_etag: null,
+    plugins_json: '[{"name":"Review Tools","description":"A reviewer"}]',
+  })
+})
+
+it('keeps the accepted standalone snapshot on a transient plugin error', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', null)
+  ready(db, id)
+  db.prepare(
+    'UPDATE repositories SET manifest_kind = \'standalone-plugin\', plugins_count = 1, plugins_json = \'[{"name":"reviewer"}]\' WHERE id = ?',
+  ).run(id)
+  const api = reader(undefined, async () => ({ kind: 'not-found' }))
+  api.getPluginManifest = async () => ({ kind: 'temporary-error', status: 503, reason: 'offline', retryCount: 0, retryable: false })
+  await enrichRepositories(db, api, 'crawl-1')
+  expect(db.prepare('SELECT plugins_count, manifest_kind FROM repositories WHERE id = ?').get(id)).toEqual({
+    plugins_count: 1,
+    manifest_kind: 'standalone-plugin',
+  })
+})
+
 function database(): Database.Database {
   const db = new Database(':memory:')
   initializeSchema(db)
@@ -55,6 +220,7 @@ function reader(
   }),
 ): GitHubReader {
   return {
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async () => {
       throw new Error('Repository search is unused in this fixture')
     },
@@ -598,6 +764,7 @@ it('defers retryable REST failures until the first repository pass is complete',
   const calls: string[] = []
   let firstAttempts = 0
   const client: GitHubReader = {
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async () => {
       throw new Error('Repository search is unused in this fixture')
     },
@@ -656,6 +823,7 @@ it('gives marketplace a fresh three-attempt budget after a deferred repository r
   const repositoryMaxAttempts: number[] = []
   const marketplaceMaxAttempts: number[] = []
   const client: GitHubReader = {
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async () => {
       throw new Error('Repository search is unused in this fixture')
     },
@@ -710,6 +878,7 @@ it('does not inherit the repository retry offset when marketplace content is imm
   let repositoryCalls = 0
   const marketplaceMaxAttempts: number[] = []
   const client: GitHubReader = {
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async () => {
       throw new Error('Repository search is unused in this fixture')
     },
@@ -806,9 +975,14 @@ it('publishes bounded plugin summaries without splitting or preserving malformed
     name: 'catalog',
     owner: { name: 'maintainer' },
     plugins: [
-      { name: `${pluginName}${'x'.repeat(5)}`, description: pluginDescription, source: './plugins/invalid-overlong-name' },
-      { name: pluginName, description: pluginDescription, source: './plugins/demo' },
-      { name: '\ud800bad\udc00', description: '\udc00bad\ud800', source: './plugins/malformed' },
+      {
+        name: `${'n'.repeat(161)}`,
+        displayName: `${pluginName}${'x'.repeat(5)}`,
+        description: pluginDescription,
+        source: './plugins/invalid-overlong-name',
+      },
+      { name: 'demo-plugin', displayName: pluginName, description: pluginDescription, source: './plugins/demo' },
+      { name: 'malformed-plugin', displayName: '\ud800bad\udc00', description: '\udc00bad\ud800', source: './plugins/malformed' },
     ],
   }
   const text = JSON.stringify(manifest)
@@ -847,6 +1021,120 @@ it('publishes bounded plugin summaries without splitting or preserving malformed
   expect(JSON.parse(published?.plugins_json ?? '[]')).toHaveLength(2)
   expect(published?.plugins_json).not.toContain('\\ud800')
   expect(published?.plugins_json).not.toContain('\\udc00')
+})
+
+it('fully indexes marketplace repositories with more than 30 plugins up to 500 into SQLite', async () => {
+  const db = database()
+  const nodeId = 'node-large-marketplace'
+  const id = upsertDiscovery(db, 'https://github.com/team/large-repo', 'old', new Date().toISOString(), nodeId)
+  const oid = 'large-marketplace-oid'
+  const plugins = Array.from({ length: 75 }, (_, index) => ({
+    name: `plugin-${index + 1}`,
+    description: `Description for plugin ${index + 1}`,
+    source: `./plugins/plugin-${index + 1}`,
+  }))
+  const manifest = {
+    name: 'large-catalog',
+    owner: { name: 'maintainer' },
+    plugins,
+  }
+  const text = JSON.stringify(manifest)
+  const client = {
+    ...reader(),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [
+        {
+          ...githubRepo('team', 'large-repo'),
+          node_id: nodeId,
+          marketplace_oid: oid,
+          marketplace_byte_size: text.length,
+          marketplace_is_binary: false,
+        },
+      ],
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+    getMarketplaceBlobsByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [graphQLMarketplaceBlob(nodeId, oid, { text })],
+      rateLimit: { cost: 1, remaining: 4_998, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 2 },
+    }),
+  }
+
+  const counts = await enrichRepositories(db, client, 'crawl-1')
+  const published = listPublishable(db).find((repository) => repository.id === id)
+
+  expect(counts).toMatchObject({ newReady: 1, conclusive: 1, warnings: 0 })
+  expect(published?.plugins_count).toBe(75)
+  const parsed = JSON.parse(published?.plugins_json ?? '[]')
+  expect(parsed).toHaveLength(75)
+  expect(parsed[0].name).toBe('plugin-1')
+  expect(parsed[30].name).toBe('plugin-31')
+  expect(parsed[74].name).toBe('plugin-75')
+})
+
+it('recrawls and republishes cached large-marketplace summaries after upgrading SQLite v19 to v20', async () => {
+  const db = database()
+  const nodeId = 'node-migrated-large-marketplace'
+  const id = upsertDiscovery(db, 'https://github.com/team/large-repo', 'cached', new Date().toISOString(), nodeId)
+  ready(db, id, 'team', 'large-repo')
+  const oid = 'unchanged-marketplace-oid'
+  const plugins = Array.from({ length: 75 }, (_, index) => ({
+    name: `plugin-${index + 1}`,
+    description: `Unique plugin description ${index + 1}`,
+    source: `./plugins/plugin-${index + 1}`,
+  }))
+  const oldSummaries = plugins.slice(0, 30).map(({ name, description }) => ({ name, description }))
+  db.prepare(`
+    UPDATE repositories
+    SET plugins_count = ?, plugins_json = ?, marketplace_oid = ?, marketplace_etag = ?, marketplace_parser_version = ?
+    WHERE id = ?
+  `).run(75, JSON.stringify(oldSummaries), oid, '"cached"', MARKETPLACE_PARSER_VERSION, id)
+
+  db.pragma('user_version = 19')
+  initializeSchema(db)
+  expect(db.prepare('SELECT marketplace_oid, marketplace_etag FROM repositories WHERE id = ?').get(id)).toEqual({
+    marketplace_oid: null,
+    marketplace_etag: null,
+  })
+
+  const text = JSON.stringify({ name: 'large-catalog', owner: { name: 'maintainer' }, plugins })
+  const getMarketplaceBlobsByNodeId = vi.fn(async () => ({
+    kind: 'found' as const,
+    data: [graphQLMarketplaceBlob(nodeId, oid, { text })],
+    rateLimit: { cost: 1, remaining: 4_998, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 2 },
+  }))
+  const client = {
+    ...reader(),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [
+        {
+          ...githubRepo('team', 'large-repo'),
+          node_id: nodeId,
+          marketplace_oid: oid,
+          marketplace_byte_size: text.length,
+          marketplace_is_binary: false,
+        },
+      ],
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+    getMarketplaceBlobsByNodeId,
+  }
+
+  const counts = await enrichRepositories(db, client, 'crawl-1')
+  expect(counts).toMatchObject({ updated: 1, conclusive: 1, warnings: 0 })
+  expect(getMarketplaceBlobsByNodeId).toHaveBeenCalledTimes(1)
+  const published = JSON.parse(renderRepos(listPublishable(db))) as Array<{
+    id: number
+    plugins_count: number
+    plugins?: Array<{ name?: string }>
+  }>
+  const large = published.find((repo) => repo.id === id)
+  expect(large?.plugins_count).toBe(75)
+  expect(large?.plugins).toHaveLength(75)
+  expect(large?.plugins?.[30]?.name).toBe('plugin-31')
+  expect(large?.plugins?.[74]?.name).toBe('plugin-75')
 })
 
 it.each([

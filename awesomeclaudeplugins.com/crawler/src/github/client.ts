@@ -2,6 +2,8 @@ import type { components, operations } from '@octokit/openapi-types'
 import { throwIfShutdown } from '../shutdown.js'
 import { type Marketplace, MarketplaceFormatError, parseMarketplace } from './marketplace.js'
 import { type Clock, type GitHubRetryReason, RateBudget, type RateLog, type RateResource, systemClock } from './rateBudget.js'
+import { parseRepositoryUrl } from './repositoryUrl.js'
+import { parseStandalonePlugin, StandalonePluginFormatError, type StandalonePluginManifest } from './standalonePlugin.js'
 
 export type { Marketplace } from './marketplace.js'
 
@@ -102,6 +104,13 @@ type GraphQLRequestAction<T> =
 export type GitHubRequestOptions = { maxAttempts?: number; sort?: 'updated' }
 
 export interface GitHubReader {
+  getPluginManifest(
+    owner: string,
+    repo: string,
+    etag?: string,
+    options?: GitHubRequestOptions,
+  ): Promise<RepoResult<StandalonePluginManifest>>
+  checkRepository?(owner: string, repo: string, options?: { signal?: AbortSignal }): Promise<RepoResult<{ html_url: string }>>
   searchRepositories(query: string, page: number, options?: GitHubRequestOptions): Promise<RepositorySearchPage>
   searchCode(query: string, page: number): Promise<SearchPage>
   getRepository(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<GitHubRepo>>
@@ -384,6 +393,7 @@ const MARKETPLACE_BLOBS_QUERY = `query MarketplaceBlobs($ids: [ID!]!) {
 
 export class GitHubClient implements GitHubReader {
   private readonly budget: RateBudget
+  private readonly publicHeadBudget: RateBudget
   private readonly clock: Clock
   private readonly transport: typeof fetch
   private readonly random: () => number
@@ -398,6 +408,8 @@ export class GitHubClient implements GitHubReader {
     this.random = options.random ?? Math.random
     this.signal = options.signal
     this.budget = new RateBudget(this.clock, options.log)
+    // Public website requests have independent pacing and never consume the API's core budget.
+    this.publicHeadBudget = new RateBudget(this.clock, undefined, { core: 100 })
   }
 
   noteRetry(bucket: RateResource, reason: GitHubRetryReason, waitMs = 0): void {
@@ -458,11 +470,111 @@ export class GitHubClient implements GitHubReader {
     return result
   }
 
+  /** Public HEAD requests avoid downloading metadata or treating token scope as repository health. */
+  async checkRepository(owner: string, repo: string, options?: { signal?: AbortSignal }): Promise<RepoResult<{ html_url: string }>> {
+    let url = `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
+    const temporary = (status: number | null, reason: string): RepoResult<{ html_url: string }> => ({
+      kind: 'temporary-error',
+      status,
+      reason,
+      retryCount: 0,
+    })
+    const deadline = new AbortController()
+    const timer = setTimeout(() => deadline.abort(), 10_000)
+    const signal = AbortSignal.any([deadline.signal, ...[this.signal, options?.signal].filter((value): value is AbortSignal => !!value)])
+    try {
+      for (let redirect = 0; redirect <= 5; redirect++) {
+        await this.publicHeadBudget.acquire('core', signal)
+        signal.throwIfAborted()
+        const response = await this.transport(url, {
+          method: 'HEAD',
+          redirect: 'manual',
+          signal,
+        })
+        signal.throwIfAborted()
+        const delay = retryAfter(response.headers, this.clock.now())
+        if (delay !== null) this.publicHeadBudget.defer('core', delay)
+        if (response.status === 404 || response.status === 410) {
+          // A second, authenticated source must agree before the catalog can delete a link.
+          return await this.confirmRepositoryRemoval(owner, repo, signal)
+        }
+        if (response.status === 200) return { kind: 'found', data: { html_url: url } }
+        if (response.status !== 301 && response.status !== 302) return temporary(response.status, 'GitHub health check HTTP error')
+        const location = response.headers.get('location')
+        let destination: URL
+        try {
+          destination = new URL(location ?? '', url)
+        } catch {
+          return temporary(response.status, 'Invalid GitHub health check redirect')
+        }
+        const identity = parseRepositoryUrl(destination.href)
+        if (!location || destination.origin !== 'https://github.com' || destination.search || destination.hash || !identity) {
+          return temporary(response.status, 'Invalid GitHub health check redirect')
+        }
+        url = `https://github.com/${identity.owner}/${identity.repo}`
+      }
+      return temporary(302, 'GitHub health check redirect limit exceeded')
+    } catch {
+      throwIfShutdown(this.signal)
+      return temporary(null, 'GitHub health check network error or deadline exceeded')
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  private async confirmRepositoryRemoval(owner: string, repo: string, signal: AbortSignal): Promise<RepoResult<{ html_url: string }>> {
+    await this.budget.acquire('core', signal)
+    signal.throwIfAborted()
+    const confirmation = await this.transport(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, {
+      signal,
+      headers: { Authorization: `Bearer ${this.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+    })
+    signal.throwIfAborted()
+    this.budget.observe('core', confirmation.headers)
+    const delay = retryAfter(confirmation.headers, this.clock.now())
+    if (delay !== null) this.budget.defer('core', delay)
+    if (confirmation.status === 404 || confirmation.status === 410) {
+      await confirmation.body?.cancel()
+      return { kind: 'not-found' }
+    }
+    if (confirmation.status === 200) {
+      const data: unknown = await confirmation.json()
+      signal.throwIfAborted()
+      if (record(data) && data.private === false && typeof data.html_url === 'string' && parseRepositoryUrl(data.html_url)) {
+        return { kind: 'found', data: { html_url: data.html_url } }
+      }
+    }
+    if (!confirmation.bodyUsed) await confirmation.body?.cancel()
+    return {
+      kind: 'temporary-error',
+      status: confirmation.status,
+      reason: 'Repository removal was not confirmed by GitHub API',
+      retryCount: 0,
+    }
+  }
+
   getMarketplace(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<Marketplace>> {
     return this.request(
       'core',
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/.claude-plugin/marketplace.json`,
       parseMarketplace,
+      'application/vnd.github.raw+json',
+      etag,
+      true,
+      requestAttempts(options?.maxAttempts),
+    )
+  }
+
+  getPluginManifest(
+    owner: string,
+    repo: string,
+    etag?: string,
+    options?: GitHubRequestOptions,
+  ): Promise<RepoResult<StandalonePluginManifest>> {
+    return this.request(
+      'core',
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/.claude-plugin/plugin.json`,
+      parseStandalonePlugin,
       'application/vnd.github.raw+json',
       etag,
       true,
@@ -1040,6 +1152,7 @@ export class GitHubClient implements GitHubReader {
     permanentContentErrors: boolean,
     finalAttempt: boolean,
   ): Promise<ResponseAction<T>> {
+    const manifestType = parse === parseStandalonePlugin ? 'plugin' : 'marketplace'
     let text: string
     try {
       text = await response.text()
@@ -1066,7 +1179,7 @@ export class GitHubClient implements GitHubReader {
             kind: 'invalid-content',
             failure: 'invalid-json',
             status: response.status,
-            reason: 'Invalid marketplace JSON',
+            reason: `Invalid ${manifestType} JSON`,
             retryCount: attempt,
             failureReason: 'invalid_json',
             retryable: false,
@@ -1088,7 +1201,7 @@ export class GitHubClient implements GitHubReader {
     try {
       data = parse(value)
     } catch (error) {
-      if (permanentContentErrors && error instanceof MarketplaceFormatError) {
+      if (permanentContentErrors && (error instanceof MarketplaceFormatError || error instanceof StandalonePluginFormatError)) {
         return {
           kind: 'result',
           result: {
@@ -1108,7 +1221,7 @@ export class GitHubClient implements GitHubReader {
           result: {
             kind: 'temporary-error',
             status: response.status,
-            reason: 'Marketplace parser failure',
+            reason: `${manifestType === 'plugin' ? 'Plugin' : 'Marketplace'} parser failure`,
             retryCount: attempt,
             failureReason: 'parser_internal',
             retryable: false,

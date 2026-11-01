@@ -2,18 +2,18 @@
 
 import { describe, expect, it } from 'vitest'
 import { type CatalogRepo, compareCatalogRepos, formatCatalogRepo, getCanonicalCatalogRepos, searchCatalogRepos } from './catalog.ts'
-import { createFuseIndex } from './fuzzySearch.ts'
+import { createCatalogSearchIndex } from './fuzzySearch.ts'
 import { isArchivedRepo } from './repoMetadata.ts'
 
 function repoKey(repo: CatalogRepo) {
   return `${repo.owner}/${repo.repo_name}`
 }
 
-function fuzzyScores(query: string) {
+function relevanceScores(query: string) {
   return new Map(
-    createFuseIndex(getCanonicalCatalogRepos())
-      .search(query)
-      .map((result) => [repoKey(result.item), result.score ?? Number.POSITIVE_INFINITY])
+    createCatalogSearchIndex(getCanonicalCatalogRepos())
+      .search(query, 'stars-desc', 0, 500)
+      .matches.map((result) => [repoKey(result.item), result.score ?? Number.POSITIVE_INFINITY])
   )
 }
 
@@ -47,7 +47,7 @@ describe('searchCatalogRepos', () => {
     expect(searchCatalogRepos('claude', 'stars-desc').repos).toEqual(starsBefore)
   })
 
-  it('uses the selected metric before fuzzy relevance for searched results', () => {
+  it('uses the selected metric before search relevance for searched results', () => {
     const query = 'claude'
     const pageSize = 200
 
@@ -66,9 +66,9 @@ describe('searchCatalogRepos', () => {
     }
   })
 
-  it('uses fuzzy relevance only after the selected sort keys tie', () => {
+  it('uses search relevance only after the selected sort keys tie', () => {
     const query = 'claude'
-    const scores = fuzzyScores(query)
+    const scores = relevanceScores(query)
     const pageSize = 500
 
     const cases = [

@@ -1,9 +1,42 @@
+/** biome-ignore-all lint/style/useNamingConvention: Catalog API fixtures retain public snake_case fields. */
 import { type APIRequestContext, expect, type Page, test } from '@playwright/test'
 import type { SortOption } from '../../src/lib/sortOptions.ts'
 import type { Repo } from '../../src/schemas/repo.schema.ts'
 import { copiedText, mockClipboard } from './helpers.ts'
 
 const pluginsAvailableText = /plugins available across/i
+
+test('standalone search cards do not offer marketplace add', async ({ page }) => {
+  await page.route('**/api/catalog*', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        repos: [
+          {
+            owner: 'acme',
+            repo_name: 'reviewer',
+            id: 999999,
+            description: 'Standalone reviewer',
+            plugins_count: 1,
+            manifest_kind: 'standalone-plugin',
+            stargazers_count: 0,
+            forks_count: 0,
+            subscribers_count: 0,
+          },
+        ],
+        total: 1,
+        hasMore: false,
+        pluginsCount: 1,
+      }),
+    })
+  )
+  await page.goto('/')
+  await page.getByRole('searchbox', { name: 'Search repositories' }).fill('reviewer')
+  await expect(page.getByRole('link', { name: 'View details for acme/reviewer' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Copy marketplace command' })).toHaveCount(0)
+  await expect(page.getByText('/plugin marketplace add', { exact: false })).toHaveCount(0)
+})
 const detailsLinkName = /View details for /
 const toggleThemeName = /Toggle theme/
 const darkThemeName = /dark/

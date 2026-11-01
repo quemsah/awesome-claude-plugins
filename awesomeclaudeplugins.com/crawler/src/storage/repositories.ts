@@ -26,6 +26,10 @@ export interface RepositoryRow {
   marketplace_failed_parser_version: number | null
   createdAt: string
   updatedAt: string
+  last_health_check_at: string | null
+  manifest_kind?: 'marketplace' | 'standalone-plugin' | null
+  plugin_manifest_etag?: string | null
+  plugin_manifest_parser_version?: number | null
 }
 
 export type EnrichmentFields = Pick<
@@ -51,6 +55,9 @@ export type EnrichmentFields = Pick<
       | 'plugins_json'
       | 'license'
       | 'archived'
+      | 'manifest_kind'
+      | 'plugin_manifest_etag'
+      | 'plugin_manifest_parser_version'
     >
   >
 
@@ -73,6 +80,7 @@ export type PublishableRepository = Pick<
   catalog_added_at?: string | null
   license?: string | null
   archived?: boolean | number | null
+  manifest_kind?: 'marketplace' | 'standalone-plugin' | null
 }
 
 export function createDiscoveryWriter(db: Database.Database) {
@@ -123,40 +131,55 @@ const enrichedUpdateSql = `
     archived = COALESCE(@archived, archived),
     plugins_count = @plugins_count,
     plugins_json = COALESCE(@plugins_json, plugins_json),
+    manifest_kind = COALESCE(@manifest_kind, manifest_kind),
+    plugin_manifest_etag = CASE WHEN @manifest_kind = 'marketplace' THEN NULL WHEN @manifest_kind = 'standalone-plugin' THEN @plugin_manifest_etag ELSE plugin_manifest_etag END,
+    plugin_manifest_parser_version = CASE WHEN @manifest_kind = 'marketplace' THEN NULL ELSE COALESCE(@plugin_manifest_parser_version, plugin_manifest_parser_version) END,
+    marketplace_failed_oid = CASE WHEN @manifest_kind = 'standalone-plugin' THEN NULL ELSE marketplace_failed_oid END,
+    marketplace_failed_parser_version = CASE WHEN @manifest_kind = 'standalone-plugin' THEN NULL ELSE marketplace_failed_parser_version END,
     github_node_id = COALESCE(@github_node_id, github_node_id),
-    marketplace_oid = COALESCE(@marketplace_oid, marketplace_oid),
+    marketplace_oid = CASE WHEN @manifest_kind = 'standalone-plugin' THEN NULL ELSE COALESCE(@marketplace_oid, marketplace_oid) END,
     repository_etag = COALESCE(@repository_etag, repository_etag),
-    marketplace_etag = COALESCE(@marketplace_etag, marketplace_etag),
-    marketplace_parser_version = COALESCE(@marketplace_parser_version, marketplace_parser_version),
+    marketplace_etag = CASE WHEN @manifest_kind = 'standalone-plugin' THEN NULL ELSE COALESCE(@marketplace_etag, marketplace_etag) END,
+    marketplace_parser_version = CASE WHEN @manifest_kind = 'standalone-plugin' THEN NULL ELSE COALESCE(@marketplace_parser_version, marketplace_parser_version) END,
     updatedAt = @updatedAt
   WHERE id = @id
 `
 
+function assertValidEnrichmentCounts(fields: EnrichmentFields): void {
+  for (const field of ['stargazers_count', 'forks_count', 'subscribers_count', 'plugins_count'] as const) {
+    const count = fields[field]
+    if (count !== null && (!Number.isSafeInteger(count) || count < 0)) {
+      throw new Error(`${field} must be a nonnegative integer or null`)
+    }
+  }
+}
+
+/** Bind every optional SQL parameter, including explicit nulls used to clear stale validators. */
+function enrichmentUpdateBindings(id: number, fields: EnrichmentFields, updatedAt: string) {
+  return {
+    ...fields,
+    manifest_kind: fields.manifest_kind ?? null,
+    plugin_manifest_etag: fields.plugin_manifest_etag ?? null,
+    plugin_manifest_parser_version: fields.plugin_manifest_parser_version ?? null,
+    github_node_id: fields.github_node_id ?? null,
+    marketplace_oid: fields.marketplace_oid ?? null,
+    repository_etag: fields.repository_etag ?? null,
+    marketplace_etag: fields.marketplace_etag ?? null,
+    marketplace_parser_version: fields.marketplace_parser_version ?? null,
+    plugins_json: fields.plugins_json ?? null,
+    license: fields.license ?? null,
+    license_known: fields.license !== undefined ? 1 : 0,
+    archived: fields.archived ?? null,
+    id,
+    updatedAt,
+  }
+}
+
 export function prepareEnrichedUpdate(db: Database.Database) {
   const update = db.prepare(enrichedUpdateSql)
   return (id: number, fields: EnrichmentFields, at = new Date().toISOString()): boolean => {
-    for (const field of ['stargazers_count', 'forks_count', 'subscribers_count', 'plugins_count'] as const) {
-      const count = fields[field]
-      if (count !== null && (!Number.isSafeInteger(count) || count < 0)) {
-        throw new Error(`${field} must be a nonnegative integer or null`)
-      }
-    }
-
-    const result = update.run({
-      ...fields,
-      github_node_id: fields.github_node_id ?? null,
-      marketplace_oid: fields.marketplace_oid ?? null,
-      repository_etag: fields.repository_etag ?? null,
-      marketplace_etag: fields.marketplace_etag ?? null,
-      marketplace_parser_version: fields.marketplace_parser_version ?? null,
-      plugins_json: fields.plugins_json ?? null,
-      license: fields.license ?? null,
-      license_known: fields.license !== undefined ? 1 : 0,
-      archived: fields.archived ?? null,
-      id,
-      updatedAt: at,
-    })
-    return result.changes !== 0
+    assertValidEnrichmentCounts(fields)
+    return update.run(enrichmentUpdateBindings(id, fields, at)).changes !== 0
   }
 }
 
@@ -192,6 +215,31 @@ export function rebindCanonicalUrl(
     const removedId = duplicate ? Math.max(id, duplicate.id) : null
 
     if (removedId !== null) {
+      // A lightweight health check does not reload metadata after a merge. Keep a coherent
+      // enriched snapshot (including its matching cache validators) over a pending row.
+      db.prepare(`
+        UPDATE repositories SET (
+          stargazers_count, forks_count, subscribers_count, description, repo_updated,
+          license, archived, plugins_count, plugins_json, github_node_id,
+          repository_etag, marketplace_etag, marketplace_oid, marketplace_parser_version,
+          marketplace_failed_oid, marketplace_failed_parser_version, manifest_kind, plugin_manifest_etag, plugin_manifest_parser_version
+        ) = (
+          SELECT stargazers_count, forks_count, subscribers_count, description, repo_updated,
+                 license, archived, plugins_count, plugins_json, github_node_id,
+                 repository_etag, marketplace_etag, marketplace_oid, marketplace_parser_version,
+                 marketplace_failed_oid, marketplace_failed_parser_version, manifest_kind, plugin_manifest_etag, plugin_manifest_parser_version
+          FROM repositories WHERE id = @removedId
+        )
+        WHERE id = @keepId
+          AND (stargazers_count IS NULL OR forks_count IS NULL OR subscribers_count IS NULL OR plugins_count IS NULL)
+          AND EXISTS (
+            SELECT 1 FROM repositories AS incoming WHERE id = @removedId
+              AND incoming.stargazers_count IS NOT NULL AND incoming.forks_count IS NOT NULL
+              AND incoming.subscribers_count IS NOT NULL
+              AND (repositories.plugins_count IS NULL OR incoming.plugins_count IS NOT NULL)
+              AND (repositories.plugins_json IS NULL OR incoming.plugins_json IS NOT NULL)
+          )
+      `).run({ keepId, removedId })
       db.prepare(`
         INSERT OR IGNORE INTO discovery_candidates (run_id, repository_id, source, query_id)
         SELECT run_id, ?, source, query_id FROM discovery_candidates WHERE repository_id = ?
@@ -225,6 +273,33 @@ export function listForEnrichment(db: Database.Database, cursor: number, limit: 
   return db.prepare('SELECT * FROM repositories WHERE id > ? ORDER BY id LIMIT ?').all(cursor, limit) as RepositoryRow[]
 }
 
+export function listForHealthCheck(db: Database.Database): RepositoryRow[] {
+  return db
+    .prepare(`
+    SELECT * FROM repositories WHERE html_url IS NOT NULL
+    ORDER BY last_health_check_at, id LIMIT 200
+  `)
+    .all() as RepositoryRow[]
+}
+
+export function recordHealthCheck(db: Database.Database, id: number, at: string, canonicalUrl?: string): number {
+  return db.transaction(() => {
+    let keepId = id
+    if (canonicalUrl) {
+      const identity = new URL(canonicalUrl).pathname.split('/')
+      keepId = rebindCanonicalUrl(db, id, canonicalUrl, at).id
+      db.prepare('UPDATE repositories SET owner = ?, owner_url = ?, repo_name = ? WHERE id = ?').run(
+        identity[1],
+        `https://github.com/${identity[1]}`,
+        identity[2],
+        keepId,
+      )
+    }
+    db.prepare('UPDATE repositories SET last_health_check_at = ? WHERE id = ?').run(at, keepId)
+    return keepId
+  })()
+}
+
 export function hasCanonicalIdentity(row: PublishableRepository): boolean {
   const { html_url, owner, owner_url, repo_name } = row
   if (!owner || !repo_name || !owner_url || !html_url) return false
@@ -237,7 +312,7 @@ export function listCoreComplete(db: Database.Database): PublishableRepository[]
     .prepare(`
     SELECT id, html_url, stargazers_count, forks_count, subscribers_count,
            description, owner, owner_url, repo_name, plugins_count, plugins_json, catalog_updated_at,
-           repo_updated AS pushed_at, createdAt AS catalog_added_at, license, archived
+           repo_updated AS pushed_at, createdAt AS catalog_added_at, license, archived, manifest_kind
     FROM repositories
     WHERE html_url IS NOT NULL AND owner IS NOT NULL AND repo_name IS NOT NULL AND owner_url IS NOT NULL
       AND stargazers_count IS NOT NULL AND forks_count IS NOT NULL

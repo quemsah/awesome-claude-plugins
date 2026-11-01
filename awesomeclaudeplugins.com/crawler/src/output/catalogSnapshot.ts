@@ -63,6 +63,9 @@ export function renderRepos(
       repo_name: row.repo_name,
       plugins_count: row.plugins_count,
       ...(options.includeCatalogUpdatedAt === false || plugins === null ? {} : { plugins }),
+      ...(options.includeCatalogUpdatedAt === false || row.manifest_kind !== 'standalone-plugin'
+        ? {}
+        : { manifest_kind: row.manifest_kind }),
       ...(options.includeCatalogUpdatedAt === false ? {} : { catalog_updated_at: row.catalog_updated_at }),
       ...(options.includeCatalogUpdatedAt === false || options.includeNewCatalogMetadata === false || !publicTimestamp(row.pushed_at)
         ? {}

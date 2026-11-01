@@ -7,6 +7,28 @@ import { rebindCanonicalUrl, upsertDiscovery } from './repositories.js'
 import { beginRun } from './runs.js'
 import { initializeSchema } from './schema.js'
 
+it('counts a standalone once globally and attributes it to each discovering source', () => {
+  const db = new Database(':memory:')
+  try {
+    initializeSchema(db)
+    beginRun(db, 'standalone', '2026-11-01T00:00:00Z')
+    const id = upsertDiscovery(db, 'https://github.com/acme/reviewer', null)
+    db.prepare("UPDATE repositories SET plugins_count = 1, manifest_kind = 'standalone-plugin' WHERE id = ?").run(id)
+    recordDiscoveryCandidate(db, 'standalone', id, 'code_search', 'plugin_filename_path')
+    recordDiscoveryCandidate(db, 'standalone', id, 'repo_search', 'topic_plugin')
+    expect(discoveryYield(db, 'standalone')).toEqual({
+      uniqueCandidates: 1,
+      acceptedMarketplaces: 0,
+      acceptedStandalonePlugins: 1,
+      rejectedCandidates: 0,
+      pendingCandidates: 0,
+    })
+    expect(discoveryYield(db, 'standalone', 'repo_search').acceptedStandalonePlugins).toBe(1)
+  } finally {
+    db.close()
+  }
+})
+
 it('deduplicates each source/query attribution while retaining both discovery sources and rejected candidates', () => {
   const db = new Database(':memory:')
   try {
@@ -47,6 +69,7 @@ it('records each Code Search query even when both queries discover the same cand
           { path: '.claude-plugin/marketplace.json', repository: { html_url: 'https://github.com/example/catalog', description: null } },
         ],
       }),
+      getPluginManifest: async () => ({ kind: 'not-found' }),
       searchRepositories: async () => {
         throw new Error('unexpected Repository Search')
       },
@@ -137,18 +160,21 @@ it('counts source-attributed accepted, rejected and pending candidates once acro
     expect(discoveryYield(db, 'yield', 'repo_search')).toEqual({
       uniqueCandidates: 4,
       acceptedMarketplaces: 1,
+      acceptedStandalonePlugins: 0,
       rejectedCandidates: 2,
       pendingCandidates: 1,
     })
     expect(discoveryYield(db, 'yield', 'code_search')).toEqual({
       uniqueCandidates: 1,
       acceptedMarketplaces: 1,
+      acceptedStandalonePlugins: 0,
       rejectedCandidates: 0,
       pendingCandidates: 0,
     })
     expect(discoveryYield(db, 'yield')).toEqual({
       uniqueCandidates: 4,
       acceptedMarketplaces: 1,
+      acceptedStandalonePlugins: 0,
       rejectedCandidates: 2,
       pendingCandidates: 1,
     })

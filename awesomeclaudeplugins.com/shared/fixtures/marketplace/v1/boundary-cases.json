@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "name": "boundary-cases",
+  "expected": {
+    "valid": true,
+    "pluginsCount": 3,
+    "pluginNames": [
+      "canonical-local",
+      "canonical-with-display-name",
+      "canonical-with-blank-display-name"
+    ],
+    "pluginDisplayNames": [
+      "canonical-local",
+      "Human Readable Display Name",
+      "canonical-with-blank-display-name"
+    ],
+    "rejections": [
+      { "name": "bad name", "reason": "Must be a safe plugin identifier" },
+      { "name": "bad name with display", "reason": "Must be a safe plugin identifier" },
+      { "name": "bad/slash", "reason": "Must be a safe plugin identifier" },
+      { "name": "bad:colon", "reason": "Must be a safe plugin identifier" },
+      { "name": "..", "reason": "Must be a safe plugin identifier" },
+      { "name": "missing-source", "reason": "Must be a safe repository path" },
+      { "name": "outside-traversal", "reason": "Must be a safe repository path" },
+      { "name": "missing-github-repo", "reason": "Must be a GitHub repository path" },
+      { "name": "invalid-github-repo", "reason": "Must be a GitHub repository path" },
+      { "name": "missing-url", "reason": "Must be a safe HTTP(S) URL" },
+      { "name": "credential-url", "reason": "Must be a safe HTTP(S) URL" }
+    ],
+    "reason": "Crawler and UI count valid entries identically on shared boundary cases, corrupted entries share rejection reasons, and optional display names are preserved."
+  },
+  "input": {
+    "name": "boundary-catalog",
+    "owner": { "name": "Maintainer" },
+    "plugins": [
+      { "name": "canonical-local", "source": "./plugins/canonical-local" },
+      { "name": "canonical-with-display-name", "displayName": "Human Readable Display Name", "source": "./plugins/display" },
+      { "name": "canonical-with-blank-display-name", "displayName": "   ", "source": "./plugins/blank-display" },
+      { "name": "bad name", "source": "./plugins/demo" },
+      { "name": "bad name with display", "displayName": "Valid Label", "source": "./plugins/demo" },
+      { "name": "bad/slash", "source": "./plugins/demo" },
+      { "name": "bad:colon", "source": "./plugins/demo" },
+      { "name": "..", "source": "./plugins/demo" },
+      { "name": "missing-source" },
+      { "name": "outside-traversal", "source": "../outside" },
+      { "name": "missing-github-repo", "source": { "source": "github" } },
+      { "name": "invalid-github-repo", "source": { "source": "github", "repo": "not-a-valid-repo" } },
+      { "name": "missing-url", "source": { "source": "url" } },
+      { "name": "credential-url", "source": { "source": "url", "url": "https://user:pass@example.com/plugin.git" } }
+    ]
+  }
+}

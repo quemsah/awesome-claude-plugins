@@ -43,6 +43,7 @@ export type CrawlOptions = ExecuteOptions & {
 }
 
 export type RunReport = Pick<CrawlSummary, 'enrichment' | 'warningCount' | 'errorCategories'> & {
+  healthCheck?: CrawlSummary['healthCheck']
   discovery: DiscoverySummary &
     Partial<Pick<CrawlDiscoverySummary, 'coverageScope' | 'sources' | 'uniqueCandidates' | 'uniqueCatalogAdditions'>>
   rateBuckets?: GitHubRateBuckets
@@ -177,12 +178,12 @@ function discoveryWarningCounts(warnings: unknown[], hasFamilies: boolean): Map<
 
 function validDiscoveryFamilies(value: Record<string, unknown>, warningCounts: Map<DiscoveryQueryFamily, number>): boolean {
   const families = value.families
-  if (!record(families) || Object.keys(families).length !== discoverySearchFamilies.length) return false
+  if (!record(families) || Object.keys(families).some((key) => !isDiscoveryQueryFamily(key))) return false
 
   let successfulRanges = 0
   let warningCount = 0
   for (const { queryFamily } of discoverySearchFamilies) {
-    const family = families[queryFamily]
+    const family = families[queryFamily] ?? (queryFamily === 'plugin_filename_path' ? { successfulRanges: 0, warningCount: 0 } : undefined)
     if (!record(family) || !nonnegative(family.successfulRanges) || !nonnegative(family.warningCount)) return false
     if (family.warningCount !== warningCounts.get(queryFamily)) return false
     successfulRanges += family.successfulRanges
@@ -225,7 +226,18 @@ function validSourceDiscovery(value: Record<string, unknown>): boolean {
       nonnegative(entry.acceptedMarketplaces) &&
       nonnegative(entry.rejectedCandidates) &&
       nonnegative(entry.pendingCandidates) &&
-      entry.acceptedMarketplaces + entry.rejectedCandidates + entry.pendingCandidates === entry.uniqueCandidates
+      optionalNonnegative(entry.acceptedStandalonePlugins) &&
+      optionalNonnegative(entry.pluginSearchHits) &&
+      optionalNonnegative(entry.pluginNonRootHits) &&
+      optionalNonnegative(entry.pluginSaturatedPages) &&
+      (entry.pluginSearchHits === undefined ||
+        entry.pluginNonRootHits === undefined ||
+        (entry.pluginNonRootHits as number) <= (entry.pluginSearchHits as number)) &&
+      entry.acceptedMarketplaces +
+        ((entry.acceptedStandalonePlugins as number) ?? 0) +
+        entry.rejectedCandidates +
+        entry.pendingCandidates ===
+        entry.uniqueCandidates
     )
   })
 }
@@ -239,13 +251,21 @@ function isDiscovery(value: unknown): value is StoredDiscoverySummary {
 }
 
 function normalizeDiscovery(value: StoredDiscoverySummary): DiscoverySummary {
-  if ('families' in value) return value
+  if ('families' in value)
+    return {
+      ...value,
+      families: {
+        ...value.families,
+        plugin_filename_path: value.families.plugin_filename_path ?? { successfulRanges: 0, warningCount: 0 },
+      },
+    }
   return {
     ...value,
     warnings: value.warnings.map((warning) => ({ ...warning, query_family: 'marketplace_filename_path' })),
     families: {
       marketplace_filename_path: { successfulRanges: value.successfulRanges, warningCount: value.warningCount },
       marketplace_path_literal: { successfulRanges: 0, warningCount: 0 },
+      plugin_filename_path: { successfulRanges: 0, warningCount: 0 },
     },
   }
 }
@@ -274,9 +294,17 @@ function storedReport(db: Database.Database, runId: string): Partial<RunReport> 
   const rate = value.rateBuckets
   if (rate !== undefined && !validRateBuckets(rate)) throw new Error('Invalid stored GitHub rate report')
   if (value.durationMs !== undefined && !nonnegative(value.durationMs)) throw new Error('Invalid stored crawl duration')
+  if (
+    value.healthCheck !== undefined &&
+    (!record(value.healthCheck) ||
+      !['checked', 'deleted', 'renamed', 'warnings'].every((key) => nonnegative((value.healthCheck as Record<string, unknown>)[key])))
+  ) {
+    throw new Error('Invalid stored health-check report')
+  }
   return {
     discovery: normalizeDiscovery(value.discovery as StoredDiscoverySummary),
     enrichment: value.enrichment,
+    ...(value.healthCheck === undefined ? {} : { healthCheck: value.healthCheck as CrawlSummary['healthCheck'] }),
     warningCount: value.warningCount,
     errorCategories: value.errorCategories as Record<string, number>,
     ...(rate === undefined ? {} : { rateBuckets: rate as GitHubRateBuckets }),
@@ -338,6 +366,10 @@ function progressSnapshot(db: Database.Database, runId: string, log: (event: Log
   }
 }
 
+function deletedCount(enrichment: EnrichmentCounts | undefined, health: CrawlSummary['healthCheck'] | undefined): number {
+  return (enrichment?.deleted404 ?? 0) + (enrichment?.deletedBlankUrl ?? 0) + (health?.deleted ?? 0)
+}
+
 function summary(
   db: Database.Database,
   runId: string,
@@ -349,14 +381,16 @@ function summary(
   const run = getRun(db, runId)
   const saved = storedReport(db, runId)
   const report = counts?.enrichment ?? saved?.enrichment
+  const health = counts?.healthCheck ?? saved?.healthCheck
   const categories = errorCategories(errors, counts, saved)
   return {
     runId,
     catalogSize: run?.draft_size ?? listPublishable(db).length,
     newCount: report?.newReady ?? 0,
-    deletedCount: (report?.deleted404 ?? 0) + (report?.deletedBlankUrl ?? 0),
+    deletedCount: deletedCount(report, health),
     skippedCount: (report?.unchangedOnError ?? 0) + (report?.newIncomplete ?? 0),
     ...(report ? { enrichment: report } : {}),
+    ...(health ? { healthCheck: health } : {}),
     ...(counts || saved || Object.keys(categories).length ? { errorCategories: categories } : {}),
     ...((buckets ?? saved?.rateBuckets) ? { rateBuckets: buckets ?? saved?.rateBuckets } : {}),
     ...(saved?.durationMs === undefined ? {} : { durationMs: saved.durationMs }),
@@ -532,6 +566,7 @@ async function crawlAndPrepare(
   const report: RunReport = {
     discovery: counts.discovery,
     enrichment: counts.enrichment,
+    healthCheck: counts.healthCheck,
     warningCount: counts.warningCount,
     errorCategories: counts.errorCategories,
     ...(options.rateBuckets ? { rateBuckets: options.rateBuckets() } : {}),
