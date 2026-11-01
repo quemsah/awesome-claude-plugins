@@ -1,10 +1,16 @@
+/** biome-ignore-all lint/style/useNamingConvention: Environment variables require uppercase names. */
+
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { appendFileSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { appendFileSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
+
+const pidPattern = /^\d+$/
+const parentPattern = /^PPid:\s*(\d+)/m
+const rssPattern = /^VmRSS:\s*(\d+)/m
 
 const { values } = parseArgs({
   options: {
@@ -83,11 +89,11 @@ if (values.baseline || values.candidate) {
   const readRssMiB = () => {
     const entries = new Map()
     for (const name of readdirSync('/proc')) {
-      if (!/^\d+$/.test(name)) continue
+      if (!pidPattern.test(name)) continue
       try {
         const status = readFileSync('/proc/' + name + '/status', 'utf8')
-        const parent = Number(status.match(/^PPid:\s*(\d+)/m)?.[1])
-        const rssKiB = Number(status.match(/^VmRSS:\s*(\d+)/m)?.[1] ?? 0)
+        const parent = Number(status.match(parentPattern)?.[1])
+        const rssKiB = Number(status.match(rssPattern)?.[1] ?? 0)
         entries.set(Number(name), { parent, rssKiB })
       } catch {
         // A process may exit while inspecting /proc.
