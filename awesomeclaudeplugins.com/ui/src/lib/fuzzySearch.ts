@@ -1,4 +1,5 @@
-import Database from 'better-sqlite3'
+import { createRequire } from 'node:module'
+import type Database from 'better-sqlite3'
 import type { Repo } from '../schemas/repo.schema.ts'
 import { isArchivedRepo } from './repoMetadata.ts'
 import type { SortOption } from './sortOptions.ts'
@@ -28,7 +29,10 @@ export function createCatalogSearchIndex(repos: readonly Repo[]): CatalogSearchI
   const cached = indexes.get(repos)
   if (cached) return cached
 
-  const db = new Database(':memory:')
+  // Do not load the native SQLite addon for browsing-only server requests.
+  // createRequire supports both native Node ESM and the synchronous Next.js server route.
+  const DatabaseConstructor = createRequire(import.meta.url)('better-sqlite3') as typeof Database
+  const db = new DatabaseConstructor(':memory:')
   db.exec(`
     CREATE VIRTUAL TABLE search USING fts5(text, content='', tokenize='unicode61 tokenchars ''+#''', prefix='1 2 3 4');
     CREATE TABLE metadata (
