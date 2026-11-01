@@ -134,7 +134,9 @@ export function buildRepoMarkdown(repo: Repo): string {
     toYamlProperty('publication_state', quality.publicationState),
     toYamlProperty('quality_note', quality.qualityReason),
     toYamlProperty('catalog_updated', getCatalogLastModified().toISOString()),
-    toYamlProperty('install_command', marketplaceCommand),
+    // A repository does not identify which plugin to install; the command only registers its marketplace.
+    toYamlProperty('install_command', null),
+    toYamlProperty('marketplace_add_command', marketplaceCommand),
     ...(standalone ? [toYamlProperty('manifest_kind', 'standalone-plugin')] : []),
     '---',
   ].join('\n')
@@ -161,6 +163,6 @@ ${descriptionBody}
 
 ## Installation
 
-${localInstructions ? `Load locally for this Claude Code session:\n\n\`\`\`sh\n${localInstructions}\n\`\`\`` : marketplaceCommand ? `When this repository exposes a Claude Code marketplace, add it with:\n\n\`\`\`bash\n${marketplaceCommand}\n\`\`\`` : 'No marketplace install command is available.'}
+${localInstructions ? `Load locally for this Claude Code session:\n\n\`\`\`sh\n${localInstructions}\n\`\`\`` : marketplaceCommand ? `Register this repository as a Claude Code marketplace with:\n\n\`\`\`bash\n${marketplaceCommand}\n\`\`\`\n\nThis command only adds the marketplace; it does not install a plugin. Open the catalog detail page to choose a plugin to install.` : 'No marketplace registration command is available.'}
 `
 }
