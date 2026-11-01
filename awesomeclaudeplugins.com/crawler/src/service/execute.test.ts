@@ -273,6 +273,32 @@ describe('orchestration', () => {
     db.close()
   })
 
+  it('replays a two-family report and normalizes missing standalone source counters', async () => {
+    const db = await dbFixture()
+    try {
+      await executeCrawl(db, reader, 'two-family', { now, ranges: range, dryRun: true })
+      const report = JSON.parse(getSetting(db, 'run_report_two-family') ?? 'null')
+      report.discovery.successfulRanges -= report.discovery.families.plugin_filename_path.successfulRanges
+      delete report.discovery.families.plugin_filename_path
+      for (const source of ['code_search', 'repo_search']) delete report.discovery.sources[source].acceptedStandalonePlugins
+      setSetting(db, 'run_report_two-family', JSON.stringify(report))
+      const git: GitHubGit = {
+        getBranchHead: vi.fn(async () => ({ sha: 'a'.repeat(40), treeSha: 'b'.repeat(40) })),
+        createTree: vi.fn(async () => 'c'.repeat(40)),
+        createCommit: vi.fn(async () => 'd'.repeat(40)),
+        updateBranch: vi.fn(async () => {}),
+        isCommitReachable: vi.fn(async () => false),
+      }
+      const result = await executePublish(db, git, 'two-family', { now, writeEnabled: true })
+      expect(result.report?.discovery?.families.plugin_filename_path).toEqual({ successfulRanges: 0, warningCount: 0 })
+      expect(result.report?.discovery?.sources?.code_search.acceptedStandalonePlugins).toBe(0)
+      expect(result.report?.discovery?.sources?.repo_search.acceptedStandalonePlugins).toBe(0)
+      expect(result.report?.discovery?.successfulRanges).toBe(report.discovery.successfulRanges)
+    } finally {
+      db.close()
+    }
+  })
+
   it('reads legacy stored reports and maps their discovery counts to the original family', async () => {
     const db = await dbFixture()
     await executeCrawl(db, reader, 'legacy-report', { now, ranges: range, dryRun: true })

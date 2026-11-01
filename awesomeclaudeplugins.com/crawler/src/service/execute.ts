@@ -301,8 +301,12 @@ function storedReport(db: Database.Database, runId: string): Partial<RunReport> 
   ) {
     throw new Error('Invalid stored health-check report')
   }
+  const discovery: RunReport['discovery'] = normalizeDiscovery(value.discovery as StoredDiscoverySummary)
+  if (discovery.sources) {
+    for (const source of Object.values(discovery.sources)) source.acceptedStandalonePlugins ??= 0
+  }
   return {
-    discovery: normalizeDiscovery(value.discovery as StoredDiscoverySummary),
+    discovery,
     enrichment: value.enrichment,
     ...(value.healthCheck === undefined ? {} : { healthCheck: value.healthCheck as CrawlSummary['healthCheck'] }),
     warningCount: value.warningCount,
