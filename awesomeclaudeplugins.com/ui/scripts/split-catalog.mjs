@@ -6,9 +6,10 @@ import { pathToFileURL } from 'node:url'
 import { buildRepoDetailsShards, buildSearchIndex } from '../../crawler/src/output/splitCatalog.ts'
 
 export function splitCatalog(dataDir) {
-  const repos = JSON.parse(readFileSync(join(dataDir, 'repos.json'), 'utf8'))
+  const canonicalJson = readFileSync(join(dataDir, 'repos.json'), 'utf8')
+  const repos = JSON.parse(canonicalJson)
   const searchIndexPath = join(dataDir, 'search-index.json')
-  writeFileSync(searchIndexPath, buildSearchIndex(repos))
+  writeFileSync(searchIndexPath, buildSearchIndex(repos, canonicalJson))
   console.log(`Wrote search-index.json (${(statSync(searchIndexPath).size / 1024 / 1024).toFixed(2)} MB)`)
 
   const detailsDir = join(dataDir, 'repo-details')
