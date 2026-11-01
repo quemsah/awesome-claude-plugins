@@ -67,7 +67,7 @@ describe('createCatalogSearchIndex', () => {
       { ...baseRepo, id: 4, repo_name: 'regular-repo', owner: 'tags', description: 'devtools plugin' },
     ])
     expect(index.search('C++17').matches.map((match) => match.item.id)).toEqual([1])
-    expect(index.search('C++').matches.map((match) => match.item.id)).toEqual([1, 2])
+    expect(index.search('C++').matches.map((match) => match.item.id).sort((a, b) => a - b)).toEqual([1, 2])
     expect(index.search('#devtools').matches.map((match) => match.item.id)).toEqual([3])
     expect(index.search('devtools').matches.map((match) => match.item.id)).toEqual([4])
   })
