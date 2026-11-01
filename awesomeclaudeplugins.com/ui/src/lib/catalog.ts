@@ -22,8 +22,39 @@ const canonicalCatalogRepoIdentities = new Set(canonicalCatalogRepos.map((repo) 
 // Different Next.js route bundles can have different module registries in the same process.
 // Key the shared index by the original catalog array, which catalogStore already shares globally.
 const CATALOG_SEARCH_INDEX_KEY = Symbol.for('awesome-claude-plugins.catalog-search-index')
+const FULL_PAGE_CACHE_KEY = Symbol.for('awesome-claude-plugins.full-catalog-page-cache')
+const MAX_FULL_PAGE_CACHE_PAGES = 3
 type SharedSearchIndex = { source: readonly CatalogRepo[]; index: ReturnType<typeof createCatalogSearchIndex> }
-type CatalogSearchGlobal = typeof globalThis & { [CATALOG_SEARCH_INDEX_KEY]?: SharedSearchIndex }
+type FullPageCache = { source: readonly CatalogRepo[]; pages: Map<string, CatalogRepo[]> }
+type CatalogSearchGlobal = typeof globalThis & {
+  [CATALOG_SEARCH_INDEX_KEY]?: SharedSearchIndex
+  [FULL_PAGE_CACHE_KEY]?: FullPageCache
+}
+
+/** Cache a few full API pages; repeated requests otherwise churn the 10-shard LRU. */
+function getFullCatalogPage(repos: readonly CatalogRepo[], query: string, sort: SortOption, page: number, pageSize: number): CatalogRepo[] {
+  const root = globalThis as CatalogSearchGlobal
+  const source = getCatalog()
+  let cache = root[FULL_PAGE_CACHE_KEY]
+  if (!cache || cache.source !== source) {
+    cache = { source, pages: new Map() }
+    root[FULL_PAGE_CACHE_KEY] = cache
+  }
+  const key = JSON.stringify([query, sort, page, pageSize])
+  const cached = cache.pages.get(key)
+  if (cached) {
+    cache.pages.delete(key)
+    cache.pages.set(key, cached)
+    return cached
+  }
+  const hydrated = repos.map((repo) => formatCatalogRepo(hydrateCatalogRepo(repo)))
+  if (cache.pages.size >= MAX_FULL_PAGE_CACHE_PAGES) {
+    const oldest = cache.pages.keys().next().value
+    if (oldest !== undefined) cache.pages.delete(oldest)
+  }
+  cache.pages.set(key, hydrated)
+  return hydrated
+}
 
 /** Lazily create one FTS5 index per catalog and Node.js process, shared by SSR and API routes. */
 function getCatalogSearchIndex() {
@@ -174,8 +205,8 @@ export function searchCatalogRepos(
     hasMore: start + pageSize < total,
     pluginsCount,
     // Card fields (including description and manifest_kind) are already in the compact index.
-    // Hydrate only the public full-detail response; never read 24 shards only to discard plugins.
-    repos: repos.map((repo) => (options.summaries === 'omit' ? withoutPluginSummaries(repo) : formatCatalogRepo(hydrateCatalogRepo(repo)))),
+    // Hydrate and cache only full-detail API pages, never the card-only response.
+    repos: options.summaries === 'omit' ? repos.map(withoutPluginSummaries) : getFullCatalogPage(repos, normalizedQuery, sortOption, page, pageSize),
     total,
   }
 }
