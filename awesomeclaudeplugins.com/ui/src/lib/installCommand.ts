@@ -1,3 +1,5 @@
+import { isSafePluginId } from '@awesome-claude-plugins/catalog-contract'
+
 /**
  * Install command types for Claude Code plugins.
  */
@@ -9,7 +11,8 @@ export type PluginInstallCommandInput = {
   marketplaceName?: string
 }
 
-const PLUGIN_COMMAND_TOKEN_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i
+// Repository path segments are validated separately from manifest plugin identifiers.
+const REPOSITORY_COMMAND_TOKEN_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i
 
 /**
  * Normalizes a plugin name for CLI usage.
@@ -20,7 +23,7 @@ const PLUGIN_COMMAND_TOKEN_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i
  */
 export function normalizePluginName(pluginName?: string): string {
   const normalized = typeof pluginName === 'string' ? pluginName.trim().toLowerCase().replace(/\s+/g, '-') : ''
-  return PLUGIN_COMMAND_TOKEN_PATTERN.test(normalized) ? normalized : ''
+  return isSafePluginId(normalized) ? normalized : ''
 }
 
 /**
@@ -32,7 +35,7 @@ export function isPluginInstallCommandVerified(pluginName?: string, marketplaceN
   const normalizedPluginName = normalizePluginName(pluginName)
   const normalizedMarketplaceName = typeof marketplaceName === 'string' ? marketplaceName.trim() : ''
 
-  return Boolean(normalizedPluginName && normalizedMarketplaceName && PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedMarketplaceName))
+  return Boolean(normalizedPluginName && isSafePluginId(normalizedMarketplaceName))
 }
 
 /**
@@ -49,10 +52,10 @@ export function isPluginInstallCommandVerified(pluginName?: string, marketplaceN
 export function getPluginInstallCommand({ pluginName, pluginId, marketplaceName }: PluginInstallCommandInput): string | null {
   const normalizedName = normalizePluginName(pluginName)
   const normalizedPluginId = typeof pluginId === 'string' ? pluginId.trim() : undefined
-  if (normalizedPluginId && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedPluginId)) return null
+  if (normalizedPluginId && !isSafePluginId(normalizedPluginId)) return null
   const normalizedMarketplaceName = typeof marketplaceName === 'string' ? marketplaceName.trim() : undefined
 
-  if (normalizedMarketplaceName && !PLUGIN_COMMAND_TOKEN_PATTERN.test(normalizedMarketplaceName)) {
+  if (normalizedMarketplaceName && !isSafePluginId(normalizedMarketplaceName)) {
     return null
   }
 
@@ -90,8 +93,8 @@ export function getMarketplaceAddCommand(owner?: string | null, repoName?: strin
     !(
       trimmedOwner &&
       trimmedRepoName &&
-      PLUGIN_COMMAND_TOKEN_PATTERN.test(trimmedOwner) &&
-      PLUGIN_COMMAND_TOKEN_PATTERN.test(trimmedRepoName)
+      REPOSITORY_COMMAND_TOKEN_PATTERN.test(trimmedOwner) &&
+      REPOSITORY_COMMAND_TOKEN_PATTERN.test(trimmedRepoName)
     )
   ) {
     return null
