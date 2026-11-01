@@ -6,7 +6,7 @@ import { getLatestValidStatsDate } from './catalogDates.ts'
 import { CATALOG_PAGE_SIZE } from './catalogPagination.ts'
 import { type CatalogQuality, getCatalogQuality } from './catalogQuality.ts'
 import { getCatalog } from './catalogStore.ts'
-import { createCatalogSearchIndex } from './fuzzySearch.ts'
+import { createCatalogSearchIndex, hasSearchableTerms } from './fuzzySearch.ts'
 import { isArchivedRepo } from './repoMetadata.ts'
 import { getGitHubRepoPath } from './repositoryIdentity.ts'
 import { normalizeSearchQuery } from './searchQuery.ts'
@@ -36,6 +36,15 @@ function getCatalogSearchIndex() {
   root[CATALOG_SEARCH_INDEX_KEY] = { source, index }
   return index
 }
+
+/** Non-searchable input is a zero-hit search, not a request to browse the full catalog. */
+function searchIndexedCatalogQuery(query: string, sortOption: SortOption, page: number, pageSize: number) {
+  if (!hasSearchableTerms(query)) {
+    return { matches: [], total: 0, pluginsCount: 0 }
+  }
+  return getCatalogSearchIndex().search(query, sortOption, page, pageSize)
+}
+
 const indexableCatalogRepos = canonicalCatalogRepos.filter((repo) => getCatalogQuality(repo, true).publicationState === 'indexable')
 const catalogReposByPath = new Map<string, CatalogRepo>()
 for (const repo of catalogRepos) {
@@ -154,7 +163,7 @@ export function searchCatalogRepos(
   options: CatalogSearchOptions = {}
 ): CatalogSearchResult {
   const normalizedQuery = normalizeSearchQuery(query)
-  const matches = normalizedQuery ? getCatalogSearchIndex().search(normalizedQuery, sortOption, page, pageSize) : undefined
+  const matches = normalizedQuery ? searchIndexedCatalogQuery(normalizedQuery, sortOption, page, pageSize) : undefined
   const repos = matches
     ? matches.matches.map((match) => match.item)
     : catalogReposBySort[sortOption].slice(page * pageSize, (page + 1) * pageSize)
