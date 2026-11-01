@@ -9,6 +9,11 @@ on:
       - 'awesomeclaudeplugins.com/ui/scripts/benchmark-catalog-coldstart.mjs'
       - 'awesomeclaudeplugins.com/ui/src/lib/catalog.ts'
       - 'awesomeclaudeplugins.com/ui/src/lib/fuzzySearch.ts'
+      - 'awesomeclaudeplugins.com/ui/src/lib/catalogStore.ts'
+      - 'awesomeclaudeplugins.com/crawler/src/output/splitCatalog.ts'
+      - 'awesomeclaudeplugins.com/crawler/src/publish/githubGit.ts'
+      - 'awesomeclaudeplugins.com/ui/scripts/split-catalog.mjs'
+      - 'awesomeclaudeplugins.com/ui/package.json'
   workflow_dispatch:
 
 permissions:
