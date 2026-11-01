@@ -38,3 +38,5 @@ export {
 
 export type { CatalogRecord, MarketplacePluginIssue, PluginSummary, Repo }
 export type Marketplace = { plugins: unknown[] }
+export { parseStandalonePlugin, StandalonePluginFormatError, toStandaloneCatalogManifest } from './standalonePlugin.js'
+export type { StandalonePluginManifest } from './standalonePlugin.js'
