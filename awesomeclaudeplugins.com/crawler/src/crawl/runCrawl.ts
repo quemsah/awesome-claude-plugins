@@ -21,6 +21,7 @@ import {
 import { type DiscoverySummary, discover } from './discover.js'
 import { discoverRepositories } from './discoverRepositories.js'
 import { type EnrichmentCounts, enrichRepositories, MAX_PENDING_CANDIDATES_PER_RUN } from './enrich.js'
+import { type HealthCheckSummary, healthCheck } from './healthCheck.js'
 
 export type RunCrawlOptions = {
   ranges?: readonly SizeRange[]
@@ -61,6 +62,7 @@ export type CrawlSummary = {
   status: 'completed'
   discovery: CrawlDiscoverySummary
   enrichment: EnrichmentCounts
+  healthCheck: HealthCheckSummary
   warningCount: number
   errorCategories: Record<string, number>
 }
@@ -180,6 +182,7 @@ async function crawlAndComplete(
     if (!heartbeatRun(db, runId, now())) throw new CrawlError('run_not_active')
   }
   throwIfShutdown(options.signal)
+  const health = await healthCheck(db, reader, runId, heartbeat, now, options.log, { signal: options.signal })
   startRunPhase(db, runId, 'discovery', now())
   options.onPhase?.('discovery')
   const acceptedRepositories = () =>
@@ -268,7 +271,7 @@ async function crawlAndComplete(
   }
   const warningCount = errors.length + Number(repo.state === 'incomplete')
   if (!completeRun(db, runId, now(), warningCount)) throw new CrawlError('run_not_active')
-  return { runId, status: 'completed', discovery, enrichment, warningCount, errorCategories }
+  return { runId, status: 'completed', discovery, enrichment, healthCheck: health, warningCount, errorCategories }
 }
 
 function failCrawl(db: Database.Database, runId: string, error: unknown, category: CrawlFailureCategory, now: () => string): CrawlError {

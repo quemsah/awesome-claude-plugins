@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 20
+const schemaVersion = 21
 
 function createSchema(db: Database.Database): void {
   db.exec(`
@@ -444,6 +444,14 @@ function migrateTo20(db: Database.Database): void {
   db.pragma('user_version = 20')
 }
 
+function migrateTo21(db: Database.Database): void {
+  if (!hasColumn(db, 'last_health_check_at')) db.exec('ALTER TABLE repositories ADD COLUMN last_health_check_at TEXT')
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS repositories_health_queue ON repositories(last_health_check_at, id);
+    PRAGMA user_version = 21;
+  `)
+}
+
 // Keep the migration sequence explicit while avoiding a growing chain of conditional branches.
 const migrations: readonly ((db: Database.Database) => void)[] = [
   migrateTo2,
@@ -465,6 +473,7 @@ const migrations: readonly ((db: Database.Database) => void)[] = [
   migrateTo18,
   migrateTo19,
   migrateTo20,
+  migrateTo21,
 ]
 
 function migrateSchema(db: Database.Database, version: number): void {
