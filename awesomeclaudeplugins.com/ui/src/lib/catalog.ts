@@ -170,11 +170,12 @@ export function searchCatalogRepos(
   const total = matches?.total ?? canonicalCatalogRepos.length
   const pluginsCount = matches?.pluginsCount ?? catalogPluginsCount
 
-  const hydrate = typeof hydrateCatalogRepo === 'function' ? hydrateCatalogRepo : <T>(r: T): T => r
   return {
     hasMore: start + pageSize < total,
     pluginsCount,
-    repos: repos.map((repo) => (options.summaries === 'omit' ? withoutPluginSummaries(hydrate(repo)) : formatCatalogRepo(hydrate(repo)))),
+    // Card fields (including description and manifest_kind) are already in the compact index.
+    // Hydrate only the public full-detail response; never read 24 shards only to discard plugins.
+    repos: repos.map((repo) => (options.summaries === 'omit' ? withoutPluginSummaries(repo) : formatCatalogRepo(hydrateCatalogRepo(repo)))),
     total,
   }
 }
@@ -242,8 +243,7 @@ export function formatCatalogRepo(repo: CatalogRepo): CatalogRepo {
 export function findCatalogRepo(repoPath: string) {
   const repo = catalogReposByPath.get(repoPath.toLowerCase())
   if (!repo) return undefined
-  const hydrate = typeof hydrateCatalogRepo === 'function' ? hydrateCatalogRepo : <T>(r: T): T => r
-  return hydrate(repo)
+  return hydrateCatalogRepo(repo)
 }
 
 export function getCatalogLastModified() {
