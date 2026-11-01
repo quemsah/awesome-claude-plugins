@@ -145,7 +145,10 @@ export function getCatalog(): readonly Repo[] {
   const cachedCatalog = root[CATALOG_KEY]
   if (cachedCatalog !== undefined) return cachedCatalog
 
-  const catalog = readCatalogFiles(join(process.cwd(), 'src/data/search-index.json'), join(process.cwd(), 'src/data/repos.json'))
+  const fixturePath = process.env.CATALOG_DATA_PATH
+  const catalog = fixturePath
+    ? (JSON.parse(readFileSync(fixturePath, 'utf8')) as Repo[])
+    : readCatalogFiles(join(process.cwd(), 'src/data/search-index.json'), join(process.cwd(), 'src/data/repos.json'))
   root[CATALOG_KEY] = catalog
   return catalog
 }

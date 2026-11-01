@@ -78,6 +78,24 @@ const unnamedPlugin = {
  * anything that is not catalogued before it ever reaches GitHub.
  */
 const fixtures = {
+  'acme/capsule': {
+    repository: { status: 200, body: buildRepository('acme', 'capsule', { description: null, default_branch: 'trunk' }) },
+    marketplace: { status: 404, body: { message: 'Not Found' } },
+    plugin: {
+      status: 200,
+      body: {
+        name: 'Nebula Review Tools',
+        description: 'Nebula review automation provides precise, independent change summaries for plugin authors and maintainers.',
+        commands: './commands/review.md',
+      },
+    },
+  },
+  'acme/market-hub': {
+    marketplace: {
+      status: 200,
+      body: { name: 'market-hub', owner: { name: 'acme' }, plugins: [{ name: 'market-helper', source: './' }] },
+    },
+  },
   'ykdojo/claude-code-tips': {
     marketplace: {
       status: 200,
@@ -106,6 +124,7 @@ const fixtures = {
 
 const REPOSITORY_PATH_PATTERN = /^\/repos\/([^/]+)\/([^/]+)$/
 const MARKETPLACE_PATH_PATTERN = /^\/([^/]+)\/([^/]+)\/[^/]+\/\.claude-plugin\/marketplace\.json$/
+const PLUGIN_PATH_PATTERN = /^\/([^/]+)\/([^/]+)\/[^/]+\/\.claude-plugin\/plugin\.json$/
 
 function sendJson(response, status, payload) {
   response.writeHead(status, {
@@ -161,6 +180,14 @@ const server = createServer((request, response) => {
       return
     }
     sendJson(response, marketplace.status, marketplace.body)
+    return
+  }
+
+  const pluginMatch = PLUGIN_PATH_PATTERN.exec(pathname)
+  if (pluginMatch) {
+    const [, owner, name] = pluginMatch
+    const plugin = fixtures[`${owner}/${name}`]?.plugin
+    sendJson(response, plugin?.status ?? 404, plugin?.body ?? { message: 'Not Found' })
     return
   }
 

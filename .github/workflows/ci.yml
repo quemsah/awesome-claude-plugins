@@ -145,6 +145,10 @@ jobs:
         env:
           PLAYWRIGHT_PREBUILT: '1'
 
+      - name: Run standalone catalog journey with an isolated snapshot
+        run: bun run test:e2e:standalone
+        working-directory: awesomeclaudeplugins.com/ui
+
       - name: Upload Playwright failure artifacts
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
