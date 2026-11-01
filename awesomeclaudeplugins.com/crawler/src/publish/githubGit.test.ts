@@ -54,7 +54,7 @@ function payload(request: { init: RequestInit | undefined }): unknown {
 }
 
 describe('GitHubGitClient', () => {
-  it('creates exactly four content blobs on the base tree and advances the ref without force', async () => {
+  it('publishes complete split catalog artifacts atomically with the original snapshot', async () => {
     const { client, requests } = mockClient([
       ref(baseSha),
       commit(baseSha, baseTree, [rootSha]),
@@ -83,7 +83,13 @@ describe('GitHubGitClient', () => {
       'X-GitHub-Api-Version': '2022-11-28',
     })
     expect(requests[2].init?.headers).toMatchObject({ 'Content-Type': 'application/json' })
-    expect(payload(requests[2])).toEqual({
+    const published = payload(requests[2]) as { base_tree: string; tree: Array<{ path: string; content: string }> }
+    expect(published.tree).toHaveLength(105)
+    const searchIndex = published.tree.find((entry) => entry.path.endsWith('/search-index.json'))
+    expect(JSON.parse(searchIndex?.content ?? '{}')).toMatchObject({ format: 'v1', rows: [[1, null, null, 0, 0, null]] })
+    expect(published.tree.find((entry) => entry.path.endsWith('/repo-details/1.json'))).toBeDefined()
+    expect(published.tree.find((entry) => entry.path.endsWith('/repo-details/99.json'))).toBeDefined()
+    expect({ base_tree: published.base_tree, tree: published.tree.filter((entry) => !entry.path.endsWith('/search-index.json') && !entry.path.includes('/repo-details/')) }).toEqual({
       base_tree: baseTree,
       tree: [
         { path: 'README.md', mode: '100644', type: 'blob', content: '# Catalog\n' },
