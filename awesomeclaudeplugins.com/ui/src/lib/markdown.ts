@@ -3,6 +3,7 @@ import { getCatalogLastModified, getCatalogQualityForRepo } from './catalog.ts'
 import { BASE_URL, SOURCE_REPOSITORY_URL } from './constants.ts'
 import { getMarketplaceAddCommand } from './installCommand.ts'
 import { getGitHubRepoPath, getGitHubRepoUrl } from './repositoryIdentity.ts'
+import { getStandalonePluginLoadInstructions } from './standalonePluginInstructions.ts'
 import { formatDate } from './utils.ts'
 
 export function buildHomeMarkdown(): string {
@@ -112,7 +113,9 @@ export function buildRepoMarkdown(repo: Repo): string {
   const repoPath = getGitHubRepoPath(repo.owner, repo.repo_name)
   const canonicalUrl = `${BASE_URL}/${repoPath}`
   const repositoryUrl = getGitHubRepoUrl(repo.owner, repo.repo_name)
-  const marketplaceCommand = getMarketplaceAddCommand(repo.owner, repo.repo_name)
+  const standalone = repo.manifest_kind === 'standalone-plugin'
+  const localInstructions = standalone ? getStandalonePluginLoadInstructions(repo.owner, repo.repo_name) : null
+  const marketplaceCommand = standalone ? null : getMarketplaceAddCommand(repo.owner, repo.repo_name)
   const description = repo.description?.trim() || MISSING_DESCRIPTION
   const descriptionBody = toMarkdownText(foldToSingleLine(description))
   const pluginCount =
@@ -132,6 +135,7 @@ export function buildRepoMarkdown(repo: Repo): string {
     toYamlProperty('quality_note', quality.qualityReason),
     toYamlProperty('catalog_updated', getCatalogLastModified().toISOString()),
     toYamlProperty('install_command', marketplaceCommand),
+    ...(standalone ? [toYamlProperty('manifest_kind', 'standalone-plugin')] : []),
     '---',
   ].join('\n')
 
@@ -157,6 +161,6 @@ ${descriptionBody}
 
 ## Installation
 
-${marketplaceCommand ? `When this repository exposes a Claude Code marketplace, add it with:\n\n\`\`\`bash\n${marketplaceCommand}\n\`\`\`` : 'No marketplace install command is available.'}
+${localInstructions ? `Load locally for this Claude Code session:\n\n\`\`\`sh\n${localInstructions}\n\`\`\`` : marketplaceCommand ? `When this repository exposes a Claude Code marketplace, add it with:\n\n\`\`\`bash\n${marketplaceCommand}\n\`\`\`` : 'No marketplace install command is available.'}
 `
 }

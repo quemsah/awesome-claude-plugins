@@ -1,0 +1,29 @@
+import { parseMarketplace, parseStandalonePlugin, type StandalonePluginManifest } from '@awesome-claude-plugins/catalog-contract'
+
+export type RepositoryManifestLoadResult =
+  | { kind: 'marketplace'; manifest: unknown; path: '.claude-plugin/marketplace.json' }
+  | { kind: 'standalone-plugin'; manifest: StandalonePluginManifest; path: '.claude-plugin/plugin.json' }
+  | { kind: 'missing' }
+  | { kind: 'error'; path: string; reason: 'http' | 'invalid-content' | 'network'; status?: number }
+
+export async function loadRepositoryManifest(fetchManifest: (path: string) => Promise<Response>): Promise<RepositoryManifestLoadResult> {
+  for (const path of ['.claude-plugin/marketplace.json', '.claude-plugin/plugin.json'] as const) {
+    let response: Response
+    try {
+      response = await fetchManifest(path)
+    } catch {
+      return { kind: 'error', path, reason: 'network' }
+    }
+    if (response.status === 404) continue
+    if (!response.ok) return { kind: 'error', path, reason: 'http', status: response.status }
+    try {
+      const manifest: unknown = await response.json()
+      if (path === '.claude-plugin/plugin.json') return { kind: 'standalone-plugin', manifest: parseStandalonePlugin(manifest), path }
+      parseMarketplace(manifest)
+      return { kind: 'marketplace', manifest, path }
+    } catch {
+      return { kind: 'error', path, reason: 'invalid-content' }
+    }
+  }
+  return { kind: 'missing' }
+}

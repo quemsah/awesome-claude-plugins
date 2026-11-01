@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import type { Plugin } from '../../app/types/plugin.type.ts'
-import { getMarketplaceName, MarketplacePluginsSchema } from '../../app/types/plugin.type.ts'
+import { getMarketplaceName, getStandalonePluginForDisplay, MarketplacePluginsSchema } from '../../app/types/plugin.type.ts'
 import { BackToRepositoriesLink } from '../../components/repo/BackToRepositoriesLink.tsx'
 import { PluginCard } from '../../components/repo/PluginCard.tsx'
 import { RepoInfoCard } from '../../components/repo/RepoInfoCard.tsx'
@@ -11,8 +11,10 @@ import { Button } from '../../components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card.tsx'
 import { useLiveRepository } from '../../hooks/useLiveRepository.ts'
 import { getRepoBreadcrumbs } from '../../lib/breadcrumbs.ts'
+import { loadRepositoryManifest } from '../../lib/repositoryManifest.ts'
 import type { CatalogSnapshotReason } from '../../lib/repositorySnapshot.ts'
 import type { GitHubRepository } from '../../schemas/github.schema.ts'
+import type { PluginSummary } from '../../schemas/repo.schema.ts'
 import { Breadcrumbs } from '../common/Breadcrumbs.tsx'
 import { RetryButton } from './RetryButton.tsx'
 
@@ -36,9 +38,25 @@ type RepoPageClientProps = {
   owner: string
   repoName: string
   rawBaseUrl: string
+  manifestKind?: 'marketplace' | 'standalone-plugin'
+  catalogPlugins?: PluginSummary[]
 }
 
-export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, rawBaseUrl }: RepoPageClientProps) {
+export function RepoPageClient({
+  apiBaseUrl,
+  repoPath,
+  repo,
+  owner,
+  repoName,
+  rawBaseUrl,
+  manifestKind,
+  catalogPlugins,
+}: RepoPageClientProps) {
+  const [loadedKind, setLoadedKind] = useState(manifestKind)
+  const [manifestPath, setManifestPath] = useState(
+    manifestKind === 'standalone-plugin' ? '.claude-plugin/plugin.json' : '.claude-plugin/marketplace.json'
+  )
+  const [manifestWarning, setManifestWarning] = useState<string | null>(null)
   const [plugins, setPlugins] = useState<Plugin[]>([])
   const [invalidPluginCount, setInvalidPluginCount] = useState(0)
   const [marketplaceName, setMarketplaceName] = useState<string | undefined>(undefined)
@@ -65,63 +83,51 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
       setPluginsError(null)
       setPluginsStatus(null)
 
-      try {
-        const response = await fetch(
-          `${rawBaseUrl}/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/${MARKETPLACE_REF}/.claude-plugin/marketplace.json`,
-          { signal: controller.signal }
-        )
-
-        if (response.status === 404) {
-          if (!cancelled) setPluginsStatus('missing')
-          if (!cancelled) setPluginsLoading(false)
-          return
-        }
-
-        if (!response.ok) {
-          if (!cancelled) {
-            setPluginsStatus('error')
-            setPluginsError(response.status === 429 ? MARKETPLACE_RATE_LIMIT_ERROR : MARKETPLACE_LOAD_ERROR)
-            setPluginsLoading(false)
-          }
-          return
-        }
-
-        try {
-          const payload: unknown = await response.json()
-          const parsedMarketplace = MarketplacePluginsSchema.safeParse(payload)
-          if (parsedMarketplace.success) {
-            if (!cancelled) {
-              setPlugins(parsedMarketplace.data.plugins)
-              setInvalidPluginCount(parsedMarketplace.data.invalidPluginCount)
-              setMarketplaceName(getMarketplaceName(payload))
-              if (parsedMarketplace.data.invalidPluginCount > 0) {
-                console.error('Marketplace validation failed', { repoPath, issues: parsedMarketplace.data.issues })
-              }
-              setPluginsLoading(false)
-            }
-          } else {
-            if (!cancelled) {
-              console.error('Marketplace validation failed', { repoPath, issues: parsedMarketplace.error.issues })
-              setPluginsStatus('error')
-              setPluginsError('Marketplace manifest contains invalid data.')
-              setPluginsLoading(false)
-            }
-          }
-        } catch (error) {
-          if (!cancelled) {
-            console.error('Marketplace parsing failed', { repoPath, error })
-            setPluginsStatus('error')
-            setPluginsError('Marketplace manifest contains invalid data.')
-            setPluginsLoading(false)
-          }
-        }
-      } catch (_error) {
-        if (!cancelled) {
-          setPluginsStatus('error')
-          setPluginsError(MARKETPLACE_LOAD_ERROR)
-          setPluginsLoading(false)
-        }
+      setManifestWarning(null)
+      const result = await loadRepositoryManifest((path) =>
+        fetch(`${rawBaseUrl}/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/${MARKETPLACE_REF}/${path}`, {
+          signal: controller.signal,
+        })
+      )
+      if (cancelled) return
+      setPluginsLoading(false)
+      if (result.kind === 'missing') {
+        setPluginsStatus('missing')
+        return
       }
+      setManifestPath(result.path)
+      if (result.kind === 'error') {
+        if (manifestKind === 'standalone-plugin' && catalogPlugins?.length && result.reason !== 'invalid-content') {
+          setLoadedKind('standalone-plugin')
+          setPlugins(catalogPlugins.map((plugin) => ({ ...plugin, source: './' })))
+          setManifestWarning('Live plugin data is temporarily unavailable. Showing the latest catalog snapshot.')
+          return
+        }
+        setPluginsStatus('error')
+        const label = result.path.endsWith('/plugin.json') ? 'Plugin' : 'Marketplace'
+        setPluginsError(
+          result.reason === 'invalid-content'
+            ? `${label} manifest contains invalid data.`
+            : result.status === 429
+              ? MARKETPLACE_RATE_LIMIT_ERROR
+              : MARKETPLACE_LOAD_ERROR
+        )
+        return
+      }
+      setLoadedKind(result.kind)
+      if (result.kind === 'standalone-plugin') {
+        setPlugins([getStandalonePluginForDisplay(result.manifest)])
+        return
+      }
+      const parsed = MarketplacePluginsSchema.safeParse(result.manifest)
+      if (!parsed.success) {
+        setPluginsStatus('error')
+        setPluginsError('Marketplace manifest contains invalid data.')
+        return
+      }
+      setPlugins(parsed.data.plugins)
+      setInvalidPluginCount(parsed.data.invalidPluginCount)
+      setMarketplaceName(getMarketplaceName(result.manifest))
     }
 
     loadPlugins()
@@ -132,7 +138,7 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
       cancelled = true
       controller.abort()
     }
-  }, [owner, repoName, repoPath, rawBaseUrl, _retryCount])
+  }, [owner, repoName, repoPath, rawBaseUrl, manifestKind, catalogPlugins, _retryCount])
 
   return (
     <main className="bg-background min-h-dvh" id="main-content" tabIndex={-1}>
@@ -157,6 +163,11 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            {manifestWarning ? (
+              <p className="text-muted-foreground mb-4 text-sm" role="status">
+                {manifestWarning}
+              </p>
+            ) : null}
             {invalidPluginCount > 0 ? (
               <div className="mb-4 flex flex-wrap items-center justify-center gap-3 py-4 text-sm" role="alert">
                 <p className="text-destructive">
@@ -166,11 +177,11 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
                   className="text-sm underline underline-offset-4"
                   href={`${rawBaseUrl}/${encodeURIComponent(repoPath.split('/')[0])}/${encodeURIComponent(
                     repoPath.split('/')[1]
-                  )}/HEAD/.claude-plugin/marketplace.json`}
+                  )}/HEAD/${manifestPath}`}
                   rel="noreferrer"
                   target="_blank"
                 >
-                  View marketplace.json
+                  View {manifestPath.split('/').at(-1)}
                 </a>
               </div>
             ) : null}
@@ -190,18 +201,34 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
                   className="text-sm underline underline-offset-4"
                   href={`${rawBaseUrl}/${encodeURIComponent(repoPath.split('/')[0])}/${encodeURIComponent(
                     repoPath.split('/')[1]
-                  )}/HEAD/.claude-plugin/marketplace.json`}
+                  )}/HEAD/${manifestPath}`}
                   rel="noreferrer"
                   target="_blank"
                 >
-                  View marketplace.json
+                  View {manifestPath.split('/').at(-1)}
                 </a>
               </div>
             ) : plugins.length > 0 ? (
               <div className="space-y-4">
+                {loadedKind === 'standalone-plugin' ? (
+                  <a
+                    className="text-sm underline"
+                    href={`${rawBaseUrl}/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/HEAD/.claude-plugin/plugin.json`}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    View plugin.json
+                  </a>
+                ) : null}
                 {plugins.map((plugin, index) => (
                   <article key={`${plugin.id || ''}-${plugin.name || ''}-${index}`}>
-                    <PluginCard marketplaceName={marketplaceName} plugin={plugin} repo={displayedRepo} repoPath={repoPath} />
+                    <PluginCard
+                      manifestKind={loadedKind}
+                      marketplaceName={marketplaceName}
+                      plugin={plugin}
+                      repo={displayedRepo}
+                      repoPath={repoPath}
+                    />
                   </article>
                 ))}
               </div>
@@ -222,7 +249,10 @@ export function RepoPageClient({ apiBaseUrl, repoPath, repo, owner, repoName, ra
           <CardContent className="text-muted-foreground p-0 pt-4 text-sm">
             <ol className="list-decimal space-y-2 pl-5">
               <li>Review the source repository, recent maintenance, and license on GitHub.</li>
-              <li>Read the marketplace manifest and plugin source files before running commands.</li>
+              <li>
+                Read the {loadedKind === 'standalone-plugin' ? 'plugin' : 'marketplace'} manifest and plugin source files before running
+                commands.
+              </li>
               <li>Start with the smallest required permission set and validate behavior in a safe environment.</li>
             </ol>
           </CardContent>

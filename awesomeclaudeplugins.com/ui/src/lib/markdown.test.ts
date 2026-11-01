@@ -32,6 +32,15 @@ function makeRepo(overrides: RepoOverrides = {}) {
   }
 }
 
+it('describes standalone local loading without offering marketplace installation', () => {
+  const markdown = buildRepoMarkdown({ ...makeRepo(), manifest_kind: 'standalone-plugin', plugins_count: 1 })
+  expect(markdown).toContain('install_command: null')
+  expect(markdown).toContain('manifest_kind: "standalone-plugin"')
+  expect(markdown).toContain('claude --plugin-dir ./repository')
+  expect(markdown).not.toContain('/plugin marketplace add')
+  expect(markdown).not.toContain('/plugin install')
+})
+
 function splitFrontmatter(markdown: string) {
   const frontmatterMatch = FRONTMATTER_PATTERN.exec(markdown)
   if (!frontmatterMatch) {

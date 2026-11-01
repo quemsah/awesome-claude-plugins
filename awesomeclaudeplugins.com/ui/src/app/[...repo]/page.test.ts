@@ -50,6 +50,7 @@ describe('generateMetadata', () => {
       ok: true,
       json: async () => ({
         name: 'nanoresearch',
+        owner: { name: 'maintainer' },
         description: manifestDescription,
         plugins: [{ name: 'nanoresearch', source: './' }],
       }),
@@ -63,7 +64,7 @@ describe('generateMetadata', () => {
   })
 
   it('keeps publication stable when manifest description is unavailable', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,
       status: 404,
     } as Response)
@@ -79,6 +80,7 @@ describe('generateMetadata', () => {
       ok: true,
       json: async () => ({
         name: 'nanoresearch',
+        owner: { name: 'maintainer' },
         description: 'Short tool',
         plugins: [{ name: 'nanoresearch', source: './' }],
       }),

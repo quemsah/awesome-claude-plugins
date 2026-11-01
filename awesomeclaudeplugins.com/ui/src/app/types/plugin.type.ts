@@ -4,6 +4,7 @@ import {
   PLUGIN_ID_PATTERN,
   parseMarketplace as parseSharedMarketplace,
   resolveMarketplacePluginDisplayName,
+  parseStandalonePlugin,
 } from '@awesome-claude-plugins/catalog-contract'
 import * as z from 'zod/mini'
 import { getMcpBundleUrl } from '../../lib/mcpBundleUrl.ts'
@@ -311,6 +312,12 @@ export const MarketplacePluginsSchema: z.ZodMiniType<MarketplacePluginsResult> =
   })
   return result
 })
+
+export function getStandalonePluginForDisplay(value: unknown): Plugin {
+  const manifest = parseStandalonePlugin(value)
+  const candidate = { ...manifest, name: manifest.name, id: undefined, source: './' }
+  return recoverPluginWithValidMetadata(candidate) ?? { name: manifest.name, source: './' }
+}
 
 export function getMarketplaceName(value: unknown): string | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
