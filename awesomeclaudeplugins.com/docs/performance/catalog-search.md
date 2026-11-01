@@ -1,7 +1,10 @@
 # Catalog search performance
 
 The UI uses an immutable, in-memory SQLite FTS5 index, built lazily on the first
-nonempty search. Browsing without a search does not initialize FTS5. Searches perform matching, BM25 ranking, metric sorting, counting and
+nonempty search. Browsing without a search does not load the SQLite native addon.
+SSR and API routes reuse the same index when hosted in the same Node.js process
+(though separate worker processes still need separate indexes). Searches perform
+matching, BM25 ranking, metric sorting, counting and
 pagination in SQLite. Only the requested page crosses into JavaScript. There is no
 query-result cache, so novel queries take the same path as repeated ones. Equal
 metric keys are assigned a shared rank at initialization; BM25 is calculated only
@@ -81,12 +84,15 @@ and Railway's actual billing model for a cost estimate.
 
 The `Catalog search memory A/B` workflow also builds both revisions with
 `bun run build:ui` and runs fresh production `node next start` processes.
-It checks both request orders: API-first and homepage-first. The first response
+It checks three request orders: API search then server-rendered search,
+server-rendered search then API search, and browsing homepage then API search.
+Three independent fresh processes per order and revision are measured; the
+summary reports medians rather than a single cold start. The first response
 includes startup and lazy module/index initialization; the second response
-checks that the other route works. Each run records response times, process-tree
+checks the other route. Each run records response times, process-tree
 RSS, and 250-ms sampled peak memory.
 
-The GitHub Actions job summary compares both revisions and uploads four JSON
+The GitHub Actions job summary compares both revisions and uploads eighteen JSON
 reports. RSS sums Linux process-tree resident sizes, which can double-count
 shared pages; sampled peaks can miss brief spikes. Use these as comparative
 diagnostics, not as a Railway billing estimate.
