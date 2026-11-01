@@ -13,61 +13,100 @@ interface InstallCommandProps {
   repoName?: string
 }
 
-export function InstallCommand({ marketplaceName, pluginName, pluginId, repoPath, owner, repoName }: InstallCommandProps) {
-  const {
-    combinedCommand,
-    copyError,
-    handleCopyBoth,
-    handleCopyMarketplace,
-    handleCopyPlugin,
-    installCommand,
-    isBothCopied,
-    isMarketplaceCopied,
-    isPluginCopied,
-    isVerified,
-    marketplaceAddCommand,
-    needsMarketplaceAdd,
-  } = useInstallCommand({
-    marketplaceName,
-    pluginName,
-    pluginId,
-    repoPath,
-    owner,
-    repoName,
-  })
+interface SingleInstallCommandProps {
+  copyError: string | null
+  handleCopyPlugin: () => void
+  installCommand: string | null
+  isPluginCopied: boolean
+  isPluginDisabled: boolean
+  isVerified: boolean
+}
 
-  const isPluginDisabled = !(installCommand && isVerified)
+function SingleInstallCommand({
+  copyError,
+  handleCopyPlugin,
+  installCommand,
+  isPluginCopied,
+  isPluginDisabled,
+  isVerified,
+}: SingleInstallCommandProps) {
+  const copyLabel = isPluginCopied
+    ? 'Installation command copied'
+    : isPluginDisabled
+      ? 'Copy install command unavailable'
+      : 'Copy installation command'
 
-  if (!needsMarketplaceAdd) {
-    return (
-      <div className="px-6 pb-4">
-        <div className="bg-muted/50 flex items-center gap-2 rounded-md border p-3">
-          <code className="grow font-mono text-sm break-all">{installCommand ?? 'Install command unavailable'}</code>
-          {installCommand && !isVerified && <span className="text-muted-foreground shrink-0 text-xs">unverified</span>}
-          <button
-            aria-label={
-              isPluginCopied
-                ? 'Installation command copied'
-                : isPluginDisabled
-                  ? 'Copy install command unavailable'
-                  : 'Copy installation command'
-            }
-            className={`touch-target shrink-0 rounded-md p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-              isPluginCopied ? 'bg-status-positive/20 text-status-positive' : 'enabled:hover:bg-muted'
-            }`}
-            disabled={isPluginDisabled}
-            onClick={handleCopyPlugin}
-            title={isVerified ? 'Copy installation command' : 'Unverified command'}
-            type="button"
-          >
-            {isPluginCopied ? <CopiedIcon /> : <CopyIcon />}
-          </button>
-        </div>
-        <p aria-live="polite" className="text-destructive mt-2 text-xs" role={copyError ? 'alert' : undefined}>
-          {copyError ?? (isPluginCopied ? 'Install command copied.' : '')}
-        </p>
+  const copyStatusMessage = copyError ?? (isPluginCopied ? 'Install command copied.' : '')
+
+  return (
+    <div className="px-6 pb-4">
+      <div className="bg-muted/50 flex items-center gap-2 rounded-md border p-3">
+        <code className="grow font-mono text-sm break-all">{installCommand ?? 'Install command unavailable'}</code>
+        {installCommand && !isVerified && <span className="text-muted-foreground shrink-0 text-xs">unverified</span>}
+        <button
+          aria-label={copyLabel}
+          className={`touch-target shrink-0 rounded-md p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+            isPluginCopied ? 'bg-status-positive/20 text-status-positive' : 'enabled:hover:bg-muted'
+          }`}
+          disabled={isPluginDisabled}
+          onClick={handleCopyPlugin}
+          title={isVerified ? 'Copy installation command' : 'Unverified command'}
+          type="button"
+        >
+          {isPluginCopied ? <CopiedIcon /> : <CopyIcon />}
+        </button>
       </div>
-    )
+      <p aria-live="polite" className="text-destructive mt-2 text-xs" role={copyError ? 'alert' : undefined}>
+        {copyStatusMessage}
+      </p>
+    </div>
+  )
+}
+
+interface TwoStepInstallCommandProps {
+  combinedCommand: string | null
+  copyError: string | null
+  handleCopyBoth: () => void
+  handleCopyMarketplace: () => void
+  handleCopyPlugin: () => void
+  installCommand: string | null
+  isBothCopied: boolean
+  isMarketplaceCopied: boolean
+  isPluginCopied: boolean
+  isPluginDisabled: boolean
+  isVerified: boolean
+  marketplaceAddCommand: string | null
+}
+
+function TwoStepInstallCommand({
+  combinedCommand,
+  copyError,
+  handleCopyBoth,
+  handleCopyMarketplace,
+  handleCopyPlugin,
+  installCommand,
+  isBothCopied,
+  isMarketplaceCopied,
+  isPluginCopied,
+  isPluginDisabled,
+  isVerified,
+  marketplaceAddCommand,
+}: TwoStepInstallCommandProps) {
+  const pluginCopyLabel = isPluginCopied
+    ? 'Installation command copied'
+    : isPluginDisabled
+      ? 'Copy install command unavailable'
+      : 'Copy installation command'
+
+  let feedbackMessage = copyError ?? ''
+  if (!feedbackMessage) {
+    if (isBothCopied) {
+      feedbackMessage = 'Both commands copied.'
+    } else if (isMarketplaceCopied) {
+      feedbackMessage = 'Marketplace command copied.'
+    } else if (isPluginCopied) {
+      feedbackMessage = 'Install command copied.'
+    }
   }
 
   return (
@@ -123,13 +162,7 @@ export function InstallCommand({ marketplaceName, pluginName, pluginId, repoPath
           <div className="bg-muted/50 flex items-center gap-2 rounded-md border p-2.5 sm:p-3">
             <code className="grow font-mono text-sm break-all">{installCommand ?? 'Install command unavailable'}</code>
             <button
-              aria-label={
-                isPluginCopied
-                  ? 'Installation command copied'
-                  : isPluginDisabled
-                    ? 'Copy install command unavailable'
-                    : 'Copy installation command'
-              }
+              aria-label={pluginCopyLabel}
               className={`touch-target shrink-0 rounded-md p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 isPluginCopied ? 'bg-status-positive/20 text-status-positive' : 'enabled:hover:bg-muted'
               }`}
@@ -145,15 +178,57 @@ export function InstallCommand({ marketplaceName, pluginName, pluginId, repoPath
       </div>
 
       <p aria-live="polite" className="text-destructive mt-2 text-xs" role={copyError ? 'alert' : undefined}>
-        {copyError ??
-          (isBothCopied
-            ? 'Both commands copied.'
-            : isMarketplaceCopied
-              ? 'Marketplace command copied.'
-              : isPluginCopied
-                ? 'Install command copied.'
-                : '')}
+        {feedbackMessage}
       </p>
     </div>
+  )
+}
+
+export function InstallCommand(props: InstallCommandProps) {
+  const {
+    combinedCommand,
+    copyError,
+    handleCopyBoth,
+    handleCopyMarketplace,
+    handleCopyPlugin,
+    installCommand,
+    isBothCopied,
+    isMarketplaceCopied,
+    isPluginCopied,
+    isVerified,
+    marketplaceAddCommand,
+    needsMarketplaceAdd,
+  } = useInstallCommand(props)
+
+  const isPluginDisabled = !(installCommand && isVerified)
+
+  if (!needsMarketplaceAdd) {
+    return (
+      <SingleInstallCommand
+        copyError={copyError}
+        handleCopyPlugin={handleCopyPlugin}
+        installCommand={installCommand}
+        isPluginCopied={isPluginCopied}
+        isPluginDisabled={isPluginDisabled}
+        isVerified={isVerified}
+      />
+    )
+  }
+
+  return (
+    <TwoStepInstallCommand
+      combinedCommand={combinedCommand}
+      copyError={copyError}
+      handleCopyBoth={handleCopyBoth}
+      handleCopyMarketplace={handleCopyMarketplace}
+      handleCopyPlugin={handleCopyPlugin}
+      installCommand={installCommand}
+      isBothCopied={isBothCopied}
+      isMarketplaceCopied={isMarketplaceCopied}
+      isPluginCopied={isPluginCopied}
+      isPluginDisabled={isPluginDisabled}
+      isVerified={isVerified}
+      marketplaceAddCommand={marketplaceAddCommand}
+    />
   )
 }
