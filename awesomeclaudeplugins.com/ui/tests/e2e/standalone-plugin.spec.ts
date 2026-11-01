@@ -1,5 +1,8 @@
 /** biome-ignore-all lint/style/useNamingConvention: Fixtures use the public catalog and manifest field names. */
+
+import { createHash } from 'node:crypto'
 import { expect, test } from '@playwright/test'
+import fixtureRepos from './fixtures/standalone-repos.json'
 import { copiedText, mockClipboard } from './helpers.ts'
 
 const pluginName = 'Nebula Review Tools'
@@ -102,6 +105,8 @@ test('prefers a newly added marketplace and recovers standalone loading after re
 })
 
 test('keeps one-plugin marketplaces distinct and publishes standalone machine surfaces', async ({ page, request }) => {
+  const version = await (await request.get('/api/catalog-version')).json()
+  expect(version.sha256).toBe(createHash('sha256').update(JSON.stringify(fixtureRepos)).digest('hex'))
   const marketplace = await (await request.get('/api/catalog?q=market-hub')).json()
   expect(marketplace.repos[0].plugins_count).toBe(1)
   expect(marketplace.repos[0].manifest_kind).toBeUndefined()
