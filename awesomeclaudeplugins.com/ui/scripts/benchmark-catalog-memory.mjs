@@ -59,7 +59,7 @@ if (values.baseline || values.candidate) {
     '',
     'Run with Node 24 and --expose-gc on the same runner, with GC before every snapshot.',
     'The import delta includes catalog initialization, not just the search index.',
-    'main creates Fuse indexes on cache misses; the PR initializes FTS5 on first nonempty search.',
+    'Both versions use lazy FTS5; this PR changes the resident catalog representation and first-search text loading.',
     'The six queries are distinct; these are standalone-module figures, not Next.js RSS or Railway billing.',
     ''
   )
