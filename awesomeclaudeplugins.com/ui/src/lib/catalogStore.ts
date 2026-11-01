@@ -39,13 +39,8 @@ function parseSearchIndex(content: string): Repo[] {
       const license = (row[7] as string | null) ?? null
       const archived = (row[8] as boolean | null) ?? null
       const catalog_added_at = (row[9] as string | null) ?? null
-      const descriptionQuality = row[10] as number
-      const description =
-        descriptionQuality === 2
-          ? 'Description available in repository details.'
-          : descriptionQuality === 1
-            ? 'Description available.'
-            : null
+      const description = (row[12] as string | null) ?? null
+      const manifest_kind = (row[13] as Repo['manifest_kind']) ?? undefined
 
       return {
         id,
@@ -60,6 +55,7 @@ function parseSearchIndex(content: string): Repo[] {
         catalog_added_at,
         searchRow,
         description,
+        manifest_kind,
         catalog_updated_at: (row[11] as string | null) ?? undefined,
         subscribers_count: null,
       } as Repo
@@ -79,7 +75,16 @@ export function getCatalog(): readonly Repo[] {
   let catalog: Repo[]
   if (existsSync(indexPath)) {
     const fileContents = readFileSync(indexPath, 'utf8')
-    catalog = parseSearchIndex(fileContents)
+    const parsed = JSON.parse(fileContents) as SearchIndexV1
+    // A checked-in legacy index may predate the compact card fields. Never serve
+    // fabricated descriptions or marketplace commands from that older format.
+    if (parsed.format === 'v1' && parsed.fields?.includes('description') && parsed.fields?.includes('manifest_kind')) {
+      catalog = parseSearchIndex(fileContents)
+    } else if (existsSync(reposPath)) {
+      catalog = JSON.parse(readFileSync(reposPath, 'utf8')) as Repo[]
+    } else {
+      throw new Error('Incompatible compact catalog and no canonical repository snapshot')
+    }
   } else if (existsSync(reposPath)) {
     const fileContents = readFileSync(reposPath, 'utf8')
     catalog = JSON.parse(fileContents) as Repo[]
@@ -99,63 +104,58 @@ function getShardCache(): ShardCache {
   return root[SHARD_CACHE_KEY]
 }
 
-export function getRepoDetails(id: number, _owner?: string | null, _repoName?: string | null): Partial<Repo> | null {
-  // Check sharded files: repo-details/${shard}.json
-  const shardId = Math.abs(id % 100)
-  const shardCache = getShardCache()
-  let shard = shardCache.get(shardId)
+function matchesIdentity(repo: Partial<Repo>, id: number, owner?: string | null, repoName?: string | null): boolean {
+  return repo.id === id &&
+    (owner == null || repo.owner?.toLowerCase() === owner.toLowerCase()) &&
+    (repoName == null || repo.repo_name?.toLowerCase() === repoName.toLowerCase())
+}
 
-  if (shard === undefined) {
+/** Bounded LRU: touch a hit so frequently used detail buckets are not evicted. */
+export function getRepoDetails(id: number, owner?: string | null, repoName?: string | null): Partial<Repo> | null {
+  const shardId = Math.abs(id % 100)
+  const cache = getShardCache()
+  let shard = cache.get(shardId)
+
+  if (shard !== undefined) {
+    cache.delete(shardId)
+    cache.set(shardId, shard)
+  } else {
     const shardPath = join(process.cwd(), `src/data/repo-details/${shardId}.json`)
     if (existsSync(shardPath)) {
       try {
         shard = JSON.parse(readFileSync(shardPath, 'utf8')) as Record<string, Partial<Repo>>
-        if (shardCache.size >= 10) {
-          const firstKey = shardCache.keys().next().value
-          if (firstKey !== undefined) shardCache.delete(firstKey)
+        if (cache.size >= 10) {
+          const oldestKey = cache.keys().next().value
+          if (oldestKey !== undefined) cache.delete(oldestKey)
         }
-        shardCache.set(shardId, shard)
+        cache.set(shardId, shard)
       } catch {
-        shard = undefined
+        // A corrupt shard is equivalent to a missing shard: recover from repos.json.
       }
     }
   }
 
-  if (shard?.[id]) {
-    const details = shard[id]
-    return details
-  }
+  const details = shard?.[id]
+  if (details && matchesIdentity(details, id, owner, repoName)) return details
 
-  // Check individual file: repo-details/${id}.json
-  const idPath = join(process.cwd(), `src/data/repo-details/${id}.json`)
-  if (existsSync(idPath)) {
-    try {
-      const details = JSON.parse(readFileSync(idPath, 'utf8')) as Partial<Repo>
-      return details
-    } catch {
-      // ignore
-    }
+  // Rare recovery path: read the actual canonical snapshot, not the compact global index.
+  const path = join(process.cwd(), 'src/data/repos.json')
+  if (!existsSync(path)) return null
+  try {
+    const repos = JSON.parse(readFileSync(path, 'utf8')) as Repo[]
+    return repos.find((record) => matchesIdentity(record, id, owner, repoName)) ?? null
+  } catch {
+    return null
   }
-
-  // Fallback to repos.json if repo-details not found
-  const reposPath = join(process.cwd(), 'src/data/repos.json')
-  if (existsSync(reposPath)) {
-    const root = globalThis as CatalogGlobal
-    const repos = root[CATALOG_KEY]
-    if (repos) {
-      const found = repos.find((r) => r.id === id)
-      if (found) {
-        return found
-      }
-    }
-  }
-
-  return null
 }
 
 export function hydrateCatalogRepo<T extends Repo>(repo: T): T {
   const details = getRepoDetails(repo.id, repo.owner, repo.repo_name)
-  return details ? (details as T) : repo
+  if (details) return { ...repo, ...details } as T
+  if (isSearchCatalogRepo(repo)) {
+    throw new Error(`Missing repository details for ${repo.owner}/${repo.repo_name} (${repo.id})`)
+  }
+  return repo
 }
 
 export type SearchCatalogRepo = Repo & { searchRow: number }
