@@ -128,12 +128,20 @@ it('runs discovery, enrichment, snapshot generation and Git publication through 
 
   expect(treeBodies).toHaveLength(1)
   const tree = treeBodies[0] as { tree: Array<{ path: string; content: string }> }
-  expect(tree.tree.map(({ path }) => path)).toEqual([
+  const publishedPaths = tree.tree.map(({ path }) => path)
+  expect(publishedPaths).toHaveLength(105)
+  for (const path of [
     'README.md',
     'awesomeclaudeplugins.com/ui/src/data/repos.json',
     'awesomeclaudeplugins.com/ui/src/data/stats.json',
     'awesomeclaudeplugins.com/ui/src/data/markdown-paths.json',
-  ])
+    'awesomeclaudeplugins.com/ui/src/data/search-index.json',
+  ]) {
+    expect(publishedPaths).toContain(path)
+  }
+  for (let shard = 0; shard < 100; shard++) {
+    expect(publishedPaths).toContain(`awesomeclaudeplugins.com/ui/src/data/repo-details/${shard}.json`)
+  }
   const markdownPaths = JSON.parse(
     tree.tree.find(({ path }) => path === 'awesomeclaudeplugins.com/ui/src/data/markdown-paths.json')?.content ?? 'null',
   )
@@ -158,4 +166,9 @@ it('runs discovery, enrichment, snapshot generation and Git publication through 
       id: 1,
     },
   ])
+  const index = JSON.parse(tree.tree.find(({ path }) => path.endsWith('/search-index.json'))?.content ?? 'null')
+  expect(index.rows).toHaveLength(1)
+  expect(index.rows[0][12]).toBe('enriched')
+  const shard = JSON.parse(tree.tree.find(({ path }) => path.endsWith('/repo-details/1.json'))?.content ?? 'null')
+  expect(shard['1']).toEqual(repos[0])
 })
