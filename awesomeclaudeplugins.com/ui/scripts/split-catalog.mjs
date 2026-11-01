@@ -21,6 +21,6 @@ export function splitCatalog(dataDir) {
   console.log(`Wrote ${Object.keys(shards).length} shards into ${detailsDir}`)
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.env.STANDALONE_E2E !== '1' && process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   splitCatalog(join(process.cwd(), 'src/data'))
 }
