@@ -43,9 +43,9 @@ if (values.baseline || values.candidate) {
   for (const first of ['api', 'home', 'search']) {
     const mainRuns = base.filter((entry) => entry.first === first)
     const prRuns = pr.filter((entry) => entry.first === first)
-    assert(mainRuns.length === prRuns.length && mainRuns.length >= 3, 'Need three paired runs for ' + first)
+    assert(mainRuns.length === prRuns.length && mainRuns.length >= 3, `Need three paired runs for ${first}`)
     lines.push(
-      '### ' + first + ' first (' + mainRuns.length + ' runs, median)',
+      `### ${first} first (${mainRuns.length} runs, median)`,
       '',
       '| Metric | main | PR | PR - main |',
       '| --- | ---: | ---: | ---: |'
@@ -53,9 +53,18 @@ if (values.baseline || values.candidate) {
     for (const [name, key] of metrics) {
       const a = median(mainRuns.map((entry) => entry[key]))
       const b = median(prRuns.map((entry) => entry[key]))
-      lines.push('| ' + name + ' | ' + a.toFixed(1) + ' | ' + b.toFixed(1) + ' | ' + (b - a).toFixed(1) + ' |')
+      lines.push(`| ${name} | ${a.toFixed(1)} | ${b.toFixed(1)} | ${(b - a).toFixed(1)} |`)
     }
     lines.push('')
+  }
+  for (const first of ['api', 'home', 'search']) {
+    const mainRuns = base.filter((entry) => entry.first === first)
+    const prRuns = pr.filter((entry) => entry.first === first)
+    const warm = (runs, key) => median(runs.map((entry) => entry[key]))
+    assert(warm(prRuns, 'rssAfterSecondMiB') <= warm(mainRuns, 'rssAfterSecondMiB') * 1.1,
+      `${first}: warm server RSS regression exceeds 10%`)
+    assert(warm(prRuns, 'sampledPeakRssMiB') <= warm(mainRuns, 'sampledPeakRssMiB') * 1.15,
+      `${first}: server peak RSS regression exceeds 15%`)
   }
   lines.push(
     'Node 24, built Next.js, three fresh servers per request order and revision.',
@@ -102,7 +111,7 @@ if (values.baseline || values.candidate) {
     for (const name of readdirSync('/proc')) {
       if (!pidPattern.test(name)) continue
       try {
-        const status = readFileSync('/proc/' + name + '/status', 'utf8')
+        const status = readFileSync(`/proc/${name}/status`, 'utf8')
         const parent = Number(status.match(parentPattern)?.[1])
         const rssKiB = Number(status.match(rssPattern)?.[1] ?? 0)
         entries.set(Number(name), { parent, rssKiB })
@@ -133,7 +142,7 @@ if (values.baseline || values.candidate) {
   const timer = setInterval(sample, 250)
   const request = async (route, timeout) => {
     const response = await fetch(url + routes[route], { signal: AbortSignal.timeout(timeout) })
-    assert(response.status === 200, route + ' returned HTTP ' + response.status)
+    assert(response.status === 200, `${route} returned HTTP ${response.status}`)
     if (route === 'api') {
       const payload = await response.json()
       assert(payload.total > 0, 'Known-hit API search returned zero matches')
@@ -145,7 +154,7 @@ if (values.baseline || values.candidate) {
   try {
     let lastError = ''
     while (true) {
-      assert(!spawnError, 'Next.js spawn error: ' + spawnError)
+      assert(!spawnError, `Next.js spawn error: ${spawnError}`)
       assert(server.exitCode === null, 'Next.js exited before responding: ' + logs)
       if (performance.now() - start > 120_000) throw new Error('Cold-start timeout: ' + lastError + '\n' + logs)
       try {
