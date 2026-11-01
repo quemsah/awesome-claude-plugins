@@ -21,6 +21,7 @@
 - Тест на ответ без нового ETag воспроизвёл сохранение устаревшего plugin validator; storage исправлен, focused и полный crawler suites повторно прошли.
 - Sol-loop round 1 выявил S1: при canonical merge после invalid marketplace переносились summary и marketplace validators без соответствующего типа и plugin validators. Для legacy null kind и явного marketplace regression воспроизвёл ошибочный plugin ETag; исправление переносит выбранный snapshot согласованно.
 - Sol-loop round 2: **APPROVE**, S1 resolved, новых замечаний нет; совместимость rebase и сохранение шести отдельных этапов подтверждены. Независимо повторно прошли 118 crawler tests, 28 UI tests и whitespace check. Reviewer: `gpt-6.1-sol`, effort `high`; usage не возвращён. Одна ранняя попытка round 2 завершилась лимитом сервиса до ревью; после восстановления проверка выполнена тем же provider/model.
+- CodeRabbit CR1: инструкция агента больше не отправляет к новому непроверенному clone после аудита. Standalone ветка использует уже проверенный абсолютный checkout с прежними commit/clean-status rechecks; catalog clone examples считаются reference-only. После правки текста прошли 5 focused и все 358 UI unit tests, lint.
 - Read-only live audit: 20 кандидатов, 6 standalone / 14 marketplace, 1 Code Search + 26 core-запросов, 23 163 ms. Search saturated, `complete: false`. [Подробности и ограничения](../research/2026-11-01-standalone-plugin-contracts.md).
 
 ## Скриншоты
