@@ -5,12 +5,14 @@ import { join } from 'node:path'
 export const dynamic = 'force-static'
 
 function getCatalogVersionHash(): string {
-  const indexFile = join(process.cwd(), 'src/data/search-index.json')
   const reposFile = join(process.cwd(), 'src/data/repos.json')
-  const fileToHash = existsSync(indexFile) ? indexFile : reposFile
-  if (!existsSync(fileToHash)) return ''
-  const content = readFileSync(fileToHash)
-  return createHash('sha256').update(content).digest('hex')
+  if (!existsSync(reposFile)) return ''
+  try {
+    const repos = JSON.parse(readFileSync(reposFile, 'utf8'))
+    return createHash('sha256').update(JSON.stringify(repos)).digest('hex')
+  } catch {
+    return ''
+  }
 }
 
 const sha256 = getCatalogVersionHash()
