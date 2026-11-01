@@ -181,7 +181,7 @@ export class GitHubGitClient implements GitHubGit {
     const entries = [
       { path: 'README.md', mode: '100644', type: 'blob', content: files.readme },
       { path: `${dataPath}/repos.json`, mode: '100644', type: 'blob', content: files.reposJson },
-      { path: `${dataPath}/search-index.json`, mode: '100644', type: 'blob', content: buildSearchIndex(repositories) },
+      { path: `${dataPath}/search-index.json`, mode: '100644', type: 'blob', content: buildSearchIndex(repositories, files.reposJson) },
       ...Object.entries(details).map(([name, content]) => ({
         path: `${dataPath}/repo-details/${name}`,
         mode: '100644',
