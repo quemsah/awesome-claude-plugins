@@ -9,6 +9,7 @@ import type { Repo } from '../schemas/repo.schema.ts'
 const CATALOG_KEY = Symbol.for('awesome-claude-plugins.catalog')
 const SHARD_CACHE_KEY = Symbol.for('awesome-claude-plugins.shard-cache')
 const FALLBACK_REPOS_KEY = Symbol.for('awesome-claude-plugins.canonical-fallback')
+const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/
 
 type ShardCache = Map<number, Record<string, Partial<Repo>>>
 type CatalogGlobal = typeof globalThis & {
@@ -55,7 +56,7 @@ function isValidSearchIndex(value: unknown): value is SearchIndexV1 {
     index.rows.every((row) => Array.isArray(row) && row.length === SEARCH_INDEX_FIELDS.length && Number.isSafeInteger(row[0])) &&
     typeof index.search === 'string' &&
     index.search.length > 0 &&
-    (index.canonicalSha256 === undefined || (typeof index.canonicalSha256 === 'string' && /^[0-9a-f]{64}$/.test(index.canonicalSha256)))
+    (index.canonicalSha256 === undefined || (typeof index.canonicalSha256 === 'string' && SHA256_HEX_PATTERN.test(index.canonicalSha256)))
   )
 }
 
@@ -103,8 +104,9 @@ function hashCanonicalFile(path: string): string {
   const buffer = Buffer.allocUnsafe(64 * 1024)
   const fd = openSync(path, 'r')
   try {
-    let bytesRead: number
-    while ((bytesRead = readSync(fd, buffer, 0, buffer.length, null)) > 0) {
+    while (true) {
+      const bytesRead = readSync(fd, buffer, 0, buffer.length, null)
+      if (bytesRead === 0) break
       hasher.update(buffer.subarray(0, bytesRead))
     }
   } finally {
