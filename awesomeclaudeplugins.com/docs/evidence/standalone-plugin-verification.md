@@ -4,20 +4,23 @@
 
 ## Этапы и коммиты
 
-1. Контракт standalone manifest: `33f7f9e`.
-2. SQLite v22, происхождение и раздельные validators: `6577936`.
-3. REST fallback в обоих enrichment-путях: `9b514cd`.
-4. Code Search семья и совместимость отчётов: `d2e64fa`.
-5. Detail/search UI, Markdown и локальная загрузка: `8bd0fdd`.
-6. Сквозные проверки, ограниченный аудит и доказательства: `93a6d34`.
+1. Контракт standalone manifest: `a3dc9ae`.
+2. SQLite v22, происхождение и раздельные validators: `4fa00ad`.
+3. REST fallback в обоих enrichment-путях: `0db39bf`.
+4. Code Search семья и совместимость отчётов: `bff6278`.
+5. Detail/search UI, Markdown и локальная загрузка: `1c16555`.
+6. Сквозные проверки, ограниченный аудит и доказательства: `b85376f`.
+
+Коммиты сохранены раздельно после rebase на `1457f48` (актуальные shared marketplace validator и FTS5 catalog search). Исправление S1 после первого ревью — `f9d0e08`.
 
 ## Выполненные проверки
 
-- Crawler: typecheck, integration typecheck, lint; 39 unit test files / 717 tests после исправления S1; 3 integration files / 4 tests. Сквозные standalone сценарии проверяют Code Search и Repository Search отдельно, повторный crawl сохраняет одну строку с прежним id.
-- UI: typecheck и lint; полный unit suite — 339 тестов, затем дополнительный metadata fallback test и focused run — 9 тестов. Production build и Playwright — 88 desktop/mobile проверок прошли.
+- Crawler после rebase: typecheck, integration typecheck, lint; 39 unit test files / 722 tests; 3 integration files / 4 tests. Сквозные standalone сценарии проверяют Code Search и Repository Search отдельно, повторный crawl сохраняет одну строку с прежним id. Workspace build и native SQLite smoke также прошли.
+- UI после rebase: typecheck и lint; полный unit suite — 358 тестов. Production build и Playwright — 88 desktop/mobile проверок.
 - UI lint сохраняет 3 прежних предупреждения: optional chain в `pluginComponentUrl.ts` и два `innerText` в `search-state-sync.spec.ts`. Новых lint errors нет.
 - Тест на ответ без нового ETag воспроизвёл сохранение устаревшего plugin validator; storage исправлен, focused и полный crawler suites повторно прошли.
 - Sol-loop round 1 выявил S1: при canonical merge после invalid marketplace переносились summary и marketplace validators без соответствующего типа и plugin validators. Для legacy null kind и явного marketplace regression воспроизвёл ошибочный plugin ETag; исправление переносит выбранный snapshot согласованно. Оба сценария и 717 unit / 4 integration tests прошли; исправление отправляется на round 2.
+- Первая попытка round 2 завершилась лимитом сервиса до ревью. После восстановления лимита выполняется повторная проверка тем же Sol; смена reviewer provider/model не применялась.
 - Read-only live audit: 20 кандидатов, 6 standalone / 14 marketplace, 1 Code Search + 26 core-запросов, 23 163 ms. Search saturated, `complete: false`. [Подробности и ограничения](../research/2026-11-01-standalone-plugin-contracts.md).
 
 ## Скриншоты

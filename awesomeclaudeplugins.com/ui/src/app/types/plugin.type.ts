@@ -3,8 +3,8 @@ import {
   getMarketplacePluginIssue,
   PLUGIN_ID_PATTERN,
   parseMarketplace as parseSharedMarketplace,
-  resolveMarketplacePluginDisplayName,
   parseStandalonePlugin,
+  resolveMarketplacePluginDisplayName,
 } from '@awesome-claude-plugins/catalog-contract'
 import * as z from 'zod/mini'
 import { getMcpBundleUrl } from '../../lib/mcpBundleUrl.ts'
