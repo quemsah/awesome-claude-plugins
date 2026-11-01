@@ -1,3 +1,5 @@
+/** biome-ignore-all lint/style/useNamingConvention: test fixtures mirror catalog snake_case fields */
+
 import { describe, expect, it } from 'vitest'
 import { getCatalog, getRepoDetails, hydrateCatalogRepo, parseSearchIndex } from './catalogStore.ts'
 
@@ -67,7 +69,7 @@ describe('catalogStore', () => {
     const cacheKey = Symbol.for('awesome-claude-plugins.shard-cache')
     const holder = globalThis as unknown as Record<symbol, unknown>
     const previous = holder[cacheKey]
-    const records = new Map<number, (ReturnType<typeof getCatalog>)[number]>()
+    const records = new Map<number, ReturnType<typeof getCatalog>[number]>()
     for (const repo of getCatalog()) {
       const shardId = Math.abs(repo.id % 100)
       if (!records.has(shardId)) records.set(shardId, repo)
