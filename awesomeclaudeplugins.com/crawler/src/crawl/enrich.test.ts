@@ -18,6 +18,29 @@ import { enrichRepositories } from './enrich.js'
 
 const databases: Database.Database[] = []
 
+it.each(['rest', 'graphql'])('reports the missing standalone manifest when removing through %s', async (transport) => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', null, undefined, 'node-standalone')
+  const api = reader(undefined, async () => ({ kind: 'not-found' }))
+  if (transport === 'graphql')
+    api.getRepositoriesByNodeId = async () => ({
+      kind: 'found',
+      data: [{ ...githubRepo('team', 'repo'), node_id: 'node-standalone', marketplace_oid: null }],
+      rateLimit: { cost: 1, remaining: 4999, resetAt: '2026-12-01T00:00:00Z', limit: 5000, used: 1 },
+    })
+  const log = vi.fn()
+  await enrichRepositories(db, api, 'crawl-1', undefined, undefined, log)
+  expect(db.prepare('SELECT id FROM repositories WHERE id = ?').get(id)).toBeUndefined()
+  expect(log).toHaveBeenCalledWith(
+    expect.objectContaining({
+      event: 'crawl.repository_removed',
+      category: 'plugin_manifest_not_found',
+      message: 'Plugin manifest not found for team/repo; removing repository',
+      request: 'GET /repos/team/repo/contents/.claude-plugin/plugin.json',
+    }),
+  )
+})
+
 it.each([null, 'marketplace'] as const)(
   'keeps a selected canonical snapshot coherent after rename and invalid marketplace (kind %s)',
   async (kind) => {
