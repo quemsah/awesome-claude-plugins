@@ -23,14 +23,43 @@ export type SearchIndexV1 = {
   search: string
 }
 
+// Search rows use positional fields: reject even a reordered V1 schema.
+export const SEARCH_INDEX_FIELDS = [
+  'id',
+  'owner',
+  'repo_name',
+  'stars',
+  'forks',
+  'plugins_count',
+  'pushed_at',
+  'license',
+  'archived',
+  'catalog_added_at',
+  'description_quality',
+  'catalog_updated_at',
+  'description',
+  'manifest_kind',
+] as const
+
+function isValidSearchIndex(value: unknown): value is SearchIndexV1 {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const index = value as Partial<SearchIndexV1>
+  return (
+    index.format === 'v1' &&
+    Array.isArray(index.fields) &&
+    index.fields.length === SEARCH_INDEX_FIELDS.length &&
+    index.fields.every((field, i) => field === SEARCH_INDEX_FIELDS[i]) &&
+    Array.isArray(index.rows) &&
+    index.rows.every((row) => Array.isArray(row) && row.length === SEARCH_INDEX_FIELDS.length && Number.isSafeInteger(row[0])) &&
+    typeof index.search === 'string' &&
+    index.search.length > 0
+  )
+}
+
 export function parseSearchIndex(content: string | SearchIndexV1): Repo[] {
-  const parsed = typeof content === 'string' ? JSON.parse(content) : content
-  if (Array.isArray(parsed)) {
-    return parsed as Repo[]
-  }
-  if (parsed && parsed.format === 'v1' && Array.isArray(parsed.rows)) {
-    const v1 = parsed as SearchIndexV1
-    return v1.rows.map((row, searchRow) => {
+  const parsed: unknown = typeof content === 'string' ? JSON.parse(content) : content
+  if (!isValidSearchIndex(parsed)) throw new Error('Incompatible compact catalog format')
+  return parsed.rows.map((row, searchRow) => {
       const id = row[0] as number
       const owner = row[1] as string
       const repo_name = row[2] as string
@@ -62,8 +91,24 @@ export function parseSearchIndex(content: string | SearchIndexV1): Repo[] {
       } as Repo
       // FTS metadata must not leak into the public API or client-side React props.
       return Object.defineProperty(record, 'searchRow', { value: searchRow, enumerable: false })
-    })
+  })
+}
+
+/** Recover invalid derived artifacts from the authoritative repos.json snapshot. */
+export function readCatalogFiles(indexPath: string, reposPath: string): Repo[] {
+  if (existsSync(indexPath)) {
+    try {
+      return parseSearchIndex(readFileSync(indexPath, 'utf8'))
+    } catch {
+      // A missing, truncated or incompatible index must not take down the catalog.
+    }
   }
+  if (existsSync(reposPath)) {
+    const repos: unknown = JSON.parse(readFileSync(reposPath, 'utf8'))
+    if (!Array.isArray(repos)) throw new Error('Invalid canonical repository snapshot')
+    return repos as Repo[]
+  }
+  if (existsSync(indexPath)) throw new Error('Invalid compact catalog and no canonical repository snapshot')
   return []
 }
 
@@ -72,29 +117,7 @@ export function getCatalog(): readonly Repo[] {
   const cachedCatalog = root[CATALOG_KEY]
   if (cachedCatalog !== undefined) return cachedCatalog
 
-  const indexPath = join(process.cwd(), 'src/data/search-index.json')
-  const reposPath = join(process.cwd(), 'src/data/repos.json')
-
-  let catalog: Repo[]
-  if (existsSync(indexPath)) {
-    const fileContents = readFileSync(indexPath, 'utf8')
-    const parsed = JSON.parse(fileContents) as SearchIndexV1
-    // A checked-in legacy index may predate the compact card fields. Never serve
-    // fabricated descriptions or marketplace commands from that older format.
-    if (parsed.format === 'v1' && parsed.fields?.includes('description') && parsed.fields?.includes('manifest_kind')) {
-      catalog = parseSearchIndex(parsed)
-    } else if (existsSync(reposPath)) {
-      catalog = JSON.parse(readFileSync(reposPath, 'utf8')) as Repo[]
-    } else {
-      throw new Error('Incompatible compact catalog and no canonical repository snapshot')
-    }
-  } else if (existsSync(reposPath)) {
-    const fileContents = readFileSync(reposPath, 'utf8')
-    catalog = JSON.parse(fileContents) as Repo[]
-  } else {
-    catalog = []
-  }
-
+  const catalog = readCatalogFiles(join(process.cwd(), 'src/data/search-index.json'), join(process.cwd(), 'src/data/repos.json'))
   root[CATALOG_KEY] = catalog
   return catalog
 }
@@ -175,6 +198,8 @@ export function getRepoDetails(id: number, owner?: string | null, repoName?: str
 }
 
 export function hydrateCatalogRepo<T extends Repo>(repo: T): T {
+  // Canonical fallback records are already complete; shards may be stale.
+  if (!isSearchCatalogRepo(repo)) return repo
   const details = getRepoDetails(repo.id, repo.owner, repo.repo_name)
   if (details) return details as T
   if (isSearchCatalogRepo(repo)) {
@@ -189,8 +214,27 @@ export function isSearchCatalogRepo(repo: Repo): repo is SearchCatalogRepo {
   return 'searchRow' in repo
 }
 
-/** Transient search fields: never retained by the catalog or the result cache. */
-export function readCatalogSearchFields(): Partial<Repo>[] {
-  const index = JSON.parse(readFileSync(join(process.cwd(), 'src/data/search-index.json'), 'utf8')) as SearchIndexV1
-  return JSON.parse(gunzipSync(Buffer.from(index.search, 'base64')).toString('utf8')) as Partial<Repo>[]
+/** Transient search fields: decoded only when the FTS index is first constructed. */
+export function readCatalogSearchFields(
+  indexPath = join(process.cwd(), 'src/data/search-index.json'),
+  reposPath = join(process.cwd(), 'src/data/repos.json'),
+  expectedCount = getCatalog().length
+): Partial<Repo>[] {
+  try {
+    const index: unknown = JSON.parse(readFileSync(indexPath, 'utf8'))
+    if (!isValidSearchIndex(index)) throw new Error('Invalid search index schema')
+    const fields: unknown = JSON.parse(gunzipSync(Buffer.from(index.search, 'base64')).toString('utf8'))
+    if (!Array.isArray(fields) || fields.length !== index.rows.length || fields.length !== expectedCount) {
+      throw new Error('Misaligned search metadata')
+    }
+    return fields as Partial<Repo>[]
+  } catch {
+    // Corrupt compressed metadata must not disable plugin-name search. This
+    // rare recovery path can afford to read the full canonical snapshot.
+    const repos: unknown = JSON.parse(readFileSync(reposPath, 'utf8'))
+    if (!Array.isArray(repos) || repos.length !== expectedCount) {
+      throw new Error('Cannot recover search metadata from the canonical snapshot')
+    }
+    return repos as Partial<Repo>[]
+  }
 }
