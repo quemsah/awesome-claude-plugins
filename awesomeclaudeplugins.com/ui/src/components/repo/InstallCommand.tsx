@@ -35,11 +35,9 @@ export function InstallCommand(props: InstallCommandProps) {
           {isCopied ? <CopiedIcon /> : <CopyIcon />}
         </button>
       </div>
-      {isDirectInstall && (
-        <p className="text-muted-foreground mt-1 text-xs">
-          Requires Claude Code 2.1.275 or later. Adds the marketplace if needed.
-        </p>
-      )}
+      {isDirectInstall ? (
+        <p className="text-muted-foreground mt-1 text-xs">Requires Claude Code 2.1.275 or later. Adds the marketplace if needed.</p>
+      ) : null}
       <p
         aria-live="polite"
         className={`${copyError ? 'text-destructive' : 'text-muted-foreground'} mt-2 text-xs`}
