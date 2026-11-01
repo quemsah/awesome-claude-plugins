@@ -19,8 +19,12 @@ const catalogRepos: readonly CatalogRepo[] = getCatalog().filter(
 )
 const canonicalCatalogRepos = getUniqueCatalogRepos(catalogRepos)
 const canonicalCatalogRepoSet = new Set(canonicalCatalogRepos)
-// Build during module initialization so an uncached request never pays for indexing.
-const catalogSearchIndex = createCatalogSearchIndex(canonicalCatalogRepos)
+// Browsing and other catalog consumers do not need FTS5. Build only on first nonempty search.
+let catalogSearchIndex: ReturnType<typeof createCatalogSearchIndex> | undefined
+function getCatalogSearchIndex() {
+  catalogSearchIndex ??= createCatalogSearchIndex(canonicalCatalogRepos)
+  return catalogSearchIndex
+}
 const indexableCatalogRepos = canonicalCatalogRepos.filter((repo) => getCatalogQuality(repo, true).publicationState === 'indexable')
 const catalogReposByPath = new Map<string, CatalogRepo>()
 for (const repo of catalogRepos) {
@@ -139,7 +143,7 @@ export function searchCatalogRepos(
   options: CatalogSearchOptions = {}
 ): CatalogSearchResult {
   const normalizedQuery = normalizeSearchQuery(query)
-  const matches = normalizedQuery ? catalogSearchIndex.search(normalizedQuery, sortOption, page, pageSize) : undefined
+  const matches = normalizedQuery ? getCatalogSearchIndex().search(normalizedQuery, sortOption, page, pageSize) : undefined
   const repos = matches
     ? matches.matches.map((match) => match.item)
     : catalogReposBySort[sortOption].slice(page * pageSize, (page + 1) * pageSize)

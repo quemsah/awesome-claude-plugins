@@ -1,7 +1,7 @@
 # Catalog search performance
 
-The UI uses an immutable, in-memory SQLite FTS5 index, built when the catalog module
-initializes. Searches perform matching, BM25 ranking, metric sorting, counting and
+The UI uses an immutable, in-memory SQLite FTS5 index, built lazily on the first
+nonempty search. Browsing without a search does not initialize FTS5. Searches perform matching, BM25 ranking, metric sorting, counting and
 pagination in SQLite. Only the requested page crosses into JavaScript. There is no
 query-result cache, so novel queries take the same path as repeated ones. Equal
 metric keys are assigned a shared rank at initialization; BM25 is calculated only
@@ -59,8 +59,8 @@ separate Node 24 processes for each revision (alternating main/PR). The
 Actions job summary, and uploads per-process JSON with heap, external and peak RSS.
 
 Snapshots are taken after explicit GC: before loading `catalog.ts`, immediately
-after import (FTS5 initialized in the PR, but not Fuse in main), after the first
-query, and after six *different* searches. The benchmark checks that both revisions
+after import (without initializing either search engine), after the first
+query (FTS5 initializes here in the PR), and after six *different* searches. The benchmark checks that both revisions
 use the identical checked-in `repos.json` file. Run locally by checking out
 both revisions, installing dependencies in each root, then from each `ui`
 directory invoking the PR's shared script with Node 24:
