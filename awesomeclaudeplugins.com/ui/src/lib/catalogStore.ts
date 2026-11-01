@@ -42,7 +42,7 @@ export function parseSearchIndex(content: string | SearchIndexV1): Repo[] {
       const description = (row[12] as string | null) ?? null
       const manifest_kind = (row[13] as Repo['manifest_kind']) ?? undefined
 
-      return {
+      const record = {
         id,
         owner,
         repo_name,
@@ -53,12 +53,13 @@ export function parseSearchIndex(content: string | SearchIndexV1): Repo[] {
         license,
         archived,
         catalog_added_at,
-        searchRow,
         description,
         manifest_kind,
         catalog_updated_at: (row[11] as string | null) ?? undefined,
         subscribers_count: null,
       } as Repo
+      // FTS metadata must not leak into the public API or client-side React props.
+      return Object.defineProperty(record, 'searchRow', { value: searchRow, enumerable: false })
     })
   }
   return []
@@ -153,7 +154,7 @@ export function getRepoDetails(id: number, owner?: string | null, repoName?: str
 
 export function hydrateCatalogRepo<T extends Repo>(repo: T): T {
   const details = getRepoDetails(repo.id, repo.owner, repo.repo_name)
-  if (details) return { ...repo, ...details } as T
+  if (details) return details as T
   if (isSearchCatalogRepo(repo)) {
     throw new Error(`Missing repository details for ${repo.owner}/${repo.repo_name} (${repo.id})`)
   }
