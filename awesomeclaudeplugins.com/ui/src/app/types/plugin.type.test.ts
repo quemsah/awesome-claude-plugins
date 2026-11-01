@@ -137,7 +137,7 @@ describe('MarketplacePluginsSchema', () => {
     if (result.success) {
       expect(result.data.plugins).toEqual([])
       expect(result.data.invalidPluginCount).toBe(1)
-      expect(result.data.issues).toEqual(expect.arrayContaining([expect.objectContaining({ path: ['plugins', 0, 'source'] })]))
+      expect(result.data.issues).toEqual(expect.arrayContaining([expect.objectContaining({ path: ['plugins', 0, 'source', 'url'] })]))
     }
   })
 
