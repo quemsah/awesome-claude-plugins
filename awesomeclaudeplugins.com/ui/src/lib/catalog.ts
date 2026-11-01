@@ -18,7 +18,9 @@ const catalogRepos: readonly CatalogRepo[] = getCatalog().filter(
   (repo): repo is CatalogRepo => repo.owner != null && repo.repo_name != null
 )
 const canonicalCatalogRepos = getUniqueCatalogRepos(catalogRepos)
-const canonicalCatalogRepoIds = new Set(canonicalCatalogRepos.map((repo) => repo.id))
+const canonicalCatalogRepoIdentities = new Set(
+  canonicalCatalogRepos.map((repo) => `${repo.id}:${repo.owner}/${repo.repo_name}`)
+)
 // Different Next.js route bundles can have different module registries in the same process.
 // Key the shared index by the original catalog array, which catalogStore already shares globally.
 const CATALOG_SEARCH_INDEX_KEY = Symbol.for('awesome-claude-plugins.catalog-search-index')
@@ -136,7 +138,7 @@ export function getBrowsePageCount(): number {
 }
 
 export function getCatalogQualityForRepo(repo: CatalogRepo, fallbackDescription?: string | null): CatalogQuality {
-  return getCatalogQuality(repo, canonicalCatalogRepoIds.has(repo.id), fallbackDescription)
+  return getCatalogQuality(repo, canonicalCatalogRepoIdentities.has(`${repo.id}:${repo.owner}/${repo.repo_name}`), fallbackDescription)
 }
 
 function getUniqueCatalogRepos(repos: readonly CatalogRepo[]): readonly CatalogRepo[] {
