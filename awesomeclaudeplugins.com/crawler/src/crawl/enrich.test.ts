@@ -18,6 +18,89 @@ import { enrichRepositories } from './enrich.js'
 
 const databases: Database.Database[] = []
 
+it.each(['found', 'invalid-content', 'temporary-error'] as const)('does not try a plugin when marketplace is %s', async (kind) => {
+  const db = database()
+  upsertDiscovery(db, 'https://github.com/team/repo', null)
+  const result: RepoResult<Marketplace> =
+    kind === 'found'
+      ? { kind, data: { plugins: [] } }
+      : kind === 'invalid-content'
+        ? { kind, failure: 'invalid-manifest', status: 200, reason: 'bad', retryCount: 0 }
+        : { kind, status: 429, reason: 'limited', retryCount: 0, retryable: false }
+  const api = reader(undefined, async () => result)
+  api.getPluginManifest = async () => {
+    throw new Error('Plugin fallback must only follow marketplace 404')
+  }
+  await enrichRepositories(db, api, 'crawl-1')
+})
+
+it.each([true, false])('recovers plugin 304 only with usable cached standalone data: %s', async (usable) => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', null)
+  ready(db, id)
+  db.prepare(
+    "UPDATE repositories SET manifest_kind = 'standalone-plugin', plugins_count = 1, plugins_json = ?, plugin_manifest_etag = '\"plugin\"', plugin_manifest_parser_version = 1 WHERE id = ?",
+  ).run(usable ? '[{"name":"reviewer"}]' : '[]', id)
+  const api = reader(undefined, async () => ({ kind: 'not-found' }))
+  let requests = 0
+  api.getPluginManifest = async (_owner, _repo, etag) => {
+    requests++
+    if (usable) {
+      expect(etag).toBe('"plugin"')
+      return { kind: 'not-modified' }
+    }
+    expect(etag).toBeUndefined()
+    return requests === 1 ? { kind: 'not-modified' } : { kind: 'found', data: { name: 'recovered' } }
+  }
+  await enrichRepositories(db, api, 'crawl-1')
+  expect(db.prepare('SELECT plugins_count, plugins_json FROM repositories WHERE id = ?').get(id)).toEqual({
+    plugins_count: 1,
+    plugins_json: usable ? '[{"name":"reviewer"}]' : '[{"name":"recovered"}]',
+  })
+  expect(requests).toBe(usable ? 1 : 2)
+})
+
+it.each(['rest', 'graphql'])('accepts a root standalone plugin through %s fallback', async (transport) => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', null, undefined, 'node-standalone')
+  const api = reader(undefined, async () => ({ kind: 'not-found' }))
+  api.getPluginManifest = async () => ({ kind: 'found', data: { name: 'Review Tools', description: 'A reviewer' }, etag: '"plugin"' })
+  if (transport === 'graphql')
+    api.getRepositoriesByNodeId = async () => ({
+      kind: 'found',
+      data: [{ ...githubRepo('team', 'repo'), node_id: 'node-standalone', marketplace_oid: null }],
+      rateLimit: { cost: 1, remaining: 4999, resetAt: '2026-12-01T00:00:00Z', limit: 5000, used: 1 },
+    })
+  await enrichRepositories(db, api, 'crawl-1')
+  expect(
+    db
+      .prepare('SELECT plugins_count, manifest_kind, plugin_manifest_etag, marketplace_etag, plugins_json FROM repositories WHERE id = ?')
+      .get(id),
+  ).toEqual({
+    plugins_count: 1,
+    manifest_kind: 'standalone-plugin',
+    plugin_manifest_etag: '"plugin"',
+    marketplace_etag: null,
+    plugins_json: '[{"name":"Review Tools","description":"A reviewer"}]',
+  })
+})
+
+it('keeps the accepted standalone snapshot on a transient plugin error', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/team/repo', null)
+  ready(db, id)
+  db.prepare(
+    'UPDATE repositories SET manifest_kind = \'standalone-plugin\', plugins_count = 1, plugins_json = \'[{"name":"reviewer"}]\' WHERE id = ?',
+  ).run(id)
+  const api = reader(undefined, async () => ({ kind: 'not-found' }))
+  api.getPluginManifest = async () => ({ kind: 'temporary-error', status: 503, reason: 'offline', retryCount: 0, retryable: false })
+  await enrichRepositories(db, api, 'crawl-1')
+  expect(db.prepare('SELECT plugins_count, manifest_kind FROM repositories WHERE id = ?').get(id)).toEqual({
+    plugins_count: 1,
+    manifest_kind: 'standalone-plugin',
+  })
+})
+
 function database(): Database.Database {
   const db = new Database(':memory:')
   initializeSchema(db)
@@ -55,6 +138,7 @@ function reader(
   }),
 ): GitHubReader {
   return {
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async () => {
       throw new Error('Repository search is unused in this fixture')
     },
@@ -598,6 +682,7 @@ it('defers retryable REST failures until the first repository pass is complete',
   const calls: string[] = []
   let firstAttempts = 0
   const client: GitHubReader = {
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async () => {
       throw new Error('Repository search is unused in this fixture')
     },
@@ -656,6 +741,7 @@ it('gives marketplace a fresh three-attempt budget after a deferred repository r
   const repositoryMaxAttempts: number[] = []
   const marketplaceMaxAttempts: number[] = []
   const client: GitHubReader = {
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async () => {
       throw new Error('Repository search is unused in this fixture')
     },
@@ -710,6 +796,7 @@ it('does not inherit the repository retry offset when marketplace content is imm
   let repositoryCalls = 0
   const marketplaceMaxAttempts: number[] = []
   const client: GitHubReader = {
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async () => {
       throw new Error('Repository search is unused in this fixture')
     },

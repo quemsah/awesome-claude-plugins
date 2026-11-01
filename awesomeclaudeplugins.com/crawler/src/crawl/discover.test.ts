@@ -34,6 +34,7 @@ function page(items: SearchPage['items'], total_count = items.length, incomplete
 
 function reader(search: GitHubReader['searchCode']): GitHubReader {
   return {
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async () => {
       throw new Error('Repository search is unused in this fixture')
     },

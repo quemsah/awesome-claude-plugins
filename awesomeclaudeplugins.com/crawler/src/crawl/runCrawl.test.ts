@@ -59,6 +59,7 @@ function repo(owner: string, name: string): GitHubRepo {
 
 function reader(overrides: Partial<GitHubReader> = {}): GitHubReader {
   return {
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async () => ({ items: [], total_count: 0, incomplete_results: false }),
     searchCode: async () => ({
       items: [{ path: '.claude-plugin/marketplace.json', repository: { html_url: url, description: 'from search' } }],
@@ -88,6 +89,7 @@ it('health-checks old stored links before discovery even when no search returns 
 it('does not call Repository Search without explicit opt-in', async () => {
   const db = database()
   const client = reader({
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async () => {
       throw new Error('Optional search must stay disabled')
     },
@@ -100,6 +102,7 @@ it('does not call Repository Search without explicit opt-in', async () => {
 it('isolates an optional Repository Search API error from healthy Code Search', async () => {
   const db = database()
   const client = reader({
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async () => {
       throw new GitHubFatalError('invalid repository search', 422)
     },
@@ -270,6 +273,7 @@ it('fails rather than completing when both discovery sources fail, even if enric
     searchCode: async () => {
       throw new GitHubTemporaryError('network outage', 503)
     },
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async () => {
       throw new GitHubTemporaryError('network outage', 503)
     },
@@ -291,6 +295,7 @@ it('retains partial Repository Search candidates when its later API request fail
     searchCode: async () => {
       throw new GitHubTemporaryError('Code Search unavailable', 503)
     },
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async (query) => {
       if (query.startsWith('topic:claude-plugin is:public pushed:')) {
         return {
@@ -325,6 +330,7 @@ it('completes from Repository Search when every Code Search range fails', async 
     searchCode: async () => {
       throw new GitHubTemporaryError('network outage', 503)
     },
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async (query) =>
       query.startsWith('topic:claude-plugin is:public pushed:')
         ? {
@@ -360,6 +366,7 @@ it('completes an empty Repository Search scan when Code Search fails and there i
     searchCode: async () => {
       throw new GitHubTemporaryError('network outage', 503)
     },
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async () => ({ items: [], total_count: 0, incomplete_results: false }),
   })
 
@@ -727,6 +734,7 @@ it('finishes the crawl while reporting bounded incomplete repo coverage and post
           incomplete_results: false,
         }
       },
+      getPluginManifest: async () => ({ kind: 'not-found' }),
       searchRepositories: async () => {
         order.push('repo')
         return {
@@ -893,6 +901,7 @@ it.each(['code_search', 'repo_search'] as const)(
             },
           }
         : {
+            getPluginManifest: async () => ({ kind: 'not-found' }),
             searchRepositories: async () => {
               throw new GitHubFatalError('fatal repo', 422)
             },
@@ -931,6 +940,7 @@ it('persists consecutive fatal rolling attempts and alerts before propagating th
   const options = { ranges: [[0, 1]] as const, now: () => new Date('2026-10-30T12:00:00Z'), log }
   await runCrawl(db, reader(), 'fatal-rolling-baseline', options)
   const client = reader({
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async () => {
       throw new GitHubFatalError('query rejected', 422)
     },
@@ -962,6 +972,7 @@ it('alerts on the same unresolved historical leaf across invocations while rolli
   let at = new Date('2026-10-30T12:00:00Z')
   const options = { ranges: [[0, 1]] as const, now: () => at, log }
   const client = reader({
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async (query) => ({ items: [], total_count: 0, incomplete_results: query.includes('created:') }),
   })
   await runCrawl(db, client, 'historical-first', options)

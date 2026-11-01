@@ -47,6 +47,7 @@ it('records each Code Search query even when both queries discover the same cand
           { path: '.claude-plugin/marketplace.json', repository: { html_url: 'https://github.com/example/catalog', description: null } },
         ],
       }),
+      getPluginManifest: async () => ({ kind: 'not-found' }),
       searchRepositories: async () => {
         throw new Error('unexpected Repository Search')
       },

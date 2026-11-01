@@ -54,6 +54,7 @@ function populateTestDatabase(path: string) {
 
 function readerFixture(): GitHubReader {
   return {
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories: async () => ({ items: [], total_count: 0, incomplete_results: false }),
     searchCode: vi.fn(async () => ({ items: [], total_count: 0, incomplete_results: false })),
     getRepository: vi.fn(async (owner: string, repo: string) =>

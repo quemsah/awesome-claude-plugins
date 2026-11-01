@@ -12,6 +12,7 @@ import { executeCrawl, executePublish } from './execute.js'
 const now = () => new Date('2026-09-23T12:00:00.000Z')
 const range = [[0, 150]] as const
 const reader: GitHubReader = {
+  getPluginManifest: async () => ({ kind: 'not-found' }),
   searchRepositories: async () => ({ items: [], total_count: 0, incomplete_results: false }),
   searchCode: vi.fn(async () => ({ items: [], total_count: 0, incomplete_results: false })),
   getRepository: vi.fn(async (owner: string, repo: string) =>
@@ -206,6 +207,7 @@ describe('orchestration', () => {
       searchCode: async () => {
         throw new GitHubTemporaryError('read-secret inside body', 503)
       },
+      getPluginManifest: async () => ({ kind: 'not-found' }),
       searchRepositories: async () => {
         throw new GitHubTemporaryError('read-secret inside body', 503)
       },
@@ -443,6 +445,7 @@ describe('orchestration', () => {
       searchCode: async () => {
         throw new GitHubTemporaryError('read-secret', 503)
       },
+      getPluginManifest: async () => ({ kind: 'not-found' }),
       searchRepositories: async () => {
         throw new GitHubTemporaryError('read-secret', 503)
       },
@@ -473,6 +476,7 @@ describe('orchestration', () => {
       searchCode: async () => {
         throw new GitHubTemporaryError('read-secret', 503)
       },
+      getPluginManifest: async () => ({ kind: 'not-found' }),
       searchRepositories: async () => {
         throw new GitHubTemporaryError('read-secret', 503)
       },

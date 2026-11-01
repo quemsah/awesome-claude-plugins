@@ -11,6 +11,7 @@ import {
 import { parsePluginSummariesJson, serializePluginSummaries } from '../github/pluginSummaries.js'
 import type { GitHubRetryReason } from '../github/rateBudget.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
+import { STANDALONE_PLUGIN_PARSER_VERSION } from '../github/standalonePlugin.js'
 import type { Log } from '../logging.js'
 import { recordRejectedCandidate } from '../storage/rejectedCandidates.js'
 import {
@@ -278,12 +279,16 @@ function persistEnrichment(
   clearMarketplaceEtag = false,
   pluginsJson: string | null = null,
   writes?: EnrichmentWriteBatch,
+  manifestState?: MarketplaceState,
 ): EnrichmentTarget {
   const persist = (): EnrichmentTarget => {
     const rebound = loaded.moved ? rebindCanonicalUrl(db, row.id, loaded.canonical.htmlUrl, at) : { id: row.id, removedId: null }
     const target = loaded.moved ? getRepositoryById(db, rebound.id) : null
     if (loaded.moved && !target) throw new Error('Canonical repository disappeared during rebind')
     const fields = {
+      manifest_kind: manifestState?.manifestKind ?? 'marketplace',
+      plugin_manifest_etag: manifestState?.pluginEtag,
+      plugin_manifest_parser_version: manifestState?.manifestKind === 'standalone-plugin' ? STANDALONE_PLUGIN_PARSER_VERSION : null,
       stargazers_count: loaded.data.stargazers_count,
       forks_count: loaded.data.forks_count,
       subscribers_count: loaded.data.subscribers_count,
@@ -454,6 +459,8 @@ function graphQLRetryReason(result: { status: number | null; reason: string; fai
 }
 
 type MarketplaceState = {
+  manifestKind?: 'marketplace' | 'standalone-plugin'
+  pluginEtag?: string | null
   pluginsCount: number
   pluginsJson: string | null
   marketplaceOid: string | null
@@ -770,6 +777,82 @@ function finishNotModifiedLegacyMarketplace(
   }
 }
 
+async function loadStandalonePlugin(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  counts: EnrichmentCounts,
+  removedIds: Set<number>,
+  now: () => string,
+  policy: RestAttemptPolicy,
+  log?: Log,
+  writes?: EnrichmentWriteBatch,
+): Promise<MarketplaceState | null | RetryLater> {
+  const summaries = parsePluginSummariesJson(row.plugins_json)
+  const usable =
+    row.manifest_kind === 'standalone-plugin' &&
+    row.plugins_count === 1 &&
+    summaries?.length === 1 &&
+    row.plugin_manifest_parser_version === STANDALONE_PLUGIN_PARSER_VERSION
+  let result = await reader.getPluginManifest(loaded.owner, loaded.repo, usable ? (row.plugin_manifest_etag ?? undefined) : undefined, {
+    maxAttempts: policy.maxAttempts,
+  })
+  if (result.kind === 'not-modified' && !usable)
+    result = await reader.getPluginManifest(loaded.owner, loaded.repo, undefined, { maxAttempts: policy.maxAttempts })
+  if (result.kind === 'not-found') {
+    removeLoadedRepository(db, runId, row, loaded, counts, removedIds, now, log, writes)
+    return null
+  }
+  if (result.kind === 'found')
+    return {
+      manifestKind: 'standalone-plugin',
+      pluginEtag: result.etag ?? null,
+      pluginsCount: 1,
+      pluginsJson: serializePluginSummaries([result.data]),
+      marketplaceOid: null,
+      marketplaceEtag: null,
+    }
+  if (result.kind === 'not-modified' && usable)
+    return {
+      manifestKind: 'standalone-plugin',
+      pluginEtag: result.etag ?? row.plugin_manifest_etag,
+      pluginsCount: 1,
+      pluginsJson: row.plugins_json,
+      marketplaceOid: null,
+      marketplaceEtag: null,
+    }
+  if (result.kind === 'temporary-error') {
+    const deferred = deferTransient(result, policy)
+    if (deferred) return deferred
+  }
+  const category =
+    result.kind === 'invalid-content'
+      ? result.failure === 'invalid-json'
+        ? 'plugin_manifest_invalid_json'
+        : 'plugin_manifest_invalid_manifest'
+      : 'plugin_manifest_temporary_error'
+  recordProblem(
+    db,
+    runId,
+    counts,
+    row,
+    category,
+    loaded.ready,
+    true,
+    now,
+    result.retryCount ?? 0,
+    log,
+    {
+      request: `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/plugin.json`,
+      reason: result.kind === 'not-modified' ? 'Unexpected plugin 304 without usable cache' : result.reason,
+    },
+    writes,
+  )
+  return null
+}
+
 async function loadLegacyMarketplace(
   db: Database.Database,
   reader: GitHubReader,
@@ -811,8 +894,7 @@ async function loadLegacyMarketplace(
     throw error
   }
   if (result.kind === 'not-found') {
-    removeLoadedRepository(db, runId, row, loaded, counts, removedIds, now, log, writes)
-    return null
+    return loadStandalonePlugin(db, reader, runId, row, loaded, counts, removedIds, now, policy, log, writes)
   }
   if (result.kind === 'temporary-error') {
     const deferred = deferTransient(result, policy)
@@ -1069,8 +1151,7 @@ async function loadGraphQLMarketplaceViaRest(
     throw error
   }
   if (result.kind === 'not-found') {
-    removeLoadedRepository(db, runId, row, loaded, counts, removedIds, now, log, writes)
-    return null
+    return loadStandalonePlugin(db, reader, runId, row, loaded, counts, removedIds, now, policy, log, writes)
   }
   if (result.kind === 'temporary-error') {
     const deferred = deferTransient(result, policy)
@@ -1517,6 +1598,8 @@ async function enrichOne(
         now(),
         false,
         retried.pluginsJson,
+        undefined,
+        retried,
       )
       completeEnrichment(counts, target, removedIds)
     })
@@ -1535,6 +1618,7 @@ async function enrichOne(
     false,
     marketplace.pluginsJson,
     writes,
+    marketplace,
   )
   completeEnrichment(counts, target, removedIds)
 }
@@ -1679,6 +1763,7 @@ async function enrichGraphQLOne(
     marketplace.clearMarketplaceEtag ?? false,
     marketplace.pluginsJson,
     writes,
+    marketplace,
   )
   completeEnrichment(counts, target, removedIds)
 }
