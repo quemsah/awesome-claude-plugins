@@ -200,7 +200,7 @@ export function searchCatalogRepos(
   sortOption: SortOption,
   page = 0,
   pageSize = CATALOG_PAGE_SIZE,
-  options: CatalogSearchOptions = {},
+  options: CatalogSearchOptions = {}
 ): CatalogSearchResult {
   const normalizedQuery = normalizeSearchQuery(query)
   const matchingRepos = normalizedQuery ? getScoredMatches(normalizedQuery, canonicalCatalogRepos) : undefined

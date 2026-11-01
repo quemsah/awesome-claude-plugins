@@ -934,13 +934,15 @@ it('recrawls and republishes cached large-marketplace summaries after upgrading 
     ...reader(),
     getRepositoriesByNodeId: async () => ({
       kind: 'found' as const,
-      data: [{
-        ...githubRepo('team', 'large-repo'),
-        node_id: nodeId,
-        marketplace_oid: oid,
-        marketplace_byte_size: text.length,
-        marketplace_is_binary: false,
-      }],
+      data: [
+        {
+          ...githubRepo('team', 'large-repo'),
+          node_id: nodeId,
+          marketplace_oid: oid,
+          marketplace_byte_size: text.length,
+          marketplace_is_binary: false,
+        },
+      ],
       rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
     }),
     getMarketplaceBlobsByNodeId,
