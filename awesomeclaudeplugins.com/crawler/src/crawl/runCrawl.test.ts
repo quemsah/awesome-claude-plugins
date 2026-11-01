@@ -96,7 +96,10 @@ it('includes standalone Code Search coverage counters in the crawl report', asyn
           ? {
               items: [
                 { path: '.claude-plugin/plugin.json', repository: { html_url: 'https://github.com/acme/root', description: null } },
-                { path: 'nested/.claude-plugin/plugin.json', repository: { html_url: 'https://github.com/acme/nested', description: null } },
+                {
+                  path: 'nested/.claude-plugin/plugin.json',
+                  repository: { html_url: 'https://github.com/acme/nested', description: null },
+                },
               ],
               total_count: 2,
               incomplete_results: false,

@@ -36,9 +36,7 @@ it.each([
   expect(repositoryManifestErrorMessage({ kind: 'error', path, reason: 'http', status: 429 })).toContain(
     `Failed to load ${name} manifest due to a request limit`
   )
-  expect(repositoryManifestErrorMessage({ kind: 'error', path, reason: 'http', status: 503 })).toContain(
-    `Failed to load ${name} manifest.`
-  )
+  expect(repositoryManifestErrorMessage({ kind: 'error', path, reason: 'http', status: 503 })).toContain(`Failed to load ${name} manifest.`)
   expect(repositoryManifestErrorMessage({ kind: 'error', path, reason: 'invalid-content' })).toBe(
     `${name === 'plugin' ? 'Plugin' : 'Marketplace'} manifest contains invalid data.`
   )

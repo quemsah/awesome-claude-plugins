@@ -12,7 +12,15 @@ const databases: Database.Database[] = []
 
 it('discovers only the exact root standalone manifest and retains its provenance', async () => {
   const db = database()
-  const metrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0, pluginSearchHits: 0, pluginNonRootHits: 0, pluginSaturatedPages: 0 }
+  const metrics = {
+    pagesFetched: 0,
+    totalResults: 0,
+    partitions: 0,
+    incompletePartitions: 0,
+    pluginSearchHits: 0,
+    pluginNonRootHits: 0,
+    pluginSaturatedPages: 0,
+  }
   await discover(
     db,
     reader(async (query) =>
@@ -37,7 +45,15 @@ it('discovers only the exact root standalone manifest and retains its provenance
 })
 it('records capped standalone searches when a size range cannot be split', async () => {
   const db = database()
-  const metrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0, pluginSearchHits: 0, pluginNonRootHits: 0, pluginSaturatedPages: 0 }
+  const metrics = {
+    pagesFetched: 0,
+    totalResults: 0,
+    partitions: 0,
+    incompletePartitions: 0,
+    pluginSearchHits: 0,
+    pluginNonRootHits: 0,
+    pluginSaturatedPages: 0,
+  }
   const result = await discover(
     db,
     reader(async (query, pageNumber) =>
