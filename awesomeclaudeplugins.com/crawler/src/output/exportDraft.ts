@@ -42,7 +42,7 @@ export function exportDraftSnapshot(db: Database.Database, runId: string, direct
     writeFileSync(resolve(data, 'markdown-paths.json'), files.markdownPathsJson, { flag: 'wx', mode: 0o600 })
 
     const parsedRepos = JSON.parse(files.reposJson)
-    const searchIndex = buildSearchIndex(parsedRepos)
+    const searchIndex = buildSearchIndex(parsedRepos, files.reposJson)
     writeFileSync(resolve(data, 'search-index.json'), searchIndex, { flag: 'wx', mode: 0o600 })
 
     const detailsDir = resolve(data, 'repo-details')
