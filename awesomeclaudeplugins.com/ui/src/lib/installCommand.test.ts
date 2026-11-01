@@ -13,9 +13,15 @@ describe('normalizePluginName', () => {
     expect(normalizePluginName('hello-world')).toBe('hello-world')
   })
 
+  it.each(['.review', '_review', '-review'])('preserves a valid leading punctuation character in %s', (name) => {
+    expect(normalizePluginName(name)).toBe(name)
+  })
+
   it('returns an empty string when the input contains illegal characters', () => {
     expect(normalizePluginName('bad/name')).toBe('')
     expect(normalizePluginName('bad$name')).toBe('')
+    expect(normalizePluginName('.')).toBe('')
+    expect(normalizePluginName('..')).toBe('')
     expect(normalizePluginName(undefined)).toBe('')
   })
 })
@@ -25,9 +31,18 @@ describe('isPluginInstallCommandVerified', () => {
     expect(isPluginInstallCommandVerified('my-plugin', 'my-marketplace')).toBe(true)
   })
 
+  it.each(['.marketplace', '_marketplace', '-marketplace'])(
+    'accepts marketplace identifier %s permitted by the shared contract',
+    (marketplaceName) => {
+      expect(isPluginInstallCommandVerified('_review', marketplaceName)).toBe(true)
+    }
+  )
+
   it('returns false when marketplaceName is missing or invalid', () => {
     expect(isPluginInstallCommandVerified('my-plugin', undefined)).toBe(false)
     expect(isPluginInstallCommandVerified('my-plugin', 'bad/marketplace')).toBe(false)
+    expect(isPluginInstallCommandVerified('my-plugin', '.')).toBe(false)
+    expect(isPluginInstallCommandVerified('my-plugin', '..')).toBe(false)
     expect(isPluginInstallCommandVerified(undefined, 'marketplace')).toBe(false)
   })
 })
@@ -42,6 +57,13 @@ describe('getPluginInstallCommand', () => {
       })
     ).toBe('/plugin install my-plugin-id@community')
   })
+
+  it.each(['.review', '_review', '-review'])(
+    'accepts shared-contract plugin ID %s without converting it into a display name',
+    (pluginId) => {
+      expect(getPluginInstallCommand({ pluginId, marketplaceName: '_marketplace' })).toBe(`/plugin install ${pluginId}@_marketplace`)
+    }
+  )
 
   it('falls back to normalized pluginName if pluginId is omitted', () => {
     expect(
@@ -59,6 +81,8 @@ describe('getPluginInstallCommand', () => {
   it('returns null when inputs are invalid or missing', () => {
     expect(getPluginInstallCommand({})).toBeNull()
     expect(getPluginInstallCommand({ pluginName: 'bad/token', marketplaceName: 'market' })).toBeNull()
+    expect(getPluginInstallCommand({ pluginId: '.', marketplaceName: 'market' })).toBeNull()
+    expect(getPluginInstallCommand({ pluginId: '..', marketplaceName: 'market' })).toBeNull()
   })
 })
 
@@ -100,6 +124,15 @@ describe('getDirectPluginInstallCommand', () => {
     ).toBe('/plugin install community-plugin --marketplace anthropics/claude-plugins-community')
   })
 
+  it.each(['.review', '_review', '-review'])(
+    'builds a one-step install command for shared-contract plugin ID %s',
+    (pluginId) => {
+      expect(getDirectPluginInstallCommand({ pluginId, owner: 'example', repoName: 'plugins' })).toBe(
+        `/plugin install ${pluginId} --marketplace example/plugins`
+      )
+    }
+  )
+
   it('falls back to a safe normalized plugin name when the plugin ID is absent', () => {
     expect(getDirectPluginInstallCommand({ pluginName: '  Nice  Plugin ', owner: 'example', repoName: 'plugins' })).toBe(
       '/plugin install nice-plugin --marketplace example/plugins'
@@ -110,6 +143,8 @@ describe('getDirectPluginInstallCommand', () => {
     expect(getDirectPluginInstallCommand({ pluginId: 'safe', owner: 'owner' })).toBeNull()
     expect(getDirectPluginInstallCommand({ pluginId: 'safe', owner: 'owner', repoName: 'repo\n/plugin exploit' })).toBeNull()
     expect(getDirectPluginInstallCommand({ pluginId: 'bad/name', owner: 'owner', repoName: 'repo' })).toBeNull()
+    expect(getDirectPluginInstallCommand({ pluginId: '.', owner: 'owner', repoName: 'repo' })).toBeNull()
+    expect(getDirectPluginInstallCommand({ pluginId: '..', owner: 'owner', repoName: 'repo' })).toBeNull()
     expect(getDirectPluginInstallCommand({ pluginName: 'bad/name', owner: 'owner', repoName: 'repo' })).toBeNull()
   })
 })
