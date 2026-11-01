@@ -103,6 +103,9 @@ describe('catalogStore', () => {
     }
     try {
       writeFileSync(reposPath, JSON.stringify(canonical))
+      const searchFields = [{ plugins: [{ name: 'special-plugin' }] }]
+      writeFileSync(indexPath, JSON.stringify({ ...index, search: gzipSync(JSON.stringify(searchFields)).toString('base64') }))
+      expect(readCatalogSearchFields(indexPath, reposPath, 1)).toEqual(searchFields)
       writeFileSync(indexPath, JSON.stringify(index))
       expect(readCatalogSearchFields(indexPath, reposPath, 1)).toEqual(canonical)
       writeFileSync(indexPath, JSON.stringify({ ...index, search: 'invalid-gzip' }))
