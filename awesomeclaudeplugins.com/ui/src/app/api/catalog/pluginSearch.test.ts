@@ -123,7 +123,6 @@ describe('/api/catalog plugin metadata search', () => {
     }
   })
 
-
   it('does not load full detail shards for card-only API responses', async () => {
     hydrateSpy.mockClear()
     const cards = await apiSearch('zerogravityplugin', 'cards')
