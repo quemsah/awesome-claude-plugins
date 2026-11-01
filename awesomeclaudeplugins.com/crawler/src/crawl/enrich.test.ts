@@ -18,6 +18,65 @@ import { enrichRepositories } from './enrich.js'
 
 const databases: Database.Database[] = []
 
+it.each([null, 'marketplace'] as const)(
+  'keeps a selected canonical snapshot coherent after rename and invalid marketplace (kind %s)',
+  async (kind) => {
+    const db = database()
+    const oldId = upsertDiscovery(db, 'https://github.com/team/old', null)
+    const duplicateId = upsertDiscovery(db, 'https://github.com/team/canonical', null)
+    ready(db, oldId, 'team', 'old')
+    ready(db, duplicateId, 'team', 'canonical')
+    db.prepare(`UPDATE repositories SET manifest_kind = 'standalone-plugin', plugins_count = 1,
+    plugins_json = '[{"name":"old-plugin"}]', plugin_manifest_etag = '"old-plugin"', plugin_manifest_parser_version = 1 WHERE id = ?`).run(
+      oldId,
+    )
+    db.prepare(`UPDATE repositories SET manifest_kind = ?, plugins_count = 1,
+    plugins_json = '[{"name":"marketplace-plugin"}]', marketplace_oid = ?, marketplace_etag = '"marketplace"', marketplace_parser_version = ? WHERE id = ?`).run(
+      kind,
+      'a'.repeat(40),
+      MARKETPLACE_PARSER_VERSION,
+      duplicateId,
+    )
+    const api = reader(
+      async () => ({ kind: 'found', data: githubRepo('team', 'canonical') }),
+      async () => ({
+        kind: 'invalid-content',
+        failure: 'invalid-manifest',
+        status: 200,
+        reason: 'invalid marketplace',
+        retryCount: 0,
+      }),
+    )
+    await enrichRepositories(db, api, 'crawl-1')
+    const preserved = db
+      .prepare('SELECT id, manifest_kind, plugins_json, plugin_manifest_etag, plugin_manifest_parser_version FROM repositories')
+      .get()
+    completeRun(db, 'crawl-1', '2026-09-23T01:00:00Z', 0)
+    beginRun(db, 'crawl-2', '2026-09-24T00:00:00Z')
+    api.getMarketplace = async () => ({ kind: 'not-found' })
+    let pluginRequests = 0
+    api.getPluginManifest = async (_owner, _repo, etag) => {
+      pluginRequests++
+      expect(etag).toBeUndefined()
+      return pluginRequests === 1 ? { kind: 'not-modified' } : { kind: 'found', data: { name: 'actual-standalone' } }
+    }
+    await enrichRepositories(db, api, 'crawl-2')
+    expect(preserved).toEqual({
+      id: oldId,
+      manifest_kind: 'marketplace',
+      plugins_json: '[{"name":"marketplace-plugin"}]',
+      plugin_manifest_etag: null,
+      plugin_manifest_parser_version: null,
+    })
+    expect(pluginRequests).toBe(2)
+    expect(db.prepare('SELECT id, manifest_kind, plugins_json FROM repositories').get()).toEqual({
+      id: oldId,
+      manifest_kind: 'standalone-plugin',
+      plugins_json: '[{"name":"actual-standalone"}]',
+    })
+  },
+)
+
 it.each(['found', 'invalid-content', 'temporary-error'] as const)('does not try a plugin when marketplace is %s', async (kind) => {
   const db = database()
   upsertDiscovery(db, 'https://github.com/team/repo', null)
