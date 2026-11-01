@@ -44,10 +44,12 @@ const { fixtureRepos } = vi.hoisted(() => ({
 vi.mock('../../../lib/catalogStore.ts', () => ({
   getCatalog: () => fixtureRepos,
   getRepoDetails: (id: number) => fixtureRepos.find((r) => r.id === id) ?? null,
-  hydrateCatalogRepo: <T>(repo: T): T => repo,
+  hydrateCatalogRepo: hydrateSpy,
   isSearchCatalogRepo: (_repo: unknown): boolean => false,
   readCatalogSearchFields: () => [],
 }))
+
+const { hydrateSpy } = vi.hoisted(() => ({ hydrateSpy: vi.fn((repo: unknown) => repo) }))
 
 import { searchCatalogRepos } from '../../../lib/catalog.ts'
 import { GET } from './route.ts'
@@ -80,6 +82,14 @@ function serverSearch(query: string): CatalogPayload {
 }
 
 describe('/api/catalog plugin metadata search', () => {
+  it('does not load full detail shards for card-only API responses', async () => {
+    hydrateSpy.mockClear()
+    const cards = await apiSearch('zerogravityplugin', 'cards')
+    expect(cards.total).toBe(1)
+    expect(hydrateSpy).not.toHaveBeenCalled()
+    expect(cards.repos[0].plugins).toBeUndefined()
+  })
+
   it.each([
     ['zerogravityplugin', 'plugin name'],
     ['aurora system diagnostics', 'plugin description'],
