@@ -838,8 +838,7 @@ async function loadStandalonePlugin(
     const deferred = deferTransient(result, policy)
     if (deferred) return deferred
   }
-  const category =
-    result.kind === 'invalid-content' ? standalonePluginFailureCategory(result.failure) : 'plugin_manifest_temporary_error'
+  const category = result.kind === 'invalid-content' ? standalonePluginFailureCategory(result.failure) : 'plugin_manifest_temporary_error'
   recordProblem(
     db,
     runId,
