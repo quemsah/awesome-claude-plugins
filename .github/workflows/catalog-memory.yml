@@ -127,23 +127,28 @@ jobs:
           NEXT_TELEMETRY_DISABLED: '1'
           GITHUB_API_URL: http://127.0.0.1:3100
           GITHUB_RAW_URL: http://127.0.0.1:3100
-      - name: Measure cold API and homepage with fresh server processes
+      - name: Measure browse and SSR/API search in three fresh servers per order
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p coldstart-results
-          for first in api home; do
-            for revision in baseline candidate; do
-              node candidate/awesomeclaudeplugins.com/ui/scripts/benchmark-catalog-coldstart.mjs \
-                --cwd "$revision/awesomeclaudeplugins.com/ui" --label "$revision" \
-                --first "$first" --out "coldstart-results/$revision-$first.json"
+          for first in api home search; do
+            for iteration in 1 2 3; do
+              for revision in baseline candidate; do
+                node candidate/awesomeclaudeplugins.com/ui/scripts/benchmark-catalog-coldstart.mjs \
+                  --cwd "$revision/awesomeclaudeplugins.com/ui" --label "$revision" \
+                  --first "$first" --out "coldstart-results/$revision-$first-$iteration.json"
+              done
             done
           done
       - name: Publish cold-start comparison
+        shell: bash
         run: |
+          set -euo pipefail
+          baseline_files="$(printf '%s,' coldstart-results/baseline-*.json)"
+          candidate_files="$(printf '%s,' coldstart-results/candidate-*.json)"
           node candidate/awesomeclaudeplugins.com/ui/scripts/benchmark-catalog-coldstart.mjs \
-            --baseline coldstart-results/baseline-api.json,coldstart-results/baseline-home.json \
-            --candidate coldstart-results/candidate-api.json,coldstart-results/candidate-home.json
+            --baseline "${baseline_files%,}" --candidate "${candidate_files%,}"
       - name: Upload cold-start measurements
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
