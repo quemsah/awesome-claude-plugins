@@ -461,6 +461,10 @@ function migrateTo22(db: Database.Database): void {
   const columns = db.pragma('table_info(rejected_repository_candidates)') as Array<{ name: string }>
   if (!columns.some(({ name }) => name === 'eligibility_version'))
     db.exec('ALTER TABLE rejected_repository_candidates ADD COLUMN eligibility_version INTEGER NOT NULL DEFAULT 1')
+  // Provenance was implicit before v22. Backfill already-enriched marketplaces before
+  // creating the kind-change trigger, so an unchanged first refresh preserves sitemap lastmod.
+  // Pending rows stay unknown until enrichment determines their actual manifest kind.
+  db.exec("UPDATE repositories SET manifest_kind = 'marketplace' WHERE manifest_kind IS NULL AND plugins_count IS NOT NULL")
   db.exec(`CREATE TRIGGER IF NOT EXISTS repositories_manifest_kind_timestamp_after_update
     AFTER UPDATE OF manifest_kind ON repositories WHEN OLD.manifest_kind IS NOT NEW.manifest_kind
     BEGIN UPDATE repositories SET catalog_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;`)

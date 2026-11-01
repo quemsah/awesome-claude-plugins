@@ -30,4 +30,17 @@ describe('/SKILL.md', () => {
       'Do not load changed source or dependency artifacts without reviewing the changes and obtaining renewed approval'
     )
   })
+  it('does not make standalone agents clone an unpinned HEAD after auditing a commit', async () => {
+    const guide = await GET().text()
+    const step5 = guide.split('### Step 5: Install after approval')[1]?.split('## Catalog API Specification')[0]
+
+    expect(step5).toBeDefined()
+    expect(step5).toContain('Treat the clone-and-load examples on the detail page and in Markdown as reference only')
+    expect(step5).toContain('Reuse the already-audited checkout')
+    expect(step5).toContain('git -C {absolute_local_path} rev-parse HEAD')
+    expect(step5).toContain('git -C {absolute_local_path} status --porcelain --untracked-files=all --ignored --ignore-submodules=none')
+    expect(step5).toContain('claude --plugin-dir {absolute_local_path}')
+    expect(step5).toContain('Do not clone again or run the marketplace commands below')
+    expect(step5).not.toContain('git clone https://github.com/')
+  })
 })
