@@ -352,7 +352,6 @@ describe('MarketplacePluginsSchema', () => {
       expect(result.data.issues.some((issue) => issue.path[2] === 'description')).toBe(true)
     }
   })
-
 })
 
 describe('getMarketplaceDescription', () => {
