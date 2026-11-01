@@ -140,9 +140,14 @@ describe('getDirectPluginInstallCommand', () => {
   )
 
   it('accepts periods and underscores after an alphanumeric first character', () => {
-    expect(getDirectPluginInstallCommand({ pluginId: 'review_tools.v2', marketplaceName: 'team_market.v2', owner: 'example', repoName: 'plugins' })).toBe(
-      '/plugin install review_tools.v2 --marketplace example/plugins'
-    )
+    expect(
+      getDirectPluginInstallCommand({
+        pluginId: 'review_tools.v2',
+        marketplaceName: 'team_market.v2',
+        owner: 'example',
+        repoName: 'plugins',
+      })
+    ).toBe('/plugin install review_tools.v2 --marketplace example/plugins')
   })
 
   it('falls back to a safe normalized plugin name when the plugin ID is absent', () => {
