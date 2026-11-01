@@ -1,3 +1,5 @@
+/** biome-ignore-all lint/style/useNamingConvention: catalog fixtures mirror snake_case fields */
+
 import { describe, expect, it, vi } from 'vitest'
 
 const { searchCatalogRepos } = vi.hoisted(() => ({

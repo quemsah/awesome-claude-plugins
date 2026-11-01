@@ -128,7 +128,10 @@ describe('GitHubGitClient', () => {
   })
 
   it('batches large snapshots into intermediate Git trees before committing', async () => {
-    const large = { ...files, reposJson: JSON.stringify([{ id: 1, owner: 'one', repo_name: 'demo', description: 'a'.repeat(5 * 1024 * 1024) }]) }
+    const large = {
+      ...files,
+      reposJson: JSON.stringify([{ id: 1, owner: 'one', repo_name: 'demo', description: 'a'.repeat(5 * 1024 * 1024) }]),
+    }
     const { client, requests } = mockClient(Array.from({ length: 12 }, () => Response.json({ sha: treeSha })))
     expect(await client.createTree(baseTree, large)).toBe(treeSha)
     const trees = requests.map((request) => payload(request) as { base_tree: string; tree: Array<{ path: string; content: string }> })
