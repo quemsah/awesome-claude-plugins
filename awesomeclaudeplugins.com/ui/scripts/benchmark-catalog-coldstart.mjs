@@ -61,10 +61,14 @@ if (values.baseline || values.candidate) {
     const mainRuns = base.filter((entry) => entry.first === first)
     const prRuns = pr.filter((entry) => entry.first === first)
     const warm = (runs, key) => median(runs.map((entry) => entry[key]))
-    assert(warm(prRuns, 'rssAfterSecondMiB') <= warm(mainRuns, 'rssAfterSecondMiB') * 1.1,
-      `${first}: warm server RSS regression exceeds 10%`)
-    assert(warm(prRuns, 'sampledPeakRssMiB') <= warm(mainRuns, 'sampledPeakRssMiB') * 1.15,
-      `${first}: server peak RSS regression exceeds 15%`)
+    assert(
+      warm(prRuns, 'rssAfterSecondMiB') <= warm(mainRuns, 'rssAfterSecondMiB') * 1.1,
+      `${first}: warm server RSS regression exceeds 10%`
+    )
+    assert(
+      warm(prRuns, 'sampledPeakRssMiB') <= warm(mainRuns, 'sampledPeakRssMiB') * 1.15,
+      `${first}: server peak RSS regression exceeds 15%`
+    )
   }
   lines.push(
     'Node 24, built Next.js, three fresh servers per request order and revision.',
