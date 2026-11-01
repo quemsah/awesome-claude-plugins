@@ -18,9 +18,7 @@ const catalogRepos: readonly CatalogRepo[] = getCatalog().filter(
   (repo): repo is CatalogRepo => repo.owner != null && repo.repo_name != null
 )
 const canonicalCatalogRepos = getUniqueCatalogRepos(catalogRepos)
-const canonicalCatalogRepoIdentities = new Set(
-  canonicalCatalogRepos.map((repo) => `${repo.id}:${repo.owner}/${repo.repo_name}`)
-)
+const canonicalCatalogRepoIdentities = new Set(canonicalCatalogRepos.map((repo) => `${repo.id}:${repo.owner}/${repo.repo_name}`))
 // Different Next.js route bundles can have different module registries in the same process.
 // Key the shared index by the original catalog array, which catalogStore already shares globally.
 const CATALOG_SEARCH_INDEX_KEY = Symbol.for('awesome-claude-plugins.catalog-search-index')
