@@ -145,34 +145,41 @@ const enrichedUpdateSql = `
   WHERE id = @id
 `
 
+function assertValidEnrichmentCounts(fields: EnrichmentFields): void {
+  for (const field of ['stargazers_count', 'forks_count', 'subscribers_count', 'plugins_count'] as const) {
+    const count = fields[field]
+    if (count !== null && (!Number.isSafeInteger(count) || count < 0)) {
+      throw new Error(`${field} must be a nonnegative integer or null`)
+    }
+  }
+}
+
+/** Bind every optional SQL parameter, including explicit nulls used to clear stale validators. */
+function enrichmentUpdateBindings(id: number, fields: EnrichmentFields, updatedAt: string) {
+  return {
+    ...fields,
+    manifest_kind: fields.manifest_kind ?? null,
+    plugin_manifest_etag: fields.plugin_manifest_etag ?? null,
+    plugin_manifest_parser_version: fields.plugin_manifest_parser_version ?? null,
+    github_node_id: fields.github_node_id ?? null,
+    marketplace_oid: fields.marketplace_oid ?? null,
+    repository_etag: fields.repository_etag ?? null,
+    marketplace_etag: fields.marketplace_etag ?? null,
+    marketplace_parser_version: fields.marketplace_parser_version ?? null,
+    plugins_json: fields.plugins_json ?? null,
+    license: fields.license ?? null,
+    license_known: fields.license !== undefined ? 1 : 0,
+    archived: fields.archived ?? null,
+    id,
+    updatedAt,
+  }
+}
+
 export function prepareEnrichedUpdate(db: Database.Database) {
   const update = db.prepare(enrichedUpdateSql)
   return (id: number, fields: EnrichmentFields, at = new Date().toISOString()): boolean => {
-    for (const field of ['stargazers_count', 'forks_count', 'subscribers_count', 'plugins_count'] as const) {
-      const count = fields[field]
-      if (count !== null && (!Number.isSafeInteger(count) || count < 0)) {
-        throw new Error(`${field} must be a nonnegative integer or null`)
-      }
-    }
-
-    const result = update.run({
-      ...fields,
-      manifest_kind: fields.manifest_kind ?? null,
-      plugin_manifest_etag: fields.plugin_manifest_etag ?? null,
-      plugin_manifest_parser_version: fields.plugin_manifest_parser_version ?? null,
-      github_node_id: fields.github_node_id ?? null,
-      marketplace_oid: fields.marketplace_oid ?? null,
-      repository_etag: fields.repository_etag ?? null,
-      marketplace_etag: fields.marketplace_etag ?? null,
-      marketplace_parser_version: fields.marketplace_parser_version ?? null,
-      plugins_json: fields.plugins_json ?? null,
-      license: fields.license ?? null,
-      license_known: fields.license !== undefined ? 1 : 0,
-      archived: fields.archived ?? null,
-      id,
-      updatedAt: at,
-    })
-    return result.changes !== 0
+    assertValidEnrichmentCounts(fields)
+    return update.run(enrichmentUpdateBindings(id, fields, at)).changes !== 0
   }
 }
 

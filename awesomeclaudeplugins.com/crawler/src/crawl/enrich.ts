@@ -780,6 +780,19 @@ function finishNotModifiedLegacyMarketplace(
   }
 }
 
+function hasUsableStandaloneCache(row: RepositoryRow): boolean {
+  return (
+    row.manifest_kind === 'standalone-plugin' &&
+    row.plugins_count === 1 &&
+    parsePluginSummariesJson(row.plugins_json)?.length === 1 &&
+    row.plugin_manifest_parser_version === STANDALONE_PLUGIN_PARSER_VERSION
+  )
+}
+
+function standalonePluginFailureCategory(failure: 'invalid-json' | 'invalid-manifest'): string {
+  return failure === 'invalid-json' ? 'plugin_manifest_invalid_json' : 'plugin_manifest_invalid_manifest'
+}
+
 async function loadStandalonePlugin(
   db: Database.Database,
   reader: GitHubReader,
@@ -793,12 +806,7 @@ async function loadStandalonePlugin(
   log?: Log,
   writes?: EnrichmentWriteBatch,
 ): Promise<MarketplaceState | null | RetryLater> {
-  const summaries = parsePluginSummariesJson(row.plugins_json)
-  const usable =
-    row.manifest_kind === 'standalone-plugin' &&
-    row.plugins_count === 1 &&
-    summaries?.length === 1 &&
-    row.plugin_manifest_parser_version === STANDALONE_PLUGIN_PARSER_VERSION
+  const usable = hasUsableStandaloneCache(row)
   let result = await reader.getPluginManifest(loaded.owner, loaded.repo, usable ? (row.plugin_manifest_etag ?? undefined) : undefined, {
     maxAttempts: policy.maxAttempts,
   })
@@ -831,11 +839,7 @@ async function loadStandalonePlugin(
     if (deferred) return deferred
   }
   const category =
-    result.kind === 'invalid-content'
-      ? result.failure === 'invalid-json'
-        ? 'plugin_manifest_invalid_json'
-        : 'plugin_manifest_invalid_manifest'
-      : 'plugin_manifest_temporary_error'
+    result.kind === 'invalid-content' ? standalonePluginFailureCategory(result.failure) : 'plugin_manifest_temporary_error'
   recordProblem(
     db,
     runId,
