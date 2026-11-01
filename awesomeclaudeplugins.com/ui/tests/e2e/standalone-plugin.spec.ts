@@ -53,6 +53,8 @@ test('finds standalone summaries through the real catalog and opens local loadin
   await expect(page.getByText('/plugin install', { exact: false })).toHaveCount(0)
   await page.getByRole('button', { name: 'Copy local loading instructions' }).click()
   await expect.poll(() => copiedText(page)).toBe('git clone https://github.com/acme/capsule.git ./capsule\nclaude --plugin-dir ./capsule')
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
   await page.screenshot({ path: testInfo.outputPath('standalone-catalog.png'), fullPage: true })
 })
 

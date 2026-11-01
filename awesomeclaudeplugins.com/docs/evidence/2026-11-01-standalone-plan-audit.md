@@ -6,7 +6,7 @@
 - `docs/superpowers/specs/2026-11-01-standalone-plugin-indexing-design.md` — scope, данные и AC1–AC11.
 - `docs/superpowers/plans/2026-11-01-standalone-plugin-indexing.md` — шесть этапов и конкретные проверки.
 
-Аудит начат от `9ceb548` после merge #427; доработка перебазирована на **`03b7e40`** с новой marketplace-командой из #423. Работа выполняется в изолированном T3 worktree. Исходные документы в ветке `imp` не изменялись.
+Аудит начат от `9ceb548` после merge #427; доработка перебазирована на `03b7e40` с новой marketplace-командой из #423, затем на **`36de88d`** с компактным индексом и shards из #428. Работа выполняется в изолированном T3 worktree. Исходные документы в ветке `imp` не изменялись.
 
 ## Что потребовало исправления
 
@@ -40,10 +40,12 @@
 
 ## Проверки и воспроизведение
 
-- Crawler: 731 unit tests / 39 files, 4 integration tests / 3 files; typecheck, integration typecheck, build и lint прошли.
-- UI после rebase: 407 unit tests / 53 files; typecheck и lint. Три прежних lint warnings остаются без изменений.
+- Crawler после rebase на `36de88d`: 738 unit tests / 40 files, 4 integration tests / 3 files; typecheck, integration typecheck, build и lint прошли.
+- UI после rebase на `36de88d`: 420 unit tests / 54 files; typecheck и lint. Три прежних lint warnings остаются без изменений.
 - `cd awesomeclaudeplugins.com/ui && bun run test:e2e:standalone`: **10 desktop/mobile E2E**, production build, настоящие catalog API/SSR, GitHub mock. Все прошли, включая обрыв тела HTTP 200.
 - Обычный focused набор `repo-detail.spec.ts` + `directory.spec.ts`: **94 desktop/mobile E2E прошли** отдельно с исходным production snapshot, чтобы fixture override не скрыл регрессии обычного каталога.
+
+При конфликте с #428 сохранены весь upstream `catalogStore.ts` fast path, helpers и существующие storage tests. Тест fixture вынесен в `catalogFixtureStore.test.ts`; только явно заданный `CATALOG_DATA_PATH` выбирает полный тестовый JSON. Обычный каталог продолжает использовать компактный индекс, compressed search metadata и hydration из shards. Оба режима проверяются отдельно.
 
 ## Скриншоты
 
