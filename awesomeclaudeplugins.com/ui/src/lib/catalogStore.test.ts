@@ -42,6 +42,24 @@ describe('catalogStore', () => {
     expect(getRepoDetails(first.id, 'definitely-not-the-owner', first.repo_name)).toBeNull()
   })
 
+  it('recovers original metadata when a cached shard has no entry', () => {
+    const first = getCatalog()[0]
+    const key = Symbol.for('awesome-claude-plugins.shard-cache')
+    const root = globalThis as unknown as Record<symbol, unknown>
+    const previous = root[key]
+    try {
+      root[key] = new Map([[Math.abs(first.id % 100), {}]])
+      const restored = getRepoDetails(first.id, first.owner, first.repo_name)
+      expect(restored).not.toBeNull()
+      expect(restored?.owner).toBe(first.owner)
+      expect(restored?.repo_name).toBe(first.repo_name)
+      expect(restored?.description).not.toBe('Description available.')
+    } finally {
+      if (previous === undefined) delete root[key]
+      else root[key] = previous
+    }
+  })
+
   it('keeps the most recently used shard in the bounded LRU', () => {
     const cacheKey = Symbol.for('awesome-claude-plugins.shard-cache')
     const holder = globalThis as unknown as Record<symbol, unknown>
