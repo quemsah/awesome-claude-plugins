@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  getCombinedInstallCommand,
+  getDirectPluginInstallCommand,
   getMarketplaceAddCommand,
   getPluginInstallCommand,
-  isOfficialMarketplace,
   isPluginInstallCommandVerified,
   normalizePluginName,
 } from './installCommand.ts'
@@ -79,58 +78,44 @@ describe('getMarketplaceAddCommand', () => {
   })
 })
 
-describe('isOfficialMarketplace', () => {
-  it('identifies Anthropic official repositories by owner', () => {
-    expect(isOfficialMarketplace({ owner: 'anthropics', repoName: 'claude-plugins-official' })).toBe(true)
-    expect(isOfficialMarketplace({ owner: 'Anthropic', repoName: 'custom-repo' })).toBe(true)
-    expect(isOfficialMarketplace({ repoPath: 'anthropics/claude-plugins-official' })).toBe(true)
-  })
-
-  it('rejects repositories not owned by Anthropic even if repository or marketplace name matches', () => {
-    expect(isOfficialMarketplace({ owner: 'someone', repoName: 'claude-plugins-official' })).toBe(false)
-    expect(isOfficialMarketplace({ repoPath: 'someone/claude-plugins-official' })).toBe(false)
-    expect(isOfficialMarketplace({ marketplaceName: 'claude-plugins-official' })).toBe(false)
-    expect(isOfficialMarketplace({ marketplaceName: 'official' })).toBe(false)
-  })
-
-  it('returns false for community / third-party marketplaces', () => {
+describe('getDirectPluginInstallCommand', () => {
+  it('installs a marketplace plugin in one command without registering it separately', () => {
     expect(
-      isOfficialMarketplace({
+      getDirectPluginInstallCommand({
+        pluginId: 'example-plugin',
+        pluginName: 'Example Plugin',
         owner: 'ykdojo',
         repoName: 'claude-code-tips',
-        marketplaceName: 'ykdojo',
       })
-    ).toBe(false)
+    ).toBe('/plugin install example-plugin --marketplace ykdojo/claude-code-tips')
+  })
+
+  it('works for Anthropic-owned repositories without special-case marketplace detection', () => {
     expect(
-      isOfficialMarketplace({
-        repoPath: 'obra/superpowers',
-        marketplaceName: 'superpowers',
+      getDirectPluginInstallCommand({
+        pluginId: 'community-plugin',
+        owner: 'anthropics',
+        repoName: 'claude-plugins-community',
       })
-    ).toBe(false)
-    expect(isOfficialMarketplace(null)).toBe(false)
-    expect(isOfficialMarketplace(undefined)).toBe(false)
-  })
-})
-
-describe('getCombinedInstallCommand', () => {
-  it('combines add marketplace and install plugin commands with default newline delimiter', () => {
-    expect(getCombinedInstallCommand('/plugin marketplace add ykdojo/claude-code-tips', '/plugin install example-plugin@ykdojo')).toBe(
-      '/plugin marketplace add ykdojo/claude-code-tips\n/plugin install example-plugin@ykdojo'
-    )
+    ).toBe('/plugin install community-plugin --marketplace anthropics/claude-plugins-community')
   })
 
-  it('combines commands with custom delimiter if requested', () => {
+  it('falls back to a safe normalized plugin name when the plugin ID is absent', () => {
     expect(
-      getCombinedInstallCommand('/plugin marketplace add ykdojo/claude-code-tips', '/plugin install example-plugin@ykdojo', ' && ')
-    ).toBe('/plugin marketplace add ykdojo/claude-code-tips && /plugin install example-plugin@ykdojo')
+      getDirectPluginInstallCommand({ pluginName: '  Nice  Plugin ', owner: 'example', repoName: 'plugins' })
+    ).toBe('/plugin install nice-plugin --marketplace example/plugins')
   })
 
-  it('returns single command when only one is available', () => {
-    expect(getCombinedInstallCommand(null, '/plugin install plugin@market')).toBe('/plugin install plugin@market')
-    expect(getCombinedInstallCommand('/plugin marketplace add owner/repo', null)).toBe('/plugin marketplace add owner/repo')
-  })
-
-  it('returns null when neither command is provided', () => {
-    expect(getCombinedInstallCommand(null, null)).toBeNull()
+  it('rejects missing and malicious repository identifiers and plugin IDs', () => {
+    expect(getDirectPluginInstallCommand({ pluginId: 'safe', owner: 'owner' })).toBeNull()
+    expect(
+      getDirectPluginInstallCommand({ pluginId: 'safe', owner: 'owner', repoName: 'repo\n/plugin exploit' })
+    ).toBeNull()
+    expect(
+      getDirectPluginInstallCommand({ pluginId: 'bad/name', owner: 'owner', repoName: 'repo' })
+    ).toBeNull()
+    expect(
+      getDirectPluginInstallCommand({ pluginName: 'bad/name', owner: 'owner', repoName: 'repo' })
+    ).toBeNull()
   })
 })
