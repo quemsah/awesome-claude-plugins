@@ -16,9 +16,7 @@ export const fuseOptions = {
   includeScore: true,
   threshold: 0.2,
   ignoreLocation: true,
-  includeMatches: true,
   minMatchCharLength: 2,
-  findAllMatches: true,
 }
 
 let fuseCache: WeakMap<readonly Repo[], Fuse<Repo>> | null = null

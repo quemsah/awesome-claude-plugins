@@ -899,6 +899,68 @@ it('fully indexes marketplace repositories with more than 30 plugins up to 500 i
   expect(parsed[74].name).toBe('plugin-75')
 })
 
+it('recrawls and republishes cached large-marketplace summaries after upgrading SQLite v19 to v20', async () => {
+  const db = database()
+  const nodeId = 'node-migrated-large-marketplace'
+  const id = upsertDiscovery(db, 'https://github.com/team/large-repo', 'cached', new Date().toISOString(), nodeId)
+  ready(db, id, 'team', 'large-repo')
+  const oid = 'unchanged-marketplace-oid'
+  const plugins = Array.from({ length: 75 }, (_, index) => ({
+    name: `plugin-${index + 1}`,
+    description: `Unique plugin description ${index + 1}`,
+    source: `./plugins/plugin-${index + 1}`,
+  }))
+  const oldSummaries = plugins.slice(0, 30).map(({ name, description }) => ({ name, description }))
+  db.prepare(`
+    UPDATE repositories
+    SET plugins_count = ?, plugins_json = ?, marketplace_oid = ?, marketplace_etag = ?, marketplace_parser_version = ?
+    WHERE id = ?
+  `).run(75, JSON.stringify(oldSummaries), oid, '"cached"', MARKETPLACE_PARSER_VERSION, id)
+
+  db.pragma('user_version = 19')
+  initializeSchema(db)
+  expect(db.prepare('SELECT marketplace_oid, marketplace_etag FROM repositories WHERE id = ?').get(id)).toEqual({
+    marketplace_oid: null,
+    marketplace_etag: null,
+  })
+
+  const text = JSON.stringify({ name: 'large-catalog', owner: { name: 'maintainer' }, plugins })
+  const getMarketplaceBlobsByNodeId = vi.fn(async () => ({
+    kind: 'found' as const,
+    data: [graphQLMarketplaceBlob(nodeId, oid, { text })],
+    rateLimit: { cost: 1, remaining: 4_998, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 2 },
+  }))
+  const client = {
+    ...reader(),
+    getRepositoriesByNodeId: async () => ({
+      kind: 'found' as const,
+      data: [{
+        ...githubRepo('team', 'large-repo'),
+        node_id: nodeId,
+        marketplace_oid: oid,
+        marketplace_byte_size: text.length,
+        marketplace_is_binary: false,
+      }],
+      rateLimit: { cost: 1, remaining: 4_999, resetAt: '2026-09-23T23:00:00Z', limit: 5_000, used: 1 },
+    }),
+    getMarketplaceBlobsByNodeId,
+  }
+
+  const counts = await enrichRepositories(db, client, 'crawl-1')
+  expect(counts).toMatchObject({ updated: 1, conclusive: 1, warnings: 0 })
+  expect(getMarketplaceBlobsByNodeId).toHaveBeenCalledTimes(1)
+  const published = JSON.parse(renderRepos(listPublishable(db))) as Array<{
+    id: number
+    plugins_count: number
+    plugins?: Array<{ name?: string }>
+  }>
+  const large = published.find((repo) => repo.id === id)
+  expect(large?.plugins_count).toBe(75)
+  expect(large?.plugins).toHaveLength(75)
+  expect(large?.plugins?.[30]?.name).toBe('plugin-31')
+  expect(large?.plugins?.[74]?.name).toBe('plugin-75')
+})
+
 it.each([
   ['malformed JSON', '{"plugins":['],
   ['old unmatched surrogate', JSON.stringify([{ description: `old${'\ud800'}` }])],

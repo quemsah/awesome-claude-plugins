@@ -192,7 +192,16 @@ function getScoredMatches(normalizedQuery: string, repos: readonly CatalogRepo[]
   return records
 }
 
-export function searchCatalogRepos(query: string, sortOption: SortOption, page = 0, pageSize = CATALOG_PAGE_SIZE): CatalogSearchResult {
+type CatalogSearchOptions = { summaries?: 'full' | 'omit' }
+
+/** Keep public API summaries by default; the card UI opts into lightweight results. */
+export function searchCatalogRepos(
+  query: string,
+  sortOption: SortOption,
+  page = 0,
+  pageSize = CATALOG_PAGE_SIZE,
+  options: CatalogSearchOptions = {},
+): CatalogSearchResult {
   const normalizedQuery = normalizeSearchQuery(query)
   const matchingRepos = normalizedQuery ? getScoredMatches(normalizedQuery, canonicalCatalogRepos) : undefined
   let repos: CatalogRepo[]
@@ -226,9 +235,18 @@ export function searchCatalogRepos(query: string, sortOption: SortOption, page =
   return {
     hasMore: start + pageSize < total,
     pluginsCount,
-    repos: repos.map((repo) => formatCatalogRepo(repo)),
+    repos: repos.map((repo) => (options.summaries === 'omit' ? withoutPluginSummaries(repo) : formatCatalogRepo(repo))),
     total,
   }
+}
+
+function withoutPluginSummaries(repo: CatalogRepo): CatalogRepo {
+  const card: CatalogRepo = { ...repo }
+  delete card.plugins
+  delete card.plugin_summaries
+  delete card.plugin_name
+  delete card.plugin_description
+  return card
 }
 
 export function extractPluginSummaries(repo: CatalogRepo): PluginSummary[] | undefined {

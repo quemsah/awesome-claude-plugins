@@ -31,7 +31,9 @@ export function GET(request: Request) {
   // `searchCatalogRepos` owns query normalization, including the length cap, so this route cannot
   // drift from the server initial render it pages alongside.
   const query = searchParams.get('q') ?? ''
-  const searchResult = searchCatalogRepos(query, parseSortOption(searchParams.get('sort')), page, pageSize)
+  // Keep the existing public response unchanged unless the card-only view is requested.
+  const options = searchParams.get('view') === 'cards' ? { summaries: 'omit' as const } : undefined
+  const searchResult = searchCatalogRepos(query, parseSortOption(searchParams.get('sort')), page, pageSize, options)
 
   return NextResponse.json(searchResult, {
     headers: {

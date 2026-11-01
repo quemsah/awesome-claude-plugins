@@ -62,10 +62,11 @@ beforeEach(() => {
   holder.catalogSearchMatchesCache?.clear()
 })
 
-async function apiSearch(query: string): Promise<CatalogPayload> {
+async function apiSearch(query: string, view?: 'cards'): Promise<CatalogPayload> {
   const url = new URL('http://localhost/api/catalog')
   url.searchParams.set('q', query)
   url.searchParams.set('pageSize', '10')
+  if (view) url.searchParams.set('view', view)
   const response = await GET(new Request(url, { headers: { 'x-real-ip': `plugin-search-${query}` } }))
 
   if (!response.ok) throw new Error(`/api/catalog returned ${response.status}`)
@@ -90,6 +91,20 @@ describe('/api/catalog plugin metadata search', () => {
     expect(server.repos.map(({ id, owner, repo_name, plugins }) => ({ id, owner, repo_name, plugins }))).toEqual([expectedRepo])
     expect(api).toEqual(server)
     expect(api.repos.map(({ id, owner, repo_name, plugins }) => ({ id, owner, repo_name, plugins }))).toEqual([expectedRepo])
+  })
+
+  it('returns compact card payloads while still matching descriptions beyond 30 plugins', async () => {
+    const query = 'unique fiftieth plugin capability'
+    const full = await apiSearch(query)
+    const cards = await apiSearch(query, 'cards')
+    const serverCards = searchCatalogRepos(query, 'stars-desc', 0, 10, { summaries: 'omit' })
+
+    expect(cards).toEqual(serverCards)
+    expect(cards.total).toBe(1)
+    expect(cards.repos[0]?.id).toBe(999_002)
+    expect(cards.repos[0]?.plugins).toBeUndefined()
+    expect(full.repos[0]?.plugins).toHaveLength(50)
+    expect(JSON.stringify(cards).length).toBeLessThan(JSON.stringify(full).length)
   })
 
   it.each([
