@@ -377,3 +377,41 @@ test('repo detail page provides one-step plugin installation for external market
   await expect.poll(() => copiedText(page)).toBe(command)
   await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem('lastPluginInstallEvent'))).toBe('copy_plugin_install')
 })
+
+test('repo detail disables installation for plugin IDs unsupported by Claude Code', async ({ page }) => {
+  await page.route('**/ykdojo/claude-code-tips/HEAD/.claude-plugin/marketplace.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        name: 'valid-marketplace',
+        owner: { name: 'ykdojo' },
+        plugins: [{ name: '_review', source: './plugins/review' }],
+      }),
+    })
+  )
+  await page.goto('/ykdojo/claude-code-tips')
+
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: '_review' }) })
+  await expect(plugin.getByText('Install command unavailable')).toBeVisible()
+  await expect(plugin.getByRole('button', { name: 'Copy install command unavailable' })).toBeDisabled()
+})
+
+test('repo detail disables installation for marketplace names unsupported by Claude Code', async ({ page }) => {
+  await page.route('**/ykdojo/claude-code-tips/HEAD/.claude-plugin/marketplace.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        name: 'invalid..marketplace',
+        owner: { name: 'ykdojo' },
+        plugins: [{ name: 'review', source: './plugins/review' }],
+      }),
+    })
+  )
+  await page.goto('/ykdojo/claude-code-tips')
+
+  const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'review' }) })
+  await expect(plugin.getByText('Install command unavailable')).toBeVisible()
+  await expect(plugin.getByRole('button', { name: 'Copy install command unavailable' })).toBeDisabled()
+})
