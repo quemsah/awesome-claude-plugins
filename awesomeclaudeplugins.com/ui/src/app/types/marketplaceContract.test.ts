@@ -19,6 +19,7 @@ type MarketplaceContractFixture = {
     pluginDisplayNames?: string[]
     plugin?: Record<string, unknown>
     installCommand?: string
+    rejections?: Array<{ name: string; reason: string }>
     reason?: string
   }
   input: unknown
@@ -45,6 +46,20 @@ it.each(fixtures)('matches marketplace contract v$version for $name: $expected.r
           marketplaceName: getMarketplaceName(fixture.input),
         })
       ).toBe(fixture.expected.installCommand)
+    }
+    if (fixture.expected.rejections) {
+      expect(result.data.invalidPluginCount).toBe(fixture.expected.rejections.length)
+      const input = fixture.input as { plugins?: unknown[] }
+      for (const expectedRejection of fixture.expected.rejections) {
+        const matchingIndex = (input.plugins ?? []).findIndex(
+          (entry) => entry !== null && typeof entry === 'object' && (entry as { name?: string }).name === expectedRejection.name
+        )
+        expect(matchingIndex).toBeGreaterThanOrEqual(0)
+        const issue = result.data.issues.find(
+          (i) => i.path[0] === 'plugins' && i.path[1] === matchingIndex && i.message === expectedRejection.reason
+        )
+        expect(issue).toBeDefined()
+      }
     }
   }
 })

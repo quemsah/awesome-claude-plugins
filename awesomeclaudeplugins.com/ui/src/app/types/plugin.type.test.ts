@@ -251,6 +251,71 @@ describe('MarketplacePluginsSchema', () => {
       expect(result.data.issues).toEqual(expect.arrayContaining([expect.objectContaining({ path: ['plugins', 1, 'source'] })]))
     }
   })
+
+  it('rejects unsafe plugin identifiers such as names with spaces matching crawler validation', () => {
+    const reproduction = {
+      name: 'demo',
+      owner: { name: 'Maintainer' },
+      plugins: [{ name: 'bad name', source: './plugins/demo' }],
+    }
+    const result = MarketplacePluginsSchema.safeParse(reproduction)
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.plugins).toEqual([])
+      expect(result.data.invalidPluginCount).toBe(1)
+      expect(result.data.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: ['plugins', 0, 'id'],
+            message: 'Must be a safe plugin identifier',
+          }),
+        ])
+      )
+    }
+  })
+
+  it('preserves human-readable display names with spaces while validating canonical identifier', () => {
+    const manifest = {
+      name: 'demo',
+      owner: { name: 'Maintainer' },
+      plugins: [
+        { name: 'valid-plugin', displayName: 'Human Readable Display Label', source: './plugins/demo' },
+        { name: 'another-plugin', displayName: '   ', source: './plugins/another' },
+      ],
+    }
+    const result = MarketplacePluginsSchema.safeParse(manifest)
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.plugins.length).toBe(2)
+      expect(result.data.plugins[0]?.id).toBe('valid-plugin')
+      expect(result.data.plugins[0]?.name).toBe('Human Readable Display Label')
+      expect(result.data.plugins[1]?.id).toBe('another-plugin')
+      expect(result.data.plugins[1]?.name).toBe('another-plugin')
+      expect(result.data.invalidPluginCount).toBe(0)
+    }
+  })
+
+  it('rejects unsafe canonical identifiers even when display name is provided', () => {
+    const manifest = {
+      name: 'demo',
+      owner: { name: 'Maintainer' },
+      plugins: [{ name: 'bad name', displayName: 'Valid Display Label', source: './plugins/demo' }],
+    }
+    const result = MarketplacePluginsSchema.safeParse(manifest)
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.plugins).toEqual([])
+      expect(result.data.invalidPluginCount).toBe(1)
+      expect(result.data.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: ['plugins', 0, 'id'],
+            message: 'Must be a safe plugin identifier',
+          }),
+        ])
+      )
+    }
+  })
 })
 
 describe('getMarketplaceDescription', () => {

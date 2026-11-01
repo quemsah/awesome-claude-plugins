@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { expect, it } from 'vitest'
-import { parseMarketplace } from './marketplace.js'
+import { getMarketplacePluginRejection, isMarketplacePlugin, parseMarketplace } from './marketplace.js'
 
 const fixturesDirectory = resolve(process.cwd(), '../shared/fixtures/marketplace/v1')
 const fixtures = readdirSync(fixturesDirectory)
@@ -11,7 +11,13 @@ const fixtures = readdirSync(fixturesDirectory)
 type MarketplaceContractFixture = {
   name: string
   version: number
-  expected: { valid: boolean; pluginsCount: number | null; pluginNames?: string[]; reason?: string }
+  expected: {
+    valid: boolean
+    pluginsCount: number | null
+    pluginNames?: string[]
+    rejections?: Array<{ name: string; reason: string }>
+    reason?: string
+  }
   input: unknown
 }
 
@@ -28,6 +34,18 @@ it.each(fixtures)('matches marketplace contract v$version for $name: $expected.r
     expect(result.plugins.length).toBe(fixture.expected.pluginsCount)
     if (fixture.expected.pluginNames) {
       expect(result.plugins.map((plugin) => (plugin as { name: string }).name)).toEqual(fixture.expected.pluginNames)
+    }
+    if (fixture.expected.rejections) {
+      const input = fixture.input as { plugins?: unknown[] }
+      const rejected = (input.plugins ?? []).filter((p) => !isMarketplacePlugin(p))
+      expect(rejected.length).toBe(fixture.expected.rejections.length)
+      for (const expectedRejection of fixture.expected.rejections) {
+        const found = rejected.find(
+          (entry) => entry !== null && typeof entry === 'object' && (entry as { name?: string }).name === expectedRejection.name,
+        )
+        expect(found).toBeDefined()
+        expect(getMarketplacePluginRejection(found)).toBe(expectedRejection.reason)
+      }
     }
   }
 })

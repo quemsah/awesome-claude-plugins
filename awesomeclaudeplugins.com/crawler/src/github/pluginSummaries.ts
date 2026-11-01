@@ -48,7 +48,11 @@ export function serializePluginSummaries(items: readonly unknown[]): string {
   for (const item of items) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) continue
     const record = item as Record<string, unknown>
-    const name = typeof record.name === 'string' ? boundedDisplayText(record.name, 160) : ''
+    const displayName =
+      typeof record.displayName === 'string' && record.displayName.trim().length > 0 && record.displayName.length <= 160
+        ? record.displayName
+        : record.name
+    const name = typeof displayName === 'string' ? boundedDisplayText(displayName, 160) : ''
     const description = typeof record.description === 'string' ? boundedDisplayText(record.description, 300) : ''
     if (name || description) summaries.push({ ...(name ? { name } : {}), ...(description ? { description } : {}) })
     if (summaries.length >= 30) break
