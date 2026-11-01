@@ -8,6 +8,7 @@ import type { Repo } from '../schemas/repo.schema.ts'
 const CATALOG_KEY = Symbol.for('awesome-claude-plugins.catalog')
 const SHARD_CACHE_KEY = Symbol.for('awesome-claude-plugins.shard-cache')
 const FALLBACK_REPOS_KEY = Symbol.for('awesome-claude-plugins.canonical-fallback')
+const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/
 
 type ShardCache = Map<number, Record<string, Partial<Repo>>>
 type CatalogGlobal = typeof globalThis & {
@@ -228,7 +229,7 @@ export function readCatalogSearchFields(
     const start = content.lastIndexOf(marker)
     if (start < 0 || !content.endsWith('"}')) throw new Error('Missing compressed search payload')
     const encoded = content.slice(start + marker.length, -2)
-    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) throw new Error('Invalid compressed search payload')
+    if (!BASE64_PATTERN.test(encoded)) throw new Error('Invalid compressed search payload')
     const fields: unknown = JSON.parse(gunzipSync(Buffer.from(encoded, 'base64')).toString('utf8'))
     if (!Array.isArray(fields) || fields.length !== expectedCount) {
       throw new Error('Misaligned search metadata')
