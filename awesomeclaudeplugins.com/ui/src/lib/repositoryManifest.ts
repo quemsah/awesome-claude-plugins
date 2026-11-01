@@ -16,8 +16,13 @@ export async function loadRepositoryManifest(fetchManifest: (path: string) => Pr
     }
     if (response.status === 404) continue
     if (!response.ok) return { kind: 'error', path, reason: 'http', status: response.status }
+    let manifest: unknown
     try {
-      const manifest: unknown = await response.json()
+      manifest = await response.json()
+    } catch (error) {
+      return { kind: 'error', path, reason: error instanceof SyntaxError ? 'invalid-content' : 'network' }
+    }
+    try {
       if (path === '.claude-plugin/plugin.json') return { kind: 'standalone-plugin', manifest: parseStandalonePlugin(manifest), path }
       parseMarketplace(manifest)
       return { kind: 'marketplace', manifest, path }
