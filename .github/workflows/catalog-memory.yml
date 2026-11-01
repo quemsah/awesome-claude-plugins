@@ -56,6 +56,9 @@ jobs:
         run: |
           sha256sum baseline/awesomeclaudeplugins.com/ui/src/data/repos.json candidate/awesomeclaudeplugins.com/ui/src/data/repos.json
           cmp baseline/awesomeclaudeplugins.com/ui/src/data/repos.json candidate/awesomeclaudeplugins.com/ui/src/data/repos.json
+      - name: Regenerate candidate index before standalone benchmark
+        working-directory: candidate/awesomeclaudeplugins.com/ui
+        run: node scripts/split-catalog.mjs
       - name: Measure RAM (three independent processes per revision)
         shell: bash
         run: |
