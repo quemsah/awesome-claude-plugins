@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { buildRepoDetailsShards, buildSearchIndex } from './splitCatalog.js'
 
@@ -69,6 +70,12 @@ describe('splitCatalog', () => {
     expect(() => buildRepoDetailsShards([sampleRepos[0], { ...sampleRepos[0], owner: 'unrelated' }], 10)).toThrow(
       'Conflicting repository identity',
     )
+  })
+
+  it('fingerprints the exact canonical JSON bytes for stale-index detection', () => {
+    const canonical = JSON.stringify(sampleRepos)
+    const index = JSON.parse(buildSearchIndex(sampleRepos, canonical))
+    expect(index.canonicalSha256).toBe(createHash('sha256').update(canonical).digest('hex'))
   })
 
   it('partitions repository details into shards by id', () => {
