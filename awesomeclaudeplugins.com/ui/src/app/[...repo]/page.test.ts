@@ -36,6 +36,15 @@ describe('generateMetadata', () => {
     vi.restoreAllMocks()
   })
 
+  it('uses standalone description after marketplace 404 without changing publication policy', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(Response.json({ name: 'reviewer', description: 'A standalone code reviewer' }))
+    const metadata = await generateMetadata({ params: Promise.resolve({ repo: ['chrisliu298', 'nanoresearch'] }) })
+    expect(metadata.description).toBe('A standalone code reviewer')
+    expect(metadata.robots).toEqual({ index: true, follow: true })
+  })
+
   it('includes the detail page Open Graph image', async () => {
     const metadata = await generateMetadata({ params: Promise.resolve({ repo: ['ykdojo', 'claude-code-tips'] }) })
 

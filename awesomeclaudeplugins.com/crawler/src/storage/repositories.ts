@@ -132,7 +132,7 @@ const enrichedUpdateSql = `
     plugins_count = @plugins_count,
     plugins_json = COALESCE(@plugins_json, plugins_json),
     manifest_kind = COALESCE(@manifest_kind, manifest_kind),
-    plugin_manifest_etag = CASE WHEN @manifest_kind = 'marketplace' THEN NULL ELSE COALESCE(@plugin_manifest_etag, plugin_manifest_etag) END,
+    plugin_manifest_etag = CASE WHEN @manifest_kind = 'marketplace' THEN NULL WHEN @manifest_kind = 'standalone-plugin' THEN @plugin_manifest_etag ELSE plugin_manifest_etag END,
     plugin_manifest_parser_version = CASE WHEN @manifest_kind = 'marketplace' THEN NULL ELSE COALESCE(@plugin_manifest_parser_version, plugin_manifest_parser_version) END,
     marketplace_failed_oid = CASE WHEN @manifest_kind = 'standalone-plugin' THEN NULL ELSE marketplace_failed_oid END,
     marketplace_failed_parser_version = CASE WHEN @manifest_kind = 'standalone-plugin' THEN NULL ELSE marketplace_failed_parser_version END,

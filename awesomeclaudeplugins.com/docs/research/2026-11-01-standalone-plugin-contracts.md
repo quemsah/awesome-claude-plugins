@@ -131,3 +131,15 @@ claude --plugin-dir ./plugin-checkout
 - Для `claude-canvas` установлено отсутствие **стандартного корневого** marketplace на указанном commit; это не исключает публикацию через чужой marketplace или нестандартный источник. Совместимость имени и компонентов с текущим валидатором не проверялась.
 - Глобальный запрос, полный обход, production-backfill и оценка количества standalone-плагинов не выполнялись. Утверждение «сотни пропущенных standalone-репозиториев» этими данными не подтверждается.
 - Firecrawl был недоступен (`Unknown tool`); документация прочитана через веб-доступ, файлы и контрольные REST-запросы — через подключённый GitHub. Коммитов и удалённых изменений нет.
+
+## Проверка реализации: ограниченный live-аудит 2026-11-01
+
+После реализации выполнен `bun scripts/audit-standalone-plugins.ts` с существующей локальной GitHub-аутентификацией. Script не открывает SQLite и не публикует данные. Проверены первые 20 уникальных корневых кандидатов из первой страницы generic `filename:plugin.json path:.claude-plugin size:0..400000`:
+
+- 1 фактический Code Search запрос, 26 core-запросов; 100 файлов в ответе, 20 кандидатов проверены; среди обработанных нет вложенных путей.
+- 6 кандидатов приняты standalone parser после marketplace 404; остальные 14 имеют marketplace. Это целевая ограниченная выборка, не оценка доли во всём GitHub.
+- Продолжительность 23 163 ms; учтённые ожидания rate budget — 10 165 ms; retry waits — 0.
+- `complete: false`, warning `saturated`: search ceiling и лимит 20 кандидатов исключают вывод о полноте.
+- Дополнительно прочитаны plugin manifests и README у `grafana/mcp-grafana`, `antonbabenko/terraform-skill`, `yzy1996/english-writing`; код плагинов не запускался.
+
+Сквозные offline integration tests отдельно проверяют запись в SQLite и валидный draft snapshot для кандидатов из Code Search и Repository Search. Браузерные доказательства используют детерминированный standalone fixture на detail-маршруте `mksglu/context-mode`; это не утверждение о текущем upstream manifest этого репозитория. [Desktop](../evidence/standalone-plugin-desktop.png), [mobile](../evidence/standalone-plugin-mobile.png).

@@ -38,6 +38,8 @@ it('publishes standalone provenance and clears cache validators on kind transiti
       marketplace_etag: null,
       marketplace_oid: null,
     })
+    updateEnriched(db, id, { ...fields, manifest_kind: 'standalone-plugin', plugin_manifest_etag: null, plugin_manifest_parser_version: 1 })
+    expect(db.prepare('SELECT plugin_manifest_etag FROM repositories WHERE id = ?').get(id)).toEqual({ plugin_manifest_etag: null })
     updateEnriched(db, id, { ...fields, manifest_kind: 'marketplace', marketplace_etag: 'new' })
     expect(db.prepare('SELECT plugin_manifest_etag, plugin_manifest_parser_version FROM repositories WHERE id = ?').get(id)).toEqual({
       plugin_manifest_etag: null,
