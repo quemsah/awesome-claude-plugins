@@ -89,7 +89,11 @@ it('upgrades populated v21 data without changing timestamps or search checkpoint
     initializeSchema(db)
     expect(db.pragma('user_version', { simple: true })).toBe(22)
     expect(
-      db.prepare("SELECT id, plugins_count, plugins_json, catalog_updated_at, createdAt, manifest_kind FROM repositories WHERE html_url = 'https://github.com/acme/old'").get(),
+      db
+        .prepare(
+          "SELECT id, plugins_count, plugins_json, catalog_updated_at, createdAt, manifest_kind FROM repositories WHERE html_url = 'https://github.com/acme/old'",
+        )
+        .get(),
     ).toEqual({
       id: 1,
       plugins_count: 2,
@@ -104,19 +108,24 @@ it('upgrades populated v21 data without changing timestamps or search checkpoint
     ).toEqual({ manifest_kind: null, catalog_updated_at: '2020-01-02T00:00:00.000Z' })
 
     // A first successful refresh of unchanged marketplace content must not advance lastmod.
-    updateEnriched(db, 1, {
-      stargazers_count: 12,
-      forks_count: 4,
-      subscribers_count: 3,
-      description: 'Existing marketplace',
-      owner: 'acme',
-      owner_url: 'https://github.com/acme',
-      repo_name: 'old',
-      repo_updated: '2019-12-31T00:00:00Z',
-      plugins_count: 2,
-      plugins_json: '[{"name":"old"}]',
-      manifest_kind: 'marketplace',
-    }, '2026-11-01T00:00:00.000Z')
+    updateEnriched(
+      db,
+      1,
+      {
+        stargazers_count: 12,
+        forks_count: 4,
+        subscribers_count: 3,
+        description: 'Existing marketplace',
+        owner: 'acme',
+        owner_url: 'https://github.com/acme',
+        repo_name: 'old',
+        repo_updated: '2019-12-31T00:00:00Z',
+        plugins_count: 2,
+        plugins_json: '[{"name":"old"}]',
+        manifest_kind: 'marketplace',
+      },
+      '2026-11-01T00:00:00.000Z',
+    )
     expect(db.prepare('SELECT catalog_updated_at FROM repositories WHERE id = 1').get()).toEqual({
       catalog_updated_at: '2020-01-01T00:00:00.000Z',
     })
