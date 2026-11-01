@@ -5,10 +5,14 @@ import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 
 // Run in either revision's ui directory with Node 24; source may be outside that revision.
-const { values } = parseArgs({ options: {
-  label: { type: 'string' }, out: { type: 'string' },
-  baseline: { type: 'string' }, candidate: { type: 'string' },
-} })
+const { values } = parseArgs({
+  options: {
+    label: { type: 'string' },
+    out: { type: 'string' },
+    baseline: { type: 'string' },
+    candidate: { type: 'string' },
+  },
+})
 const mib = 1024 * 1024
 const round = (n) => Math.round(n * 100) / 100
 const median = (a) => {
@@ -21,9 +25,13 @@ const stageDelta = (end, start) => (r) => r.phases[end].rssMiB - r.phases[start]
 if (values.baseline || values.candidate) {
   assert(values.baseline && values.candidate, 'Both --baseline and --candidate are required')
   const load = (arg) => arg.split(',').map((path) => JSON.parse(readFileSync(path.trim(), 'utf8')))
-  const base = load(values.baseline), pr = load(values.candidate)
+  const base = load(values.baseline),
+    pr = load(values.candidate)
   const sizes = [...base, ...pr].map((run) => run.catalogSize)
-  assert(sizes.every((size) => size === sizes[0]), 'Catalog sizes differ')
+  assert(
+    sizes.every((size) => size === sizes[0]),
+    'Catalog sizes differ'
+  )
   const rows = [
     ['Before import (RSS)', snapshotValue('beforeImport')],
     ['After import (RSS)', snapshotValue('afterImport')],
@@ -36,19 +44,25 @@ if (values.baseline || values.candidate) {
   ]
   const md = [
     '## Catalog search memory A/B (MiB, median of independent processes)',
-    '', 'Catalog records: ' + sizes[0] + '; runs per revision: main=' + base.length + ', PR=' + pr.length,
-    '', '| Measurement | main / Fuse.js | PR / FTS5 | PR - main |',
+    '',
+    'Catalog records: ' + sizes[0] + '; runs per revision: main=' + base.length + ', PR=' + pr.length,
+    '',
+    '| Measurement | main / Fuse.js | PR / FTS5 | PR - main |',
     '| --- | ---: | ---: | ---: |',
   ]
   for (const [name, metric] of rows) {
-    const a = median(base.map(metric)), b = median(pr.map(metric))
-    md.push('| ' + name + ' | ' + a.toFixed(1) + ' | ' + b.toFixed(1) +
-      ' | ' + (b >= a ? '+' : '') + (b - a).toFixed(1) + ' |')
+    const a = median(base.map(metric)),
+      b = median(pr.map(metric))
+    md.push('| ' + name + ' | ' + a.toFixed(1) + ' | ' + b.toFixed(1) + ' | ' + (b >= a ? '+' : '') + (b - a).toFixed(1) + ' |')
   }
-  md.push('', 'Run with Node 24 and --expose-gc on the same runner, with GC before every snapshot.',
+  md.push(
+    '',
+    'Run with Node 24 and --expose-gc on the same runner, with GC before every snapshot.',
     'The import delta includes catalog initialization, not just the search index.',
     'main creates Fuse indexes on cache misses; the PR creates FTS5 at module import.',
-    'The six queries are distinct; these are standalone-module figures, not Next.js RSS or Railway billing.', '')
+    'The six queries are distinct; these are standalone-module figures, not Next.js RSS or Railway billing.',
+    ''
+  )
   const output = md.join('\n')
   process.stdout.write(output + '\n')
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, output + '\n')
@@ -61,8 +75,10 @@ if (values.baseline || values.candidate) {
     const m = process.memoryUsage()
     const peak = process.resourceUsage().maxRSS
     return {
-      rssMiB: round(m.rss / mib), heapUsedMiB: round(m.heapUsed / mib),
-      heapTotalMiB: round(m.heapTotal / mib), externalMiB: round(m.external / mib),
+      rssMiB: round(m.rss / mib),
+      heapUsedMiB: round(m.heapUsed / mib),
+      heapTotalMiB: round(m.heapTotal / mib),
+      externalMiB: round(m.external / mib),
       arrayBuffersMiB: round(m.arrayBuffers / mib),
       // Linux reports peak resident set in KiB; macOS reports it in bytes.
       peakRssMiB: round(peak / (process.platform === 'darwin' ? mib : 1024)),
@@ -76,18 +92,36 @@ if (values.baseline || values.candidate) {
   const firstResultTotal = search('superpowers', 'stars-desc').total
   phases.afterFirstSearch = collect()
   const workload = [
-    ['claude', 'stars-desc'], ['code', 'forks-desc'],
-    ['context-mode', 'updated-desc'], ['plugin', 'plugins-desc'],
+    ['claude', 'stars-desc'],
+    ['code', 'forks-desc'],
+    ['context-mode', 'updated-desc'],
+    ['plugin', 'plugins-desc'],
     ['zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz', 'created-desc'],
     ['agents', 'stars-desc'],
   ]
   const queries = workload.map(([query, sort]) => ({ query, sort, total: search(query, sort).total }))
   phases.afterQueries = collect()
-  const report = { label: values.label, date: new Date().toISOString(),
-    node: process.version, platform: process.platform,
-    catalogSize, firstResultTotal, queries, phases }
+  const report = {
+    label: values.label,
+    date: new Date().toISOString(),
+    node: process.version,
+    platform: process.platform,
+    catalogSize,
+    firstResultTotal,
+    queries,
+    phases,
+  }
   writeFileSync(values.out, JSON.stringify(report, null, 2) + '\n')
-  console.log(values.label + ': catalog=' + catalogSize + ', RSS=' +
-    Object.entries(phases).map(([k, v]) => k + '=' + v.rssMiB + 'MiB').join(', ') +
-    ', peak=' + phases.afterQueries.peakRssMiB + 'MiB')
+  console.log(
+    values.label +
+      ': catalog=' +
+      catalogSize +
+      ', RSS=' +
+      Object.entries(phases)
+        .map(([k, v]) => k + '=' + v.rssMiB + 'MiB')
+        .join(', ') +
+      ', peak=' +
+      phases.afterQueries.peakRssMiB +
+      'MiB'
+  )
 }
