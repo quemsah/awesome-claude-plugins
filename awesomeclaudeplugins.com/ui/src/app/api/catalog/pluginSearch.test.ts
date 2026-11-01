@@ -1,6 +1,6 @@
 /** biome-ignore-all lint/style/useNamingConvention: Fixture mirrors catalog field names. */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 const { fixtureRepos } = vi.hoisted(() => ({
   fixtureRepos: [
@@ -56,11 +56,6 @@ const expectedRepo: CatalogRepo = {
   repo_name: 'generic-toolkit',
   plugins: [{ name: 'zerogravityplugin', description: 'aurora system diagnostics' }],
 }
-
-beforeEach(() => {
-  const holder = globalThis as typeof globalThis & { catalogSearchMatchesCache?: Map<string, unknown> }
-  holder.catalogSearchMatchesCache?.clear()
-})
 
 async function apiSearch(query: string, view?: 'cards'): Promise<CatalogPayload> {
   const url = new URL('http://localhost/api/catalog')

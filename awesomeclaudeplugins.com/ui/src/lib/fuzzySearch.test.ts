@@ -1,7 +1,9 @@
 /** biome-ignore-all lint/style/useNamingConvention: Test fixture mirrors catalog field names. */
 
 import { describe, expect, it } from 'vitest'
-import { createFuseIndex } from './fuzzySearch.ts'
+import type { Repo } from '../schemas/repo.schema.ts'
+import { createCatalogSearchIndex } from './fuzzySearch.ts'
+import { sortOptionValues } from './sortOptions.ts'
 
 const baseRepo = {
   html_url: 'https://github.com/example/type-detector',
@@ -16,18 +18,72 @@ const baseRepo = {
   id: 1,
 } as const
 
-describe('createFuseIndex', () => {
+describe('createCatalogSearchIndex', () => {
   it('searches every catalog field the index is configured with', () => {
-    const fuse = createFuseIndex([baseRepo])
-    expect(fuse.search('detector')).toHaveLength(1)
-    expect(fuse.search('sift')).toHaveLength(1)
-    expect(fuse.search('incoming requests')).toHaveLength(1)
+    const index = createCatalogSearchIndex([baseRepo])
+    expect(index.search('detector').matches).toHaveLength(1)
+    expect(index.search('sift').matches).toHaveLength(1)
+    expect(index.search('incoming requests').matches).toHaveLength(1)
   })
 
   it('does not search the URL columns', () => {
-    const fuse = createFuseIndex([baseRepo])
-    expect(fuse.search('example')).toHaveLength(0)
-    expect(fuse.search('owner-url-only')).toHaveLength(0)
+    const index = createCatalogSearchIndex([baseRepo])
+    expect(index.search('example').matches).toHaveLength(0)
+    expect(index.search('owner-url-only').matches).toHaveLength(0)
+  })
+
+  it('finds prefixes without broadening multi-word queries to unrelated terms', () => {
+    const index = createCatalogSearchIndex([
+      baseRepo,
+      { ...baseRepo, id: 2, repo_name: 'unrelated', owner: 'other', description: 'incoming mail' },
+    ])
+    expect(index.search('detec').matches.map((result) => result.item.id)).toEqual([1])
+    expect(index.search('incoming reque').matches.map((result) => result.item.id)).toEqual([1])
+    expect(index.search('incoming requests').matches.map((result) => result.item.id)).toEqual([1])
+    expect(index.search('!!!').matches).toEqual([])
+  })
+
+  it('paginates matching rows in metric order with accurate totals and archived rows last', () => {
+    const repos: Repo[] = [
+      { ...baseRepo, id: 1, stargazers_count: 4, plugins_count: 2 },
+      { ...baseRepo, id: 2, stargazers_count: 20, plugins_count: 3, archived: true },
+      { ...baseRepo, id: 3, stargazers_count: 10, plugins_count: 5 },
+      { ...baseRepo, id: 4, description: 'unrelated', repo_name: 'other', owner: 'other', plugins_count: 100 },
+    ]
+    const index = createCatalogSearchIndex(repos)
+    const first = index.search('detector', 'stars-desc', 0, 2)
+    const next = index.search('detector', 'stars-desc', 1, 2)
+    expect(first.matches.map((match) => match.item.id)).toEqual([3, 1])
+    expect(next.matches.map((match) => match.item.id)).toEqual([2])
+    expect(first.total).toBe(3)
+    expect(first.pluginsCount).toBe(10)
+    expect(next.total).toBe(3)
+    expect(index.search('detector', 'stars-desc', 10, 2)).toMatchObject({ matches: [], total: 3, pluginsCount: 10 })
+  })
+
+  it('keeps matches visible while typing a one-character final word', () => {
+    const index = createCatalogSearchIndex([{ ...baseRepo, repo_name: 'claude-code' }])
+    expect(index.search('claude c').matches.map((match) => match.item.id)).toEqual([1])
+    expect(index.search('claude co').matches.map((match) => match.item.id)).toEqual([1])
+    expect(index.search('c').total).toBe(0)
+  })
+
+  it.each(sortOptionValues)('ranks the whole tied metric group before paginating %s', (sort) => {
+    const index = createCatalogSearchIndex([
+      { ...baseRepo, id: 1, description: 'needle plus a long collection of unrelated words' },
+      { ...baseRepo, id: 2, description: 'needle' },
+      { ...baseRepo, id: 3, description: 'needle padding' },
+    ])
+    expect(index.search('needle', sort, 0, 1).matches.map((match) => match.item.id)).toEqual([2])
+    expect(index.search('needle', sort, 1, 1).matches.map((match) => match.item.id)).toEqual([3])
+    expect(index.search('needle', sort, 2, 1).matches.map((match) => match.item.id)).toEqual([1])
+  })
+
+  it('treats quotes and FTS operators as literal words', () => {
+    const index = createCatalogSearchIndex([baseRepo])
+    expect(index.search('"incoming requests"').matches).toHaveLength(1)
+    expect(index.search('incoming OR nonexistent').total).toBe(0)
+    expect(index.search('"* : ( )').total).toBe(0)
   })
 
   it('finds repositories by plugin summary names and descriptions', () => {
@@ -38,12 +94,12 @@ describe('createFuseIndex', () => {
       plugin_name: 'standaloneplugin',
       plugin_description: 'unique documentation assistant',
     }
-    const fuse = createFuseIndex([repo])
-    expect(fuse.search('uniqueweatherplugin')).toHaveLength(1)
-    expect(fuse.search('satellite forecast')).toHaveLength(1)
-    expect(fuse.search('legacynameplugin')).toHaveLength(1)
-    expect(fuse.search('postal lookup')).toHaveLength(1)
-    expect(fuse.search('standaloneplugin')).toHaveLength(1)
-    expect(fuse.search('documentation assistant')).toHaveLength(1)
+    const index = createCatalogSearchIndex([repo])
+    expect(index.search('uniqueweatherplugin').matches).toHaveLength(1)
+    expect(index.search('satellite forecast').matches).toHaveLength(1)
+    expect(index.search('legacynameplugin').matches).toHaveLength(1)
+    expect(index.search('postal lookup').matches).toHaveLength(1)
+    expect(index.search('standaloneplugin').matches).toHaveLength(1)
+    expect(index.search('documentation assistant').matches).toHaveLength(1)
   })
 })

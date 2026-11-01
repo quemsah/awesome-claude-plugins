@@ -1,6 +1,6 @@
 /**
- * Fuzzy search cost grows linearly past Fuse's 32-character bitap pattern limit, so longer queries are truncated rather than rejected:
- * the search box has no length limit and a 400 would surface to the user as a load error.
+ * Keep the published query length cap: longer queries are truncated rather than rejected,
+ * because the search box has no length limit and a 400 would surface as a load error.
  */
 export const MAX_QUERY_LENGTH = 32
 
