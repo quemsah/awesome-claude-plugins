@@ -43,6 +43,22 @@ describe('createCatalogSearchIndex', () => {
     expect(index.search('!!!').matches).toEqual([])
   })
 
+  it('distinguishes C++ and C# from ordinary c-prefix words', () => {
+    const index = createCatalogSearchIndex([
+      { ...baseRepo, id: 1, owner: 'cpp', repo_name: 'cpp-support', description: 'C++ language tools' },
+      { ...baseRepo, id: 2, owner: 'csharp', repo_name: 'dotnet-support', description: 'C# language tools' },
+      { ...baseRepo, id: 3, owner: 'claude', repo_name: 'code-support', description: 'Claude coding tools' },
+      { ...baseRepo, id: 4, owner: 'math', repo_name: 'addition', description: 'foo+bar library' },
+    ])
+    expect(index.search('c++').matches.map((match) => match.item.id)).toEqual([1])
+    expect(index.search('C#').matches.map((match) => match.item.id)).toEqual([2])
+    expect(index.search('c?').total).toBe(0)
+    expect(index.search('c*').total).toBe(0)
+    expect(index.search('c').total).toBe(0)
+    expect(index.search('foo+bar').matches.map((match) => match.item.id)).toEqual([4])
+    expect(index.search('claude c').matches.map((match) => match.item.id)).toEqual([3])
+  })
+
   it('paginates matching rows in metric order with accurate totals and archived rows last', () => {
     const repos: Repo[] = [
       { ...baseRepo, id: 1, stargazers_count: 4, plugins_count: 2 },

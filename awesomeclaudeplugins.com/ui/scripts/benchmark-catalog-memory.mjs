@@ -90,6 +90,7 @@ if (values.baseline || values.candidate) {
   phases.afterImport = collect()
   const search = (q, sort) => catalog.searchCatalogRepos(q, sort, 0, 24, { summaries: 'omit' })
   const firstResultTotal = search('superpowers', 'stars-desc').total
+  assert(firstResultTotal > 0, 'Known-hit search returned no results; refusing to compare memory')
   phases.afterFirstSearch = collect()
   const workload = [
     ['claude', 'stars-desc'],

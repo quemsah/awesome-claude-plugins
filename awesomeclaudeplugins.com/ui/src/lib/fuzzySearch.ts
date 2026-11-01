@@ -3,7 +3,9 @@ import type { Repo } from '../schemas/repo.schema.ts'
 import { isArchivedRepo } from './repoMetadata.ts'
 import type { SortOption } from './sortOptions.ts'
 
-const queryTerms = /[\p{L}\p{N}\p{M}]+/gu
+// Keep + and # inside technical identifiers (C++, C#, F#, foo+bar).
+// Other punctuation remains a separator and cannot turn a one-letter search into a broad prefix.
+const queryTerms = /[\p{L}\p{N}\p{M}]+(?:[+#][\p{L}\p{N}\p{M}]+|[+#]+)*/gu
 const sortSql: Record<SortOption, string> = {
   'stars-desc': 'stars DESC, description DESC',
   'forks-desc': 'forks DESC',
@@ -28,7 +30,7 @@ export function createCatalogSearchIndex(repos: readonly Repo[]): CatalogSearchI
 
   const db = new Database(':memory:')
   db.exec(`
-    CREATE VIRTUAL TABLE search USING fts5(text, content='', tokenize='unicode61', prefix='1 2 3 4');
+    CREATE VIRTUAL TABLE search USING fts5(text, content='', tokenize='unicode61 tokenchars ''+#''', prefix='1 2 3 4');
     CREATE TABLE metadata (
       id INTEGER PRIMARY KEY, archived INTEGER, stars INTEGER, description INTEGER,
       forks INTEGER, plugins INTEGER, plugin_signal REAL, updated REAL, created REAL
@@ -99,9 +101,12 @@ export function createCatalogSearchIndex(repos: readonly Repo[]): CatalogSearchI
 
   const index: CatalogSearchIndex = {
     search(query, sort = 'stars-desc', page = 0, pageSize = 24) {
-      // Quote every token so punctuation, quotes and FTS operators are always literal input.
+      // Quote tokens so punctuation and FTS operators cannot become search syntax.
+      // A lone letter plus ignored punctuation (e.g. "c?") must not search all c* words.
       const terms = query.match(queryTerms) ?? []
-      if (query.trim().length < 2 || terms.length === 0) return { matches: [], total: 0, pluginsCount: 0 }
+      if (terms.length === 0 || (terms.length === 1 && [...terms[0]].length < 2)) {
+        return { matches: [], total: 0, pluginsCount: 0 }
+      }
       const expression = terms.map((term, i) => `"${term}"${i === terms.length - 1 ? '*' : ''}`).join(' AND ')
       const counts = totals.get(expression) ?? { total: 0, pluginsCount: 0 }
       const offset = page * pageSize
