@@ -12,6 +12,31 @@ const repo = {
   private: false,
   owner: { login: 'acme', html_url: 'https://github.com/acme' },
 }
+
+it('reads and validates a root plugin manifest without marketplace fields', async () => {
+  const { client, requests } = harness([Response.json({ name: 'reviewer' })])
+  expect(await client.getPluginManifest('acme', 'reviewer', '"plugin"')).toEqual({ kind: 'found', data: { name: 'reviewer' } })
+  expect(requests[0].url).toContain('/repos/acme/reviewer/contents/.claude-plugin/plugin.json')
+  expect(new Headers(requests[0].init?.headers).get('if-none-match')).toBe('"plugin"')
+})
+
+it('names the standalone manifest in the malformed JSON error', async () => {
+  const { client } = harness([new Response('{broken', { status: 200 })])
+  expect(await client.getPluginManifest('acme', 'reviewer')).toMatchObject({
+    kind: 'invalid-content',
+    failure: 'invalid-json',
+    reason: 'Invalid plugin JSON',
+  })
+})
+
+it('classifies an invalid standalone manifest as permanent content error', async () => {
+  const { client } = harness([Response.json({ description: 'missing name' })])
+  expect(await client.getPluginManifest('acme', 'reviewer')).toMatchObject({
+    kind: 'invalid-content',
+    failure: 'invalid-manifest',
+    retryable: false,
+  })
+})
 const page = {
   total_count: 1,
   incomplete_results: false,

@@ -32,3 +32,4 @@ export {
   PLUGIN_ID_PATTERN,
   resolveMarketplacePluginDisplayName,
 } from './marketplace.js'
+export { parseStandalonePlugin, StandalonePluginFormatError, toStandaloneCatalogManifest } from './standalonePlugin.js'

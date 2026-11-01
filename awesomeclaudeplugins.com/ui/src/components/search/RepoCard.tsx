@@ -148,7 +148,10 @@ export function RepoCard({ repo, className }: RepoCardProps) {
   const [copyError, setCopyError] = useState<string | null>(null)
   const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const isMounted = useRef(true)
-  const marketplaceCommand = useMemo(() => getMarketplaceAddCommand(repo.owner, repo.repo_name), [repo.owner, repo.repo_name])
+  const marketplaceCommand = useMemo(
+    () => (repo.manifest_kind === 'standalone-plugin' ? null : getMarketplaceAddCommand(repo.owner, repo.repo_name)),
+    [repo.owner, repo.repo_name, repo.manifest_kind]
+  )
 
   useEffect(() => {
     isMounted.current = true

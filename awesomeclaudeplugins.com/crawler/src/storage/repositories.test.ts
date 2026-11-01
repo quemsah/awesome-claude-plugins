@@ -201,6 +201,7 @@ it('publishes only complete canonical GitHub rows with the ten public columns', 
       pushed_at: '2025-03-01T09:00:00Z',
       catalog_added_at: expect.any(String),
       license: null,
+      manifest_kind: null,
       archived: null,
       plugins_json: null,
     },
@@ -235,6 +236,7 @@ it('publishes canonical enriched rows with unknown plugin counts without leaking
       pushed_at: '2025-03-01T09:00:00Z',
       catalog_added_at: expect.any(String),
       license: null,
+      manifest_kind: null,
       archived: null,
       plugins_json: null,
     },
@@ -263,7 +265,7 @@ it('stores nullable GitHub metadata without changing the first discovery date', 
     archived: 1,
     createdAt: '2024-01-02T00:00:00.000Z',
   })
-  repositoryStorage.updateEnriched(db, id, { ...enriched, license: null, archived: 0 })
+  repositoryStorage.updateEnriched(db, id, { ...enriched, license: null, manifest_kind: null, archived: 0 })
   expect(db.prepare('SELECT license, archived, createdAt FROM repositories WHERE id = ?').get(id)).toEqual({
     license: null,
     archived: 0,

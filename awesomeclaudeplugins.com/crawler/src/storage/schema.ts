@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 21
+const schemaVersion = 22
 
 function createSchema(db: Database.Database): void {
   db.exec(`
@@ -452,6 +452,28 @@ function migrateTo21(db: Database.Database): void {
   `)
 }
 
+function migrateTo22(db: Database.Database): void {
+  if (!hasColumn(db, 'manifest_kind'))
+    db.exec("ALTER TABLE repositories ADD COLUMN manifest_kind TEXT CHECK(manifest_kind IN ('marketplace', 'standalone-plugin'))")
+  if (!hasColumn(db, 'plugin_manifest_etag')) db.exec('ALTER TABLE repositories ADD COLUMN plugin_manifest_etag TEXT')
+  if (!hasColumn(db, 'plugin_manifest_parser_version'))
+    db.exec('ALTER TABLE repositories ADD COLUMN plugin_manifest_parser_version INTEGER CHECK(plugin_manifest_parser_version >= 1)')
+  const columns = db.pragma('table_info(rejected_repository_candidates)') as Array<{ name: string }>
+  if (!columns.some(({ name }) => name === 'eligibility_version'))
+    db.exec('ALTER TABLE rejected_repository_candidates ADD COLUMN eligibility_version INTEGER NOT NULL DEFAULT 1')
+  // Legacy fixtures can already contain the v22 trigger; remove it before the
+  // provenance backfill so existing catalog timestamps are not advanced.
+  db.exec('DROP TRIGGER IF EXISTS repositories_manifest_kind_timestamp_after_update')
+  // Pre-v22 manifests were marketplaces. Pending rows remain unknown until enriched.
+  // Very old imported schemas may not yet have plugins_count.
+  if (hasColumn(db, 'plugins_count'))
+    db.exec("UPDATE repositories SET manifest_kind = 'marketplace' WHERE manifest_kind IS NULL AND plugins_count IS NOT NULL")
+  db.exec(`CREATE TRIGGER IF NOT EXISTS repositories_manifest_kind_timestamp_after_update
+    AFTER UPDATE OF manifest_kind ON repositories WHEN OLD.manifest_kind IS NOT NEW.manifest_kind
+    BEGIN UPDATE repositories SET catalog_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;`)
+  db.pragma('user_version = 22')
+}
+
 // Keep the migration sequence explicit while avoiding a growing chain of conditional branches.
 const migrations: readonly ((db: Database.Database) => void)[] = [
   migrateTo2,
@@ -474,6 +496,7 @@ const migrations: readonly ((db: Database.Database) => void)[] = [
   migrateTo19,
   migrateTo20,
   migrateTo21,
+  migrateTo22,
 ]
 
 function migrateSchema(db: Database.Database, version: number): void {

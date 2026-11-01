@@ -50,6 +50,7 @@ function page(items: RepositorySearchPage['items'] = [], total_count = items.len
 
 function reader(searchRepositories: GitHubReader['searchRepositories']): GitHubReader {
   return {
+    getPluginManifest: async () => ({ kind: 'not-found' }),
     searchRepositories,
     searchCode: async () => {
       throw new Error('unexpected Code Search')

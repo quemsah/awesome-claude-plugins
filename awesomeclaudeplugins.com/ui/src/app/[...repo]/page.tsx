@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
-
 import { getMarketplaceDescription } from '../../app/types/plugin.type.ts'
 import { RepoPageClient } from '../../components/repo/RepoPageClient.tsx'
 import RepoStructuredData from '../../components/repo/RepoStructuredData.tsx'
@@ -8,6 +7,7 @@ import { findCatalogRepo, getCatalogQualityForRepo, getRepoCanonicalPath } from 
 import { BASE_URL } from '../../lib/constants.ts'
 import { GITHUB_API_URL, GITHUB_RAW_URL } from '../../lib/github.ts'
 import { withSiteAlternates } from '../../lib/metadata.ts'
+import { loadRepositoryManifest } from '../../lib/repositoryManifest.ts'
 import { createCatalogRepositorySnapshot } from '../../lib/repositorySnapshot.ts'
 import type { GitHubRepository } from '../../schemas/github.schema.ts'
 
@@ -21,13 +21,14 @@ async function fetchManifestDescription(owner: string, repoName: string): Promis
   try {
     // Keep metadata generation responsive even if raw.githubusercontent.com is slow.
     // Cache successful responses to avoid repeated remote requests on every ISR render.
-    const response = await fetch(
-      `${GITHUB_RAW_URL}/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/HEAD/.claude-plugin/marketplace.json`,
-      { next: { revalidate: 86_400 }, signal: AbortSignal.timeout(1_500) }
+    const signal = AbortSignal.timeout(1_500)
+    const result = await loadRepositoryManifest((path) =>
+      fetch(`${GITHUB_RAW_URL}/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/HEAD/${path}`, {
+        next: { revalidate: 86_400 },
+        signal,
+      })
     )
-    if (!response.ok) return undefined
-    const payload: unknown = await response.json()
-    return getMarketplaceDescription(payload)
+    return result.kind === 'marketplace' || result.kind === 'standalone-plugin' ? getMarketplaceDescription(result.manifest) : undefined
   } catch {
     return undefined
   }
@@ -119,6 +120,8 @@ export default async function RepoPage({ params }: RouteParams) {
       <RepoStructuredData repo={repository} />
       <RepoPageClient
         apiBaseUrl={GITHUB_API_URL}
+        catalogPlugins={catalogRepo.plugins}
+        manifestKind={catalogRepo.manifest_kind}
         owner={repo[0]}
         rawBaseUrl={GITHUB_RAW_URL}
         repo={repository}

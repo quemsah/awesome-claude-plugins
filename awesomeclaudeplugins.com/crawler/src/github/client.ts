@@ -3,6 +3,7 @@ import { throwIfShutdown } from '../shutdown.js'
 import { type Marketplace, MarketplaceFormatError, parseMarketplace } from './marketplace.js'
 import { type Clock, type GitHubRetryReason, RateBudget, type RateLog, type RateResource, systemClock } from './rateBudget.js'
 import { parseRepositoryUrl } from './repositoryUrl.js'
+import { parseStandalonePlugin, StandalonePluginFormatError, type StandalonePluginManifest } from './standalonePlugin.js'
 
 export type { Marketplace } from './marketplace.js'
 
@@ -103,6 +104,12 @@ type GraphQLRequestAction<T> =
 export type GitHubRequestOptions = { maxAttempts?: number; sort?: 'updated' }
 
 export interface GitHubReader {
+  getPluginManifest(
+    owner: string,
+    repo: string,
+    etag?: string,
+    options?: GitHubRequestOptions,
+  ): Promise<RepoResult<StandalonePluginManifest>>
   checkRepository?(owner: string, repo: string, options?: { signal?: AbortSignal }): Promise<RepoResult<{ html_url: string }>>
   searchRepositories(query: string, page: number, options?: GitHubRequestOptions): Promise<RepositorySearchPage>
   searchCode(query: string, page: number): Promise<SearchPage>
@@ -551,6 +558,23 @@ export class GitHubClient implements GitHubReader {
       'core',
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/.claude-plugin/marketplace.json`,
       parseMarketplace,
+      'application/vnd.github.raw+json',
+      etag,
+      true,
+      requestAttempts(options?.maxAttempts),
+    )
+  }
+
+  getPluginManifest(
+    owner: string,
+    repo: string,
+    etag?: string,
+    options?: GitHubRequestOptions,
+  ): Promise<RepoResult<StandalonePluginManifest>> {
+    return this.request(
+      'core',
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/.claude-plugin/plugin.json`,
+      parseStandalonePlugin,
       'application/vnd.github.raw+json',
       etag,
       true,
@@ -1128,6 +1152,7 @@ export class GitHubClient implements GitHubReader {
     permanentContentErrors: boolean,
     finalAttempt: boolean,
   ): Promise<ResponseAction<T>> {
+    const manifestType = parse === parseStandalonePlugin ? 'plugin' : 'marketplace'
     let text: string
     try {
       text = await response.text()
@@ -1154,7 +1179,7 @@ export class GitHubClient implements GitHubReader {
             kind: 'invalid-content',
             failure: 'invalid-json',
             status: response.status,
-            reason: 'Invalid marketplace JSON',
+            reason: `Invalid ${manifestType} JSON`,
             retryCount: attempt,
             failureReason: 'invalid_json',
             retryable: false,
@@ -1176,7 +1201,7 @@ export class GitHubClient implements GitHubReader {
     try {
       data = parse(value)
     } catch (error) {
-      if (permanentContentErrors && error instanceof MarketplaceFormatError) {
+      if (permanentContentErrors && (error instanceof MarketplaceFormatError || error instanceof StandalonePluginFormatError)) {
         return {
           kind: 'result',
           result: {
@@ -1196,7 +1221,7 @@ export class GitHubClient implements GitHubReader {
           result: {
             kind: 'temporary-error',
             status: response.status,
-            reason: 'Marketplace parser failure',
+            reason: `${manifestType === 'plugin' ? 'Plugin' : 'Marketplace'} parser failure`,
             retryCount: attempt,
             failureReason: 'parser_internal',
             retryable: false,

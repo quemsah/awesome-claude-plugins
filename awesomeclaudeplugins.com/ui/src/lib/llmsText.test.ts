@@ -41,5 +41,7 @@ describe('catalog totals the machine surfaces publish', () => {
     expect(llms).not.toContain('Tailwind CSS')
     expect(llms).not.toContain('nextjs.org')
     expect(llms).toContain('## Usage Guidelines')
+    expect(llms).toContain('standalone plugins instead provide session-local loading instructions')
+    expect(llms).toContain('standalone entries provide session-local loading instructions')
   })
 })

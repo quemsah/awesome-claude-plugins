@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import { GitHubFatalError, type GitHubReader, GitHubTemporaryError } from '../github/client.js'
 import { repositorySearchQueries } from '../github/repositorySearchQueries.js'
+import { discoverySearchFamilies } from '../github/searchFamilies.js'
 import type { SizeRange } from '../github/sizeRanges.js'
 import type { Log } from '../logging.js'
 import { ShutdownError, throwIfShutdown } from '../shutdown.js'
@@ -44,6 +45,7 @@ export type DiscoverySourceSummary = {
   uniqueCandidates: number
   newUrls: number
   acceptedMarketplaces: number
+  acceptedStandalonePlugins: number
   rejectedCandidates: number
   pendingCandidates: number
   saturatedPartitions: number
@@ -190,10 +192,35 @@ async function crawlAndComplete(
   const previousAccepted = acceptedRepositories()
   const previousAcceptedIds = new Set(previousAccepted.map(({ id }) => id))
   const previousAcceptedUrls = new Set(previousAccepted.map(({ html_url }) => html_url?.toLowerCase()))
-  const codeMetrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0 }
+  const codeMetrics = {
+    pagesFetched: 0,
+    totalResults: 0,
+    partitions: 0,
+    incompletePartitions: 0,
+    pluginSearchHits: 0,
+    pluginNonRootHits: 0,
+    pluginSaturatedPages: 0,
+  }
   const code = await discover(db, reader, runId, options.ranges ?? [[0, 400_000]], heartbeat, now, options.log, codeMetrics)
   const repo = await discoverOptionalRepositories(db, reader, runId, options, heartbeat, now)
-  const emptyYield = { uniqueCandidates: 0, acceptedMarketplaces: 0, rejectedCandidates: 0, pendingCandidates: 0 }
+  options.log?.({
+    level: 'info',
+    event: 'crawl.standalone_discovery_coverage',
+    phase: 'discovery',
+    category: 'standalone_discovery_coverage',
+    runId,
+    message: `Standalone discovery examined ${codeMetrics.pluginSearchHits} hits, excluded ${codeMetrics.pluginNonRootHits} non-root paths, and encountered ${codeMetrics.pluginSaturatedPages} capped pages`,
+    pluginSearchHits: codeMetrics.pluginSearchHits,
+    pluginNonRootHits: codeMetrics.pluginNonRootHits,
+    pluginSaturatedPages: codeMetrics.pluginSaturatedPages,
+  })
+  const emptyYield = {
+    uniqueCandidates: 0,
+    acceptedMarketplaces: 0,
+    acceptedStandalonePlugins: 0,
+    rejectedCandidates: 0,
+    pendingCandidates: 0,
+  }
   const discovery: CrawlDiscoverySummary = {
     ...code,
     coverageScope: 'configured_query_catalog',
@@ -204,7 +231,7 @@ async function crawlAndComplete(
         ...codeMetrics,
         ...emptyYield,
         state: codeMetrics.incompletePartitions ? 'incomplete' : codeMetrics.partitions ? 'complete' : 'not_due',
-        queries: 2,
+        queries: discoverySearchFamilies.length,
         newUrls: code.newUrls,
         saturatedPartitions: code.warnings.filter(({ category }) => category === 'saturated').length,
         warnings: [...new Set(code.warnings.map(({ category }) => category))],

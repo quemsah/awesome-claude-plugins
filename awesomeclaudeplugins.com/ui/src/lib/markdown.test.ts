@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/style/useNamingConvention: Test fixture mirrors catalog field names. */
 
 import { describe, expect, it, vi } from 'vitest'
-import { buildRepoMarkdown } from './markdown.ts'
+import { buildAboutMarkdown, buildHomeMarkdown, buildRepoMarkdown } from './markdown.ts'
 
 const catalogQuality = {
   publicationState: 'indexable' as const,
@@ -31,6 +31,22 @@ function makeRepo(overrides: RepoOverrides = {}) {
     ...overrides,
   }
 }
+
+it('describes both manifest kinds in public Markdown documentation', () => {
+  for (const markdown of [buildHomeMarkdown(), buildAboutMarkdown()]) {
+    expect(markdown).toContain('marketplace or standalone manifests')
+    expect(markdown).not.toContain('validated marketplace plugin count')
+  }
+})
+
+it('describes standalone local loading without offering marketplace installation', () => {
+  const markdown = buildRepoMarkdown({ ...makeRepo(), manifest_kind: 'standalone-plugin', plugins_count: 1 })
+  expect(markdown).toContain('install_command: null')
+  expect(markdown).toContain('manifest_kind: "standalone-plugin"')
+  expect(markdown).toContain('claude --plugin-dir ./repository')
+  expect(markdown).not.toContain('/plugin marketplace add')
+  expect(markdown).not.toContain('/plugin install')
+})
 
 function splitFrontmatter(markdown: string) {
   const frontmatterMatch = FRONTMATTER_PATTERN.exec(markdown)

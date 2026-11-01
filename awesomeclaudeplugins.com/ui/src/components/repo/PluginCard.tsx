@@ -9,19 +9,25 @@ import { PluginId } from './PluginId.tsx'
 import { PluginKeywords } from './PluginKeywords.tsx'
 import { PluginList } from './PluginList.tsx'
 import { PluginSource } from './PluginSource.tsx'
+import { StandalonePluginLoad } from './StandalonePluginLoad.tsx'
 
 type PluginCardProps = {
   marketplaceName?: string
   plugin: Plugin
   repoPath: string
   repo?: GitHubRepository | null
+  manifestKind?: 'marketplace' | 'standalone-plugin'
 }
 
-export function PluginCard({ marketplaceName, plugin, repoPath, repo }: PluginCardProps) {
+export function PluginCard({ marketplaceName, plugin, repoPath, repo, manifestKind }: PluginCardProps) {
   return (
     <Card className="group hover:border-primary/30 hover:from-muted hover:to-background w-full transition-all duration-300 hover:bg-linear-to-tl">
       <PluginHeader category={plugin.category} name={plugin.name} version={plugin.version} />
-      {plugin.name ? <InstallCommand marketplaceName={marketplaceName} pluginId={plugin.id} pluginName={plugin.name} /> : null}
+      {manifestKind === 'standalone-plugin' ? (
+        <StandalonePluginLoad owner={repoPath.split('/')[0]} repoName={repoPath.split('/')[1]} />
+      ) : plugin.name ? (
+        <InstallCommand marketplaceName={marketplaceName} pluginId={plugin.id} pluginName={plugin.name} />
+      ) : null}
       <CardContent className="pt-1">
         <dl className="space-y-2">
           <PluginDescription description={plugin.description} />

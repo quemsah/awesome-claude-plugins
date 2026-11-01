@@ -11,6 +11,7 @@ export type CatalogRecord = {
   owner: string
   repo_name: string
   plugins_count: number | null
+  manifest_kind?: 'marketplace' | 'standalone-plugin'
   plugins?: PluginSummary[]
   catalog_updated_at: string
   pushed_at?: string | null
@@ -29,6 +30,7 @@ export type Repo = {
   owner: string | null
   repo_name: string | null
   plugins_count: number | null
+  manifest_kind?: 'marketplace' | 'standalone-plugin'
   plugins?: PluginSummary[]
   plugin_name?: string
   plugin_description?: string

@@ -178,12 +178,12 @@ function discoveryWarningCounts(warnings: unknown[], hasFamilies: boolean): Map<
 
 function validDiscoveryFamilies(value: Record<string, unknown>, warningCounts: Map<DiscoveryQueryFamily, number>): boolean {
   const families = value.families
-  if (!record(families) || Object.keys(families).length !== discoverySearchFamilies.length) return false
+  if (!record(families) || Object.keys(families).some((key) => !isDiscoveryQueryFamily(key))) return false
 
   let successfulRanges = 0
   let warningCount = 0
   for (const { queryFamily } of discoverySearchFamilies) {
-    const family = families[queryFamily]
+    const family = families[queryFamily] ?? (queryFamily === 'plugin_filename_path' ? { successfulRanges: 0, warningCount: 0 } : undefined)
     if (!record(family) || !nonnegative(family.successfulRanges) || !nonnegative(family.warningCount)) return false
     if (family.warningCount !== warningCounts.get(queryFamily)) return false
     successfulRanges += family.successfulRanges
@@ -226,7 +226,18 @@ function validSourceDiscovery(value: Record<string, unknown>): boolean {
       nonnegative(entry.acceptedMarketplaces) &&
       nonnegative(entry.rejectedCandidates) &&
       nonnegative(entry.pendingCandidates) &&
-      entry.acceptedMarketplaces + entry.rejectedCandidates + entry.pendingCandidates === entry.uniqueCandidates
+      optionalNonnegative(entry.acceptedStandalonePlugins) &&
+      optionalNonnegative(entry.pluginSearchHits) &&
+      optionalNonnegative(entry.pluginNonRootHits) &&
+      optionalNonnegative(entry.pluginSaturatedPages) &&
+      (entry.pluginSearchHits === undefined ||
+        entry.pluginNonRootHits === undefined ||
+        (entry.pluginNonRootHits as number) <= (entry.pluginSearchHits as number)) &&
+      entry.acceptedMarketplaces +
+        ((entry.acceptedStandalonePlugins as number) ?? 0) +
+        entry.rejectedCandidates +
+        entry.pendingCandidates ===
+        entry.uniqueCandidates
     )
   })
 }
@@ -240,13 +251,21 @@ function isDiscovery(value: unknown): value is StoredDiscoverySummary {
 }
 
 function normalizeDiscovery(value: StoredDiscoverySummary): DiscoverySummary {
-  if ('families' in value) return value
+  if ('families' in value)
+    return {
+      ...value,
+      families: {
+        ...value.families,
+        plugin_filename_path: value.families.plugin_filename_path ?? { successfulRanges: 0, warningCount: 0 },
+      },
+    }
   return {
     ...value,
     warnings: value.warnings.map((warning) => ({ ...warning, query_family: 'marketplace_filename_path' })),
     families: {
       marketplace_filename_path: { successfulRanges: value.successfulRanges, warningCount: value.warningCount },
       marketplace_path_literal: { successfulRanges: 0, warningCount: 0 },
+      plugin_filename_path: { successfulRanges: 0, warningCount: 0 },
     },
   }
 }
