@@ -3,6 +3,10 @@ import { isValidGitBranch, isValidGitHubOwner, isValidGitHubRepositoryName, isVa
 import { buildRepoDetailsShards, buildSearchIndex, type CatalogRecordInput } from '../output/splitCatalog.js'
 import { throwIfShutdown } from '../shutdown.js'
 
+// Bound Git Trees requests. The canonical repos.json blob may already exceed
+// this budget; those individual legacy blobs are sent alone.
+const MAX_TREE_REQUEST_BYTES = 4 * 1024 * 1024
+
 export type GitBranchHead = { sha: string; treeSha: string }
 
 export type GitSnapshotFiles = {
@@ -163,8 +167,8 @@ export class GitHubGitClient implements GitHubGit {
     ) {
       throw new GitHubGitError('All four snapshot contents must be strings')
     }
-    // Publish every derived catalog artifact in the same Git tree as repos.json.
-    // A subsequent crawl must never serve stale index/shard data alongside fresh repository data.
+    // Publish all snapshot parts in intermediate trees without moving the ref.
+    // Only a fully constructed final tree can be committed atomically.
     let repositories: CatalogRecordInput[]
     try {
       repositories = JSON.parse(files.reposJson) as CatalogRecordInput[]
@@ -174,29 +178,42 @@ export class GitHubGitClient implements GitHubGit {
     }
     const dataPath = 'awesomeclaudeplugins.com/ui/src/data'
     const details = buildRepoDetailsShards(repositories)
-    const response = await this.request('/trees', 'POST', {
-      base_tree: baseTreeSha,
-      tree: [
-        { path: 'README.md', mode: '100644', type: 'blob', content: files.readme },
-        { path: 'awesomeclaudeplugins.com/ui/src/data/repos.json', mode: '100644', type: 'blob', content: files.reposJson },
-        { path: `${dataPath}/search-index.json`, mode: '100644', type: 'blob', content: buildSearchIndex(repositories) },
-        ...Object.entries(details).map(([name, content]) => ({
-          path: `${dataPath}/repo-details/${name}`,
-          mode: '100644',
-          type: 'blob',
-          content,
-        })),
-        { path: 'awesomeclaudeplugins.com/ui/src/data/stats.json', mode: '100644', type: 'blob', content: files.statsJson },
-        {
-          path: 'awesomeclaudeplugins.com/ui/src/data/markdown-paths.json',
-          mode: '100644',
-          type: 'blob',
-          content: files.markdownPathsJson,
-        },
-      ],
-    })
-    if (!record(response)) throw new GitHubGitResponseError()
-    return sha((response as Pick<components['schemas']['git-tree'], 'sha'>).sha)
+    const entries = [
+      { path: 'README.md', mode: '100644', type: 'blob', content: files.readme },
+      { path: `${dataPath}/repos.json`, mode: '100644', type: 'blob', content: files.reposJson },
+      { path: `${dataPath}/search-index.json`, mode: '100644', type: 'blob', content: buildSearchIndex(repositories) },
+      ...Object.entries(details).map(([name, content]) => ({
+        path: `${dataPath}/repo-details/${name}`,
+        mode: '100644',
+        type: 'blob',
+        content,
+      })),
+      { path: `${dataPath}/stats.json`, mode: '100644', type: 'blob', content: files.statsJson },
+      { path: `${dataPath}/markdown-paths.json`, mode: '100644', type: 'blob', content: files.markdownPathsJson },
+    ]
+
+    // Measure escaped JSON bytes, including entry separators and base-tree SHA.
+    // Single blobs larger than the budget still require their own request.
+    const overhead = Buffer.byteLength(JSON.stringify({ base_tree: baseTreeSha, tree: [] }))
+    let batch: typeof entries = []
+    let batchSize = overhead
+    let currentTreeSha = baseTreeSha
+    const publishBatch = async () => {
+      if (batch.length === 0) return
+      const response = await this.request('/trees', 'POST', { base_tree: currentTreeSha, tree: batch })
+      if (!record(response) || response.truncated === true) throw new GitHubGitResponseError()
+      currentTreeSha = sha((response as Pick<components['schemas']['git-tree'], 'sha'>).sha)
+      batch = []
+      batchSize = overhead
+    }
+    for (const entry of entries) {
+      const entryBytes = Buffer.byteLength(JSON.stringify(entry)) + 1
+      if (batch.length > 0 && batchSize + entryBytes > MAX_TREE_REQUEST_BYTES) await publishBatch()
+      batch.push(entry)
+      batchSize += entryBytes
+    }
+    await publishBatch()
+    return currentTreeSha
   }
 
   async createCommit(treeSha: string, parentSha: string, message: string): Promise<string> {

@@ -7,11 +7,13 @@ import type { Repo } from '../schemas/repo.schema.ts'
 
 const CATALOG_KEY = Symbol.for('awesome-claude-plugins.catalog')
 const SHARD_CACHE_KEY = Symbol.for('awesome-claude-plugins.shard-cache')
+const FALLBACK_REPOS_KEY = Symbol.for('awesome-claude-plugins.canonical-fallback')
 
 type ShardCache = Map<number, Record<string, Partial<Repo>>>
 type CatalogGlobal = typeof globalThis & {
   [CATALOG_KEY]?: readonly Repo[]
   [SHARD_CACHE_KEY]?: ShardCache
+  [FALLBACK_REPOS_KEY]?: Map<number, Repo[]> | null
 }
 
 export type SearchIndexV1 = {
@@ -105,6 +107,32 @@ function getShardCache(): ShardCache {
   return root[SHARD_CACHE_KEY]
 }
 
+// A broken or absent shard must not trigger a full 42 MB JSON parse per record.
+// Reuse the canonical snapshot only on the exceptional recovery path.
+function getCanonicalFallback(): Map<number, Repo[]> | null {
+  const root = globalThis as CatalogGlobal
+  if (root[FALLBACK_REPOS_KEY] !== undefined) return root[FALLBACK_REPOS_KEY]
+  const path = join(process.cwd(), 'src/data/repos.json')
+  if (!existsSync(path)) {
+    root[FALLBACK_REPOS_KEY] = null
+    return null
+  }
+  try {
+    const repos = JSON.parse(readFileSync(path, 'utf8')) as Repo[]
+    if (!Array.isArray(repos)) throw new Error('Invalid repository snapshot')
+    const lookup = new Map<number, Repo[]>()
+    for (const repo of repos) {
+      const matches = lookup.get(repo.id)
+      if (matches) matches.push(repo)
+      else lookup.set(repo.id, [repo])
+    }
+    root[FALLBACK_REPOS_KEY] = lookup
+  } catch {
+    root[FALLBACK_REPOS_KEY] = null
+  }
+  return root[FALLBACK_REPOS_KEY]
+}
+
 function matchesIdentity(repo: Partial<Repo>, id: number, owner?: string | null, repoName?: string | null): boolean {
   return (
     repo.id === id &&
@@ -141,15 +169,9 @@ export function getRepoDetails(id: number, owner?: string | null, repoName?: str
   const details = shard?.[id]
   if (details && matchesIdentity(details, id, owner, repoName)) return details
 
-  // Rare recovery path: read the actual canonical snapshot, not the compact global index.
-  const path = join(process.cwd(), 'src/data/repos.json')
-  if (!existsSync(path)) return null
-  try {
-    const repos = JSON.parse(readFileSync(path, 'utf8')) as Repo[]
-    return repos.find((record) => matchesIdentity(record, id, owner, repoName)) ?? null
-  } catch {
-    return null
-  }
+  // Parse the canonical snapshot once across all missing/corrupt shard reads.
+  const canonical = getCanonicalFallback()
+  return canonical?.get(id)?.find((record) => matchesIdentity(record, id, owner, repoName)) ?? null
 }
 
 export function hydrateCatalogRepo<T extends Repo>(repo: T): T {

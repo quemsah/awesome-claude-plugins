@@ -127,6 +127,31 @@ describe('GitHubGitClient', () => {
     expect(buckets[1]).toHaveProperty('2')
   })
 
+  it('batches large snapshots into intermediate Git trees before committing', async () => {
+    const large = { ...files, reposJson: JSON.stringify([{ id: 1, owner: 'one', repo_name: 'demo', description: 'a'.repeat(5 * 1024 * 1024) }]) }
+    const { client, requests } = mockClient(Array.from({ length: 12 }, () => Response.json({ sha: treeSha })))
+    expect(await client.createTree(baseTree, large)).toBe(treeSha)
+    const trees = requests.map((request) => payload(request) as { base_tree: string; tree: Array<{ path: string; content: string }> })
+    expect(trees.length).toBeGreaterThan(2)
+    expect(trees[0].base_tree).toBe(baseTree)
+    for (const tree of trees.slice(1)) expect(tree.base_tree).toBe(treeSha)
+    expect(trees.flatMap((tree) => tree.tree)).toHaveLength(105)
+    for (const tree of trees) {
+      if (Buffer.byteLength(JSON.stringify(tree)) > 4 * 1024 * 1024) {
+        expect(tree.tree).toHaveLength(1) // The original large blob cannot be split.
+      }
+    }
+    expect(requests.every((request) => request.url.endsWith('/trees'))).toBe(true)
+  })
+
+  it('does not advance the ref when a later tree chunk fails', async () => {
+    const large = { ...files, reposJson: JSON.stringify([{ id: 1, description: 'a'.repeat(5 * 1024 * 1024) }]) }
+    const { client, requests } = mockClient([Response.json({ sha: treeSha }), new Response('', { status: 422 })])
+    await expect(client.createTree(baseTree, large)).rejects.toMatchObject({ status: 422 })
+    expect(requests).toHaveLength(2)
+    expect(requests.every((request) => request.url.endsWith('/trees'))).toBe(true)
+  })
+
   it('requires explicit publishing credentials and repository identity before any request', () => {
     for (const field of ['token', 'owner', 'repo', 'branch'] as const) {
       const values = { token: 'secret', owner: 'acme', repo: 'catalog', branch: 'main', [field]: '  ' }

@@ -68,6 +68,38 @@ describe('catalogStore', () => {
     }
   })
 
+  it('reuses the canonical recovery lookup across multiple missing shard entries', () => {
+    const root = globalThis as unknown as Record<symbol, unknown>
+    const cacheKey = Symbol.for('awesome-claude-plugins.shard-cache')
+    const fallbackKey = Symbol.for('awesome-claude-plugins.canonical-fallback')
+    const previousCache = root[cacheKey]
+    const previousFallback = root[fallbackKey]
+    const records = new Map<number, ReturnType<typeof getCatalog>[number]>()
+    for (const repo of getCatalog()) {
+      const shardId = Math.abs(repo.id % 100)
+      if (!records.has(shardId)) records.set(shardId, repo)
+      if (records.size === 2) break
+    }
+    const [first, second] = [...records.values()]
+    try {
+      root[cacheKey] = new Map([
+        [Math.abs(first.id % 100), {}],
+        [Math.abs(second.id % 100), {}],
+      ])
+      delete root[fallbackKey]
+      expect(getRepoDetails(first.id, first.owner, first.repo_name)?.id).toBe(first.id)
+      const recovered = root[fallbackKey]
+      expect(recovered).toBeInstanceOf(Map)
+      expect(getRepoDetails(second.id, second.owner, second.repo_name)?.id).toBe(second.id)
+      expect(root[fallbackKey]).toBe(recovered)
+    } finally {
+      if (previousCache === undefined) delete root[cacheKey]
+      else root[cacheKey] = previousCache
+      if (previousFallback === undefined) delete root[fallbackKey]
+      else root[fallbackKey] = previousFallback
+    }
+  })
+
   it('keeps the most recently used shard in the bounded LRU', () => {
     const cacheKey = Symbol.for('awesome-claude-plugins.shard-cache')
     const holder = globalThis as unknown as Record<symbol, unknown>
