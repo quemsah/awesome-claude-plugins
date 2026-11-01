@@ -213,7 +213,7 @@ export function rebindCanonicalUrl(
           AND EXISTS (
             SELECT 1 FROM repositories WHERE id = @removedId
               AND stargazers_count IS NOT NULL AND forks_count IS NOT NULL
-              AND subscribers_count IS NOT NULL AND plugins_count IS NOT NULL
+              AND subscribers_count IS NOT NULL
           )
       `).run({ keepId, removedId })
       db.prepare(`

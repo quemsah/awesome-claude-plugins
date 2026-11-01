@@ -123,18 +123,23 @@ it('rotates through the 200 least recently checked rows independently of pushed 
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories WHERE last_health_check_at IS NULL').get()).toEqual({ count: 0 })
 })
 
-it.each([true, false])(
-  'preserves enriched metadata when a pending rename merges with a published row (pending first: %s)',
-  async (pendingFirst) => {
+it.each([
+  [true, 1],
+  [false, 1],
+  [true, null],
+  [false, null],
+])(
+  'preserves enriched metadata when a pending rename merges with a published row (pending first: %s, plugins: %s)',
+  async (pendingFirst, pluginsCount) => {
     const db = database()
     const pending = () => upsertDiscovery(db, 'https://github.com/old/project', null)
     const published = () => seed(db, 'https://github.com/new/renamed')
     const first = pendingFirst ? pending() : published()
     const second = pendingFirst ? published() : pending()
     const publishedId = pendingFirst ? second : first
-    db.prepare(`UPDATE repositories SET github_node_id = 'stable-node', plugins_json = '[{"name":"plugin"}]',
+    db.prepare(`UPDATE repositories SET plugins_count = ?, github_node_id = 'stable-node', plugins_json = '[{"name":"plugin"}]',
     repository_etag = 'repo-etag', marketplace_etag = 'manifest-etag', marketplace_oid = 'blob-oid',
-    marketplace_parser_version = 3, license = 'MIT', archived = 1 WHERE id = ?`).run(publishedId)
+    marketplace_parser_version = 3, license = 'MIT', archived = 1 WHERE id = ?`).run(pluginsCount, publishedId)
     expect(listPublishable(db)).toHaveLength(1)
     await healthCheck(
       db,
@@ -154,7 +159,7 @@ it.each([true, false])(
       stargazers_count: 5,
       forks_count: 2,
       subscribers_count: 1,
-      plugins_count: 1,
+      plugins_count: pluginsCount,
       plugins_json: '[{"name":"plugin"}]',
       github_node_id: 'stable-node',
       repository_etag: 'repo-etag',
