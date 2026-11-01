@@ -206,7 +206,10 @@ export function searchCatalogRepos(
     pluginsCount,
     // Card fields (including description and manifest_kind) are already in the compact index.
     // Hydrate and cache only full-detail API pages, never the card-only response.
-    repos: options.summaries === 'omit' ? repos.map(withoutPluginSummaries) : getFullCatalogPage(repos, normalizedQuery, sortOption, page, pageSize),
+    repos:
+      options.summaries === 'omit'
+        ? repos.map(withoutPluginSummaries)
+        : getFullCatalogPage(repos, normalizedQuery, sortOption, page, pageSize),
     total,
   }
 }
