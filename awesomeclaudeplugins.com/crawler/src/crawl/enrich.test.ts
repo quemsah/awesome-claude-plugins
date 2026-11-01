@@ -806,9 +806,14 @@ it('publishes bounded plugin summaries without splitting or preserving malformed
     name: 'catalog',
     owner: { name: 'maintainer' },
     plugins: [
-      { name: `${pluginName}${'x'.repeat(5)}`, description: pluginDescription, source: './plugins/invalid-overlong-name' },
-      { name: pluginName, description: pluginDescription, source: './plugins/demo' },
-      { name: '\ud800bad\udc00', description: '\udc00bad\ud800', source: './plugins/malformed' },
+      {
+        name: `${'n'.repeat(161)}`,
+        displayName: `${pluginName}${'x'.repeat(5)}`,
+        description: pluginDescription,
+        source: './plugins/invalid-overlong-name',
+      },
+      { name: 'demo-plugin', displayName: pluginName, description: pluginDescription, source: './plugins/demo' },
+      { name: 'malformed-plugin', displayName: '\ud800bad\udc00', description: '\udc00bad\ud800', source: './plugins/malformed' },
     ],
   }
   const text = JSON.stringify(manifest)

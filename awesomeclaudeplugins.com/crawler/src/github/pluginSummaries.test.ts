@@ -59,3 +59,16 @@ it.each([
 it('rejects malformed JSON while parsing cached summaries', () => {
   expect(parsePluginSummariesJson('{"plugins":[')).toBeNull()
 })
+
+it('persists display names without truncating valid large marketplaces', () => {
+  const items = Array.from({ length: 75 }, (_, index) => ({
+    name: `canonical-${index}`,
+    displayName: index === 0 ? 'Human Readable Plugin' : index === 1 ? '   ' : undefined,
+    description: `Description ${index}`,
+  }))
+  const parsed = parsePluginSummariesJson(serializePluginSummaries(items))
+  expect(parsed).toHaveLength(75)
+  expect(parsed?.[0]).toEqual({ name: 'Human Readable Plugin', description: 'Description 0' })
+  expect(parsed?.[1]).toEqual({ name: 'canonical-1', description: 'Description 1' })
+  expect(parsed?.[74]?.name).toBe('canonical-74')
+})

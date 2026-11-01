@@ -1,10 +1,15 @@
-import { isMarketplacePlugin, parseMarketplace as parseSharedMarketplace } from '@awesome-claude-plugins/catalog-contract'
+import {
+  GITHUB_REPO_PATH_PATTERN,
+  getMarketplacePluginIssue,
+  PLUGIN_ID_PATTERN,
+  parseMarketplace as parseSharedMarketplace,
+  resolveMarketplacePluginDisplayName,
+} from '@awesome-claude-plugins/catalog-contract'
 import * as z from 'zod/mini'
 import { getMcpBundleUrl } from '../../lib/mcpBundleUrl.ts'
 
 const CONTROL_CHARACTER_PATTERN = /[\r\n]/
 const MCP_PROTOCOL_PATTERN = /^[a-z][a-z0-9+.-]*:/i
-const GITHUB_REPO_PATH_PATTERN = /^(?!\.{1,2}\/)[A-Za-z0-9._-]+\/(?!\.{1,2}$)[A-Za-z0-9._-]+$/
 const PluginPathSchema = z.string().check(
   z.minLength(1),
   z.maxLength(512),
@@ -14,7 +19,12 @@ const PluginPathSchema = z.string().check(
   })
 )
 const GitHubRepoPathSchema = z.string().check(z.regex(GITHUB_REPO_PATH_PATTERN, { error: 'Must be a GitHub repository path' }))
-const PluginIdSchema = z.string().check(z.regex(/^[A-Za-z0-9._-]+$/, { error: 'Must be a safe plugin identifier' }))
+const PluginIdSchema = z.string().check(
+  z.minLength(1),
+  z.maxLength(160),
+  z.regex(PLUGIN_ID_PATTERN, { error: 'Must be a safe plugin identifier' }),
+  z.refine((value) => value !== '.' && value !== '..', { error: 'Must be a safe plugin identifier' })
+)
 const MarketplaceNameSchema = PluginIdSchema
 const SourceRefSchema = z.string().check(
   z.minLength(1),
@@ -131,16 +141,25 @@ export const PluginSchema: z.ZodMiniType<Plugin> = z
     source: z.optional(
       z.union([
         PluginSourceStringSchema,
-        z.object({
-          source: PluginPathSchema,
-          repo: z.optional(GitHubRepoPathSchema),
-          url: z.optional(z.union([SourceUrlSchema, GitHubRepoPathSchema])),
-          branch: z.optional(SourceRefSchema),
-          path: z.optional(PluginPathSchema),
-          ref: z.optional(SourceRefSchema),
-          commit: z.optional(SourceShaSchema),
-          sha: z.optional(SourceShaSchema),
-        }),
+        z
+          .object({
+            source: PluginPathSchema,
+            repo: z.optional(GitHubRepoPathSchema),
+            url: z.optional(z.union([SourceUrlSchema, GitHubRepoPathSchema])),
+            branch: z.optional(SourceRefSchema),
+            path: z.optional(PluginPathSchema),
+            ref: z.optional(SourceRefSchema),
+            commit: z.optional(SourceShaSchema),
+            sha: z.optional(SourceShaSchema),
+          })
+          .check(
+            z.refine((value) => value.source !== 'github' || typeof value.repo === 'string', {
+              error: 'Must be a GitHub repository path',
+            }),
+            z.refine((value) => value.source !== 'url' || typeof value.url === 'string', {
+              error: 'Must be a safe HTTP(S) URL',
+            })
+          ),
       ])
     ),
     category: z.optional(z.string().check(z.maxLength(100))),
@@ -257,18 +276,16 @@ export const MarketplacePluginsSchema: z.ZodMiniType<MarketplacePluginsResult> =
       ? {
           ...entry,
           id: entry.name,
-          name:
-            typeof entry.displayName === 'string' && entry.displayName.trim().length > 0 && entry.displayName.length <= 160
-              ? entry.displayName
-              : entry.name,
+          name: resolveMarketplacePluginDisplayName(entry),
         }
       : entry
     const parsed = PluginSchema.safeParse(candidate)
-    if (parsed.success && isMarketplacePlugin(entry)) {
+    const issue = getMarketplacePluginIssue(entry)
+    if (!issue && parsed.success) {
       result.plugins.push(parsed.data)
       return
     }
-    if (!parsed.success && isMarketplacePlugin(entry) && isRecord(candidate)) {
+    if (!(issue || parsed.success) && isRecord(candidate)) {
       const recovered = recoverPluginWithValidMetadata(candidate)
       if (recovered) {
         result.plugins.push(recovered)
@@ -276,7 +293,21 @@ export const MarketplacePluginsSchema: z.ZodMiniType<MarketplacePluginsResult> =
       }
     }
     result.invalidPluginCount++
-    if (!parsed.success) result.issues.push(...parsed.error.issues.map((issue) => ({ ...issue, path: ['plugins', index, ...issue.path] })))
+    // The shared contract owns ID/source diagnostics. Keep unrelated Zod
+    // failures but avoid duplicate issues and scanning the full result array.
+    if (!parsed.success) {
+      for (const parsedIssue of parsed.error.issues) {
+        if (issue && parsedIssue.path[0] === issue.path[0]) continue
+        result.issues.push({ ...parsedIssue, path: ['plugins', index, ...parsedIssue.path] })
+      }
+    }
+    if (issue) {
+      result.issues.push({
+        code: 'custom',
+        message: issue.message,
+        path: ['plugins', index, ...issue.path],
+      })
+    }
   })
   return result
 })

@@ -16,4 +16,19 @@ export {
   parseGitHubRepository,
   parseGitHubRepositoryUrl,
 } from './identity.js'
-export { isMarketplacePlugin, MarketplaceFormatError, parseMarketplace } from './marketplace.js'
+export {
+  getMarketplacePluginIssue,
+  getMarketplacePluginRejection,
+  GITHUB_REPO_PATH_PATTERN,
+  isMarketplacePlugin,
+  isRecord,
+  isSafePath,
+  isSafePluginId,
+  isSafeSourceUrl,
+  isValidSource,
+  MarketplaceFormatError,
+  MarketplaceRootSchema,
+  parseMarketplace,
+  PLUGIN_ID_PATTERN,
+  resolveMarketplacePluginDisplayName,
+} from './marketplace.js'
