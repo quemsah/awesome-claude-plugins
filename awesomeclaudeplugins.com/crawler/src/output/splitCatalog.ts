@@ -24,6 +24,7 @@ export type CatalogRecordInput = {
   catalog_added_at?: string | null
   catalog_updated_at?: string | null
   description?: string | null
+  manifest_kind?: 'marketplace' | 'standalone-plugin' | null
   subscribers_count?: number | null
 }
 
@@ -40,6 +41,8 @@ export const SEARCH_INDEX_FIELDS = [
   'catalog_added_at',
   'description_quality',
   'catalog_updated_at',
+  'description',
+  'manifest_kind',
 ] as const
 
 export function buildSearchIndex(repos: readonly CatalogRecordInput[]): string {
@@ -57,6 +60,8 @@ export function buildSearchIndex(repos: readonly CatalogRecordInput[]): string {
       r.catalog_added_at ?? null,
       r.description?.trim() ? (r.description.trim().length >= 40 ? 2 : 1) : 0,
       r.catalog_updated_at ?? null,
+      r.description ?? null,
+      r.manifest_kind ?? null,
     ]
   })
 
@@ -88,6 +93,16 @@ export function buildRepoDetailsShards(repos: readonly CatalogRecordInput[], num
 
   for (const r of repos) {
     const shardId = Math.abs(Number(r.id) % numShards)
+    const previous = shards[shardId][r.id]
+    if (previous) {
+      // Case-only aliases of one GitHub repository must preserve the first canonical record.
+      // The same id for a different path is invalid and must not silently overwrite details.
+      const key = (record: Record<string, unknown>) => `${String(record.owner ?? '').toLowerCase()}/${String(record.repo_name ?? '').toLowerCase()}`
+      if (key(previous) !== key(r as Record<string, unknown>)) {
+        throw new Error(`Conflicting repository identity for GitHub id ${r.id}`)
+      }
+      continue
+    }
     shards[shardId][r.id] = { ...r }
   }
 
