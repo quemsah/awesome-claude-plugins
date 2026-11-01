@@ -8,11 +8,13 @@ interface InstallCommandProps {
   marketplaceName?: string
   pluginName?: string
   pluginId?: string
+  repoPath?: string
+  owner?: string
+  repoName?: string
 }
 
-export function InstallCommand({ marketplaceName, pluginName, pluginId }: InstallCommandProps) {
-  const { copyError, handleCopyClick, installCommand, isCopied, isVerified } = useInstallCommand(pluginName, marketplaceName, pluginId)
-
+export function InstallCommand(props: InstallCommandProps) {
+  const { copyError, handleCopyClick, installCommand, isCopied, isVerified, isDirectInstall } = useInstallCommand(props)
   const isDisabled = !(installCommand && isVerified)
 
   return (
@@ -33,7 +35,14 @@ export function InstallCommand({ marketplaceName, pluginName, pluginId }: Instal
           {isCopied ? <CopiedIcon /> : <CopyIcon />}
         </button>
       </div>
-      <p aria-live="polite" className="text-destructive mt-2 text-xs" role={copyError ? 'alert' : undefined}>
+      {isDirectInstall ? (
+        <p className="text-muted-foreground mt-1 text-xs">Requires Claude Code 2.1.275 or later. Adds the marketplace if needed.</p>
+      ) : null}
+      <p
+        aria-live="polite"
+        className={`${copyError ? 'text-destructive' : 'text-muted-foreground'} mt-2 text-xs`}
+        role={copyError ? 'alert' : undefined}
+      >
         {copyError ?? (isCopied ? 'Install command copied.' : '')}
       </p>
     </div>
