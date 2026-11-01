@@ -21,8 +21,8 @@ export type SearchIndexV1 = {
   search: string
 }
 
-function parseSearchIndex(content: string): Repo[] {
-  const parsed = JSON.parse(content)
+export function parseSearchIndex(content: string | SearchIndexV1): Repo[] {
+  const parsed = typeof content === 'string' ? JSON.parse(content) : content
   if (Array.isArray(parsed)) {
     return parsed as Repo[]
   }
@@ -79,7 +79,7 @@ export function getCatalog(): readonly Repo[] {
     // A checked-in legacy index may predate the compact card fields. Never serve
     // fabricated descriptions or marketplace commands from that older format.
     if (parsed.format === 'v1' && parsed.fields?.includes('description') && parsed.fields?.includes('manifest_kind')) {
-      catalog = parseSearchIndex(fileContents)
+      catalog = parseSearchIndex(parsed)
     } else if (existsSync(reposPath)) {
       catalog = JSON.parse(readFileSync(reposPath, 'utf8')) as Repo[]
     } else {
