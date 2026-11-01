@@ -15,7 +15,7 @@ export default defineConfig({
         ...server,
         // The default CI build belongs to the production catalog; build this fixture separately.
         command: server.command.replace('"bun run start"', '"bun run build && bun run start"'),
-        env: { ...server.env, CATALOG_DATA_PATH: catalogPath },
+        env: { ...server.env, CATALOG_DATA_PATH: catalogPath, STANDALONE_E2E: '1' },
       }))
     : undefined,
 })
