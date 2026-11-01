@@ -38,6 +38,19 @@ const { fixtureRepos } = vi.hoisted(() => ({
               : `description for plugin ${i + 1}`,
       })),
     },
+    ...Array.from({ length: 24 }, (_, i) => ({
+      id: 999_100 + i,
+      html_url: `https://github.com/cache-fixture/cache-entry-${i}`,
+      owner: 'cache-fixture',
+      owner_url: 'https://github.com/cache-fixture',
+      repo_name: `cache-entry-${i}`,
+      description: 'repeated-cache-fixture',
+      stargazers_count: 100 - i,
+      forks_count: 1,
+      subscribers_count: 1,
+      plugins_count: 1,
+      plugins: [{ name: 'cached-plugin' }],
+    })),
   ],
 }))
 
@@ -82,6 +95,35 @@ function serverSearch(query: string): CatalogPayload {
 }
 
 describe('/api/catalog plugin metadata search', () => {
+  it('reuses complete pages spanning 24 shards and bounds its page cache', () => {
+    const key = Symbol.for('awesome-claude-plugins.full-catalog-page-cache')
+    const root = globalThis as unknown as Record<symbol, unknown>
+    const previous = root[key]
+    try {
+      delete root[key]
+      hydrateSpy.mockClear()
+      const query = 'repeated-cache-fixture'
+      const initial = searchCatalogRepos(query, 'stars-desc', 0, 24)
+      expect(initial.repos).toHaveLength(24)
+      expect(new Set(initial.repos.map((repo) => repo.id % 100)).size).toBe(24)
+      expect(hydrateSpy).toHaveBeenCalledTimes(24)
+      expect(searchCatalogRepos(query, 'stars-desc', 0, 24)).toEqual(initial)
+      expect(hydrateSpy).toHaveBeenCalledTimes(24)
+
+      for (const sort of ['forks-desc', 'plugins-desc', 'updated-desc'] as const) {
+        searchCatalogRepos(query, sort, 0, 24)
+      }
+      const cache = root[key] as { pages: Map<string, unknown> }
+      expect(cache.pages.size).toBe(3)
+      searchCatalogRepos(query, 'stars-desc', 0, 24)
+      expect(hydrateSpy).toHaveBeenCalledTimes(120)
+    } finally {
+      if (previous === undefined) delete root[key]
+      else root[key] = previous
+    }
+  })
+
+
   it('does not load full detail shards for card-only API responses', async () => {
     hydrateSpy.mockClear()
     const cards = await apiSearch('zerogravityplugin', 'cards')
