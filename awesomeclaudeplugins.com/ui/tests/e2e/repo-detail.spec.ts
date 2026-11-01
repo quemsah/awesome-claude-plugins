@@ -358,6 +358,11 @@ test('unrecognized multi-segment paths render a generic 404', async ({ page }) =
 
 test('repo detail page provides one-step plugin installation for external marketplaces', async ({ page }) => {
   await mockClipboard(page)
+  await page.addInitScript(() => {
+    window.sa_event = (event) => {
+      if (event === 'copy_plugin_install') window.sessionStorage.setItem('lastPluginInstallEvent', event)
+    }
+  })
   await page.goto('/ykdojo/claude-code-tips')
 
   const plugin = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Example Plugin@1.2.3' }) })
