@@ -29,15 +29,19 @@ export function useInstallCommand(options: UseInstallCommandOptions) {
 
   const { pluginName, marketplaceName, pluginId, repoPath, owner, repoName } = options
   const [pathOwner, pathRepo] = (repoPath ?? '').split('/')
-  const directCommand = getDirectPluginInstallCommand({
-    pluginName,
-    pluginId,
-    owner: owner ?? pathOwner,
-    repoName: repoName ?? pathRepo,
-  })
+  const marketplaceIsInstallable = isPluginInstallCommandVerified(pluginId ?? pluginName, marketplaceName)
+  const directCommand = marketplaceIsInstallable
+    ? getDirectPluginInstallCommand({
+        pluginName,
+        pluginId,
+        marketplaceName,
+        owner: owner ?? pathOwner,
+        repoName: repoName ?? pathRepo,
+      })
+    : null
   const fallbackCommand = getPluginInstallCommand({ pluginName, pluginId, marketplaceName })
   const installCommand = directCommand ?? fallbackCommand
-  const isVerified = Boolean(directCommand) || isPluginInstallCommandVerified(pluginId ?? pluginName, marketplaceName)
+  const isVerified = Boolean(directCommand) || marketplaceIsInstallable
 
   const handleCopyClick = async () => {
     if (!(installCommand && isVerified)) return
