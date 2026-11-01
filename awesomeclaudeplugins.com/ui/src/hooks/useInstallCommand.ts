@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { trackCopyMarketplaceAdd, trackCopyPluginInstall } from '../lib/analytics.ts'
+import { trackCopyPluginInstall } from '../lib/analytics.ts'
 import { copyText } from '../lib/clipboard.ts'
 import {
-  getCombinedInstallCommand,
-  getMarketplaceAddCommand,
+  getDirectPluginInstallCommand,
   getPluginInstallCommand,
-  isOfficialMarketplace,
   isPluginInstallCommandVerified,
 } from '../lib/installCommand.ts'
 
@@ -18,38 +16,12 @@ export type UseInstallCommandOptions = {
   repoName?: string
 }
 
-export type CopiedCommandTarget = 'plugin' | 'marketplace' | 'both' | null
-
-/**
- * Hook that manages install command generation, copy actions, and feedback states
- * for Claude Code plugins and external marketplaces.
- */
-export function useInstallCommand(
-  pluginNameOrOptions?: string | UseInstallCommandOptions,
-  marketplaceNameParam?: string,
-  pluginIdParam?: string,
-  repoPathParam?: string,
-  ownerParam?: string,
-  repoNameParam?: string
-) {
-  const [copiedTarget, setCopiedTarget] = useState<CopiedCommandTarget>(null)
+/** Generates a verified one-step install command and manages copy feedback. */
+export function useInstallCommand(options: UseInstallCommandOptions) {
+  const [isCopied, setIsCopied] = useState(false)
   const [copyError, setCopyError] = useState<string | null>(null)
   const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const isMounted = useRef(true)
-
-  const options: UseInstallCommandOptions =
-    typeof pluginNameOrOptions === 'object' && pluginNameOrOptions !== null
-      ? pluginNameOrOptions
-      : {
-          pluginName: pluginNameOrOptions,
-          marketplaceName: marketplaceNameParam,
-          pluginId: pluginIdParam,
-          repoPath: repoPathParam,
-          owner: ownerParam,
-          repoName: repoNameParam,
-        }
-
-  const { pluginName, marketplaceName, pluginId, repoPath, owner, repoName } = options
 
   useEffect(() => {
     isMounted.current = true
@@ -59,82 +31,35 @@ export function useInstallCommand(
     }
   }, [])
 
-  const installCommand = getPluginInstallCommand({ pluginName, marketplaceName, pluginId })
-  const isVerified = isPluginInstallCommandVerified(pluginId ?? pluginName, marketplaceName)
-
-  const [derivedOwner, derivedRepo] = (repoPath ?? '').split('/')
-  const effectiveOwner = owner ?? derivedOwner
-  const effectiveRepoName = repoName ?? derivedRepo
-
-  const isOfficial = isOfficialMarketplace({
-    owner: effectiveOwner,
-    repoName: effectiveRepoName,
-    marketplaceName,
-    repoPath,
+  const { pluginName, marketplaceName, pluginId, repoPath, owner, repoName } = options
+  const [pathOwner, pathRepo] = (repoPath ?? '').split('/')
+  const directCommand = getDirectPluginInstallCommand({
+    pluginName,
+    pluginId,
+    owner: owner ?? pathOwner,
+    repoName: repoName ?? pathRepo,
   })
+  const fallbackCommand = getPluginInstallCommand({ pluginName, pluginId, marketplaceName })
+  const installCommand = directCommand ?? fallbackCommand
+  const isVerified = Boolean(directCommand) || isPluginInstallCommandVerified(pluginId ?? pluginName, marketplaceName)
 
-  const rawMarketplaceAddCommand = getMarketplaceAddCommand(effectiveOwner, effectiveRepoName)
-  // Step 1 is required for third-party / external marketplaces with valid add commands
-  const needsMarketplaceAdd = Boolean(!isOfficial && marketplaceName && rawMarketplaceAddCommand)
-  const marketplaceAddCommand = needsMarketplaceAdd ? rawMarketplaceAddCommand : null
-
-  const canCopyBoth = Boolean(marketplaceAddCommand && installCommand && isVerified)
-  const combinedCommand = canCopyBoth ? getCombinedInstallCommand(marketplaceAddCommand, installCommand) : null
-
-  const copyWithFeedback = async (text: string | null, target: 'plugin' | 'marketplace' | 'both', onTrack: () => void) => {
-    if (!text) return
-    const copied = await copyText(text)
+  const handleCopyClick = async () => {
+    if (!(installCommand && isVerified)) return
+    const copied = await copyText(installCommand)
     if (!isMounted.current) return
 
     if (copied) {
       setCopyError(null)
-      setCopiedTarget(target)
-      onTrack()
+      setIsCopied(true)
+      trackCopyPluginInstall()
       clearTimeout(resetTimer.current)
       resetTimer.current = setTimeout(() => {
-        if (isMounted.current) setCopiedTarget(null)
+        if (isMounted.current) setIsCopied(false)
       }, 2_000)
     } else {
-      setCopyError('Unable to copy the command. Select and copy it manually.')
+      setCopyError('Unable to copy the install command. Select and copy it manually.')
     }
   }
 
-  const handleCopyPlugin = async () => {
-    if (!(installCommand && isVerified)) return
-    await copyWithFeedback(installCommand, 'plugin', () => trackCopyPluginInstall())
-  }
-
-  const handleCopyMarketplace = async () => {
-    if (!marketplaceAddCommand) return
-    await copyWithFeedback(marketplaceAddCommand, 'marketplace', () => trackCopyMarketplaceAdd())
-  }
-
-  const handleCopyBoth = async () => {
-    if (!(canCopyBoth && combinedCommand)) return
-    await copyWithFeedback(combinedCommand, 'both', () => {
-      trackCopyMarketplaceAdd()
-      trackCopyPluginInstall()
-    })
-  }
-
-  return {
-    canCopyBoth,
-    combinedCommand,
-    copiedTarget,
-    copyError,
-    getInstallCommand: () => installCommand,
-    handleCopyBoth,
-    handleCopyClick: handleCopyPlugin,
-    handleCopyMarketplace,
-    handleCopyPlugin,
-    installCommand,
-    isBothCopied: copiedTarget === 'both',
-    isCopied: copiedTarget === 'plugin' || copiedTarget === 'both',
-    isMarketplaceCopied: copiedTarget === 'marketplace',
-    isOfficial,
-    isPluginCopied: copiedTarget === 'plugin',
-    isVerified,
-    marketplaceAddCommand,
-    needsMarketplaceAdd,
-  }
+  return { copyError, handleCopyClick, installCommand, isCopied, isVerified, isDirectInstall: Boolean(directCommand) }
 }
