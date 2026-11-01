@@ -193,6 +193,29 @@ export function rebindCanonicalUrl(
     const removedId = duplicate ? Math.max(id, duplicate.id) : null
 
     if (removedId !== null) {
+      // A lightweight health check does not reload metadata after a merge. Keep a coherent
+      // enriched snapshot (including its matching cache validators) over a pending row.
+      db.prepare(`
+        UPDATE repositories SET (
+          stargazers_count, forks_count, subscribers_count, description, repo_updated,
+          license, archived, plugins_count, plugins_json, github_node_id,
+          repository_etag, marketplace_etag, marketplace_oid, marketplace_parser_version,
+          marketplace_failed_oid, marketplace_failed_parser_version
+        ) = (
+          SELECT stargazers_count, forks_count, subscribers_count, description, repo_updated,
+                 license, archived, plugins_count, plugins_json, github_node_id,
+                 repository_etag, marketplace_etag, marketplace_oid, marketplace_parser_version,
+                 marketplace_failed_oid, marketplace_failed_parser_version
+          FROM repositories WHERE id = @removedId
+        )
+        WHERE id = @keepId
+          AND (stargazers_count IS NULL OR forks_count IS NULL OR subscribers_count IS NULL OR plugins_count IS NULL)
+          AND EXISTS (
+            SELECT 1 FROM repositories WHERE id = @removedId
+              AND stargazers_count IS NOT NULL AND forks_count IS NOT NULL
+              AND subscribers_count IS NOT NULL AND plugins_count IS NOT NULL
+          )
+      `).run({ keepId, removedId })
       db.prepare(`
         INSERT OR IGNORE INTO discovery_candidates (run_id, repository_id, source, query_id)
         SELECT run_id, ?, source, query_id FROM discovery_candidates WHERE repository_id = ?
