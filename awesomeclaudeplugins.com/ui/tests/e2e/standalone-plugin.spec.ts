@@ -8,6 +8,7 @@ const marketplacePath = '**/acme/capsule/HEAD/.claude-plugin/marketplace.json'
 const description = 'Nebula review automation provides precise, independent change summaries for plugin authors and maintainers.'
 const pluginManifestUrl = /\/HEAD\/\.claude-plugin\/plugin\.json$/
 const pluginJsonUrl = /\/plugin\.json$/
+const interruptedBodyUrl = /plugin\.json\?interrupt-body=1$/
 
 test('finds standalone summaries through the real catalog and opens local loading', async ({ page, request }, testInfo) => {
   for (const query of ['Nebula', 'independent change summaries']) {
@@ -57,8 +58,10 @@ test('finds standalone summaries through the real catalog and opens local loadin
 
 test('retains standalone identity during live GitHub failures', async ({ page }, testInfo) => {
   await page.route('**/repos/acme/capsule', (route) => route.fulfill({ status: 503, body: '{}' }))
-  await page.route(pluginPath, (route) => route.abort('failed'))
+  await page.route(pluginPath, (route) => route.continue({ url: `${route.request().url()}?interrupt-body=1` }))
+  const manifestResponse = page.waitForResponse(interruptedBodyUrl)
   await page.goto('/acme/capsule')
+  expect((await manifestResponse).status()).toBe(200)
   await expect(page.getByRole('heading', { name: pluginName })).toBeVisible()
   await expect(page.getByText('Live plugin data is temporarily unavailable. Showing the latest catalog snapshot.')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Load locally' })).toBeVisible()
@@ -86,7 +89,7 @@ test('prefers a newly added marketplace and recovers standalone loading after re
     if (request.url().endsWith('/.claude-plugin/plugin.json')) pluginRequests++
   })
   await page.goto('/acme/capsule')
-  await expect(page.getByText('/plugin install market-helper@release-hub', { exact: true })).toBeVisible()
+  await expect(page.getByText('/plugin install market-helper --marketplace acme/capsule', { exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Load locally' })).toHaveCount(0)
   expect(pluginRequests).toBe(0)
   await page.unroute(marketplacePath)
@@ -101,7 +104,7 @@ test('keeps one-plugin marketplaces distinct and publishes standalone machine su
   expect(marketplace.repos[0].plugins_count).toBe(1)
   expect(marketplace.repos[0].manifest_kind).toBeUndefined()
   await page.goto('/acme/market-hub')
-  await expect(page.getByText('/plugin install market-helper@market-hub', { exact: true })).toBeVisible()
+  await expect(page.getByText('/plugin install market-helper --marketplace acme/market-hub', { exact: true })).toBeVisible()
   const html = await (await request.get('/acme/capsule')).text()
   expect(html).toContain(`<meta name="description" content="${description}"`)
   const markdown = await (await request.get('/acme/capsule.md')).text()

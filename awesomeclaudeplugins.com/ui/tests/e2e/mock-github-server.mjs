@@ -137,7 +137,8 @@ function sendJson(response, status, payload) {
 }
 
 const server = createServer((request, response) => {
-  const pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname
+  const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1')
+  const { pathname } = requestUrl
   if (request.method === 'OPTIONS') {
     response.writeHead(204, {
       'access-control-allow-origin': '*',
@@ -185,6 +186,13 @@ const server = createServer((request, response) => {
 
   const pluginMatch = PLUGIN_PATH_PATTERN.exec(pathname)
   if (pluginMatch) {
+    if (requestUrl.searchParams.get('interrupt-body') === '1') {
+      response.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' })
+      response.flushHeaders()
+      response.write('{"name":')
+      setTimeout(() => response.destroy(), 50)
+      return
+    }
     const [, owner, name] = pluginMatch
     const plugin = fixtures[`${owner}/${name}`]?.plugin
     sendJson(response, plugin?.status ?? 404, plugin?.body ?? { message: 'Not Found' })
