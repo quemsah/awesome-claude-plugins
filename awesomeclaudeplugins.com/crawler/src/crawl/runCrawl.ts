@@ -192,9 +192,20 @@ async function crawlAndComplete(
   const previousAccepted = acceptedRepositories()
   const previousAcceptedIds = new Set(previousAccepted.map(({ id }) => id))
   const previousAcceptedUrls = new Set(previousAccepted.map(({ html_url }) => html_url?.toLowerCase()))
-  const codeMetrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0 }
+  const codeMetrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0, pluginSearchHits: 0, pluginNonRootHits: 0, pluginSaturatedPages: 0 }
   const code = await discover(db, reader, runId, options.ranges ?? [[0, 400_000]], heartbeat, now, options.log, codeMetrics)
   const repo = await discoverOptionalRepositories(db, reader, runId, options, heartbeat, now)
+  options.log?.({
+    level: 'info',
+    event: 'crawl.standalone_discovery_coverage',
+    phase: 'discovery',
+    category: 'standalone_discovery_coverage',
+    runId,
+    message: `Standalone discovery examined ${codeMetrics.pluginSearchHits} hits, excluded ${codeMetrics.pluginNonRootHits} non-root paths, and encountered ${codeMetrics.pluginSaturatedPages} capped pages`,
+    pluginSearchHits: codeMetrics.pluginSearchHits,
+    pluginNonRootHits: codeMetrics.pluginNonRootHits,
+    pluginSaturatedPages: codeMetrics.pluginSaturatedPages,
+  })
   const emptyYield = {
     uniqueCandidates: 0,
     acceptedMarketplaces: 0,

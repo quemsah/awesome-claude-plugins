@@ -227,6 +227,12 @@ function validSourceDiscovery(value: Record<string, unknown>): boolean {
       nonnegative(entry.rejectedCandidates) &&
       nonnegative(entry.pendingCandidates) &&
       optionalNonnegative(entry.acceptedStandalonePlugins) &&
+      optionalNonnegative(entry.pluginSearchHits) &&
+      optionalNonnegative(entry.pluginNonRootHits) &&
+      optionalNonnegative(entry.pluginSaturatedPages) &&
+      (entry.pluginSearchHits === undefined ||
+        entry.pluginNonRootHits === undefined ||
+        (entry.pluginNonRootHits as number) <= (entry.pluginSearchHits as number)) &&
       entry.acceptedMarketplaces +
         ((entry.acceptedStandalonePlugins as number) ?? 0) +
         entry.rejectedCandidates +

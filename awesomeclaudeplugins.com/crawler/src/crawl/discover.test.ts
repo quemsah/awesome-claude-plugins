@@ -12,6 +12,7 @@ const databases: Database.Database[] = []
 
 it('discovers only the exact root standalone manifest and retains its provenance', async () => {
   const db = database()
+  const metrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0, pluginSearchHits: 0, pluginNonRootHits: 0, pluginSaturatedPages: 0 }
   await discover(
     db,
     reader(async (query) =>
@@ -25,10 +26,37 @@ it('discovers only the exact root standalone manifest and retains its provenance
     ),
     'run-1',
     [[0, 150]],
+    undefined,
+    undefined,
+    undefined,
+    metrics,
   )
+  expect(metrics).toMatchObject({ pluginSearchHits: 3, pluginNonRootHits: 2, pluginSaturatedPages: 0 })
   expect(db.prepare('SELECT html_url FROM repositories').all()).toEqual([{ html_url: 'https://github.com/acme/root' }])
   expect(db.prepare('SELECT query_id FROM discovery_candidates').all()).toEqual([{ query_id: 'plugin_filename_path' }])
 })
+it('records capped standalone searches when a size range cannot be split', async () => {
+  const db = database()
+  const metrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0, pluginSearchHits: 0, pluginNonRootHits: 0, pluginSaturatedPages: 0 }
+  const result = await discover(
+    db,
+    reader(async (query, pageNumber) =>
+      query.startsWith('filename:plugin.json') && pageNumber === 1
+        ? page([item('https://github.com/acme/nested', null, 'nested/.claude-plugin/plugin.json')], 1000)
+        : page([], query.startsWith('filename:plugin.json') ? 1000 : 0),
+    ),
+    'run-1',
+    [[0, 0]],
+    undefined,
+    undefined,
+    undefined,
+    metrics,
+  )
+  expect(metrics.pluginNonRootHits).toBe(1)
+  expect(metrics.pluginSaturatedPages).toBeGreaterThanOrEqual(1)
+  expect(result.warnings).toContainEqual({ range: [0, 0], category: 'saturated', query_family: 'plugin_filename_path' })
+})
+
 const firstRange: SizeRange = [0, 150]
 const secondRange: SizeRange = [150, 200]
 

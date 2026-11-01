@@ -86,6 +86,33 @@ it('health-checks old stored links before discovery even when no search returns 
   expect(result).toMatchObject({ status: 'completed', healthCheck: { checked: 1, deleted: 1 } })
 })
 
+it('includes standalone Code Search coverage counters in the crawl report', async () => {
+  const db = database()
+  const result = await runCrawlImpl(
+    db,
+    reader({
+      searchCode: async (query) =>
+        query.startsWith('filename:plugin.json')
+          ? {
+              items: [
+                { path: '.claude-plugin/plugin.json', repository: { html_url: 'https://github.com/acme/root', description: null } },
+                { path: 'nested/.claude-plugin/plugin.json', repository: { html_url: 'https://github.com/acme/nested', description: null } },
+              ],
+              total_count: 2,
+              incomplete_results: false,
+            }
+          : { items: [], total_count: 0, incomplete_results: false },
+    }),
+    'standalone-coverage',
+    { ranges: [firstRange] },
+  )
+  expect(result.discovery.sources.code_search).toMatchObject({
+    pluginSearchHits: 2,
+    pluginNonRootHits: 1,
+    pluginSaturatedPages: 0,
+  })
+})
+
 it('does not call Repository Search without explicit opt-in', async () => {
   const db = database()
   const client = reader({
