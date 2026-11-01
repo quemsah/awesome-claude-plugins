@@ -105,9 +105,11 @@ function getShardCache(): ShardCache {
 }
 
 function matchesIdentity(repo: Partial<Repo>, id: number, owner?: string | null, repoName?: string | null): boolean {
-  return repo.id === id &&
+  return (
+    repo.id === id &&
     (owner == null || repo.owner?.toLowerCase() === owner.toLowerCase()) &&
     (repoName == null || repo.repo_name?.toLowerCase() === repoName.toLowerCase())
+  )
 }
 
 /** Bounded LRU: touch a hit so frequently used detail buckets are not evicted. */
