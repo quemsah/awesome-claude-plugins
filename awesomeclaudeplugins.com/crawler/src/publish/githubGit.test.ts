@@ -92,7 +92,10 @@ describe('GitHubGitClient', () => {
     expect(decodedIndex.rows[0].slice(0, 6)).toEqual([1, null, null, 0, 0, null])
     expect(published.tree.find((entry) => entry.path.endsWith('/repo-details/1.json'))).toBeDefined()
     expect(published.tree.find((entry) => entry.path.endsWith('/repo-details/99.json'))).toBeDefined()
-    expect({ base_tree: published.base_tree, tree: published.tree.filter((entry) => !entry.path.endsWith('/search-index.json') && !entry.path.includes('/repo-details/')) }).toEqual({
+    expect({
+      base_tree: published.base_tree,
+      tree: published.tree.filter((entry) => !entry.path.endsWith('/search-index.json') && !entry.path.includes('/repo-details/')),
+    }).toEqual({
       base_tree: baseTree,
       tree: [
         { path: 'README.md', mode: '100644', type: 'blob', content: '# Catalog\n' },
