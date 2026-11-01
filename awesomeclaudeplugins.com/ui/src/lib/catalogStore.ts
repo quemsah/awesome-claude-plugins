@@ -109,7 +109,7 @@ export function readCatalogFiles(indexPath: string, reposPath: string): Repo[] {
     return repos as Repo[]
   }
   if (existsSync(indexPath)) throw new Error('Invalid compact catalog and no canonical repository snapshot')
-  return []
+  throw new Error('Missing compact catalog and canonical repository snapshot')
 }
 
 export function getCatalog(): readonly Repo[] {
