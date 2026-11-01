@@ -52,4 +52,6 @@
 - [Mobile: тот же путь](standalone-audit-mobile.png).
 - [HTTP 200 с оборванным телом: сохранённый plugin snapshot и local loading](standalone-audit-snapshot.png).
 
-Независимое Sol-loop ревью и итог CI будут указаны в PR; режим full-stop оставляет PR открытым без merge, auto-merge или merge queue.
+Независимый Sol-loop: **APPROVE**, один раунд `gpt-6.1-sol` на `high`; blocker/should по трём исходным документам не найдено. Оба production fixes и fixture seam признаны корректными и соразмерными задаче. Независимо прошли **337 crawler и 51 UI tests**; браузерные доказательства проверены по коду и результатам, повторно ревьюером не запускались. Usage не возвращён.
+
+Итог CI будет указан в PR; режим full-stop оставляет PR открытым без merge, auto-merge или merge queue.
