@@ -1,6 +1,7 @@
 import type { components } from '@octokit/openapi-types'
 import { isValidGitBranch, isValidGitHubOwner, isValidGitHubRepositoryName, isValidGitSha } from '../github/identifiers.js'
 import { throwIfShutdown } from '../shutdown.js'
+import { buildRepoDetailsShards, buildSearchIndex, type CatalogRecordInput } from '../output/splitCatalog.js'
 
 export type GitBranchHead = { sha: string; treeSha: string }
 
@@ -162,11 +163,24 @@ export class GitHubGitClient implements GitHubGit {
     ) {
       throw new GitHubGitError('All four snapshot contents must be strings')
     }
+    // Publish every derived catalog artifact in the same Git tree as repos.json.
+    // A subsequent crawl must never serve stale index/shard data alongside fresh repository data.
+    let repositories: CatalogRecordInput[]
+    try {
+      repositories = JSON.parse(files.reposJson) as CatalogRecordInput[]
+      if (!Array.isArray(repositories)) throw new Error('Invalid catalog')
+    } catch {
+      throw new GitHubGitError('Invalid repository snapshot JSON')
+    }
+    const dataPath = 'awesomeclaudeplugins.com/ui/src/data'
+    const details = buildRepoDetailsShards(repositories)
     const response = await this.request('/trees', 'POST', {
       base_tree: baseTreeSha,
       tree: [
         { path: 'README.md', mode: '100644', type: 'blob', content: files.readme },
         { path: 'awesomeclaudeplugins.com/ui/src/data/repos.json', mode: '100644', type: 'blob', content: files.reposJson },
+        { path: `${dataPath}/search-index.json`, mode: '100644', type: 'blob', content: buildSearchIndex(repositories) },
+        ...Object.entries(details).map(([name, content]) => ({ path: `${dataPath}/repo-details/${name}`, mode: '100644', type: 'blob', content })),
         { path: 'awesomeclaudeplugins.com/ui/src/data/stats.json', mode: '100644', type: 'blob', content: files.statsJson },
         {
           path: 'awesomeclaudeplugins.com/ui/src/data/markdown-paths.json',
