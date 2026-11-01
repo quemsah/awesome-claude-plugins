@@ -112,7 +112,7 @@ export function getDirectPluginInstallCommand({
 }: PluginInstallCommandInput & { owner?: string | null; repoName?: string | null }): string | null {
   const sourceCommand = getMarketplaceAddCommand(owner, repoName)
   const pluginCommand = getPluginInstallCommand({ pluginName, pluginId })
-  if (!sourceCommand || !pluginCommand) return null
+  if (!(sourceCommand && pluginCommand)) return null
 
   return `${pluginCommand} --marketplace ${sourceCommand.slice('/plugin marketplace add '.length)}`
 }
