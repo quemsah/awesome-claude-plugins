@@ -26,6 +26,7 @@ export interface RepositoryRow {
   marketplace_failed_parser_version: number | null
   createdAt: string
   updatedAt: string
+  last_health_check_at: string | null
 }
 
 export type EnrichmentFields = Pick<
@@ -223,6 +224,33 @@ export function listForEnrichment(db: Database.Database, cursor: number, limit: 
   if (!Number.isSafeInteger(cursor) || cursor < 0) throw new Error('cursor must be a nonnegative integer')
   if (!Number.isSafeInteger(limit) || limit <= 0) throw new Error('limit must be a positive integer')
   return db.prepare('SELECT * FROM repositories WHERE id > ? ORDER BY id LIMIT ?').all(cursor, limit) as RepositoryRow[]
+}
+
+export function listForHealthCheck(db: Database.Database): RepositoryRow[] {
+  return db
+    .prepare(`
+    SELECT * FROM repositories WHERE html_url IS NOT NULL
+    ORDER BY last_health_check_at, id LIMIT 200
+  `)
+    .all() as RepositoryRow[]
+}
+
+export function recordHealthCheck(db: Database.Database, id: number, at: string, canonicalUrl?: string): number {
+  return db.transaction(() => {
+    let keepId = id
+    if (canonicalUrl) {
+      const identity = new URL(canonicalUrl).pathname.split('/')
+      keepId = rebindCanonicalUrl(db, id, canonicalUrl, at).id
+      db.prepare('UPDATE repositories SET owner = ?, owner_url = ?, repo_name = ? WHERE id = ?').run(
+        identity[1],
+        `https://github.com/${identity[1]}`,
+        identity[2],
+        keepId,
+      )
+    }
+    db.prepare('UPDATE repositories SET last_health_check_at = ? WHERE id = ?').run(at, keepId)
+    return keepId
+  })()
 }
 
 export function hasCanonicalIdentity(row: PublishableRepository): boolean {

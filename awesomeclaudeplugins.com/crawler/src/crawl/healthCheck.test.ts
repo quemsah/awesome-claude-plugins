@@ -1,0 +1,246 @@
+import { createServer } from 'node:http'
+import Database from 'better-sqlite3'
+import { afterEach, expect, it } from 'vitest'
+import { GitHubClient } from '../github/client.js'
+import { getRepositoryById, listPublishable, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
+import { beginRun, failRun, listRunErrors } from '../storage/runs.js'
+import { initializeSchema } from '../storage/schema.js'
+import { healthCheck } from './healthCheck.js'
+
+const databases: Database.Database[] = []
+const at = '2026-11-01T12:00:00.000Z'
+
+function database() {
+  const db = new Database(':memory:')
+  initializeSchema(db)
+  beginRun(db, 'health', at)
+  databases.push(db)
+  return db
+}
+
+afterEach(() => {
+  for (const db of databases.splice(0)) db.close()
+})
+
+function client(respond: (url: string, init?: RequestInit) => Response | Promise<Response>) {
+  let time = 0
+  return new GitHubClient({
+    token: 'test-secret',
+    clock: {
+      now: () => time,
+      sleep: async (ms) => {
+        time += ms
+      },
+    },
+    fetch: (async (url, init) => respond(String(url), init)) as typeof fetch,
+  })
+}
+
+function seed(db: Database.Database, url = 'https://github.com/old/project') {
+  const id = upsertDiscovery(db, url, 'old project', '2020-01-01T00:00:00.000Z')
+  const [, , , owner, repo] = url.split('/')
+  updateEnriched(db, id, {
+    owner,
+    repo_name: repo,
+    owner_url: `https://github.com/${owner}`,
+    description: 'old project',
+    stargazers_count: 5,
+    forks_count: 2,
+    subscribers_count: 1,
+    repo_updated: '2020-01-01T00:00:00Z',
+    plugins_count: 1,
+  })
+  return id
+}
+
+it.each([404, 410, 451])('removes stale catalog links on HEAD %s without discovery or enrichment', async (status) => {
+  const db = database()
+  const id = seed(db)
+  const reader = client((_url, init) => {
+    expect(init?.method).toBe('HEAD')
+    expect(new Headers(init?.headers).has('Authorization')).toBe(false)
+    return new Response(null, { status })
+  })
+  expect(
+    await healthCheck(
+      db,
+      reader,
+      'health',
+      () => {},
+      () => at,
+    ),
+  ).toMatchObject({ checked: 1, deleted: 1 })
+  expect(getRepositoryById(db, id)).toBeNull()
+  expect(listPublishable(db)).toEqual([])
+})
+
+it.each([301, 302])('updates all canonical identity fields after HEAD %s and merges duplicate URLs', async (status) => {
+  const db = database()
+  const id = seed(db)
+  seed(db, 'https://github.com/new/renamed')
+  const reader = client(
+    (url) => new Response(null, url.endsWith('/old/project') ? { status, headers: { location: '/new/renamed' } } : { status: 200 }),
+  )
+  await healthCheck(
+    db,
+    reader,
+    'health',
+    () => {},
+    () => at,
+  )
+  expect(listPublishable(db)).toHaveLength(1)
+  expect(getRepositoryById(db, id)).toMatchObject({
+    html_url: 'https://github.com/new/renamed',
+    owner: 'new',
+    repo_name: 'renamed',
+    owner_url: 'https://github.com/new',
+    last_health_check_at: at,
+    stargazers_count: 5,
+  })
+})
+
+it('rotates through the 200 least recently checked rows independently of pushed dates', async () => {
+  const db = database()
+  for (let index = 0; index < 205; index++) seed(db, `https://github.com/old/project-${index}`)
+  const reader = client(() => new Response(null, { status: 200 }))
+  expect(
+    await healthCheck(
+      db,
+      reader,
+      'health',
+      () => {},
+      () => at,
+    ),
+  ).toMatchObject({ checked: 200 })
+  expect(db.prepare('SELECT COUNT(*) AS count FROM repositories WHERE last_health_check_at IS NULL').get()).toEqual({ count: 5 })
+  await healthCheck(
+    db,
+    reader,
+    'health',
+    () => {},
+    () => '2026-11-02T00:00:00.000Z',
+  )
+  expect(db.prepare('SELECT COUNT(*) AS count FROM repositories WHERE last_health_check_at IS NULL').get()).toEqual({ count: 0 })
+})
+
+it.each([403, 429, 500, 503])('keeps rows and advances the health queue on temporary HTTP %s', async (status) => {
+  const db = database()
+  const id = seed(db)
+  await healthCheck(
+    db,
+    client(() => new Response(null, { status })),
+    'health',
+    () => {},
+    () => at,
+  )
+  expect(getRepositoryById(db, id)).toMatchObject({ last_health_check_at: at, owner: 'old' })
+  expect(listRunErrors(db, 'health')).toMatchObject([{ phase: 'health_check', error_type: `health_check_http_${status}` }])
+})
+
+it.each(['https://example.com/new/renamed', '/login', '/new/renamed/issues'])(
+  'ignores redirects outside a canonical public repository: %s',
+  async (location) => {
+    const db = database()
+    const id = seed(db)
+    await healthCheck(
+      db,
+      client(() => new Response(null, { status: 302, headers: { location } })),
+      'health',
+      () => {},
+      () => at,
+    )
+    expect(getRepositoryById(db, id)).toMatchObject({ html_url: 'https://github.com/old/project', owner: 'old' })
+  },
+)
+
+it('does not write a health response after the run stops', async () => {
+  const db = database()
+  const id = seed(db)
+  const reader = client(() => {
+    failRun(db, 'health', at, 'stopped')
+    return new Response(null, { status: 404 })
+  })
+  await expect(
+    healthCheck(
+      db,
+      reader,
+      'health',
+      () => {},
+      () => at,
+    ),
+  ).rejects.toThrow()
+  expect(getRepositoryById(db, id)).not.toBeNull()
+})
+
+it('keeps a catalog publishable through real HTTP HEAD responses and a rename chain', async () => {
+  const db = database()
+  seed(db, 'https://github.com/old/deleted')
+  seed(db, 'https://github.com/old/gone')
+  seed(db, 'https://github.com/old/legal')
+  const renamed = seed(db)
+  const healthy = seed(db, 'https://github.com/old/healthy')
+  const unavailable = seed(db, 'https://github.com/old/unavailable')
+  const healthyCatalogDate = getRepositoryById(db, healthy)?.catalog_updated_at
+  const methods: string[] = []
+  const server = createServer((request, response) => {
+    methods.push(request.method ?? '')
+    const routes: Record<string, { status: number; location?: string }> = {
+      '/old/deleted': { status: 404 },
+      '/old/gone': { status: 410 },
+      '/old/legal': { status: 451 },
+      '/old/project': { status: 301, location: '/middle/project' },
+      '/middle/project': { status: 302, location: 'https://github.com/new/canonical' },
+      '/old/unavailable': { status: 503 },
+    }
+    const route = routes[request.url ?? ''] ?? { status: 200 }
+    response.writeHead(route.status, route.location ? { location: route.location } : {})
+    response.end()
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  try {
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('Missing HTTP fixture address')
+    const reader = client((url, init) => fetch(`http://127.0.0.1:${address.port}${new URL(url).pathname}`, init))
+    expect(
+      await healthCheck(
+        db,
+        reader,
+        'health',
+        () => {},
+        () => at,
+      ),
+    ).toEqual({
+      checked: 6,
+      deleted: 3,
+      renamed: 1,
+      warnings: 1,
+    })
+    expect(methods).toEqual(Array(8).fill('HEAD'))
+    expect(listPublishable(db).map(({ html_url }) => html_url)).toEqual([
+      'https://github.com/new/canonical',
+      'https://github.com/old/healthy',
+      'https://github.com/old/unavailable',
+    ])
+    expect(getRepositoryById(db, renamed)).toMatchObject({ owner: 'new', repo_name: 'canonical' })
+    expect(getRepositoryById(db, healthy)?.catalog_updated_at).toBe(healthyCatalogDate)
+    expect(getRepositoryById(db, unavailable)?.html_url).toBe('https://github.com/old/unavailable')
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+  }
+})
+
+it('keeps a failed network request in the catalog and rotates it behind unchecked rows', async () => {
+  const db = database()
+  const id = seed(db)
+  await healthCheck(
+    db,
+    client(() => {
+      throw new Error('offline')
+    }),
+    'health',
+    () => {},
+    () => at,
+  )
+  expect(getRepositoryById(db, id)).toMatchObject({ last_health_check_at: at, html_url: 'https://github.com/old/project' })
+  expect(listRunErrors(db, 'health')).toMatchObject([{ error_type: 'health_check_network' }])
+})

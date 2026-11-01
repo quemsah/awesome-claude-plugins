@@ -2,6 +2,7 @@ import type { components, operations } from '@octokit/openapi-types'
 import { throwIfShutdown } from '../shutdown.js'
 import { type Marketplace, MarketplaceFormatError, parseMarketplace } from './marketplace.js'
 import { type Clock, type GitHubRetryReason, RateBudget, type RateLog, type RateResource, systemClock } from './rateBudget.js'
+import { parseRepositoryUrl } from './repositoryUrl.js'
 
 export type { Marketplace } from './marketplace.js'
 
@@ -102,6 +103,7 @@ type GraphQLRequestAction<T> =
 export type GitHubRequestOptions = { maxAttempts?: number; sort?: 'updated' }
 
 export interface GitHubReader {
+  checkRepository?(owner: string, repo: string): Promise<RepoResult<{ html_url: string }>>
   searchRepositories(query: string, page: number, options?: GitHubRequestOptions): Promise<RepositorySearchPage>
   searchCode(query: string, page: number): Promise<SearchPage>
   getRepository(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<GitHubRepo>>
@@ -456,6 +458,53 @@ export class GitHubClient implements GitHubReader {
     )
     if (result.kind === 'found' && result.data.private) return { kind: 'not-found' }
     return result
+  }
+
+  /** Public HEAD requests avoid downloading metadata or treating token scope as repository health. */
+  async checkRepository(owner: string, repo: string): Promise<RepoResult<{ html_url: string }>> {
+    let url = `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
+    const temporary = (status: number | null, reason: string): RepoResult<{ html_url: string }> => ({
+      kind: 'temporary-error',
+      status,
+      reason,
+      retryCount: 0,
+    })
+    for (let redirect = 0; redirect <= 5; redirect++) {
+      await this.budget.acquire('core', this.signal)
+      throwIfShutdown(this.signal)
+      const timeout = AbortSignal.timeout(10_000)
+      let response: Response
+      try {
+        response = await this.transport(url, {
+          method: 'HEAD',
+          redirect: 'manual',
+          signal: this.signal ? AbortSignal.any([this.signal, timeout]) : timeout,
+        })
+      } catch {
+        throwIfShutdown(this.signal)
+        return temporary(null, 'GitHub health check network error')
+      }
+      throwIfShutdown(this.signal)
+      this.budget.observe('core', response.headers)
+      const delay = retryAfter(response.headers, this.clock.now())
+      if (delay !== null) this.budget.defer('core', delay)
+      if ([404, 410, 451].includes(response.status)) return { kind: 'not-found' }
+      if (response.status === 200) return { kind: 'found', data: { html_url: url } }
+      if (response.status !== 301 && response.status !== 302) return temporary(response.status, 'GitHub health check HTTP error')
+      const location = response.headers.get('location')
+      let destination: URL
+      try {
+        destination = new URL(location ?? '', url)
+      } catch {
+        return temporary(response.status, 'Invalid GitHub health check redirect')
+      }
+      const identity = parseRepositoryUrl(destination.href)
+      if (!location || destination.origin !== 'https://github.com' || destination.search || destination.hash || !identity) {
+        return temporary(response.status, 'Invalid GitHub health check redirect')
+      }
+      url = `https://github.com/${identity.owner}/${identity.repo}`
+    }
+    return temporary(302, 'GitHub health check redirect limit exceeded')
   }
 
   getMarketplace(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<Marketplace>> {
