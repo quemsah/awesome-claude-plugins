@@ -9,6 +9,26 @@ import { initializeSchema } from '../storage/schema.js'
 import { discover } from './discover.js'
 
 const databases: Database.Database[] = []
+
+it('discovers only the exact root standalone manifest and retains its provenance', async () => {
+  const db = database()
+  await discover(
+    db,
+    reader(async (query) =>
+      query.startsWith('filename:plugin.json')
+        ? page([
+            item('https://github.com/acme/root', null, '.claude-plugin/plugin.json'),
+            item('https://github.com/acme/nested', null, 'plugins/nested/.claude-plugin/plugin.json'),
+            item('https://github.com/acme/example', null, '.claude-plugin/examples/plugin.json'),
+          ])
+        : page([]),
+    ),
+    'run-1',
+    [[0, 150]],
+  )
+  expect(db.prepare('SELECT html_url FROM repositories').all()).toEqual([{ html_url: 'https://github.com/acme/root' }])
+  expect(db.prepare('SELECT query_id FROM discovery_candidates').all()).toEqual([{ query_id: 'plugin_filename_path' }])
+})
 const firstRange: SizeRange = [0, 150]
 const secondRange: SizeRange = [150, 200]
 
@@ -55,11 +75,11 @@ function errors(db: Database.Database) {
 }
 
 function marketplaceQueries(queries: string[]): string[] {
-  return queries.filter((query) => query.startsWith('filename:'))
+  return queries.filter((query) => query.startsWith('filename:marketplace.json'))
 }
 
 function marketplaceCalls(calls: Array<[string, number]>): Array<[string, number]> {
-  return calls.filter(([query]) => query.startsWith('filename:'))
+  return calls.filter(([query]) => query.startsWith('filename:marketplace.json'))
 }
 
 it('honors rejection caching in Code Search but retries after the 90-day TTL', async () => {
@@ -92,16 +112,18 @@ it('runs both marketplace queries and counts an empty first page as successful c
   expect(calls).toEqual([
     ['filename:marketplace.json path:.claude-plugin size:0..150', 1],
     ['.claude-plugin/marketplace.json in:path size:0..150', 1],
+    ['filename:plugin.json path:.claude-plugin size:0..150', 1],
   ])
   expect(result).toEqual({
     newUrls: 0,
     existingUrls: 0,
-    successfulRanges: 2,
+    successfulRanges: 3,
     warningCount: 0,
     warnings: [],
     families: {
       marketplace_filename_path: { successfulRanges: 1, warningCount: 0 },
       marketplace_path_literal: { successfulRanges: 1, warningCount: 0 },
+      plugin_filename_path: { successfulRanges: 1, warningCount: 0 },
     },
   })
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 0 })
@@ -123,15 +145,18 @@ it('runs both query families in order and caches successful empty coverage per f
   expect(calls).toEqual([
     ['filename:marketplace.json path:.claude-plugin size:0..10', 1],
     ['.claude-plugin/marketplace.json in:path size:0..10', 1],
+    ['filename:plugin.json path:.claude-plugin size:0..10', 1],
   ])
   expect(result.families).toEqual({
     marketplace_filename_path: { successfulRanges: 1, warningCount: 0 },
     marketplace_path_literal: { successfulRanges: 1, warningCount: 0 },
+    plugin_filename_path: { successfulRanges: 1, warningCount: 0 },
   })
-  expect(result.successfulRanges).toBe(2)
+  expect(result.successfulRanges).toBe(3)
   expect(db.prepare('SELECT query_family, range_start, range_end FROM discovery_ranges ORDER BY query_family').all()).toEqual([
     { query_family: 'marketplace_filename_path', range_start: 0, range_end: 10 },
     { query_family: 'marketplace_path_literal', range_start: 0, range_end: 10 },
+    { query_family: 'plugin_filename_path', range_start: 0, range_end: 10 },
   ])
 })
 
@@ -189,7 +214,9 @@ it('deduplicates case-variant URLs across families before upserting them again',
   const result = await discover(
     db,
     reader(async (query) =>
-      query.startsWith('filename:') ? page([item(duplicate, 'first')]) : page([item('https://github.com/OWNER/REPEATED', 'second')]),
+      query.startsWith('filename:marketplace.json')
+        ? page([item(duplicate, 'first')])
+        : page([item('https://github.com/OWNER/REPEATED', 'second')]),
     ),
     'run-1',
     [[0, 10]],
@@ -228,6 +255,7 @@ it('tags warnings with their family and preserves that family cache while later 
     'filename:marketplace.json path:.claude-plugin size:0..0',
     'filename:marketplace.json path:.claude-plugin size:1..1',
     '.claude-plugin/marketplace.json in:path size:0..1',
+    'filename:plugin.json path:.claude-plugin size:0..1',
   ])
   expect(
     db
@@ -262,10 +290,11 @@ it('keeps aggregate and family success counts aligned when a family range splits
     [[0, 3]],
   )
 
-  expect(result.successfulRanges).toBe(3)
+  expect(result.successfulRanges).toBe(4)
   expect(result.families).toEqual({
     marketplace_filename_path: { successfulRanges: 2, warningCount: 0 },
     marketplace_path_literal: { successfulRanges: 1, warningCount: 0 },
+    plugin_filename_path: { successfulRanges: 1, warningCount: 0 },
   })
 })
 
@@ -288,8 +317,8 @@ it('persists 100+1 results across two pages and stops on the short page', async 
     [firstRange],
   )
 
-  expect(visited).toEqual([1, 2, 1, 2])
-  expect(result).toMatchObject({ newUrls: 101, existingUrls: 0, successfulRanges: 2, warningCount: 0 })
+  expect(visited).toEqual([1, 2, 1, 2, 1, 2])
+  expect(result).toMatchObject({ newUrls: 101, existingUrls: 0, successfulRanges: 3, warningCount: 0 })
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 101 })
 })
 
@@ -316,8 +345,8 @@ it('continues past a short page when total_count says more results remain', asyn
     [firstRange],
   )
 
-  expect(visited).toEqual([1, 1, 2, 1, 1, 2])
-  expect(result).toMatchObject({ newUrls: 140, successfulRanges: 2, warningCount: 0 })
+  expect(visited).toEqual([1, 1, 2, 1, 1, 2, 1, 1, 2])
+  expect(result).toMatchObject({ newUrls: 140, successfulRanges: 3, warningCount: 0 })
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 140 })
 })
 
@@ -337,8 +366,8 @@ it('stops at total_count even if the last page is full', async () => {
     [firstRange],
   )
 
-  expect(visited).toEqual([1, 1])
-  expect(result).toMatchObject({ newUrls: 100, successfulRanges: 2, warningCount: 0 })
+  expect(visited).toEqual([1, 1, 1])
+  expect(result).toMatchObject({ newUrls: 100, successfulRanges: 3, warningCount: 0 })
 })
 
 it('splits a saturated size range until each child is below the search cap', async () => {
@@ -362,7 +391,7 @@ it('splits a saturated size range until each child is below the search cap', asy
     'filename:marketplace.json path:.claude-plugin size:0..1',
     'filename:marketplace.json path:.claude-plugin size:2..3',
   ])
-  expect(result).toMatchObject({ newUrls: 2, successfulRanges: 4, warningCount: 0 })
+  expect(result).toMatchObject({ newUrls: 2, successfulRanges: 6, warningCount: 0 })
 })
 
 it('reuses persisted terminal size ranges instead of probing the saturated parent again', async () => {
@@ -470,7 +499,7 @@ it('counts a URL only once when a parent page is replayed by split child ranges'
     [[0, 3]],
   )
 
-  expect(result).toMatchObject({ newUrls: 2, existingUrls: 0, successfulRanges: 4 })
+  expect(result).toMatchObject({ newUrls: 2, existingUrls: 0, successfulRanges: 6 })
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 2 })
 })
 
@@ -507,7 +536,7 @@ it('splits a range when a later page reports saturation even if that page is sho
     ['filename:marketplace.json path:.claude-plugin size:0..1', 1],
     ['filename:marketplace.json path:.claude-plugin size:2..3', 1],
   ])
-  expect(result).toMatchObject({ newUrls: 102, successfulRanges: 4, warningCount: 0 })
+  expect(result).toMatchObject({ newUrls: 102, successfulRanges: 6, warningCount: 0 })
   expect(errors(db)).toEqual([])
 })
 
@@ -536,7 +565,7 @@ it('splits a range when page ten is full even if the first total_count was below
     ['filename:marketplace.json path:.claude-plugin size:0..1', 1],
     ['filename:marketplace.json path:.claude-plugin size:2..3', 1],
   ])
-  expect(result).toMatchObject({ newUrls: 1002, successfulRanges: 4, warningCount: 0 })
+  expect(result).toMatchObject({ newUrls: 1002, successfulRanges: 6, warningCount: 0 })
   expect(errors(db)).toEqual([])
 })
 
@@ -561,8 +590,9 @@ it.each([1000, 1001, 20_000])(
     expect(visited).toEqual([
       ...Array.from({ length: 10 }, (_, index) => index + 1),
       ...Array.from({ length: 10 }, (_, index) => index + 1),
+      ...Array.from({ length: 10 }, (_, index) => index + 1),
     ])
-    expect(result).toMatchObject({ newUrls: 1000, existingUrls: 0, successfulRanges: 2, warningCount: 4 })
+    expect(result).toMatchObject({ newUrls: 1000, existingUrls: 0, successfulRanges: 3, warningCount: 6 })
     expect(errors(db)).toEqual([
       { phase: 'search', range_start: 0, range_end: 0, error_type: 'saturated' },
       { phase: 'search', range_start: 0, range_end: 0, error_type: 'page-limit' },
@@ -593,7 +623,7 @@ it('retries incomplete results and splits the range before accepting coverage', 
     'filename:marketplace.json path:.claude-plugin size:150..175',
     'filename:marketplace.json path:.claude-plugin size:176..200',
   ])
-  expect(result).toMatchObject({ successfulRanges: 4, newUrls: 2, warningCount: 2 })
+  expect(result).toMatchObject({ successfulRanges: 6, newUrls: 2, warningCount: 3 })
   expect(errors(db)).toEqual([{ phase: 'search', range_start: 150, range_end: 200, error_type: 'incomplete-results' }])
 })
 
@@ -622,7 +652,7 @@ it('retries a short Code Search page and splits the range if pagination still un
     ['filename:marketplace.json path:.claude-plugin size:0..1', 1],
     ['filename:marketplace.json path:.claude-plugin size:2..3', 1],
   ])
-  expect(result).toMatchObject({ newUrls: 3, successfulRanges: 4, warningCount: 2 })
+  expect(result).toMatchObject({ newUrls: 3, successfulRanges: 6, warningCount: 3 })
   expect(errors(db)).toEqual([{ phase: 'search', range_start: 0, range_end: 3, error_type: 'short-page' }])
 })
 
@@ -650,7 +680,7 @@ it('records an unsplittable incomplete range and continues with later ranges', a
     'filename:marketplace.json path:.claude-plugin size:0..0',
     'filename:marketplace.json path:.claude-plugin size:1..1',
   ])
-  expect(result).toMatchObject({ successfulRanges: 2, newUrls: 1, warningCount: 2 })
+  expect(result).toMatchObject({ successfulRanges: 3, newUrls: 1, warningCount: 3 })
   expect(errors(db)).toEqual([{ phase: 'search', range_start: 0, range_end: 0, error_type: 'incomplete-results' }])
 })
 
@@ -682,7 +712,7 @@ it('counts overlapping URLs as existing and preserves enriched data while refres
     [firstRange, secondRange],
   )
 
-  expect(result).toMatchObject({ newUrls: 1, existingUrls: 1, successfulRanges: 4, warningCount: 0 })
+  expect(result).toMatchObject({ newUrls: 1, existingUrls: 1, successfulRanges: 6, warningCount: 0 })
   expect(db.prepare('SELECT id, description, stargazers_count FROM repositories WHERE html_url = ?').get(enrichedUrl)).toEqual({
     id: originalId,
     description: 'authoritative REST description',
@@ -705,7 +735,7 @@ it('counts case-variant GitHub URLs as existing instead of new', async () => {
     [firstRange],
   )
 
-  expect(result).toMatchObject({ newUrls: 0, existingUrls: 1, successfulRanges: 2, warningCount: 0 })
+  expect(result).toMatchObject({ newUrls: 0, existingUrls: 1, successfulRanges: 3, warningCount: 0 })
   expect(db.prepare('SELECT id, html_url FROM repositories').all()).toEqual([{ id, html_url: 'https://github.com/team/repo' }])
 })
 
@@ -745,7 +775,7 @@ it('ignores private repositories returned by authenticated code search', async (
     [firstRange],
   )
 
-  expect(result).toMatchObject({ newUrls: 1, existingUrls: 0, successfulRanges: 2, warningCount: 0 })
+  expect(result).toMatchObject({ newUrls: 1, existingUrls: 0, successfulRanges: 3, warningCount: 0 })
   expect(db.prepare('SELECT html_url FROM repositories').all()).toEqual([{ html_url: 'https://github.com/owner/public' }])
 })
 
@@ -777,7 +807,7 @@ it('warns once per range for invalid repository URLs and never inserts them', as
     [secondRange],
   )
 
-  expect(result).toMatchObject({ newUrls: 1, existingUrls: 0, successfulRanges: 2, warningCount: 2 })
+  expect(result).toMatchObject({ newUrls: 1, existingUrls: 0, successfulRanges: 3, warningCount: 2 })
   expect(errors(db)).toEqual([{ phase: 'search', range_start: 150, range_end: 200, error_type: 'invalid-url' }])
   expect(db.prepare('SELECT html_url FROM repositories').all()).toEqual([{ html_url: 'https://github.com/owner/valid' }])
 })
@@ -816,8 +846,8 @@ it('retains first-page rows and continues the next range when page two fails tem
     [firstRange, secondRange],
   )
 
-  expect(visited.map(([, number]) => number)).toEqual([1, 2, 1, 1, 2, 1])
-  expect(result).toMatchObject({ newUrls: 101, successfulRanges: 4, warningCount: 2 })
+  expect(visited.map(([, number]) => number)).toEqual([1, 2, 1, 1, 2, 1, 1, 2, 1])
+  expect(result).toMatchObject({ newUrls: 101, successfulRanges: 6, warningCount: 3 })
   expect(errors(db)).toEqual([{ phase: 'search', range_start: 0, range_end: 150, error_type: 'temporary-error' }])
   expect(
     listRunErrors(db, 'run-1')
@@ -839,7 +869,7 @@ it('makes a complete GitHub outage explicit so publication cannot mistake stale 
     [firstRange, secondRange],
   )
 
-  expect(result).toMatchObject({ newUrls: 0, existingUrls: 0, successfulRanges: 0, warningCount: 4 })
+  expect(result).toMatchObject({ newUrls: 0, existingUrls: 0, successfulRanges: 0, warningCount: 6 })
   expect(errors(db)).toEqual([
     { phase: 'search', range_start: 0, range_end: 150, error_type: 'temporary-error' },
     { phase: 'search', range_start: 150, range_end: 200, error_type: 'temporary-error' },

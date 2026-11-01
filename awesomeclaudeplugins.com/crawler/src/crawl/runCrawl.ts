@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import { GitHubFatalError, type GitHubReader, GitHubTemporaryError } from '../github/client.js'
 import { repositorySearchQueries } from '../github/repositorySearchQueries.js'
+import { discoverySearchFamilies } from '../github/searchFamilies.js'
 import type { SizeRange } from '../github/sizeRanges.js'
 import type { Log } from '../logging.js'
 import { ShutdownError, throwIfShutdown } from '../shutdown.js'
@@ -44,6 +45,7 @@ export type DiscoverySourceSummary = {
   uniqueCandidates: number
   newUrls: number
   acceptedMarketplaces: number
+  acceptedStandalonePlugins: number
   rejectedCandidates: number
   pendingCandidates: number
   saturatedPartitions: number
@@ -193,7 +195,13 @@ async function crawlAndComplete(
   const codeMetrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0 }
   const code = await discover(db, reader, runId, options.ranges ?? [[0, 400_000]], heartbeat, now, options.log, codeMetrics)
   const repo = await discoverOptionalRepositories(db, reader, runId, options, heartbeat, now)
-  const emptyYield = { uniqueCandidates: 0, acceptedMarketplaces: 0, rejectedCandidates: 0, pendingCandidates: 0 }
+  const emptyYield = {
+    uniqueCandidates: 0,
+    acceptedMarketplaces: 0,
+    acceptedStandalonePlugins: 0,
+    rejectedCandidates: 0,
+    pendingCandidates: 0,
+  }
   const discovery: CrawlDiscoverySummary = {
     ...code,
     coverageScope: 'configured_query_catalog',
@@ -204,7 +212,7 @@ async function crawlAndComplete(
         ...codeMetrics,
         ...emptyYield,
         state: codeMetrics.incompletePartitions ? 'incomplete' : codeMetrics.partitions ? 'complete' : 'not_due',
-        queries: 2,
+        queries: discoverySearchFamilies.length,
         newUrls: code.newUrls,
         saturatedPartitions: code.warnings.filter(({ category }) => category === 'saturated').length,
         warnings: [...new Set(code.warnings.map(({ category }) => category))],

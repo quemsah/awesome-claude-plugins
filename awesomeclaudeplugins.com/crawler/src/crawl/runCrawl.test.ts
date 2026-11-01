@@ -131,7 +131,7 @@ it('runs discovery before enrichment and completes with a typed report and store
     },
     getRepository: async (owner, name) => {
       events.push('repository')
-      expect(getRun(db, 'success')?.heartbeat_at).toBe('2026-09-23T00:04:00.000Z')
+      expect(getRun(db, 'success')?.heartbeat_at).toBe('2026-09-23T00:06:00.000Z')
       return { kind: 'found', data: repo(owner, name) }
     },
     getMarketplace: async () => {
@@ -143,11 +143,20 @@ it('runs discovery before enrichment and completes with a typed report and store
 
   const result = await runCrawl(db, client, 'success', { ranges, now: () => new Date(time) })
 
-  expect(events).toEqual(['search:0..150', 'search:0..200', 'search:0..150', 'search:0..200', 'repository', 'marketplace'])
+  expect(events).toEqual([
+    'search:0..150',
+    'search:0..200',
+    'search:0..150',
+    'search:0..200',
+    'search:0..150',
+    'search:0..200',
+    'repository',
+    'marketplace',
+  ])
   expect(result).toMatchObject({
     runId: 'success',
     status: 'completed',
-    discovery: { newUrls: 1, existingUrls: 0, successfulRanges: 4, warningCount: 0 },
+    discovery: { newUrls: 1, existingUrls: 0, successfulRanges: 6, warningCount: 0 },
     enrichment: { newReady: 1, updated: 0, deleted404: 0, conclusive: 1 },
     warningCount: 0,
     errorCategories: {},
@@ -155,8 +164,8 @@ it('runs discovery before enrichment and completes with a typed report and store
   expect(getRun(db, 'success')).toMatchObject({
     status: 'completed',
     started_at: '2026-09-23T00:00:00.000Z',
-    heartbeat_at: '2026-09-23T00:04:30.000Z',
-    completed_at: '2026-09-23T00:04:30.000Z',
+    heartbeat_at: '2026-09-23T00:06:30.000Z',
+    completed_at: '2026-09-23T00:06:30.000Z',
     warning_count: 0,
     published_at: null,
     commit_sha: null,
@@ -203,10 +212,14 @@ it('logs per-family outcomes and enriches stored and newly discovered repositori
     'search:filename:marketplace.json path:.claude-plugin size:0..10',
     'search:.claude-plugin/marketplace.json in:path size:0..10',
   ])
-  expect(events.slice(2)).toEqual(['repository:existing/repo', 'repository:new/repo'])
+  expect(events.slice(2)).toEqual([
+    'search:filename:plugin.json path:.claude-plugin size:0..10',
+    'repository:existing/repo',
+    'repository:new/repo',
+  ])
   expect(result.discovery).toMatchObject({
     newUrls: 1,
-    successfulRanges: 1,
+    successfulRanges: 2,
     warningCount: 1,
     families: {
       marketplace_filename_path: { successfulRanges: 1, warningCount: 0 },
@@ -284,7 +297,7 @@ it('fails rather than completing when both discovery sources fail, even if enric
   expect(db.prepare('SELECT owner FROM repositories WHERE html_url = ?').get(url)).toEqual({ owner: 'team' })
   expect(getRun(db, 'no-search')).toMatchObject({ status: 'failed', last_error: 'no_successful_ranges', published_at: null })
   const errors = listRunErrors(db, 'no-search')
-  expect(errors.filter(({ phase }) => phase === 'search')).toHaveLength(4)
+  expect(errors.filter(({ phase }) => phase === 'search')).toHaveLength(6)
   expect(errors.at(-1)).toMatchObject({ phase: 'crawl', error_type: 'no_successful_ranges' })
 })
 
@@ -428,11 +441,11 @@ it('completes with warnings from stored search and enrichment errors, including 
 
   const result = await runCrawl(db, client, 'partial', { ranges })
 
-  expect(result.discovery.successfulRanges).toBe(4)
+  expect(result.discovery.successfulRanges).toBe(6)
   expect(result.enrichment).toMatchObject({ newIncomplete: 1, conclusive: 1 })
-  expect(result.errorCategories).toEqual({ 'incomplete-results': 2, 'temporary-error': 2, repository_temporary_error: 1 })
-  expect(result.warningCount).toBe(5)
-  expect(getRun(db, 'partial')).toMatchObject({ status: 'completed', warning_count: 5 })
+  expect(result.errorCategories).toEqual({ 'incomplete-results': 3, 'temporary-error': 3, repository_temporary_error: 1 })
+  expect(result.warningCount).toBe(7)
+  expect(getRun(db, 'partial')).toMatchObject({ status: 'completed', warning_count: 7 })
 })
 
 it('counts any valid persisted error category without inheriting object properties', async () => {
@@ -459,9 +472,9 @@ it('counts any valid persisted error category without inheriting object properti
     { ranges: [firstRange] },
   )
 
-  expect(result.warningCount).toBe(2)
-  expect(result.errorCategories).toEqual({ constructor: 2 })
-  expect(getRun(db, 'category')?.warning_count).toBe(2)
+  expect(result.warningCount).toBe(3)
+  expect(result.errorCategories).toEqual({ constructor: 3 })
+  expect(getRun(db, 'category')?.warning_count).toBe(3)
 })
 
 it('heartbeats throughout enrichment batches without adding reader requests', async () => {
@@ -756,7 +769,7 @@ it('finishes the crawl while reporting bounded incomplete repo coverage and post
     { ranges: [[0, 1]], now: () => new Date('2026-10-30T12:00:00Z'), log },
   )
   expect(result.status).toBe('completed')
-  expect(order.slice(0, 3)).toEqual(['code', 'code', 'repo'])
+  expect(order.slice(0, 4)).toEqual(['code', 'code', 'code', 'repo'])
   expect(order.indexOf('enrich')).toBeGreaterThan(order.lastIndexOf('repo'))
   expect(result.discovery).toMatchObject({
     coverageScope: 'configured_query_catalog',
@@ -765,8 +778,8 @@ it('finishes the crawl while reporting bounded incomplete repo coverage and post
     sources: {
       code_search: {
         state: 'complete',
-        pagesFetched: 2,
-        totalResults: 2,
+        pagesFetched: 3,
+        totalResults: 3,
         uniqueCandidates: 1,
         newUrls: 1,
         acceptedMarketplaces: 1,
@@ -837,7 +850,7 @@ it('marks a saturated Code Search leaf incomplete even when GitHub returns all a
     'saturated-code',
     { ranges: [[0, 0]], now: () => new Date('2026-10-30T12:00:00Z') },
   )
-  expect(result.discovery.sources.code_search).toMatchObject({ state: 'incomplete', incompletePartitions: 2, saturatedPartitions: 2 })
+  expect(result.discovery.sources.code_search).toMatchObject({ state: 'incomplete', incompletePartitions: 3, saturatedPartitions: 3 })
 })
 
 it('counts each incomplete Code Search leaf separately when cached partitions fail', async () => {
@@ -866,7 +879,7 @@ it('counts each incomplete Code Search leaf separately when cached partitions fa
     'cached-leaves',
     { ranges: [[0, 1]], now: () => new Date('2026-10-30T12:00:00Z') },
   )
-  expect(result.discovery.sources.code_search).toMatchObject({ state: 'incomplete', partitions: 3, incompletePartitions: 2 })
+  expect(result.discovery.sources.code_search).toMatchObject({ state: 'incomplete', partitions: 4, incompletePartitions: 3 })
 })
 
 it('does not count an existing accepted canonical marketplace as an addition when a merge changes its row id', async () => {

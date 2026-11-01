@@ -19,7 +19,8 @@ export function discoveryYield(db: Database.Database, runId: string, source?: Di
   return db
     .prepare(`
     SELECT COUNT(*) AS uniqueCandidates,
-      COALESCE(SUM(CASE WHEN r.plugins_count > 0 THEN 1 ELSE 0 END), 0) AS acceptedMarketplaces,
+      COALESCE(SUM(CASE WHEN r.plugins_count > 0 AND COALESCE(r.manifest_kind, 'marketplace') != 'standalone-plugin' THEN 1 ELSE 0 END), 0) AS acceptedMarketplaces,
+      COALESCE(SUM(CASE WHEN r.plugins_count > 0 AND r.manifest_kind = 'standalone-plugin' THEN 1 ELSE 0 END), 0) AS acceptedStandalonePlugins,
       COALESCE(SUM(CASE WHEN r.id IS NULL OR r.plugins_count = 0 THEN 1 ELSE 0 END), 0) AS rejectedCandidates,
       COALESCE(SUM(CASE WHEN r.id IS NOT NULL AND r.plugins_count IS NULL THEN 1 ELSE 0 END), 0) AS pendingCandidates
     FROM (SELECT DISTINCT repository_id FROM discovery_candidates WHERE run_id = ? AND (? IS NULL OR source = ?)) c
@@ -28,6 +29,7 @@ export function discoveryYield(db: Database.Database, runId: string, source?: Di
     .get(runId, source ?? null, source ?? null) as {
     uniqueCandidates: number
     acceptedMarketplaces: number
+    acceptedStandalonePlugins: number
     rejectedCandidates: number
     pendingCandidates: number
   }

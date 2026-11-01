@@ -177,7 +177,7 @@ describe('orchestration', () => {
       })
       expect(result).toMatchObject({
         report: {
-          discovery: { successfulRanges: 2 },
+          discovery: { successfulRanges: 3 },
           enrichment: { updated: 1, deleted404: 2, deletedBlankUrl: 2 },
           errorCategories: {},
           rateBuckets,
@@ -217,7 +217,11 @@ describe('orchestration', () => {
     expect(notify.notifyFailure).toHaveBeenCalledWith(
       expect.objectContaining({
         reason: 'no_successful_ranges',
-        problematicRanges: ['marketplace_filename_path size:0..150', 'marketplace_path_literal size:0..150'],
+        problematicRanges: [
+          'marketplace_filename_path size:0..150',
+          'marketplace_path_literal size:0..150',
+          'plugin_filename_path size:0..150',
+        ],
       }),
     )
     expect(JSON.stringify(listRunErrors(db, 'failed'))).not.toContain('read-secret')
@@ -245,7 +249,7 @@ describe('orchestration', () => {
     const result = await executePublish(db, git, 'prepared', { now, notifier: notify, log, writeEnabled: true })
     expect(result).toMatchObject({ status: 'published', sha: 'd'.repeat(40) })
     expect(result.report).toMatchObject({
-      discovery: { successfulRanges: 2 },
+      discovery: { successfulRanges: 3 },
       enrichment: { updated: 1 },
       warningCount: 0,
       errorCategories: {},
@@ -302,6 +306,7 @@ describe('orchestration', () => {
       families: {
         marketplace_filename_path: { successfulRanges: 4, warningCount: 1 },
         marketplace_path_literal: { successfulRanges: 0, warningCount: 0 },
+        plugin_filename_path: { successfulRanges: 0, warningCount: 0 },
       },
     })
     db.close()

@@ -145,7 +145,8 @@ function processItems(
 ): void {
   runWhileActive(db, state.runId, () => {
     for (const { path, repository } of result.items) {
-      if (state.queryFamily === 'marketplace_path_literal' && path !== '.claude-plugin/marketplace.json') continue
+      const expectedPath = discoverySearchFamilies.find(({ queryFamily }) => queryFamily === state.queryFamily)?.expectedPath
+      if (expectedPath && path !== expectedPath) continue
       if (repository.private === true) continue
       const url = repository.html_url
       if (!parseRepositoryUrl(url)) {
@@ -537,6 +538,7 @@ export async function discover(
     families: {
       marketplace_filename_path: { successfulRanges: 0, warningCount: 0 },
       marketplace_path_literal: { successfulRanges: 0, warningCount: 0 },
+      plugin_filename_path: { successfulRanges: 0, warningCount: 0 },
     },
   }
   const writeDiscovery = createDiscoveryWriter(db)
