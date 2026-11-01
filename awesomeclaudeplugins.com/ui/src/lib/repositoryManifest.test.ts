@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { loadRepositoryManifest } from './repositoryManifest.ts'
+import { loadRepositoryManifest, repositoryManifestErrorMessage } from './repositoryManifest.ts'
 
 it('loads a root plugin only after marketplace 404', async () => {
   const paths: string[] = []
@@ -27,4 +27,19 @@ it('keeps an invalid marketplace distinct from a missing manifest', async () => 
     reason: 'invalid-content',
   })
   expect(await loadRepositoryManifest(async () => new Response(null, { status: 404 }))).toEqual({ kind: 'missing' })
+})
+
+it.each([
+  ['.claude-plugin/marketplace.json', 'marketplace'],
+  ['.claude-plugin/plugin.json', 'plugin'],
+] as const)('reports the actual %s manifest for HTTP and content errors', (path, name) => {
+  expect(repositoryManifestErrorMessage({ kind: 'error', path, reason: 'http', status: 429 })).toContain(
+    `Failed to load ${name} manifest due to a request limit`
+  )
+  expect(repositoryManifestErrorMessage({ kind: 'error', path, reason: 'http', status: 503 })).toContain(
+    `Failed to load ${name} manifest.`
+  )
+  expect(repositoryManifestErrorMessage({ kind: 'error', path, reason: 'invalid-content' })).toBe(
+    `${name === 'plugin' ? 'Plugin' : 'Marketplace'} manifest contains invalid data.`
+  )
 })

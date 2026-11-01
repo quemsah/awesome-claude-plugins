@@ -11,7 +11,7 @@ import { Button } from '../../components/ui/button.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card.tsx'
 import { useLiveRepository } from '../../hooks/useLiveRepository.ts'
 import { getRepoBreadcrumbs } from '../../lib/breadcrumbs.ts'
-import { loadRepositoryManifest } from '../../lib/repositoryManifest.ts'
+import { loadRepositoryManifest, repositoryManifestErrorMessage } from '../../lib/repositoryManifest.ts'
 import type { CatalogSnapshotReason } from '../../lib/repositorySnapshot.ts'
 import type { GitHubRepository } from '../../schemas/github.schema.ts'
 import type { PluginSummary } from '../../schemas/repo.schema.ts'
@@ -27,9 +27,6 @@ const CATALOG_SNAPSHOT_NOTICES: Record<CatalogSnapshotReason, string> = {
 
 /** Raw serves `HEAD` as the repository default branch, so the manifest needs no live metadata. */
 const MARKETPLACE_REF = 'HEAD'
-const MARKETPLACE_LOAD_ERROR = 'Failed to load marketplace manifest. Try again or open the manifest file directly.'
-const MARKETPLACE_RATE_LIMIT_ERROR =
-  'Failed to load marketplace manifest due to a request limit. Try again later or open the manifest file directly.'
 
 type RepoPageClientProps = {
   apiBaseUrl: string
@@ -104,14 +101,7 @@ export function RepoPageClient({
           return
         }
         setPluginsStatus('error')
-        const label = result.path.endsWith('/plugin.json') ? 'Plugin' : 'Marketplace'
-        setPluginsError(
-          result.reason === 'invalid-content'
-            ? `${label} manifest contains invalid data.`
-            : result.status === 429
-              ? MARKETPLACE_RATE_LIMIT_ERROR
-              : MARKETPLACE_LOAD_ERROR
-        )
+        setPluginsError(repositoryManifestErrorMessage(result))
         return
       }
       setLoadedKind(result.kind)

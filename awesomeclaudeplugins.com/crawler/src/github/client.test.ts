@@ -20,6 +20,15 @@ it('reads and validates a root plugin manifest without marketplace fields', asyn
   expect(new Headers(requests[0].init?.headers).get('if-none-match')).toBe('"plugin"')
 })
 
+it('names the standalone manifest in the malformed JSON error', async () => {
+  const { client } = harness([new Response('{broken', { status: 200 })])
+  expect(await client.getPluginManifest('acme', 'reviewer')).toMatchObject({
+    kind: 'invalid-content',
+    failure: 'invalid-json',
+    reason: 'Invalid plugin JSON',
+  })
+})
+
 it('classifies an invalid standalone manifest as permanent content error', async () => {
   const { client } = harness([Response.json({ description: 'missing name' })])
   expect(await client.getPluginManifest('acme', 'reviewer')).toMatchObject({

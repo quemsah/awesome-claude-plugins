@@ -27,3 +27,12 @@ export async function loadRepositoryManifest(fetchManifest: (path: string) => Pr
   }
   return { kind: 'missing' }
 }
+
+/** Use the failed endpoint rather than the cached manifest kind when describing errors. */
+export function repositoryManifestErrorMessage(result: Extract<RepositoryManifestLoadResult, { kind: 'error' }>): string {
+  const label = result.path === '.claude-plugin/plugin.json' ? 'Plugin' : 'Marketplace'
+  if (result.reason === 'invalid-content') return `${label} manifest contains invalid data.`
+  if (result.status === 429)
+    return `Failed to load ${label.toLowerCase()} manifest due to a request limit. Try again later or open the manifest file directly.`
+  return `Failed to load ${label.toLowerCase()} manifest. Try again or open the manifest file directly.`
+}

@@ -1152,6 +1152,7 @@ export class GitHubClient implements GitHubReader {
     permanentContentErrors: boolean,
     finalAttempt: boolean,
   ): Promise<ResponseAction<T>> {
+    const manifestType = parse === parseStandalonePlugin ? 'plugin' : 'marketplace'
     let text: string
     try {
       text = await response.text()
@@ -1178,7 +1179,7 @@ export class GitHubClient implements GitHubReader {
             kind: 'invalid-content',
             failure: 'invalid-json',
             status: response.status,
-            reason: 'Invalid marketplace JSON',
+            reason: `Invalid ${manifestType} JSON`,
             retryCount: attempt,
             failureReason: 'invalid_json',
             retryable: false,
@@ -1220,7 +1221,7 @@ export class GitHubClient implements GitHubReader {
           result: {
             kind: 'temporary-error',
             status: response.status,
-            reason: 'Marketplace parser failure',
+            reason: `${manifestType === 'plugin' ? 'Plugin' : 'Marketplace'} parser failure`,
             retryCount: attempt,
             failureReason: 'parser_internal',
             retryable: false,
