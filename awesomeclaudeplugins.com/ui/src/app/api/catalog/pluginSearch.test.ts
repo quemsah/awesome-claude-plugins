@@ -17,6 +17,27 @@ const { fixtureRepos } = vi.hoisted(() => ({
       plugins_count: 1,
       plugins: [{ name: 'zerogravityplugin', description: 'aurora system diagnostics' }],
     },
+    {
+      id: 999_002,
+      html_url: 'https://github.com/catalog-fixture/large-marketplace',
+      owner: 'catalog-fixture',
+      owner_url: 'https://github.com/catalog-fixture',
+      repo_name: 'large-marketplace',
+      description: 'A large marketplace with many plugins',
+      stargazers_count: 5,
+      forks_count: 1,
+      subscribers_count: 1,
+      plugins_count: 50,
+      plugins: Array.from({ length: 50 }, (_, i) => ({
+        name: i === 30 ? 'thirtyfirstplugin' : i === 49 ? 'fiftiethplugin' : `plugin-${i + 1}`,
+        description:
+          i === 30
+            ? 'unique thirty-first plugin capability'
+            : i === 49
+              ? 'unique fiftieth plugin capability'
+              : `description for plugin ${i + 1}`,
+      })),
+    },
   ],
 }))
 
@@ -41,10 +62,11 @@ beforeEach(() => {
   holder.catalogSearchMatchesCache?.clear()
 })
 
-async function apiSearch(query: string): Promise<CatalogPayload> {
+async function apiSearch(query: string, view?: 'cards'): Promise<CatalogPayload> {
   const url = new URL('http://localhost/api/catalog')
   url.searchParams.set('q', query)
   url.searchParams.set('pageSize', '10')
+  if (view) url.searchParams.set('view', view)
   const response = await GET(new Request(url, { headers: { 'x-real-ip': `plugin-search-${query}` } }))
 
   if (!response.ok) throw new Error(`/api/catalog returned ${response.status}`)
@@ -69,5 +91,35 @@ describe('/api/catalog plugin metadata search', () => {
     expect(server.repos.map(({ id, owner, repo_name, plugins }) => ({ id, owner, repo_name, plugins }))).toEqual([expectedRepo])
     expect(api).toEqual(server)
     expect(api.repos.map(({ id, owner, repo_name, plugins }) => ({ id, owner, repo_name, plugins }))).toEqual([expectedRepo])
+  })
+
+  it('returns compact card payloads while still matching descriptions beyond 30 plugins', async () => {
+    const query = 'unique fiftieth plugin capability'
+    const full = await apiSearch(query)
+    const cards = await apiSearch(query, 'cards')
+    const serverCards = searchCatalogRepos(query, 'stars-desc', 0, 10, { summaries: 'omit' })
+
+    expect(cards).toEqual(serverCards)
+    expect(cards.total).toBe(1)
+    expect(cards.repos[0]?.id).toBe(999_002)
+    expect(cards.repos[0]?.plugins).toBeUndefined()
+    expect(full.repos[0]?.plugins).toHaveLength(50)
+    expect(JSON.stringify(cards).length).toBeLessThan(JSON.stringify(full).length)
+  })
+
+  it.each([
+    ['thirtyfirstplugin', '31st plugin name'],
+    ['unique thirty-first plugin capability', '31st plugin description'],
+    ['fiftiethplugin', '50th plugin name'],
+    ['unique fiftieth plugin capability', '50th plugin description'],
+  ])('finds parent repository by %s (%s) beyond initial 30 plugins', async (query) => {
+    const server = serverSearch(query)
+    const api = await apiSearch(query)
+
+    expect(server.total).toBe(1)
+    expect(server.repos).toHaveLength(1)
+    expect(server.repos[0]?.id).toBe(999_002)
+    expect(server.repos[0]?.repo_name).toBe('large-marketplace')
+    expect(api).toEqual(server)
   })
 })

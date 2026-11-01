@@ -148,7 +148,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
     nextPage.current = 1
     setPendingLoad('replace')
     setFailedLoad(null)
-    const params = new URLSearchParams({ page: '0', pageSize: `${CATALOG_PAGE_SIZE}`, q: searchTerm, sort: sortOption })
+    const params = new URLSearchParams({ page: '0', pageSize: `${CATALOG_PAGE_SIZE}`, q: searchTerm, sort: sortOption, view: 'cards' })
 
     ;(async () => {
       try {
@@ -201,6 +201,7 @@ export function SearchPage({ initialPluginCount, initialRepos, initialSearchTerm
       pageSize: `${CATALOG_PAGE_SIZE}`,
       q: searchTerm,
       sort: sortOption,
+      view: 'cards',
     })
 
     try {

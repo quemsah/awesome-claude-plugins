@@ -1,4 +1,5 @@
 import type { EnrichmentCounts } from '../crawl/enrich.js'
+import type { HealthCheckSummary } from '../crawl/healthCheck.js'
 import type { GitHubRateBuckets } from '../github/rateBudget.js'
 import { ShutdownError, sleepWithShutdown, throwIfShutdown } from '../shutdown.js'
 
@@ -29,6 +30,7 @@ export type TelegramSummary = {
   problematicRanges: readonly string[]
   progress?: TelegramProgressBreakdown
   enrichment?: EnrichmentCounts
+  healthCheck?: HealthCheckSummary
   errorCategories?: Record<string, number>
   rateBuckets?: GitHubRateBuckets
   durationMs?: number
@@ -161,6 +163,10 @@ function summaryText(summary: TelegramSummary): string {
       ]
     : []
   details.push(...progressDetails(summary.progress))
+  if (summary.healthCheck) {
+    const health = summary.healthCheck
+    details.push(`health checked: ${health.checked}; deleted: ${health.deleted}; renamed: ${health.renamed}; warnings: ${health.warnings}`)
+  }
   if (summary.errorCategories) {
     const categories = Object.entries(summary.errorCategories).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     details.push(

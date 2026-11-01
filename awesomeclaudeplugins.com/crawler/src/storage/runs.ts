@@ -26,7 +26,7 @@ export interface RunRow {
   last_error: string | null
 }
 
-export type RunErrorPhase = 'search' | 'enrich' | 'publish' | 'notify' | 'crawl'
+export type RunErrorPhase = 'search' | 'enrich' | 'publish' | 'notify' | 'crawl' | 'health_check'
 
 export interface RunErrorInput {
   run_id: string
@@ -227,7 +227,7 @@ export function prepareRunErrorWriter(db: Database.Database) {
   `)
   return (error: RunErrorInput): void => {
     assertCategory(error.error_type, 'error_type')
-    if (!['search', 'enrich', 'publish', 'notify', 'crawl'].includes(error.phase)) throw new Error('Invalid error phase')
+    if (!['search', 'enrich', 'publish', 'notify', 'crawl', 'health_check'].includes(error.phase)) throw new Error('Invalid error phase')
     if (!Number.isSafeInteger(error.retry_count) || error.retry_count < 0) throw new Error('retry_count must be nonnegative')
     insert.run({
       ...error,
