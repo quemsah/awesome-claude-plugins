@@ -11,8 +11,18 @@ export type PluginInstallCommandInput = {
   marketplaceName?: string
 }
 
-// Repository path segments are validated separately from manifest plugin identifiers.
-const REPOSITORY_COMMAND_TOKEN_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i
+// CLI install identifiers are stricter than the catalog's safe display identifiers.
+// See https://code.claude.com/docs/en/plugins/marketplace-reference
+const INSTALL_TOKEN_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i
+const REPOSITORY_COMMAND_TOKEN_PATTERN = INSTALL_TOKEN_PATTERN
+
+function isInstallablePluginId(value: string): boolean {
+  return isSafePluginId(value) && INSTALL_TOKEN_PATTERN.test(value)
+}
+
+function isInstallableMarketplaceName(value: string): boolean {
+  return isInstallablePluginId(value) && !value.includes('..')
+}
 
 /**
  * Normalizes a plugin name for CLI usage.
@@ -23,7 +33,7 @@ const REPOSITORY_COMMAND_TOKEN_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i
  */
 export function normalizePluginName(pluginName?: string): string {
   const normalized = typeof pluginName === 'string' ? pluginName.trim().toLowerCase().replace(/\s+/g, '-') : ''
-  return isSafePluginId(normalized) ? normalized : ''
+  return isInstallablePluginId(normalized) ? normalized : ''
 }
 
 /**
@@ -35,7 +45,7 @@ export function isPluginInstallCommandVerified(pluginName?: string, marketplaceN
   const normalizedPluginName = normalizePluginName(pluginName)
   const normalizedMarketplaceName = typeof marketplaceName === 'string' ? marketplaceName.trim() : ''
 
-  return Boolean(normalizedPluginName && isSafePluginId(normalizedMarketplaceName))
+  return Boolean(normalizedPluginName && isInstallableMarketplaceName(normalizedMarketplaceName))
 }
 
 /**
@@ -52,10 +62,10 @@ export function isPluginInstallCommandVerified(pluginName?: string, marketplaceN
 export function getPluginInstallCommand({ pluginName, pluginId, marketplaceName }: PluginInstallCommandInput): string | null {
   const normalizedName = normalizePluginName(pluginName)
   const normalizedPluginId = typeof pluginId === 'string' ? pluginId.trim() : undefined
-  if (normalizedPluginId && !isSafePluginId(normalizedPluginId)) return null
+  if (normalizedPluginId && !isInstallablePluginId(normalizedPluginId)) return null
   const normalizedMarketplaceName = typeof marketplaceName === 'string' ? marketplaceName.trim() : undefined
 
-  if (normalizedMarketplaceName && !isSafePluginId(normalizedMarketplaceName)) {
+  if (normalizedMarketplaceName && !isInstallableMarketplaceName(normalizedMarketplaceName)) {
     return null
   }
 
@@ -110,9 +120,11 @@ export function getMarketplaceAddCommand(owner?: string | null, repoName?: strin
 export function getDirectPluginInstallCommand({
   pluginName,
   pluginId,
+  marketplaceName,
   owner,
   repoName,
 }: PluginInstallCommandInput & { owner?: string | null; repoName?: string | null }): string | null {
+  if (marketplaceName !== undefined && !isInstallableMarketplaceName(marketplaceName)) return null
   const sourceCommand = getMarketplaceAddCommand(owner, repoName)
   const pluginCommand = getPluginInstallCommand({ pluginName, pluginId })
   if (!(sourceCommand && pluginCommand)) return null
