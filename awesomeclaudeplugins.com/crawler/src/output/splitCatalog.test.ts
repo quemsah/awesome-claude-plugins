@@ -67,7 +67,7 @@ describe('splitCatalog', () => {
     const shards = buildRepoDetailsShards([sampleRepos[0], samePath], 10)
     expect(JSON.parse(shards['1.json'])['1'].description).toBe('Useful tips for claude')
     expect(() => buildRepoDetailsShards([sampleRepos[0], { ...sampleRepos[0], owner: 'unrelated' }], 10)).toThrow(
-      'Conflicting repository identity'
+      'Conflicting repository identity',
     )
   })
 
