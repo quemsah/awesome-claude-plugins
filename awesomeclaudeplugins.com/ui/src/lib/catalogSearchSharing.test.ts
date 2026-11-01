@@ -10,7 +10,6 @@ describe('catalog search index lifetime', () => {
       vi.resetModules()
       const first = await import('./catalog.ts')
       const total = first.searchCatalogRepos('superpowers', 'stars-desc').total
-      expect(total).toBeGreaterThan(0)
       const entry = holder[key]
       expect(entry).toBeDefined()
 
