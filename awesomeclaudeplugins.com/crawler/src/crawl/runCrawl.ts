@@ -182,7 +182,7 @@ async function crawlAndComplete(
     if (!heartbeatRun(db, runId, now())) throw new CrawlError('run_not_active')
   }
   throwIfShutdown(options.signal)
-  const health = await healthCheck(db, reader, runId, heartbeat, now, options.log)
+  const health = await healthCheck(db, reader, runId, heartbeat, now, options.log, { signal: options.signal })
   startRunPhase(db, runId, 'discovery', now())
   options.onPhase?.('discovery')
   const acceptedRepositories = () =>

@@ -111,6 +111,14 @@ describe('TelegramNotifier', () => {
     )
   })
 
+  it('includes the health-check outcomes in the notification body', async () => {
+    const test = harness([Response.json({ ok: true })])
+    await test.notifier.notifyDryRun({ ...summary, deletedCount: 21, healthCheck: { checked: 200, deleted: 20, renamed: 3, warnings: 2 } })
+    const message = body(test.requests[0]).text
+    expect(message).toContain('deleted: 21')
+    expect(message).toContain('health checked: 200; deleted: 20; renamed: 3; warnings: 2')
+  })
+
   it('reports all saturated range count but bounds a worst-case 220-range message below Telegram limit', async () => {
     const test = harness([Response.json({ ok: true })])
     const ranges = Array.from({ length: 220 }, (_, index) => `size:${index * 10_000}..${index * 10_000 + 9_999}`)

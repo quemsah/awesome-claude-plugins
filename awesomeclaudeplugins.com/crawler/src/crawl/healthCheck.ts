@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3'
 import type { GitHubReader } from '../github/client.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import type { Log } from '../logging.js'
+import { throwIfShutdown } from '../shutdown.js'
 import { deleteById, getRepositoryById, listForHealthCheck, recordHealthCheck } from '../storage/repositories.js'
 import { recordRunError, runWhileActive } from '../storage/runs.js'
 
@@ -14,6 +15,7 @@ export async function healthCheck(
   heartbeat: () => void,
   now: () => string,
   log?: Log,
+  options: { signal?: AbortSignal } = {},
 ): Promise<HealthCheckSummary> {
   const counts: HealthCheckSummary = { checked: 0, deleted: 0, renamed: 0, warnings: 0 }
   // Older/custom readers can omit the lightweight HEAD capability.
@@ -26,37 +28,77 @@ export async function healthCheck(
     runId,
     message: 'Checking up to 200 oldest repository links',
   })
-  for (const row of listForHealthCheck(db)) {
-    heartbeat()
-    // A preceding redirect may already have merged this duplicate away.
-    if (!getRepositoryById(db, row.id)) continue
-    const identity = row.html_url ? parseRepositoryUrl(row.html_url) : null
-    if (!identity) continue
-    const result = await reader.checkRepository(identity.owner, identity.repo)
-    heartbeat()
-    const at = now()
-    runWhileActive(db, runId, () => {
-      counts.checked++
-      if (result.kind === 'not-found') {
-        deleteById(db, row.id)
-        counts.deleted++
-        return
-      }
-      const canonicalUrl = result.kind === 'found' ? result.data.html_url : undefined
-      recordHealthCheck(db, row.id, at, canonicalUrl)
-      if (canonicalUrl && canonicalUrl !== row.html_url) counts.renamed++
-      if (result.kind === 'temporary-error') {
-        counts.warnings++
-        recordRunError(db, {
-          run_id: runId,
-          phase: 'health_check',
-          repository_id: row.id,
-          error_type: `health_check_${result.status === null ? 'network' : `http_${result.status}`}`,
-          retry_count: result.retryCount,
-          occurred_at: at,
+  const rows = listForHealthCheck(db)
+  const controller = new AbortController()
+  const signal = options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, 30_000)
+  let cursor = 0
+  const check = reader.checkRepository.bind(reader)
+  const worker = async () => {
+    try {
+      while (!signal.aborted && cursor < rows.length) {
+        const row = rows[cursor++]
+        heartbeat()
+        if (!getRepositoryById(db, row.id)) continue
+        const identity = row.html_url ? parseRepositoryUrl(row.html_url) : null
+        const result = identity ? await check(identity.owner, identity.repo, { signal }) : null
+        throwIfShutdown(options.signal)
+        if (signal.aborted) break
+        heartbeat()
+        const at = now()
+        runWhileActive(db, runId, () => {
+          // A concurrent redirect may already have merged this row away.
+          if (!getRepositoryById(db, row.id)) return
+          counts.checked++
+          if (result?.kind === 'not-found') {
+            deleteById(db, row.id)
+            counts.deleted++
+            return
+          }
+          const canonicalUrl = result?.kind === 'found' ? result.data.html_url : undefined
+          recordHealthCheck(db, row.id, at, canonicalUrl)
+          if (canonicalUrl && canonicalUrl !== row.html_url) counts.renamed++
+          if (!result || result.kind === 'temporary-error') {
+            counts.warnings++
+            recordRunError(db, {
+              run_id: runId,
+              phase: 'health_check',
+              repository_id: row.id,
+              error_type: !result
+                ? 'health_check_invalid_url'
+                : `health_check_${result.status === null ? 'network' : `http_${result.status}`}`,
+              retry_count: result?.retryCount ?? 0,
+              occurred_at: at,
+            })
+          }
         })
       }
-    })
+    } catch (error) {
+      if (timedOut) return
+      controller.abort()
+      throw error
+    }
+  }
+  try {
+    // Wait for cancellation to settle, including on errors; no writes may outlive this phase.
+    const workers = await Promise.allSettled(Array.from({ length: 4 }, worker))
+    throwIfShutdown(options.signal)
+    const failure = workers.find((result) => result.status === 'rejected')
+    if (failure?.status === 'rejected') throw failure.reason
+    if (timedOut) {
+      heartbeat()
+      runWhileActive(db, runId, () => {
+        counts.warnings++
+        recordRunError(db, { run_id: runId, phase: 'health_check', error_type: 'health_check_timeout', retry_count: 0, occurred_at: now() })
+      })
+    }
+  } finally {
+    clearTimeout(timer)
+    controller.abort()
   }
   log?.({
     level: 'info',

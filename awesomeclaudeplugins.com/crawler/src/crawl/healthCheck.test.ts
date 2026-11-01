@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import Database from 'better-sqlite3'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { GitHubClient } from '../github/client.js'
 import { getRepositoryById, listPublishable, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
 import { beginRun, failRun, listRunErrors } from '../storage/runs.js'
@@ -19,6 +19,7 @@ function database() {
 }
 
 afterEach(() => {
+  vi.useRealTimers()
   for (const db of databases.splice(0)) db.close()
 })
 
@@ -53,12 +54,18 @@ function seed(db: Database.Database, url = 'https://github.com/old/project') {
   return id
 }
 
-it.each([404, 410, 451])('removes stale catalog links on HEAD %s without discovery or enrichment', async (status) => {
+it.each([404, 410])('removes stale catalog links only after HEAD %s and an API confirmation', async (status) => {
   const db = database()
   const id = seed(db)
-  const reader = client((_url, init) => {
-    expect(init?.method).toBe('HEAD')
-    expect(new Headers(init?.headers).has('Authorization')).toBe(false)
+  const requests: string[] = []
+  const reader = client((url, init) => {
+    requests.push(url)
+    if (url.startsWith('https://github.com/')) {
+      expect(init?.method).toBe('HEAD')
+      expect(new Headers(init?.headers).has('Authorization')).toBe(false)
+    } else {
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer test-secret')
+    }
     return new Response(null, { status })
   })
   expect(
@@ -72,6 +79,45 @@ it.each([404, 410, 451])('removes stale catalog links on HEAD %s without discove
   ).toMatchObject({ checked: 1, deleted: 1 })
   expect(getRepositoryById(db, id)).toBeNull()
   expect(listPublishable(db)).toEqual([])
+  expect(requests).toEqual(['https://github.com/old/project', 'https://api.github.com/repos/old/project'])
+})
+
+it.each([200, 403, 451, 503])('retains a HEAD 404 when the confirmation API returns %s', async (status) => {
+  const db = database()
+  const id = seed(db)
+  await healthCheck(
+    db,
+    client((url) =>
+      url.startsWith('https://github.com/')
+        ? new Response(null, { status: 404 })
+        : status === 200
+          ? Response.json({ html_url: 'https://github.com/old/project', private: false })
+          : new Response(null, { status }),
+    ),
+    'health',
+    () => {},
+    () => at,
+  )
+  expect(getRepositoryById(db, id)).not.toBeNull()
+})
+
+it('retains legally restricted repositories without attempting deletion confirmation', async () => {
+  const db = database()
+  const id = seed(db)
+  const requests: string[] = []
+  await healthCheck(
+    db,
+    client((url) => {
+      requests.push(url)
+      return new Response(null, { status: 451 })
+    }),
+    'health',
+    () => {},
+    () => at,
+  )
+  expect(getRepositoryById(db, id)).toMatchObject({ last_health_check_at: at })
+  expect(requests).toEqual(['https://github.com/old/project'])
+  expect(listRunErrors(db, 'health')).toMatchObject([{ error_type: 'health_check_http_451' }])
 })
 
 it.each([301, 302])('updates all canonical identity fields after HEAD %s and merges duplicate URLs', async (status) => {
@@ -241,7 +287,7 @@ it('keeps a catalog publishable through real HTTP HEAD responses and a rename ch
       '/middle/project': { status: 302, location: 'https://github.com/new/canonical' },
       '/old/unavailable': { status: 503 },
     }
-    const route = routes[request.url ?? ''] ?? { status: 200 }
+    const route = routes[(request.url ?? '').replace(/^\/repos\//, '/')] ?? { status: 200 }
     response.writeHead(route.status, route.location ? { location: route.location } : {})
     response.end()
   })
@@ -260,12 +306,14 @@ it('keeps a catalog publishable through real HTTP HEAD responses and a rename ch
       ),
     ).toEqual({
       checked: 6,
-      deleted: 3,
+      deleted: 2,
       renamed: 1,
-      warnings: 1,
+      warnings: 2,
     })
-    expect(methods).toEqual(Array(8).fill('HEAD'))
+    expect(methods.filter((method) => method === 'HEAD')).toHaveLength(8)
+    expect(methods.filter((method) => method === 'GET')).toHaveLength(2)
     expect(listPublishable(db).map(({ html_url }) => html_url)).toEqual([
+      'https://github.com/old/legal',
       'https://github.com/new/canonical',
       'https://github.com/old/healthy',
       'https://github.com/old/unavailable',
@@ -276,6 +324,86 @@ it('keeps a catalog publishable through real HTTP HEAD responses and a rename ch
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
   }
+})
+
+it('rotates past 200 malformed URLs so a valid unchecked repository can be reached', async () => {
+  const db = database()
+  for (let index = 0; index < 200; index++) upsertDiscovery(db, `https://github.com/invalid/path/issues-${index}`, null)
+  const id = seed(db)
+  const reader = client(() => new Response(null, { status: 200 }))
+  await healthCheck(
+    db,
+    reader,
+    'health',
+    () => {},
+    () => at,
+  )
+  await healthCheck(
+    db,
+    reader,
+    'health',
+    () => {},
+    () => '2026-11-02T00:00:00.000Z',
+  )
+  expect(getRepositoryById(db, id)?.last_health_check_at).toBe('2026-11-02T00:00:00.000Z')
+})
+
+it('checks links concurrently with at most four requests in flight', async () => {
+  const db = database()
+  for (let index = 0; index < 12; index++) seed(db, `https://github.com/team/project-${index}`)
+  let active = 0
+  let peak = 0
+  const reader = client(async () => {
+    active++
+    peak = Math.max(peak, active)
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    active--
+    return new Response(null, { status: 200 })
+  })
+  expect(
+    await healthCheck(
+      db,
+      reader,
+      'health',
+      () => {},
+      () => at,
+    ),
+  ).toMatchObject({ checked: 12 })
+  expect(peak).toBe(4)
+  expect(active).toBe(0)
+})
+
+it('ends the phase after 30 seconds and cancels in-flight requests before returning', async () => {
+  vi.useFakeTimers()
+  const db = database()
+  for (let index = 0; index < 12; index++) seed(db, `https://github.com/team/project-${index}`)
+  let active = 0
+  const reader = client(() => new Response(null, { status: 200 }))
+  reader.checkRepository = async (_owner, _repo, options) =>
+    new Promise((_resolve, reject) => {
+      active++
+      options?.signal?.addEventListener(
+        'abort',
+        () => {
+          active--
+          reject(new Error('deadline'))
+        },
+        { once: true },
+      )
+    })
+  const pending = healthCheck(
+    db,
+    reader,
+    'health',
+    () => {},
+    () => at,
+  )
+  await vi.advanceTimersByTimeAsync(30_000)
+  const result = await pending
+  expect(active).toBe(0)
+  expect(result).toMatchObject({ checked: 0, warnings: 1 })
+  expect(listPublishable(db)).toHaveLength(12)
+  expect(listRunErrors(db, 'health')).toMatchObject([{ error_type: 'health_check_timeout' }])
 })
 
 it('keeps a failed network request in the catalog and rotates it behind unchecked rows', async () => {

@@ -55,6 +55,54 @@ function manifest(value: unknown) {
 }
 
 describe('GitHubClient', () => {
+  it('keeps public HEAD pacing and Retry-After separate from the authenticated API budget', async () => {
+    const test = harness([new Response(null, { status: 429, headers: { 'retry-after': '20' } }), Response.json(repo)])
+    await test.client.checkRepository('acme', 'catalog')
+    expect((await test.client.getRepository('acme', 'catalog')).kind).toBe('found')
+    expect(test.time).toBe(0)
+  })
+
+  it('applies one ten-second deadline to an entire redirect chain', async () => {
+    vi.useFakeTimers()
+    try {
+      let requests = 0
+      let active = 0
+      const client = new GitHubClient({
+        token: 'test-secret',
+        clock: { now: () => Date.now(), sleep: async () => {} },
+        fetch: (async (_url, init) => {
+          requests++
+          active++
+          return new Promise<Response>((resolve, reject) => {
+            const signal = init?.signal
+            const abort = () => {
+              clearTimeout(timer)
+              active--
+              reject(new Error('deadline'))
+            }
+            const timer = setTimeout(() => {
+              signal?.removeEventListener('abort', abort)
+              active--
+              resolve(new Response(null, { status: 302, headers: { location: `/next/project-${requests}` } }))
+            }, 6_000)
+            signal?.addEventListener('abort', abort, { once: true })
+          })
+        }) as typeof fetch,
+      })
+      let result: Awaited<ReturnType<GitHubClient['checkRepository']>> | undefined
+      const pending = client.checkRepository('acme', 'catalog').then((value) => {
+        result = value
+      })
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(result?.kind).toBe('temporary-error')
+      expect(requests).toBe(2)
+      expect(active).toBe(0)
+      await pending
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it.each([
     ['network failure', () => new Error('offline')],
     ['HTTP 503', () => new Response('', { status: 503 })],
