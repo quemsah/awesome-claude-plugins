@@ -19,11 +19,22 @@ const catalogRepos: readonly CatalogRepo[] = getCatalog().filter(
 )
 const canonicalCatalogRepos = getUniqueCatalogRepos(catalogRepos)
 const canonicalCatalogRepoSet = new Set(canonicalCatalogRepos)
-// Browsing and other catalog consumers do not need FTS5. Build only on first nonempty search.
-let catalogSearchIndex: ReturnType<typeof createCatalogSearchIndex> | undefined
+// Different Next.js route bundles can have different module registries in the same process.
+// Key the shared index by the original catalog array, which catalogStore already shares globally.
+const CATALOG_SEARCH_INDEX_KEY = Symbol.for('awesome-claude-plugins.catalog-search-index')
+type SharedSearchIndex = { source: readonly CatalogRepo[]; index: ReturnType<typeof createCatalogSearchIndex> }
+type CatalogSearchGlobal = typeof globalThis & { [CATALOG_SEARCH_INDEX_KEY]?: SharedSearchIndex }
+
+/** Lazily create one FTS5 index per catalog and Node.js process, shared by SSR and API routes. */
 function getCatalogSearchIndex() {
-  catalogSearchIndex ??= createCatalogSearchIndex(canonicalCatalogRepos)
-  return catalogSearchIndex
+  const root = globalThis as CatalogSearchGlobal
+  const source = getCatalog()
+  const cached = root[CATALOG_SEARCH_INDEX_KEY]
+  if (cached?.source === source) return cached.index
+
+  const index = createCatalogSearchIndex(canonicalCatalogRepos)
+  root[CATALOG_SEARCH_INDEX_KEY] = { source, index }
+  return index
 }
 const indexableCatalogRepos = canonicalCatalogRepos.filter((repo) => getCatalogQuality(repo, true).publicationState === 'indexable')
 const catalogReposByPath = new Map<string, CatalogRepo>()
