@@ -13,8 +13,8 @@ describe('normalizePluginName', () => {
     expect(normalizePluginName('hello-world')).toBe('hello-world')
   })
 
-  it.each(['.review', '_review', '-review'])('preserves a valid leading punctuation character in %s', (name) => {
-    expect(normalizePluginName(name)).toBe(name)
+  it.each(['.review', '_review', '-review'])('rejects leading punctuation in CLI plugin ID %s', (name) => {
+    expect(normalizePluginName(name)).toBe('')
   })
 
   it('returns an empty string when the input contains illegal characters', () => {
@@ -31,10 +31,10 @@ describe('isPluginInstallCommandVerified', () => {
     expect(isPluginInstallCommandVerified('my-plugin', 'my-marketplace')).toBe(true)
   })
 
-  it.each(['.marketplace', '_marketplace', '-marketplace'])(
-    'accepts marketplace identifier %s permitted by the shared contract',
+  it.each(['.marketplace', '_marketplace', '-marketplace', 'bad..marketplace'])(
+    'rejects marketplace name %s that Claude Code cannot install',
     (marketplaceName) => {
-      expect(isPluginInstallCommandVerified('_review', marketplaceName)).toBe(true)
+      expect(isPluginInstallCommandVerified('review', marketplaceName)).toBe(false)
     }
   )
 
@@ -58,10 +58,14 @@ describe('getPluginInstallCommand', () => {
     ).toBe('/plugin install my-plugin-id@community')
   })
 
-  it.each(['.review', '_review', '-review'])(
-    'accepts shared-contract plugin ID %s without converting it into a display name',
-    (pluginId) => {
-      expect(getPluginInstallCommand({ pluginId, marketplaceName: '_marketplace' })).toBe(`/plugin install ${pluginId}@_marketplace`)
+  it.each(['.review', '_review', '-review'])('rejects non-installable plugin ID %s', (pluginId) => {
+    expect(getPluginInstallCommand({ pluginId, marketplaceName: 'marketplace' })).toBeNull()
+  })
+
+  it.each(['.marketplace', '_marketplace', '-marketplace', 'bad..marketplace'])(
+    'rejects non-installable marketplace name %s',
+    (marketplaceName) => {
+      expect(getPluginInstallCommand({ pluginId: 'review', marketplaceName })).toBeNull()
     }
   )
 
@@ -124,9 +128,20 @@ describe('getDirectPluginInstallCommand', () => {
     ).toBe('/plugin install community-plugin --marketplace anthropics/claude-plugins-community')
   })
 
-  it.each(['.review', '_review', '-review'])('builds a one-step install command for shared-contract plugin ID %s', (pluginId) => {
-    expect(getDirectPluginInstallCommand({ pluginId, owner: 'example', repoName: 'plugins' })).toBe(
-      `/plugin install ${pluginId} --marketplace example/plugins`
+  it.each(['.review', '_review', '-review'])('rejects a non-installable one-step plugin ID %s', (pluginId) => {
+    expect(getDirectPluginInstallCommand({ pluginId, owner: 'example', repoName: 'plugins' })).toBeNull()
+  })
+
+  it.each(['_marketplace', '.marketplace', '-marketplace', 'bad..marketplace'])(
+    'rejects an unsupported marketplace name %s for one-step install',
+    (marketplaceName) => {
+      expect(getDirectPluginInstallCommand({ pluginId: 'review', marketplaceName, owner: 'example', repoName: 'plugins' })).toBeNull()
+    }
+  )
+
+  it('accepts periods and underscores after an alphanumeric first character', () => {
+    expect(getDirectPluginInstallCommand({ pluginId: 'review_tools.v2', marketplaceName: 'team_market.v2', owner: 'example', repoName: 'plugins' })).toBe(
+      '/plugin install review_tools.v2 --marketplace example/plugins'
     )
   })
 
