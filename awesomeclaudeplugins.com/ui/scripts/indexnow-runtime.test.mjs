@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { buildCatalogRecords, fingerprintCatalog } from './indexnow-changes.mjs'
-import { serializeBaseline } from './indexnow-state.mjs'
+import { fileURLToPath } from 'node:url'
+import { buildCatalogRecordsFromSqlite } from './indexnow-changes.mjs'
+import { loadBaseline, saveBaseline } from './indexnow-state.mjs'
 
 const site = 'https://awesomeclaudeplugins.com'
-const catalog = JSON.parse(readFileSync(new URL('../src/data/repos.json', import.meta.url), 'utf8'))
+const catalogPath = fileURLToPath(new URL('../src/data/catalog.sqlite', import.meta.url))
+const { records: catalogRecords, fingerprint: catalogFingerprint } = buildCatalogRecordsFromSqlite(catalogPath, site)
 const API_FAILURE_PATTERN = /IndexNow rejected the request: 503/
 let importCounter = 0
 
@@ -34,9 +36,8 @@ async function runWithMockedFetch({ baselinePath, fetcher, defer = true }) {
 
 test('scheduled IndexNow defers on a stale production catalog without advancing its baseline', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'indexnow-defer-'))
-  const baselinePath = join(dir, 'repos.json')
-  const baseline = '{"version":1,"records":{}}\n'
-  writeFileSync(baselinePath, baseline)
+  const baselinePath = join(dir, 'indexnow-state.sqlite')
+  saveBaseline(baselinePath, new Map())
   const calls = []
   try {
     await runWithMockedFetch({
@@ -48,7 +49,8 @@ test('scheduled IndexNow defers on a stale production catalog without advancing 
       },
     })
     assert.deepEqual(calls, [`${site}/api/catalog-version`])
-    assert.equal(readFileSync(baselinePath, 'utf8'), baseline)
+    const loaded = loadBaseline(baselinePath)
+    assert.equal(loaded.size, 0)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -56,8 +58,8 @@ test('scheduled IndexNow defers on a stale production catalog without advancing 
 
 test('scheduled IndexNow bootstraps from the live sitemap after deployment when baseline is absent', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'indexnow-bootstrap-'))
-  const baselinePath = join(dir, 'repos.json')
-  const first = [...buildCatalogRecords(catalog, site).values()][0]
+  const baselinePath = join(dir, 'indexnow-state.sqlite')
+  const first = [...catalogRecords.values()][0]
   assert.ok(first, 'Catalog must have an indexable repository for this integration test')
   const posts = []
   try {
@@ -66,7 +68,7 @@ test('scheduled IndexNow bootstraps from the live sitemap after deployment when 
       fetcher: async (url, options) => {
         const endpoint = String(url)
         if (endpoint === `${site}/api/catalog-version`) {
-          return { ok: true, json: async () => ({ sha256: fingerprintCatalog(catalog) }) }
+          return { ok: true, json: async () => ({ sha256: catalogFingerprint }) }
         }
         if (endpoint === `${site}/sitemap.xml`) {
           return { ok: true, text: async () => `<urlset><url><loc>${first.url}</loc></url></urlset>` }
@@ -81,9 +83,9 @@ test('scheduled IndexNow bootstraps from the live sitemap after deployment when 
     assert.equal(posts.length, 1)
     assert.deepEqual(JSON.parse(posts[0].options.body).urlList, [first.url])
     assert.ok(existsSync(baselinePath))
-    const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'))
-    assert.equal(Object.keys(baseline.records).length, 1)
-    assert.equal(Object.values(baseline.records)[0].url, first.url)
+    const baseline = loadBaseline(baselinePath)
+    assert.equal(baseline.size, 1)
+    assert.equal([...baseline.values()][0].url, first.url)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -91,9 +93,8 @@ test('scheduled IndexNow bootstraps from the live sitemap after deployment when 
 
 test('scheduled IndexNow does not publish unchanged URLs or mutate its baseline', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'indexnow-noop-'))
-  const baselinePath = join(dir, 'repos.json')
-  const baseline = serializeBaseline(buildCatalogRecords(catalog, site))
-  writeFileSync(baselinePath, baseline)
+  const baselinePath = join(dir, 'indexnow-state.sqlite')
+  saveBaseline(baselinePath, catalogRecords)
   const calls = []
   try {
     await runWithMockedFetch({
@@ -101,11 +102,11 @@ test('scheduled IndexNow does not publish unchanged URLs or mutate its baseline'
       fetcher: async (url) => {
         calls.push(String(url))
         assert.equal(String(url), `${site}/api/catalog-version`)
-        return { ok: true, json: async () => ({ sha256: fingerprintCatalog(catalog) }) }
+        return { ok: true, json: async () => ({ sha256: catalogFingerprint }) }
       },
     })
     assert.deepEqual(calls, [`${site}/api/catalog-version`])
-    assert.equal(readFileSync(baselinePath, 'utf8'), baseline)
+    assert.deepEqual([...loadBaseline(baselinePath)], [...catalogRecords])
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -113,14 +114,13 @@ test('scheduled IndexNow does not publish unchanged URLs or mutate its baseline'
 
 test('failed IndexNow API submission leaves the previous baseline intact', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'indexnow-failed-post-'))
-  const baselinePath = join(dir, 'repos.json')
-  const records = buildCatalogRecords(catalog, site)
+  const baselinePath = join(dir, 'indexnow-state.sqlite')
+  const records = new Map(catalogRecords)
   const key = records.keys().next().value
   assert.ok(key, 'Catalog must have an indexable repository for this integration test')
   const current = records.get(key)
   records.set(key, { ...current, fingerprint: 'previous-fingerprint' })
-  const baseline = serializeBaseline(records)
-  writeFileSync(baselinePath, baseline)
+  saveBaseline(baselinePath, records)
   const calls = []
   try {
     await assert.rejects(
@@ -130,7 +130,7 @@ test('failed IndexNow API submission leaves the previous baseline intact', async
           const endpoint = String(url)
           calls.push(endpoint)
           if (endpoint === `${site}/api/catalog-version`) {
-            return { ok: true, json: async () => ({ sha256: fingerprintCatalog(catalog) }) }
+            return { ok: true, json: async () => ({ sha256: catalogFingerprint }) }
           }
           if (endpoint === current.url && options?.method === 'HEAD') return { status: 200 }
           if (endpoint === 'https://api.indexnow.org/indexnow') {
@@ -142,7 +142,7 @@ test('failed IndexNow API submission leaves the previous baseline intact', async
       API_FAILURE_PATTERN
     )
     assert.deepEqual(calls, [`${site}/api/catalog-version`, current.url, 'https://api.indexnow.org/indexnow'])
-    assert.equal(readFileSync(baselinePath, 'utf8'), baseline)
+    assert.deepEqual([...loadBaseline(baselinePath)], [...records])
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

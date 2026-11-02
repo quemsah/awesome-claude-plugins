@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { buildPublicCatalog, GENERATOR_VERSION, SCHEMA_VERSION } from '@awesome-claude-plugins/catalog-snapshot/build'
 import { calculateCatalogFingerprint } from '@awesome-claude-plugins/catalog-snapshot/fingerprint'
+import Database from 'better-sqlite3'
 
 const SHA256_HEX = /^[a-f0-9]{64}$/
 
@@ -53,24 +54,78 @@ function calculateSnapshotIdentity(repos, stats, schemaVersion, generatorVersion
   return hasher.digest('hex').slice(0, 16)
 }
 
-/**
- * Prepares the SQLite public catalog snapshot from existing dataset files.
- * Designed for future transition where SnapshotInput is provided directly from crawler.
- *
- * @param {object} [options]
- * @param {string} [options.dataDir] Directory containing dataset JSON files
- * @param {string} [options.outputPath] Path to output SQLite database
- * @param {string} [options.manifestPath] Path to output snapshot manifest
- * @param {string} [options.snapshotId] Explicit snapshot ID
- * @param {object} [options.provenance] Provenance metadata
- * @returns {import('@awesome-claude-plugins/catalog-snapshot').SnapshotManifest}
- */
+function verifySqliteArtifact(outputPath, manifestPath) {
+  const startTime = Date.now()
+  console.log(`[prepare-catalog] Validating existing SQLite catalog snapshot at ${outputPath}...`)
+
+  const sha256 = hashFileSha256(outputPath)
+  const db = new Database(outputPath, { readonly: true, fileMustExist: true })
+  let metadataRow
+  try {
+    const check = db.pragma('quick_check')
+    if (check[0]?.quick_check !== 'ok') {
+      throw new Error(`SQLite quick_check failed: ${JSON.stringify(check)}`)
+    }
+    metadataRow = db.prepare('SELECT * FROM catalog_metadata WHERE id = 1').get()
+    if (!metadataRow) {
+      throw new Error('Missing catalog_metadata row in catalog.sqlite')
+    }
+  } finally {
+    db.close()
+  }
+
+  const manifest = {
+    schemaVersion: metadataRow.schema_version,
+    generatorVersion: metadataRow.generator_version,
+    snapshotId: metadataRow.snapshot_id,
+    catalogFingerprint: metadataRow.catalog_fingerprint,
+    artifactSha256: sha256,
+    recordCount: metadataRow.record_count,
+    canonicalCount: metadataRow.canonical_count,
+    pluginsCount: metadataRow.plugins_count,
+    statsCount: metadataRow.stats_count,
+    outputPath,
+    createdAt: metadataRow.created_at,
+  }
+
+  // Check manifest if exists
+  if (existsSync(manifestPath)) {
+    try {
+      const existing = JSON.parse(readFileSync(manifestPath, 'utf8'))
+      if (existing.artifactSha256 && existing.artifactSha256 !== sha256) {
+        throw new Error(`Manifest artifactSha256 mismatch: expected ${existing.artifactSha256}, got ${sha256}`)
+      }
+    } catch (e) {
+      if (e.message.includes('mismatch')) throw e
+    }
+  }
+
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(2)
+  console.log(`[prepare-catalog] Validated in ${elapsed}s:`)
+  console.log(`  Output SQLite:        ${manifest.outputPath}`)
+  console.log(`  Artifact SHA-256:     ${manifest.artifactSha256}`)
+  console.log(`  Catalog Fingerprint:  ${manifest.catalogFingerprint}`)
+  console.log(`  Total Records:        ${manifest.recordCount}`)
+  console.log(`  Canonical Records:    ${manifest.canonicalCount}`)
+  console.log(`  Total Plugins:        ${manifest.pluginsCount}`)
+  console.log(`  Stats History Rows:   ${manifest.statsCount}`)
+
+  return manifest
+}
+
 export function prepareCatalog(options = {}) {
   const dataDir = options.dataDir ?? join(process.cwd(), 'src/data')
   const reposPath = join(dataDir, 'repos.json')
   const statsPath = join(dataDir, 'stats.json')
   const outputPath = options.outputPath ?? join(dataDir, 'catalog.sqlite')
   const manifestPath = options.manifestPath ?? join(dataDir, 'catalog.manifest.json')
+
+  // If SQLite exists and source repos.json does not exist, validate existing SQLite
+  if (existsSync(outputPath) && !existsSync(reposPath)) {
+    return verifySqliteArtifact(outputPath, manifestPath)
+  }
 
   if (!existsSync(reposPath)) {
     throw new Error(`Catalog source dataset not found: ${reposPath}`)

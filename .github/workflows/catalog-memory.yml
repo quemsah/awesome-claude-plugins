@@ -12,7 +12,7 @@ on:
       - 'awesomeclaudeplugins.com/ui/src/lib/catalogStore.ts'
       - 'awesomeclaudeplugins.com/crawler/src/output/splitCatalog.ts'
       - 'awesomeclaudeplugins.com/crawler/src/publish/githubGit.ts'
-      - 'awesomeclaudeplugins.com/ui/scripts/split-catalog.mjs'
+      - 'awesomeclaudeplugins.com/ui/scripts/prepare-catalog.mjs'
       - 'awesomeclaudeplugins.com/ui/package.json'
   workflow_dispatch:
 
@@ -54,11 +54,11 @@ jobs:
       - name: Check identical catalog inputs
         shell: bash
         run: |
-          sha256sum baseline/awesomeclaudeplugins.com/ui/src/data/repos.json candidate/awesomeclaudeplugins.com/ui/src/data/repos.json
-          cmp baseline/awesomeclaudeplugins.com/ui/src/data/repos.json candidate/awesomeclaudeplugins.com/ui/src/data/repos.json
+          sha256sum baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite candidate/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
+          cmp baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite candidate/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
       - name: Regenerate candidate index before standalone benchmark
         working-directory: candidate/awesomeclaudeplugins.com/ui
-        run: node scripts/split-catalog.mjs
+        run: node scripts/prepare-catalog.mjs
       - name: Measure RAM (three independent processes per revision)
         shell: bash
         run: |

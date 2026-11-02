@@ -48,7 +48,8 @@ jobs:
             crawler:
               - 'awesomeclaudeplugins.com/crawler/**'
               - 'README.md'
-              - 'awesomeclaudeplugins.com/ui/src/data/repos.json'
+              - 'awesomeclaudeplugins.com/ui/src/data/catalog.sqlite'
+              - 'awesomeclaudeplugins.com/ui/catalog-release.json'
               # Crawler's integration test still imports the UI stats schema.
               - 'awesomeclaudeplugins.com/ui/src/schemas/**'
               - 'awesomeclaudeplugins.com/ui/package.json'

@@ -5,6 +5,7 @@ import { closeSync, existsSync, openSync, readFileSync, readSync } from 'node:fs
 import { join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import type { Repo } from '../schemas/repo.schema.ts'
+import { getSqliteReader } from './sqliteCatalogStore.ts'
 
 const CATALOG_KEY = Symbol.for('awesome-claude-plugins.catalog')
 const SHARD_CACHE_KEY = Symbol.for('awesome-claude-plugins.shard-cache')
@@ -146,11 +147,28 @@ export function getCatalog(): readonly Repo[] {
   if (cachedCatalog !== undefined) return cachedCatalog
 
   const fixturePath = process.env.CATALOG_DATA_PATH
-  const catalog = fixturePath
-    ? (JSON.parse(readFileSync(fixturePath, 'utf8')) as Repo[])
-    : readCatalogFiles(join(process.cwd(), 'src/data/search-index.json'), join(process.cwd(), 'src/data/repos.json'))
-  root[CATALOG_KEY] = catalog
-  return catalog
+  if (fixturePath && existsSync(fixturePath)) {
+    const catalog = JSON.parse(readFileSync(fixturePath, 'utf8')) as Repo[]
+    root[CATALOG_KEY] = catalog
+    return catalog
+  }
+
+  const searchIndexPath = join(process.cwd(), 'src/data/search-index.json')
+  const reposPath = join(process.cwd(), 'src/data/repos.json')
+  if (existsSync(searchIndexPath) || existsSync(reposPath)) {
+    const catalog = readCatalogFiles(searchIndexPath, reposPath)
+    root[CATALOG_KEY] = catalog
+    return catalog
+  }
+
+  const sqlitePath = process.env.CATALOG_SQLITE_PATH || join(process.cwd(), 'src/data/catalog.sqlite')
+  if (existsSync(sqlitePath)) {
+    const catalog = [...getSqliteReader().iteratePublishedRecords()] as Repo[]
+    root[CATALOG_KEY] = catalog
+    return catalog
+  }
+
+  throw new Error('Missing catalog data source')
 }
 
 function getShardCache(): ShardCache {
@@ -225,7 +243,20 @@ export function getRepoDetails(id: number, owner?: string | null, repoName?: str
 
   // Parse the canonical snapshot once across all missing/corrupt shard reads.
   const canonical = getCanonicalFallback()
-  return canonical?.get(id)?.find((record) => matchesIdentity(record, id, owner, repoName)) ?? null
+  if (canonical) {
+    return canonical.get(id)?.find((record) => matchesIdentity(record, id, owner, repoName)) ?? null
+  }
+
+  const sqlitePath = process.env.CATALOG_SQLITE_PATH || join(process.cwd(), 'src/data/catalog.sqlite')
+  if (existsSync(sqlitePath)) {
+    const reader = getSqliteReader()
+    const record = reader.getRecordById(id)
+    if (record && matchesIdentity(record, id, owner, repoName)) {
+      return record as Repo
+    }
+  }
+
+  return null
 }
 
 export function hydrateCatalogRepo<T extends Repo>(repo: T): T {

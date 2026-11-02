@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 describe('catalog search index lifetime', () => {
   it('reuses one index when separate server bundles import catalog.ts', async () => {
-    const key = Symbol.for('awesome-claude-plugins.catalog-search-index')
+    const key = Symbol.for('awesome-claude-plugins.sqlite-catalog-reader')
     const holder = globalThis as unknown as Record<symbol, unknown>
     const previous = holder[key]
     try {
@@ -24,7 +24,7 @@ describe('catalog search index lifetime', () => {
     }
   })
   it('keeps non-searchable queries empty without loading SQLite', async () => {
-    const key = Symbol.for('awesome-claude-plugins.catalog-search-index')
+    const key = Symbol.for('awesome-claude-plugins.sqlite-catalog-reader')
     const holder = globalThis as unknown as Record<symbol, unknown>
     const previous = holder[key]
     try {

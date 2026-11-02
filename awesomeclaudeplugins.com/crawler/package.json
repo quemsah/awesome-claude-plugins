@@ -22,7 +22,8 @@
   },
   "dependencies": {
     "better-sqlite3": "12.11.1",
-    "@awesome-claude-plugins/catalog-contract": "^0.1.0"
+    "@awesome-claude-plugins/catalog-contract": "^0.1.0",
+    "@awesome-claude-plugins/catalog-snapshot": "^0.1.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.3",

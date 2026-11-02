@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { buildCatalogRecords, diffCatalogRecords, fingerprintCatalog } from './indexnow-changes.mjs'
-import { deserializeBaseline, sendIndexNowBatch, serializeBaseline } from './indexnow-state.mjs'
+import { buildCatalogRecordsFromSqlite, diffCatalogRecords } from './indexnow-changes.mjs'
+import { loadBaseline, saveBaseline, sendIndexNowBatch } from './indexnow-state.mjs'
 
 const SITE_URL = process.env.INDEXNOW_SITE_URL ?? 'https://awesomeclaudeplugins.com'
 const SITEMAP_URL = new URL('/sitemap.xml', SITE_URL)
@@ -10,7 +10,9 @@ const INDEXNOW_KEY = '14273a4aad028282eac8537cb6ea0e5f'
 const KEY_LOCATION = new URL(`/${INDEXNOW_KEY}.txt`, SITE_URL).toString()
 const MAX_URLS_PER_REQUEST = 10_000
 const MODE = process.env.INDEXNOW_MODE ?? 'full'
-const BASELINE_PATH = process.env.INDEXNOW_BASELINE_PATH ?? fileURLToPath(new URL('../.indexnow-cache/repos.json', import.meta.url))
+const BASELINE_PATH =
+  process.env.INDEXNOW_BASELINE_PATH ?? fileURLToPath(new URL('../.indexnow-cache/indexnow-state.sqlite', import.meta.url))
+const CATALOG_PATH = process.env.CATALOG_SQLITE_PATH ?? fileURLToPath(new URL('../src/data/catalog.sqlite', import.meta.url))
 const MAX_READY_ATTEMPTS = 12
 const READY_RETRY_DELAY_MS = 15_000
 const READY_CONCURRENCY = 20
@@ -47,21 +49,22 @@ async function sitemapUrls(url) {
 }
 
 function readCurrentCatalog() {
-  const repos = JSON.parse(readFileSync(new URL('../src/data/repos.json', import.meta.url), 'utf8'))
-  if (!Array.isArray(repos)) throw new Error('Catalog snapshot must be an array.')
-  return { records: buildCatalogRecords(repos, SITE_URL), fingerprint: fingerprintCatalog(repos) }
+  if (!existsSync(CATALOG_PATH)) {
+    throw new Error(`Catalog snapshot SQLite database not found at ${CATALOG_PATH}`)
+  }
+  return buildCatalogRecordsFromSqlite(CATALOG_PATH, SITE_URL)
 }
 
 function readBaseline() {
   if (!existsSync(BASELINE_PATH)) {
     throw new Error('No successful IndexNow baseline exists. Run workflow_dispatch with mode=full on the default branch first.')
   }
-  return deserializeBaseline(readFileSync(BASELINE_PATH, 'utf8'))
+  return loadBaseline(BASELINE_PATH)
 }
 
 function writeBaseline(records, includedUrls = null) {
   mkdirSync(dirname(BASELINE_PATH), { recursive: true })
-  writeFileSync(BASELINE_PATH, serializeBaseline(records, includedUrls))
+  saveBaseline(BASELINE_PATH, records, includedUrls)
   const count = [...records.values()].filter((record) => includedUrls === null || includedUrls.has(record.url)).length
   console.log(`Saved baseline for ${count.toLocaleString()} indexable repositories.`)
 }

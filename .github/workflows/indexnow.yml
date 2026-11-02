@@ -16,12 +16,14 @@ on:
     paths:
       - .github/workflows/indexnow.yml
       - awesomeclaudeplugins.com/ui/scripts/indexnow*.mjs
-      - awesomeclaudeplugins.com/ui/src/data/repos.json
+      - awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
+      - awesomeclaudeplugins.com/ui/catalog-release.json
   pull_request:
     paths:
       - .github/workflows/indexnow.yml
       - awesomeclaudeplugins.com/ui/scripts/indexnow*.mjs
-      - awesomeclaudeplugins.com/ui/src/data/repos.json
+      - awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
+      - awesomeclaudeplugins.com/ui/catalog-release.json
   schedule:
     # Run after deployment, never as a blocking check on the commit being deployed.
     - cron: '17,47 * * * *'
@@ -90,7 +92,7 @@ jobs:
       - name: Record current baseline fingerprint
         id: baseline_before
         env:
-          BASELINE_PATH: ${{ runner.temp }}/indexnow-state/repos.json
+          BASELINE_PATH: ${{ runner.temp }}/indexnow-state/indexnow-state.sqlite
         run: |
           if [[ -f "$BASELINE_PATH" ]]; then
             echo "sha=$(sha256sum "$BASELINE_PATH" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
@@ -104,14 +106,14 @@ jobs:
         env:
           INDEXNOW_SITE_URL: ${{ vars.INDEXNOW_SITE_URL || 'https://awesomeclaudeplugins.com' }}
           INDEXNOW_MODE: ${{ inputs.mode || 'changed' }}
-          INDEXNOW_BASELINE_PATH: ${{ runner.temp }}/indexnow-state/repos.json
+          INDEXNOW_BASELINE_PATH: ${{ runner.temp }}/indexnow-state/indexnow-state.sqlite
           # A scheduled run skips and retries later if Railway has not deployed the catalog.
           INDEXNOW_DEFER_UNTIL_DEPLOYED: ${{ github.event_name == 'schedule' }}
 
       - name: Check whether the baseline changed
         id: baseline_changed
         env:
-          BASELINE_PATH: ${{ runner.temp }}/indexnow-state/repos.json
+          BASELINE_PATH: ${{ runner.temp }}/indexnow-state/indexnow-state.sqlite
           PREVIOUS_SHA: ${{ steps.baseline_before.outputs.sha }}
         run: |
           if [[ -f "$BASELINE_PATH" ]] && [[ "$(sha256sum "$BASELINE_PATH" | cut -d ' ' -f1)" != "$PREVIOUS_SHA" ]]; then

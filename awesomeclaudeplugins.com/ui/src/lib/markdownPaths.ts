@@ -1,37 +1,20 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
-import markdownPathsData from '../data/markdown-paths.json' with { type: 'json' }
-
-/**
- * Catalogued repositories whose name ends with the markdown extension, so their HTML page
- * (`/sstklen/yes.md`) is spelled exactly the way the proxy normally spells a repository's
- * markdown representation (`/{owner}/{repo}.md`).
- *
- * This namespace is only unambiguous while the catalog does not also contain the same path without
- * the suffix (for example both `a/b` and `a/b.md`). `markdownPaths.test.ts` enforces that
- * invariant and fails CI if such a collision appears; the proxy deliberately does not invent an
- * alternate HTML URL for an unsupported collision.
- *
- * Loaded from a generated sidecar rather than the full catalog because the proxy is its own bundle.
- * The crawler snapshot publisher regenerates that sidecar atomically with `repos.json`, so this
- * exception set stays in sync without paying the cost of importing and validating the full catalog
- * in every server process. `markdownPaths.test.ts` still verifies the generated data against the catalog.
- */
-export const REPO_PAGES_ENDING_IN_MD: readonly string[] = markdownPathsData
-
-const repoPagePaths = new Set(REPO_PAGES_ENDING_IN_MD.map((repoPath) => repoPath.toLowerCase()))
 
 const PROXY_SQLITE_KEY = Symbol.for('awesome-claude-plugins.proxy-sqlite')
 
-type ProxySqliteHolder = typeof globalThis & {
-  [PROXY_SQLITE_KEY]?: {
-    db: InstanceType<typeof Database>
-    isMarkdownStmt: ReturnType<InstanceType<typeof Database>['prepare']>
-  }
+type ProxySqliteState = {
+  db: InstanceType<typeof Database>
+  isMarkdownStmt: ReturnType<InstanceType<typeof Database>['prepare']>
+  cachedRepoPages?: readonly string[]
 }
 
-function getProxySqlite() {
+type ProxySqliteHolder = typeof globalThis & {
+  [PROXY_SQLITE_KEY]?: ProxySqliteState
+}
+
+function getProxySqlite(): ProxySqliteState {
   const root = globalThis as ProxySqliteHolder
   if (root[PROXY_SQLITE_KEY]) return root[PROXY_SQLITE_KEY]
 
@@ -57,11 +40,27 @@ function getProxySqlite() {
   return holder
 }
 
+export function getRepoPagesEndingInMd(): readonly string[] {
+  const holder = getProxySqlite()
+  if (holder.cachedRepoPages) return holder.cachedRepoPages
+  const rows = holder.db
+    .prepare("SELECT owner || '/' || repo_name AS path FROM markdown_repositories ORDER BY source_order")
+    .all() as Array<{ path: string }>
+  const pages = Object.freeze(rows.map((r) => r.path))
+  holder.cachedRepoPages = pages
+  return pages
+}
+
+export const REPO_PAGES_ENDING_IN_MD: readonly string[] = new Proxy([] as readonly string[], {
+  get(_target, prop, receiver) {
+    const list = getRepoPagesEndingInMd()
+    const value = Reflect.get(list, prop, receiver)
+    return typeof value === 'function' ? value.bind(list) : value
+  },
+})
+
 /** Whether a path ending in `.md` is a repository page rather than a markdown representation. */
 export function isRepoPageEndingInMd(repoPath: string): boolean {
-  if (process.env.CATALOG_BACKEND === 'sqlite') {
-    const { isMarkdownStmt } = getProxySqlite()
-    return isMarkdownStmt.get(repoPath.toLowerCase()) !== undefined
-  }
-  return repoPagePaths.has(repoPath.toLowerCase())
+  const { isMarkdownStmt } = getProxySqlite()
+  return isMarkdownStmt.get(repoPath.toLowerCase()) !== undefined
 }

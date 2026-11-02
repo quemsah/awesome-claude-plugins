@@ -112,6 +112,7 @@ export interface SitemapRecord {
 
 export interface PublicCatalogReader {
   getRepoByPath(path: string): CatalogRecord | undefined
+  getRecordById(id: number): CatalogRecord | undefined
   getRecordBySourceOrder(sourceOrder: number): CatalogRecord | undefined
   getBrowsePage(options?: PageOptions): CatalogPage
   searchRepos(query: string, options?: PageOptions): SearchPage

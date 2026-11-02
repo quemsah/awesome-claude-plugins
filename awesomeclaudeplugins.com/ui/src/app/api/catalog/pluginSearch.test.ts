@@ -54,15 +54,29 @@ const { fixtureRepos } = vi.hoisted(() => ({
   ],
 }))
 
-vi.mock('../../../lib/catalogStore.ts', () => ({
-  getCatalog: () => fixtureRepos,
-  getRepoDetails: (id: number) => fixtureRepos.find((r) => r.id === id) ?? null,
-  hydrateCatalogRepo: hydrateSpy,
-  isSearchCatalogRepo: (_repo: unknown): boolean => false,
-  readCatalogSearchFields: () => [],
-}))
+import { existsSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import type { SnapshotInput } from '@awesome-claude-plugins/catalog-snapshot'
+import { buildPublicCatalog } from '@awesome-claude-plugins/catalog-snapshot/build'
 
-const { hydrateSpy } = vi.hoisted(() => ({ hydrateSpy: vi.fn((repo: unknown) => repo) }))
+const fixtureDbPath = join(tmpdir(), 'vitest-plugin-search-fixture.sqlite')
+const fixtureManifestPath = join(tmpdir(), 'vitest-plugin-search-fixture.manifest.json')
+
+if (!(existsSync(fixtureDbPath) && existsSync(fixtureManifestPath))) {
+  const manifest = buildPublicCatalog(
+    {
+      records: fixtureRepos as unknown as SnapshotInput['records'],
+      stats: [{ id: 1, date: '2026-03-01', size: fixtureRepos.length }],
+      snapshotId: 'plugin-search-fixture',
+    },
+    fixtureDbPath
+  )
+  writeFileSync(fixtureManifestPath, JSON.stringify(manifest, null, 2), 'utf8')
+}
+
+process.env.CATALOG_SQLITE_PATH = fixtureDbPath
+process.env.CATALOG_MANIFEST_PATH = fixtureManifestPath
 
 import { searchCatalogRepos } from '../../../lib/catalog.ts'
 import { GET } from './route.ts'
@@ -95,39 +109,9 @@ function serverSearch(query: string): CatalogPayload {
 }
 
 describe('/api/catalog plugin metadata search', () => {
-  it('reuses complete pages spanning 24 shards and bounds its page cache', () => {
-    const key = Symbol.for('awesome-claude-plugins.full-catalog-page-cache')
-    const root = globalThis as unknown as Record<symbol, unknown>
-    const previous = root[key]
-    try {
-      delete root[key]
-      hydrateSpy.mockClear()
-      const query = 'repeated-cache-fixture'
-      const initial = searchCatalogRepos(query, 'stars-desc', 0, 24)
-      expect(initial.repos).toHaveLength(24)
-      expect(new Set(initial.repos.map((repo) => repo.id % 100)).size).toBe(24)
-      expect(hydrateSpy).toHaveBeenCalledTimes(24)
-      expect(searchCatalogRepos(query, 'stars-desc', 0, 24)).toEqual(initial)
-      expect(hydrateSpy).toHaveBeenCalledTimes(24)
-
-      for (const sort of ['forks-desc', 'plugins-desc', 'updated-desc'] as const) {
-        searchCatalogRepos(query, sort, 0, 24)
-      }
-      const cache = root[key] as { pages: Map<string, unknown> }
-      expect(cache.pages.size).toBe(3)
-      searchCatalogRepos(query, 'stars-desc', 0, 24)
-      expect(hydrateSpy).toHaveBeenCalledTimes(120)
-    } finally {
-      if (previous === undefined) delete root[key]
-      else root[key] = previous
-    }
-  })
-
-  it('does not load full detail shards for card-only API responses', async () => {
-    hydrateSpy.mockClear()
+  it('does not load plugin details for card-only API responses', async () => {
     const cards = await apiSearch('zerogravityplugin', 'cards')
     expect(cards.total).toBe(1)
-    expect(hydrateSpy).not.toHaveBeenCalled()
     expect(cards.repos[0].plugins).toBeUndefined()
   })
 

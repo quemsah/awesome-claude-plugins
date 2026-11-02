@@ -220,6 +220,12 @@ export function openPublicCatalog(path, expected = {}) {
     LIMIT 1
   `)
 
+  const lookupByIdStmt = db.prepare(`
+    SELECT record_json FROM repositories
+    WHERE id = ? AND is_canonical = 1
+    LIMIT 1
+  `)
+
   const isMarkdownStmt = db.prepare(`
     SELECT 1 FROM repositories
     WHERE canonical_key = ? AND is_canonical = 1 AND is_markdown_repo = 1
@@ -270,6 +276,12 @@ export function openPublicCatalog(path, expected = {}) {
     getRecordBySourceOrder(sourceOrder) {
       if (typeof sourceOrder !== 'number' || sourceOrder < 0) return undefined
       const row = lookupBySourceOrderStmt.get(sourceOrder)
+      return row ? JSON.parse(row.record_json) : undefined
+    },
+
+    getRecordById(id) {
+      if (typeof id !== 'number' || !Number.isSafeInteger(id)) return undefined
+      const row = lookupByIdStmt.get(id)
       return row ? JSON.parse(row.record_json) : undefined
     },
 

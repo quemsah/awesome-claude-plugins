@@ -6,7 +6,7 @@ import { assertValidStatsDraft, type StatsRecord } from './statsDraft.js'
 // Recovery hashes written before catalog timestamps must match the exact original
 // repos.json bytes, including canonical URLs, field order, and compact formatting.
 /** Convert real GitHub/first-seen dates into the strict public UTC representation. */
-function publicTimestamp(value: string | null | undefined): string | undefined {
+export function publicTimestamp(value: string | null | undefined): string | undefined {
   if (!value) return undefined
   // Date.parse accepts date-only strings and normalizes impossible dates (e.g. February 30).
   // GitHub timestamps and first-seen dates must be full ISO-8601 instants.

@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/style/useNamingConvention: test fixtures mirror catalog snake_case fields */
 
 import { createHash } from 'node:crypto'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
@@ -181,18 +181,21 @@ describe('catalogStore', () => {
       if (records.size === 2) break
     }
     const [first, second] = [...records.values()]
+    const reposPath = join(process.cwd(), 'src/data/repos.json')
     try {
       root[cacheKey] = new Map([
         [Math.abs(first.id % 100), {}],
         [Math.abs(second.id % 100), {}],
       ])
       delete root[fallbackKey]
+      writeFileSync(reposPath, JSON.stringify([first, second]), 'utf8')
       expect(getRepoDetails(first.id, first.owner, first.repo_name)?.id).toBe(first.id)
       const recovered = root[fallbackKey]
       expect(recovered).toBeInstanceOf(Map)
       expect(getRepoDetails(second.id, second.owner, second.repo_name)?.id).toBe(second.id)
       expect(root[fallbackKey]).toBe(recovered)
     } finally {
+      rmSync(reposPath, { force: true })
       if (previousCache === undefined) delete root[cacheKey]
       else root[cacheKey] = previousCache
       if (previousFallback === undefined) delete root[fallbackKey]
@@ -212,7 +215,13 @@ describe('catalogStore', () => {
     }
     const samples = [...records.values()]
     expect(samples).toHaveLength(12)
+    const shardsDir = join(process.cwd(), 'src/data/repo-details')
+    mkdirSync(shardsDir, { recursive: true })
     try {
+      for (const repo of samples) {
+        const shardId = Math.abs(repo.id % 100)
+        writeFileSync(join(shardsDir, `${shardId}.json`), JSON.stringify({ [repo.id]: repo }), 'utf8')
+      }
       delete holder[cacheKey]
       for (const repo of samples.slice(0, 10)) getRepoDetails(repo.id, repo.owner, repo.repo_name)
       // Touch the first inserted shard; it should survive subsequent evictions.
@@ -223,6 +232,7 @@ describe('catalogStore', () => {
       expect(cache.has(Math.abs(samples[0].id % 100))).toBe(true)
       expect(cache.has(Math.abs(samples[1].id % 100))).toBe(false)
     } finally {
+      rmSync(shardsDir, { recursive: true, force: true })
       if (previous === undefined) delete holder[cacheKey]
       else holder[cacheKey] = previous
     }

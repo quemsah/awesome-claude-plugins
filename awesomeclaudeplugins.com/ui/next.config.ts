@@ -53,15 +53,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ['better-sqlite3'],
   outputFileTracingIncludes: {
-    '/**': [
-      './src/data/search-index.json',
-      './src/data/repo-details/**',
-      './src/data/repos.json',
-      './src/data/catalog.sqlite',
-      './src/data/catalog.manifest.json',
-      './src/data/stats.json',
-      './src/data/markdown-paths.json',
-    ],
+    '/**': ['./src/data/catalog.sqlite', './src/data/catalog.manifest.json', './catalog-release.json'],
   },
   env: {
     // biome-ignore lint/style/useNamingConvention: Next.js env keys must match the names already used by the application.

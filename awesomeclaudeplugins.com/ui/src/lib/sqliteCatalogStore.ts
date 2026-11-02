@@ -9,6 +9,7 @@ import { getLatestValidStatsDate } from './catalogDates.ts'
 import { CATALOG_PAGE_SIZE } from './catalogPagination.ts'
 import { type CatalogQuality, getCatalogQuality } from './catalogQuality.ts'
 import { BASE_URL } from './constants.ts'
+import { hasSearchableTerms } from './fuzzySearch.ts'
 import { normalizeSearchQuery } from './searchQuery.ts'
 import type { SortOption } from './sortOptions.ts'
 
@@ -106,8 +107,17 @@ export function sqliteSearchCatalogRepos(
   pageSize: number = CATALOG_PAGE_SIZE,
   options?: CatalogSearchOptions
 ): CatalogSearchResult {
-  const reader = getSqliteReader()
   const normalizedQuery = normalizeSearchQuery(query)
+  if (normalizedQuery && !hasSearchableTerms(normalizedQuery)) {
+    return {
+      hasMore: false,
+      pluginsCount: 0,
+      repos: [],
+      total: 0,
+    }
+  }
+
+  const reader = getSqliteReader()
   const view = options?.summaries === 'omit' ? 'cards' : 'full'
 
   if (normalizedQuery) {
