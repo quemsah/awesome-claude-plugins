@@ -65,7 +65,9 @@ class Branch implements GitHubGit {
   uploadedAssets: { tagName: string; assetName: string; filePath: string }[] = []
   uploadFailure: string | null = null
 
-  async uploadReleaseAsset(tagName: string, assetName: string, filePath: string) {
+  uploadReleaseAsset?:
+    | ((tagName: string, assetName: string, filePath: string) => Promise<{ downloadUrl: string; sha256: string }>)
+    | undefined = async (tagName, assetName, filePath) => {
     this.events.push(`POST release-asset ${tagName}/${assetName}`)
     if (this.uploadFailure) throw new Error(this.uploadFailure)
     this.uploadedAssets.push({ tagName, assetName, filePath })

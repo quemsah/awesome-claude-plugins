@@ -7,8 +7,9 @@ import { vi } from 'vitest'
 import type { Repo } from '../schemas/repo.schema.ts'
 import fixtureRepos from './fixtures/repos.json' with { type: 'json' }
 
-const fixtureDbPath = join(tmpdir(), 'vitest-catalog-fixture.sqlite')
-const fixtureManifestPath = join(tmpdir(), 'vitest-catalog-fixture.manifest.json')
+const workerId = process.env.VITEST_POOL_ID ?? process.pid
+const fixtureDbPath = join(tmpdir(), `vitest-catalog-fixture-${workerId}.sqlite`)
+const fixtureManifestPath = join(tmpdir(), `vitest-catalog-fixture-${workerId}.manifest.json`)
 
 if (!(existsSync(fixtureDbPath) && existsSync(fixtureManifestPath))) {
   const manifest = buildPublicCatalog(

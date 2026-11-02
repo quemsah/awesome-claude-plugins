@@ -211,7 +211,19 @@ export async function prepareCatalog(options = {}) {
 
   // If SQLite exists and source repos.json does not exist, validate existing SQLite
   if (existsSync(outputPath) && !existsSync(reposPath)) {
-    return verifySqliteArtifact(outputPath, manifestPath, pointer)
+    try {
+      return verifySqliteArtifact(outputPath, manifestPath, pointer)
+    } catch (err) {
+      if (pointer?.artifactUrl) {
+        console.warn('[prepare-catalog] Existing SQLite artifact is invalid or stale for pointer; re-downloading...')
+        try {
+          unlinkSync(outputPath)
+        } catch {}
+        await downloadSqliteArtifact(pointer, outputPath)
+        return verifySqliteArtifact(outputPath, manifestPath, pointer)
+      }
+      throw err
+    }
   }
 
   // If SQLite does not exist and repos.json does not exist, retrieve SQLite using release pointer

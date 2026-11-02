@@ -295,7 +295,22 @@ function checkedSnapshot(
         const paths = resolveArtifactPaths(options)
         if (publication && publication.state === 'uploaded') {
           if (paths && existsSync(paths.pointerPath)) {
-            files.catalogReleaseJson = readFileSync(paths.pointerPath, 'utf8')
+            const pointerRaw = readFileSync(paths.pointerPath, 'utf8')
+            try {
+              const pointer = JSON.parse(pointerRaw) as Partial<CatalogReleasePointer>
+              if (
+                pointer.snapshotId !== publication.snapshot_id ||
+                pointer.catalogFingerprint !== publication.catalog_fingerprint ||
+                pointer.artifactSha256 !== publication.artifact_sha256
+              ) {
+                throw new Error('Pointer mismatch')
+              }
+              files.catalogReleaseJson = pointerRaw
+            } catch {
+              throw new PublicationError('snapshot_invalid')
+            }
+          } else {
+            throw new PublicationError('snapshot_invalid')
           }
         } else if (paths) {
           throw new PublicationError('snapshot_invalid')
@@ -541,6 +556,18 @@ export async function publishRun(
 
         const finalPublication = getArtifactPublication(db, runId)
         if (finalPublication?.state !== 'uploaded' || !existsSync(paths.pointerPath)) {
+          throw new PublicationError('snapshot_invalid')
+        }
+        try {
+          const pointer = JSON.parse(readFileSync(paths.pointerPath, 'utf8')) as Partial<CatalogReleasePointer>
+          if (
+            pointer.snapshotId !== finalPublication.snapshot_id ||
+            pointer.catalogFingerprint !== finalPublication.catalog_fingerprint ||
+            pointer.artifactSha256 !== finalPublication.artifact_sha256
+          ) {
+            throw new Error('Pointer mismatch')
+          }
+        } catch {
           throw new PublicationError('snapshot_invalid')
         }
       }

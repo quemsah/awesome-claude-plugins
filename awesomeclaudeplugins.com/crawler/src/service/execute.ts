@@ -473,7 +473,7 @@ function guardGit(db: Database.Database, git: GitHubGit, onBlocked: () => void, 
       if (!uploader) return undefined
       return (tagName: string, assetName: string, filePath: string) => {
         check()
-        return uploader(tagName, assetName, filePath)
+        return uploader.call(git, tagName, assetName, filePath)
       }
     })(),
   }
