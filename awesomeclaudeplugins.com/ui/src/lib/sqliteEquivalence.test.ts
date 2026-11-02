@@ -1,9 +1,19 @@
-import { describe, expect, it } from 'vitest'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { findCatalogRepo, searchCatalogRepos } from './catalog.ts'
 import { isRepoPageEndingInMd } from './markdownPaths.ts'
 import { sqliteFindCatalogRepo, sqliteSearchCatalogRepos } from './sqliteCatalogStore.ts'
 
 describe('PR 2 SQLite migration equivalence tests', () => {
+  beforeAll(async () => {
+    const dbPath = join(process.cwd(), 'src/data/catalog.sqlite')
+    if (!existsSync(dbPath)) {
+      // @ts-expect-error dynamic script import
+      const { prepareCatalog } = await import('../../scripts/prepare-catalog.mjs')
+      await prepareCatalog({ silent: true })
+    }
+  }, 30000)
   it('sqlAndLegacyPagesMatch: compares ordered paths, full API payload, total, pluginsCount, hasMore, default/full vs cards', () => {
     const testCases: Array<{
       query: string
