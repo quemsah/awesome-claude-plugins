@@ -184,7 +184,17 @@ export function sqliteGetCatalogSummary(): {
   }
 
   const meta = reader.getCatalogMetadata()
-  const latestDate = sqliteGetCatalogLastModified().toISOString()
+  const stats = reader.getStatistics()
+  let latestDate: string | null = null
+  let latestDateValue = 0
+  for (const s of stats) {
+    const parsed = Date.parse(s.date)
+    if (!Number.isNaN(parsed) && parsed > latestDateValue) {
+      latestDateValue = parsed
+      latestDate = s.date
+    }
+  }
+
   const pluginRepositoryCount = reader.getIndexableCount()
   const summary = {
     repoCount: meta.canonical_count,
