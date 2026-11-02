@@ -62,8 +62,14 @@ const rankColumns = {
   'created-desc': 'rank_created',
 }
 
+export const SUPPORTED_SCHEMA_VERSION = 1
+
 function toCardRecord(record) {
-  const { plugins, ...card } = record
+  const card = { ...record }
+  delete card.plugins
+  delete card.plugin_summaries
+  delete card.plugin_name
+  delete card.plugin_description
   return card
 }
 
@@ -99,6 +105,13 @@ export function openPublicCatalog(path, expected = {}) {
     throw new IncompatibleSchemaError('Catalog metadata record not found')
   }
 
+  if (metadataRow.schema_version !== SUPPORTED_SCHEMA_VERSION) {
+    db.close()
+    throw new IncompatibleSchemaError(
+      `Unsupported catalog schema version: reader supports version ${SUPPORTED_SCHEMA_VERSION}, found ${metadataRow.schema_version}`
+    )
+  }
+
   if (expected.schemaVersion !== undefined && metadataRow.schema_version !== expected.schemaVersion) {
     db.close()
     throw new IncompatibleSchemaError(
@@ -123,6 +136,17 @@ export function openPublicCatalog(path, expected = {}) {
     )
   }
 
+  try {
+    db.prepare('SELECT 1 FROM repositories LIMIT 1').get()
+    db.prepare('SELECT 1 FROM statistics LIMIT 1').get()
+    db.prepare('SELECT 1 FROM repo_fts LIMIT 1').get()
+    db.prepare('SELECT 1 FROM markdown_repositories LIMIT 1').get()
+    db.prepare('SELECT 1 FROM indexable_repositories LIMIT 1').get()
+  } catch (error) {
+    db.close()
+    throw new IncompatibleSchemaError('Required catalog tables or views are missing or corrupt', { cause: error })
+  }
+
   const metadata = {
     schema_version: metadataRow.schema_version,
     generator_version: metadataRow.generator_version,
@@ -134,6 +158,7 @@ export function openPublicCatalog(path, expected = {}) {
     canonical_count: metadataRow.canonical_count,
     plugins_count: metadataRow.plugins_count,
     stats_count: metadataRow.stats_count,
+    provenance: metadataRow.provenance_json ? JSON.parse(metadataRow.provenance_json) : undefined,
   }
 
   const lookupStmt = db.prepare(`

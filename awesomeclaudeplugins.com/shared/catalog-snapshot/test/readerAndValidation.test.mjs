@@ -3,6 +3,7 @@ import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { after, describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
+import Database from 'better-sqlite3'
 import { buildPublicCatalog } from '../src/build.js'
 import {
   CorruptedSnapshotError,
@@ -64,6 +65,26 @@ describe('readerAndValidation', () => {
       () => openPublicCatalog(tempDbPath, { schemaVersion: 999 }),
       IncompatibleSchemaError
     )
+
+    // Default openPublicCatalog without expected options still validates reader supported schema version
+    const testDb = new Database(tempDbPath)
+    try {
+      testDb.prepare('UPDATE catalog_metadata SET schema_version = 99 WHERE id = 1').run()
+    } finally {
+      testDb.close()
+    }
+    assert.throws(
+      () => openPublicCatalog(tempDbPath),
+      IncompatibleSchemaError
+    )
+
+    // Restore schema version for following tests
+    const restoreDb = new Database(tempDbPath)
+    try {
+      restoreDb.prepare('UPDATE catalog_metadata SET schema_version = 1 WHERE id = 1').run()
+    } finally {
+      restoreDb.close()
+    }
 
     // Snapshot ID mismatch throws SnapshotMismatchError
     assert.throws(
@@ -194,34 +215,39 @@ describe('readerAndValidation', () => {
     assert.equal(m2.createdAt, '2026-01-01T00:00:00.000Z')
     assert.equal(m2.artifactSha256, m1.artifactSha256)
 
-    // Changed stats -> does NOT reuse, rebuilds
+    // Changed stats with SAME snapshotId -> throws SnapshotMismatchError (immutability protection)
     const changedStats = [{ id: 99999, date: '2026-03-03', size: 12345 }]
-    const m3 = buildPublicCatalog(
-      {
-        records: inputRepos,
-        stats: changedStats,
-        snapshotId: 'reuse-test-run',
-        createdAt: '2026-03-03T00:00:00.000Z',
-      },
-      tempDbPath
+    assert.throws(
+      () =>
+        buildPublicCatalog(
+          {
+            records: inputRepos,
+            stats: changedStats,
+            snapshotId: 'reuse-test-run',
+            createdAt: '2026-03-03T00:00:00.000Z',
+          },
+          tempDbPath
+        ),
+      SnapshotMismatchError
     )
-    assert.equal(m3.createdAt, '2026-03-03T00:00:00.000Z')
-    assert.equal(m3.statsCount, 1)
 
-    // Non-array iterable (generator) -> does NOT reuse, rebuilds without consuming
+    // Non-array iterable (generator) with SAME snapshotId -> throws SnapshotMismatchError because reuse cannot be verified
     function* generateRecords() {
       for (const r of inputRepos) yield r
     }
-    const m4 = buildPublicCatalog(
-      {
-        records: generateRecords(),
-        stats: changedStats,
-        snapshotId: 'reuse-test-run',
-        createdAt: '2026-04-04T00:00:00.000Z',
-      },
-      tempDbPath
+    assert.throws(
+      () =>
+        buildPublicCatalog(
+          {
+            records: generateRecords(),
+            stats: inputStats,
+            snapshotId: 'reuse-test-run',
+            createdAt: '2026-04-04T00:00:00.000Z',
+          },
+          tempDbPath
+        ),
+      SnapshotMismatchError
     )
-    assert.equal(m4.createdAt, '2026-04-04T00:00:00.000Z')
   })
 
   it('excludes records with null plugins_count from iterateIndexableRepos', () => {
@@ -337,5 +363,33 @@ describe('readerAndValidation', () => {
         ),
       MarkdownPathCollisionError
     )
+  })
+
+  it('persists provenance metadata in snapshot manifest and reader metadata', () => {
+    const provenance = {
+      commit: 'abc1234567890abcdef',
+      runId: '987654321',
+      source: 'crawler-worker-1',
+    }
+
+    const manifest = buildPublicCatalog(
+      {
+        records: inputRepos,
+        stats: inputStats,
+        snapshotId: 'provenance-test-snapshot',
+        provenance,
+      },
+      tempDbPath
+    )
+
+    assert.deepEqual(manifest.provenance, provenance)
+
+    const reader = openPublicCatalog(tempDbPath)
+    try {
+      const meta = reader.getCatalogMetadata()
+      assert.deepEqual(meta.provenance, provenance)
+    } finally {
+      reader.close()
+    }
   })
 })

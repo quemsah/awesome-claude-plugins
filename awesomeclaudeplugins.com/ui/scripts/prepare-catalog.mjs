@@ -1,8 +1,21 @@
+import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { buildPublicCatalog } from '@awesome-claude-plugins/catalog-snapshot/build'
+import { buildPublicCatalog, GENERATOR_VERSION, SCHEMA_VERSION } from '@awesome-claude-plugins/catalog-snapshot/build'
 import { calculateCatalogFingerprint } from '@awesome-claude-plugins/catalog-snapshot/fingerprint'
+
+function calculateSnapshotIdentity(repos, stats, schemaVersion, generatorVersion) {
+  const reposFingerprint = calculateCatalogFingerprint(repos)
+  const hasher = createHash('sha256')
+  hasher.update(`schema_version:${schemaVersion};generator_version:${generatorVersion};fingerprint:${reposFingerprint};`)
+  if (Array.isArray(stats)) {
+    for (const stat of stats) {
+      hasher.update(`${stat.id}:${stat.date}:${stat.size};`)
+    }
+  }
+  return hasher.digest('hex').slice(0, 16)
+}
 
 /**
  * Prepares the SQLite public catalog snapshot from existing dataset files.
@@ -13,6 +26,7 @@ import { calculateCatalogFingerprint } from '@awesome-claude-plugins/catalog-sna
  * @param {string} [options.outputPath] Path to output SQLite database
  * @param {string} [options.manifestPath] Path to output snapshot manifest
  * @param {string} [options.snapshotId] Explicit snapshot ID
+ * @param {object} [options.provenance] Provenance metadata
  * @returns {import('@awesome-claude-plugins/catalog-snapshot').SnapshotManifest}
  */
 export function prepareCatalog(options = {}) {
@@ -34,7 +48,18 @@ export function prepareCatalog(options = {}) {
   const repos = JSON.parse(readFileSync(reposPath, 'utf8'))
   const stats = JSON.parse(readFileSync(statsPath, 'utf8'))
 
-  const snapshotId = options.snapshotId ?? process.env.CATALOG_SNAPSHOT_ID ?? `snapshot-${calculateCatalogFingerprint(repos).slice(0, 16)}`
+  const identity = calculateSnapshotIdentity(repos, stats, SCHEMA_VERSION, GENERATOR_VERSION)
+  const snapshotId = options.snapshotId ?? process.env.CATALOG_SNAPSHOT_ID ?? `snapshot-${identity}`
+
+  const provenance =
+    options.provenance ??
+    (process.env.GITHUB_SHA
+      ? {
+          commit: process.env.GITHUB_SHA,
+          runId: process.env.GITHUB_RUN_ID,
+          source: process.env.GITHUB_REPOSITORY ?? 'crawler',
+        }
+      : undefined)
 
   console.log(`[prepare-catalog] Building SQLite snapshot for ${repos.length} records and ${stats.length} stats entries...`)
 
@@ -44,6 +69,7 @@ export function prepareCatalog(options = {}) {
       stats,
       snapshotId,
       createdAt: new Date().toISOString(),
+      provenance,
     },
     outputPath
   )

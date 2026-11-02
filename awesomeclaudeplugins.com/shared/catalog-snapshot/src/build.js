@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readSync, renameSync, rmSync } from 'node:fs'
 import { dirname } from 'node:path'
 import Database from 'better-sqlite3'
 import {
   CorruptedSnapshotError,
   InvalidSnapshotInputError,
   MarkdownPathCollisionError,
+  SnapshotMismatchError,
 } from './errors.js'
 import {
   calculateCatalogFingerprint,
@@ -45,9 +46,23 @@ function statsMatchExistingSnapshot(existingDb, stats) {
   })
 }
 
+function hashFileSha256Sync(filePath) {
+  const fd = openSync(filePath, 'r')
+  try {
+    const hash = createHash('sha256')
+    const buffer = Buffer.alloc(64 * 1024)
+    let bytesRead = 0
+    while ((bytesRead = readSync(fd, buffer, 0, buffer.length, null)) > 0) {
+      hash.update(buffer.subarray(0, bytesRead))
+    }
+    return hash.digest('hex')
+  } finally {
+    closeSync(fd)
+  }
+}
+
 function tryReuseExistingSnapshot(outputPath, snapshotId, records, stats) {
   if (!existsSync(outputPath)) return null
-  if (!Array.isArray(records) || !Array.isArray(stats)) return null
   try {
     const existingDb = new Database(outputPath, { readonly: true, fileMustExist: true })
     try {
@@ -56,16 +71,32 @@ function tryReuseExistingSnapshot(outputPath, snapshotId, records, stats) {
         return null
       }
       const meta = existingDb.prepare('SELECT * FROM catalog_metadata WHERE id = 1').get()
-      if (
-        meta &&
-        meta.snapshot_id === snapshotId &&
-        meta.schema_version === SCHEMA_VERSION &&
-        meta.generator_version === GENERATOR_VERSION &&
-        calculateCatalogFingerprint(records) === meta.catalog_fingerprint &&
-        statsMatchExistingSnapshot(existingDb, stats)
-      ) {
-        const fileBytes = readFileSync(outputPath)
-        const artifactSha256 = createHash('sha256').update(fileBytes).digest('hex')
+      if (!meta) return null
+
+      if (meta.snapshot_id === snapshotId) {
+        if (!Array.isArray(records) || !Array.isArray(stats)) {
+          throw new SnapshotMismatchError(
+            `A snapshot with ID "${snapshotId}" already exists at "${outputPath}", but non-array inputs cannot be verified for reuse without consuming`
+          )
+        }
+
+        const currentFingerprint = calculateCatalogFingerprint(records)
+        const currentStatsMatch = statsMatchExistingSnapshot(existingDb, stats)
+        const schemaMatches = meta.schema_version === SCHEMA_VERSION
+        const generatorMatches = meta.generator_version === GENERATOR_VERSION
+
+        if (
+          !schemaMatches ||
+          !generatorMatches ||
+          currentFingerprint !== meta.catalog_fingerprint ||
+          !currentStatsMatch
+        ) {
+          throw new SnapshotMismatchError(
+            `Snapshot immutability violation: A snapshot with ID "${snapshotId}" already exists at "${outputPath}" with different contents or schema`
+          )
+        }
+
+        const artifactSha256 = hashFileSha256Sync(outputPath)
         return {
           schemaVersion: meta.schema_version,
           generatorVersion: meta.generator_version,
@@ -78,12 +109,16 @@ function tryReuseExistingSnapshot(outputPath, snapshotId, records, stats) {
           statsCount: meta.stats_count,
           outputPath,
           createdAt: meta.created_at,
+          provenance: meta.provenance_json ? JSON.parse(meta.provenance_json) : undefined,
         }
       }
     } finally {
       existingDb.close()
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof SnapshotMismatchError) {
+      throw error
+    }
     // Existing database cannot be read, fall through to full build
   }
   return null
@@ -105,7 +140,8 @@ function initCatalogSchema(db) {
       record_count INTEGER NOT NULL,
       canonical_count INTEGER NOT NULL,
       plugins_count INTEGER NOT NULL,
-      stats_count INTEGER NOT NULL
+      stats_count INTEGER NOT NULL,
+      provenance_json TEXT DEFAULT NULL
     );
 
     CREATE TABLE repositories (
@@ -313,7 +349,9 @@ function populateRepositories(db, records, hasher) {
 
       const params = extractRepoRowParams(parsed, sourceOrder, isCanonical, canonicalKey, recordJson)
       const info = insertRepo.run(...params)
-      insertFts.run(info.lastInsertRowid, extractFtsText(parsed, owner, repoName))
+      if (isCanonical) {
+        insertFts.run(info.lastInsertRowid, extractFtsText(parsed, owner, repoName))
+      }
     }
   })
 
@@ -428,13 +466,14 @@ export function buildPublicCatalog(input, outputPath) {
 
     const catalogFingerprint = hasher.digest()
     const createdAt = input.createdAt ?? new Date().toISOString()
+    const provenanceJson = input.provenance ? JSON.stringify(input.provenance) : null
 
     db.prepare(`
       INSERT INTO catalog_metadata (
         id, schema_version, generator_version, snapshot_id,
         catalog_fingerprint, created_at, record_count,
-        canonical_count, plugins_count, stats_count
-      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        canonical_count, plugins_count, stats_count, provenance_json
+      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       SCHEMA_VERSION,
       GENERATOR_VERSION,
@@ -444,14 +483,14 @@ export function buildPublicCatalog(input, outputPath) {
       recordCount,
       canonicalCount,
       pluginsCountTotal,
-      statsCount
+      statsCount,
+      provenanceJson
     )
 
     verifyAndCloseDatabase(db, stagingPath)
     db = null
 
-    const artifactBytes = readFileSync(stagingPath)
-    const artifactSha256 = createHash('sha256').update(artifactBytes).digest('hex')
+    const artifactSha256 = hashFileSha256Sync(stagingPath)
 
     renameSync(stagingPath, outputPath)
 
@@ -467,6 +506,7 @@ export function buildPublicCatalog(input, outputPath) {
       statsCount,
       outputPath,
       createdAt,
+      provenance: input.provenance ?? undefined,
     }
   } catch (error) {
     if (db) {
