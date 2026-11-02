@@ -28,11 +28,23 @@
         "zod": "^4.4.3",
       },
     },
+    "shared/catalog-snapshot": {
+      "name": "@awesome-claude-plugins/catalog-snapshot",
+      "version": "0.1.0",
+      "dependencies": {
+        "better-sqlite3": "12.11.1",
+      },
+      "devDependencies": {
+        "@types/better-sqlite3": "^7.6.13",
+        "@types/node": "*",
+      },
+    },
     "ui": {
       "name": "awesome-claude-plugins",
       "version": "2.0.0",
       "dependencies": {
         "@awesome-claude-plugins/catalog-contract": "^0.1.0",
+        "@awesome-claude-plugins/catalog-snapshot": "^0.1.0",
         "@radix-ui/react-avatar": "^1.2.6",
         "@radix-ui/react-dropdown-menu": "2.2.1",
         "@radix-ui/react-select": "^2.3.7",
@@ -74,6 +86,8 @@
     "@alloc/quick-lru": ["@alloc/quick-lru@5.3.0", "", {}, "sha512-U4+70Pc5ZS9osnCBCE5Jha/ciHM+Yp+CNMNC/7HvYbNRk1Ldd+f7qO65W5qfhu/TCv+/ozljlXXe9Nj8419DMA=="],
 
     "@awesome-claude-plugins/catalog-contract": ["@awesome-claude-plugins/catalog-contract@workspace:shared/catalog-contract"],
+
+    "@awesome-claude-plugins/catalog-snapshot": ["@awesome-claude-plugins/catalog-snapshot@workspace:shared/catalog-snapshot"],
 
     "@biomejs/biome": ["@biomejs/biome@2.6.3", "", { "optionalDependencies": { "@biomejs/cli-android-arm64": "2.6.3", "@biomejs/cli-android-x64": "2.6.3", "@biomejs/cli-darwin-arm64": "2.6.3", "@biomejs/cli-darwin-x64": "2.6.3", "@biomejs/cli-linux-arm64": "2.6.3", "@biomejs/cli-linux-arm64-musl": "2.6.3", "@biomejs/cli-linux-x64": "2.6.3", "@biomejs/cli-linux-x64-musl": "2.6.3", "@biomejs/cli-win32-arm64": "2.6.3", "@biomejs/cli-win32-x64": "2.6.3" }, "bin": { "biome": "bin/biome" } }, "sha512-va/0xPku7wnfzv+D8Zpdm5uKiGJWiV8neqoEPnRjvNQQwhl4tVXS4fETs4H0CCB2rGeqJ4cu9y4iOZOnOYKAUA=="],
 

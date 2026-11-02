@@ -1,0 +1,277 @@
+[
+  {
+    "id": 1001,
+    "owner": "standard-org",
+    "repo_name": "standard-plugin",
+    "stargazers_count": 120,
+    "forks_count": 15,
+    "subscribers_count": 5,
+    "description": "Standard marketplace plugin repository with high quality description.",
+    "plugins_count": 2,
+    "manifest_kind": "marketplace",
+    "plugins": [
+      {
+        "name": "plugin-alpha",
+        "description": "Alpha tool for Claude Code"
+      },
+      {
+        "name": "plugin-beta",
+        "description": "Beta utility for automation"
+      }
+    ],
+    "catalog_updated_at": "2026-10-31T20:00:00.000Z",
+    "pushed_at": "2026-10-30T10:00:00.000Z",
+    "catalog_added_at": "2026-05-01T12:00:00.000Z",
+    "license": "MIT",
+    "archived": false
+  },
+  {
+    "id": 1002,
+    "owner": "standalone-author",
+    "repo_name": "standalone-tool",
+    "stargazers_count": 85,
+    "forks_count": 4,
+    "subscribers_count": 2,
+    "description": "Standalone Claude Code tool indexed directly.",
+    "plugins_count": 1,
+    "manifest_kind": "standalone-plugin",
+    "plugin_name": "standalone-tool",
+    "plugin_description": "Single-plugin manifest repository description.",
+    "catalog_updated_at": "2026-10-31T21:00:00.000Z",
+    "pushed_at": "2026-10-29T15:00:00.000Z",
+    "catalog_added_at": "2026-06-01T10:00:00.000Z",
+    "license": "Apache-2.0",
+    "archived": false
+  },
+  {
+    "id": 1003,
+    "owner": "Case-Sensitive-Org",
+    "repo_name": "Shared-Repo",
+    "stargazers_count": 50,
+    "forks_count": 5,
+    "subscribers_count": 1,
+    "description": "First instance of case sensitive path repo.",
+    "plugins_count": 1,
+    "plugins": [
+      {
+        "name": "shared-tool",
+        "description": "Primary case instance"
+      }
+    ],
+    "catalog_updated_at": "2026-10-31T21:30:00.000Z",
+    "pushed_at": "2026-10-28T09:00:00.000Z",
+    "catalog_added_at": "2026-07-01T08:00:00.000Z",
+    "archived": false
+  },
+  {
+    "id": 1004,
+    "owner": "case-sensitive-org",
+    "repo_name": "shared-repo",
+    "stargazers_count": 50,
+    "forks_count": 5,
+    "subscribers_count": 1,
+    "description": "Duplicate instance with lowercase case sensitive path.",
+    "plugins_count": 1,
+    "plugins": [
+      {
+        "name": "shared-tool-dup",
+        "description": "Duplicate case instance"
+      }
+    ],
+    "catalog_updated_at": "2026-10-31T21:35:00.000Z",
+    "pushed_at": "2026-10-28T09:00:00.000Z",
+    "catalog_added_at": "2026-07-01T08:00:00.000Z",
+    "archived": false
+  },
+  {
+    "id": 1005,
+    "owner": "doc-org",
+    "repo_name": "awesome-guide.md",
+    "stargazers_count": 300,
+    "forks_count": 40,
+    "subscribers_count": 12,
+    "description": "Literal Markdown repository path guide.",
+    "plugins_count": 1,
+    "plugins": [
+      {
+        "name": "guide-reader",
+        "description": "Guide reader plugin"
+      }
+    ],
+    "catalog_updated_at": "2026-10-31T22:00:00.000Z",
+    "pushed_at": "2026-10-27T18:00:00.000Z",
+    "catalog_added_at": "2026-08-01T00:00:00.000Z",
+    "license": null,
+    "archived": false
+  },
+  {
+    "id": 1005,
+    "owner": "reused-id-org",
+    "repo_name": "reused-id-repo",
+    "stargazers_count": 10,
+    "forks_count": 1,
+    "subscribers_count": 0,
+    "description": "Different repo that happens to have duplicate source id 1005.",
+    "plugins_count": 0,
+    "catalog_updated_at": "2026-10-31T22:30:00.000Z",
+    "archived": true
+  },
+  {
+    "id": 1006,
+    "owner": "many-plugins-org",
+    "repo_name": "mega-marketplace",
+    "stargazers_count": 500,
+    "forks_count": 80,
+    "subscribers_count": 30,
+    "description": "Repository containing more than thirty plugins to test deep search indexing.",
+    "plugins_count": 35,
+    "manifest_kind": "marketplace",
+    "plugins": [
+      {
+        "name": "plugin-01",
+        "description": "Description for 1"
+      },
+      {
+        "name": "plugin-02",
+        "description": "Description for 2"
+      },
+      {
+        "name": "plugin-03",
+        "description": "Description for 3"
+      },
+      {
+        "name": "plugin-04",
+        "description": "Description for 4"
+      },
+      {
+        "name": "plugin-05",
+        "description": "Description for 5"
+      },
+      {
+        "name": "plugin-06",
+        "description": "Description for 6"
+      },
+      {
+        "name": "plugin-07",
+        "description": "Description for 7"
+      },
+      {
+        "name": "plugin-08",
+        "description": "Description for 8"
+      },
+      {
+        "name": "plugin-09",
+        "description": "Description for 9"
+      },
+      {
+        "name": "plugin-10",
+        "description": "Description for 10"
+      },
+      {
+        "name": "plugin-11",
+        "description": "Description for 11"
+      },
+      {
+        "name": "plugin-12",
+        "description": "Description for 12"
+      },
+      {
+        "name": "plugin-13",
+        "description": "Description for 13"
+      },
+      {
+        "name": "plugin-14",
+        "description": "Description for 14"
+      },
+      {
+        "name": "plugin-15",
+        "description": "Description for 15"
+      },
+      {
+        "name": "plugin-16",
+        "description": "Description for 16"
+      },
+      {
+        "name": "plugin-17",
+        "description": "Description for 17"
+      },
+      {
+        "name": "plugin-18",
+        "description": "Description for 18"
+      },
+      {
+        "name": "plugin-19",
+        "description": "Description for 19"
+      },
+      {
+        "name": "plugin-20",
+        "description": "Description for 20"
+      },
+      {
+        "name": "plugin-21",
+        "description": "Description for 21"
+      },
+      {
+        "name": "plugin-22",
+        "description": "Description for 22"
+      },
+      {
+        "name": "plugin-23",
+        "description": "Description for 23"
+      },
+      {
+        "name": "plugin-24",
+        "description": "Description for 24"
+      },
+      {
+        "name": "plugin-25",
+        "description": "Description for 25"
+      },
+      {
+        "name": "plugin-26",
+        "description": "Description for 26"
+      },
+      {
+        "name": "plugin-27",
+        "description": "Description for 27"
+      },
+      {
+        "name": "plugin-28",
+        "description": "Description for 28"
+      },
+      {
+        "name": "plugin-29",
+        "description": "Description for 29"
+      },
+      {
+        "name": "plugin-30",
+        "description": "Description for 30"
+      },
+      {
+        "name": "plugin-31-special-needle",
+        "description": "Special needle beyond thirty limit"
+      },
+      {
+        "name": "plugin-32",
+        "description": "Description for 32"
+      },
+      {
+        "name": "plugin-33",
+        "description": "Description for 33"
+      },
+      {
+        "name": "plugin-34",
+        "description": "Description for 34"
+      },
+      {
+        "name": "plugin-35",
+        "description": "Description for 35"
+      }
+    ],
+    "catalog_updated_at": "2026-10-31T23:00:00.000Z",
+    "pushed_at": "2026-10-31T12:00:00.000Z",
+    "catalog_added_at": "2026-09-01T00:00:00.000Z",
+    "license": "MIT",
+    "archived": false
+  }
+]
