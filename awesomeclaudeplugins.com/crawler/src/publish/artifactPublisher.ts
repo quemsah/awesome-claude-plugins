@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { openPublicCatalog, type SnapshotManifest } from '@awesome-claude-plugins/catalog-snapshot'
@@ -73,7 +74,97 @@ export function prepareArtifactPublication(
     throw new ArtifactPublicationError(`Run not found: ${runId}`, 'RUN_NOT_FOUND')
   }
 
-  const manifest = buildPublicCatalogFromCrawler(db, options)
+  const existingPub = getArtifactPublication(db, runId)
+  if (existingPub?.state === 'uploaded') {
+    if (
+      !existingPub.artifact_path ||
+      (options.snapshotId && options.snapshotId !== existingPub.snapshot_id) ||
+      (options.outputPath && options.outputPath !== existingPub.artifact_path)
+    ) {
+      throw new ArtifactPublicationError(
+        `Cannot re-prepare already uploaded publication with conflicting properties for run ${runId}`,
+        'ALREADY_UPLOADED_CONFLICT',
+      )
+    }
+    const artifactPath = existingPub.artifact_path
+    const reader = openPublicCatalog(artifactPath)
+    try {
+      const meta = reader.getCatalogMetadata()
+      if (
+        existingPub.snapshot_id === meta.snapshot_id &&
+        existingPub.catalog_fingerprint === meta.catalog_fingerprint &&
+        existingPub.artifact_sha256 === createHash('sha256').update(readFileSync(artifactPath)).digest('hex')
+      ) {
+        const manifest: SnapshotManifest = {
+          schemaVersion: meta.schema_version,
+          generatorVersion: meta.generator_version,
+          snapshotId: meta.snapshot_id,
+          catalogFingerprint: meta.catalog_fingerprint,
+          artifactSha256: existingPub.artifact_sha256,
+          recordCount: meta.record_count,
+          canonicalCount: meta.canonical_count,
+          pluginsCount: meta.plugins_count,
+          statsCount: meta.stats_count,
+          outputPath: artifactPath,
+          createdAt: meta.created_at,
+        }
+        return { manifest, publication: existingPub }
+      }
+    } finally {
+      reader.close()
+    }
+    throw new ArtifactPublicationError(
+      `Cannot re-prepare already uploaded publication with conflicting properties for run ${runId}`,
+      'ALREADY_UPLOADED_CONFLICT',
+    )
+  }
+
+  // Recovery path: if a publication already exists and its artifact is preserved on disk,
+  // reuse the exact artifact rather than regenerating divergent bytes
+  if (existingPub?.artifact_path && existsSync(existingPub.artifact_path)) {
+    const artifactPath = existingPub.artifact_path
+    const diskSha = createHash('sha256').update(readFileSync(artifactPath)).digest('hex')
+    if (diskSha === existingPub.artifact_sha256) {
+      const reader = openPublicCatalog(artifactPath)
+      try {
+        const meta = reader.getCatalogMetadata()
+        const manifest: SnapshotManifest = {
+          schemaVersion: meta.schema_version,
+          generatorVersion: meta.generator_version,
+          snapshotId: meta.snapshot_id,
+          catalogFingerprint: meta.catalog_fingerprint,
+          artifactSha256: existingPub.artifact_sha256,
+          recordCount: meta.record_count,
+          canonicalCount: meta.canonical_count,
+          pluginsCount: meta.plugins_count,
+          statsCount: meta.stats_count,
+          outputPath: artifactPath,
+          createdAt: meta.created_at,
+        }
+        if (existingPub.state === 'failed') {
+          db.prepare("UPDATE artifact_publications SET state = 'prepared', diagnostic_code = NULL WHERE run_id = ?").run(runId)
+          const updated = getArtifactPublication(db, runId)
+          if (!updated) {
+            throw new ArtifactPublicationError(`Artifact publication disappeared for run ${runId}`, 'PUBLICATION_MISSING')
+          }
+          return { manifest, publication: updated }
+        }
+        return { manifest, publication: existingPub }
+      } finally {
+        reader.close()
+      }
+    }
+  }
+
+  if (existingPub?.state === 'failed') {
+    throw new ArtifactPublicationError(
+      `Cannot recover failed publication for run ${runId}: preserved artifact missing or corrupt`,
+      'RECOVERY_FAILED',
+    )
+  }
+
+  const effectiveSnapshotId = options.snapshotId ?? existingPub?.snapshot_id
+  const manifest = buildPublicCatalogFromCrawler(db, { ...options, snapshotId: effectiveSnapshotId })
   const byteSize = statSync(options.outputPath).size
   const preparedAt = new Date().toISOString()
 
@@ -93,23 +184,6 @@ export function prepareArtifactPublication(
     } finally {
       reader.close()
     }
-  }
-
-  const existingPub = getArtifactPublication(db, runId)
-  if (existingPub?.state === 'uploaded') {
-    if (
-      existingPub.snapshot_id === manifest.snapshotId &&
-      existingPub.artifact_sha256 === manifest.artifactSha256 &&
-      existingPub.catalog_fingerprint === manifest.catalogFingerprint &&
-      existingPub.byte_size === byteSize &&
-      existingPub.artifact_path === options.outputPath
-    ) {
-      return { manifest, publication: existingPub }
-    }
-    throw new ArtifactPublicationError(
-      `Cannot re-prepare already uploaded publication with conflicting properties for run ${runId}`,
-      'ALREADY_UPLOADED_CONFLICT',
-    )
   }
 
   const initialPointer: CatalogReleasePointer = {
@@ -189,6 +263,96 @@ export function markArtifactFailed(db: Database.Database, runId: string, diagnos
   return result.changes > 0
 }
 
+function writePointerFileAtomically(pointerPath: string, pointerObj: unknown): void {
+  mkdirSync(dirname(pointerPath), { recursive: true })
+  const tmpPath = `${pointerPath}.tmp.${process.pid}.${Date.now()}`
+  writeFileSync(tmpPath, `${JSON.stringify(pointerObj, null, 2)}\n`, 'utf8')
+  renameSync(tmpPath, pointerPath)
+}
+
+function tryWriteStoredPointer(
+  paths: { pointerPath: string; outputPath?: string },
+  publication: ArtifactPublicationRow,
+  syncDb: (url: string, pointerObj: unknown) => void,
+): boolean {
+  if (!publication.release_pointer) return false
+  try {
+    const stored = JSON.parse(publication.release_pointer) as CatalogReleasePointer
+    if (
+      stored.snapshotId === publication.snapshot_id &&
+      stored.catalogFingerprint === publication.catalog_fingerprint &&
+      stored.artifactSha256 === publication.artifact_sha256
+    ) {
+      if (publication.artifact_url && stored.artifactUrl !== publication.artifact_url) {
+        stored.artifactUrl = publication.artifact_url
+        syncDb(publication.artifact_url, stored)
+      }
+      writePointerFileAtomically(paths.pointerPath, stored)
+      return true
+    }
+  } catch {}
+  return false
+}
+
+function tryWriteExistingPointer(
+  paths: { pointerPath: string; outputPath?: string },
+  publication: ArtifactPublicationRow,
+  syncDb: (url: string, pointerObj: unknown) => void,
+): boolean {
+  if (!existsSync(paths.pointerPath)) return false
+  try {
+    const existing = JSON.parse(readFileSync(paths.pointerPath, 'utf8')) as CatalogReleasePointer
+    const urlMatches = !publication.artifact_url || existing.artifactUrl === publication.artifact_url
+    if (
+      existing.snapshotId === publication.snapshot_id &&
+      existing.catalogFingerprint === publication.catalog_fingerprint &&
+      existing.artifactSha256 === publication.artifact_sha256
+    ) {
+      if (urlMatches) {
+        if (existing.artifactUrl && !publication.artifact_url) syncDb(existing.artifactUrl, existing)
+        return true
+      }
+      if (publication.artifact_url) {
+        existing.artifactUrl = publication.artifact_url
+        writePointerFileAtomically(paths.pointerPath, existing)
+        syncDb(publication.artifact_url, existing)
+        return true
+      }
+    }
+  } catch {}
+  return false
+}
+
+function reconstructPointerFromArtifact(
+  paths: { pointerPath: string; outputPath?: string },
+  publication: ArtifactPublicationRow,
+  syncDb: (url: string, pointerObj: unknown) => void,
+): void {
+  const artifactPath = publication.artifact_path ?? paths.outputPath
+  if (!artifactPath || !existsSync(artifactPath)) return
+  const reader = openPublicCatalog(artifactPath)
+  try {
+    const meta = reader.getCatalogMetadata()
+    const reconstructed: CatalogReleasePointer = {
+      snapshotId: meta.snapshot_id,
+      catalogFingerprint: meta.catalog_fingerprint,
+      artifactSha256: publication.artifact_sha256,
+      recordCount: meta.record_count,
+      canonicalCount: meta.canonical_count,
+      pluginsCount: meta.plugins_count,
+      statsCount: meta.stats_count,
+      schemaVersion: meta.schema_version,
+      generatorVersion: meta.generator_version,
+      createdAt: meta.created_at,
+      ...(publication.artifact_url ? { artifactUrl: publication.artifact_url } : {}),
+    }
+    writePointerFileAtomically(paths.pointerPath, reconstructed)
+    if (publication.artifact_url) syncDb(publication.artifact_url, reconstructed)
+  } finally {
+    reader.close()
+  }
+}
+
 export function ensureReleasePointerFile(
   paths: { pointerPath: string; outputPath?: string },
   publication: ArtifactPublicationRow,
@@ -206,84 +370,9 @@ export function ensureReleasePointerFile(
     }
   }
 
-  if (publication.release_pointer) {
-    try {
-      const stored = JSON.parse(publication.release_pointer) as CatalogReleasePointer
-      if (
-        stored.snapshotId === publication.snapshot_id &&
-        stored.catalogFingerprint === publication.catalog_fingerprint &&
-        stored.artifactSha256 === publication.artifact_sha256
-      ) {
-        if (publication.artifact_url && stored.artifactUrl !== publication.artifact_url) {
-          stored.artifactUrl = publication.artifact_url
-          syncDb(publication.artifact_url, stored)
-        }
-        mkdirSync(dirname(paths.pointerPath), { recursive: true })
-        const tmpPath = `${paths.pointerPath}.tmp.${process.pid}.${Date.now()}`
-        writeFileSync(tmpPath, `${JSON.stringify(stored, null, 2)}\n`, 'utf8')
-        renameSync(tmpPath, paths.pointerPath)
-        return
-      }
-    } catch {}
-  }
-
-  if (existsSync(paths.pointerPath)) {
-    try {
-      const existing = JSON.parse(readFileSync(paths.pointerPath, 'utf8')) as CatalogReleasePointer
-      const urlMatches = !publication.artifact_url || existing.artifactUrl === publication.artifact_url
-      if (
-        existing.snapshotId === publication.snapshot_id &&
-        existing.catalogFingerprint === publication.catalog_fingerprint &&
-        existing.artifactSha256 === publication.artifact_sha256
-      ) {
-        if (urlMatches) {
-          if (existing.artifactUrl && !publication.artifact_url) {
-            syncDb(existing.artifactUrl, existing)
-          }
-          return
-        }
-        if (publication.artifact_url) {
-          existing.artifactUrl = publication.artifact_url
-          mkdirSync(dirname(paths.pointerPath), { recursive: true })
-          const tmpPath = `${paths.pointerPath}.tmp.${process.pid}.${Date.now()}`
-          writeFileSync(tmpPath, `${JSON.stringify(existing, null, 2)}\n`, 'utf8')
-          renameSync(tmpPath, paths.pointerPath)
-          syncDb(publication.artifact_url, existing)
-          return
-        }
-      }
-    } catch {}
-  }
-
-  const artifactPath = publication.artifact_path ?? paths.outputPath
-  if (artifactPath && existsSync(artifactPath)) {
-    const reader = openPublicCatalog(artifactPath)
-    try {
-      const meta = reader.getCatalogMetadata()
-      const reconstructed: CatalogReleasePointer = {
-        snapshotId: meta.snapshot_id,
-        catalogFingerprint: meta.catalog_fingerprint,
-        artifactSha256: publication.artifact_sha256,
-        recordCount: meta.record_count,
-        canonicalCount: meta.canonical_count,
-        pluginsCount: meta.plugins_count,
-        statsCount: meta.stats_count,
-        schemaVersion: meta.schema_version,
-        generatorVersion: meta.generator_version,
-        createdAt: meta.created_at,
-        ...(publication.artifact_url ? { artifactUrl: publication.artifact_url } : {}),
-      }
-      mkdirSync(dirname(paths.pointerPath), { recursive: true })
-      const tmpPath = `${paths.pointerPath}.tmp.${process.pid}.${Date.now()}`
-      writeFileSync(tmpPath, `${JSON.stringify(reconstructed, null, 2)}\n`, 'utf8')
-      renameSync(tmpPath, paths.pointerPath)
-      if (publication.artifact_url) {
-        syncDb(publication.artifact_url, reconstructed)
-      }
-    } finally {
-      reader.close()
-    }
-  }
+  if (tryWriteStoredPointer(paths, publication, syncDb)) return
+  if (tryWriteExistingPointer(paths, publication, syncDb)) return
+  reconstructPointerFromArtifact(paths, publication, syncDb)
 }
 
 export function writeReleasePointer(manifest: SnapshotManifest, pointerPath: string, artifactUrl?: string): CatalogReleasePointer {

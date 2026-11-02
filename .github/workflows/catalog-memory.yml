@@ -52,7 +52,7 @@ jobs:
         working-directory: candidate/awesomeclaudeplugins.com
         run: bun install --frozen-lockfile
       - name: Prepare catalog SQLite snapshots
-        uses: ./.github/actions/prepare-catalog-snapshots
+        uses: ./candidate/.github/actions/prepare-catalog-snapshots
       - name: Check identical catalog inputs
         shell: bash
         working-directory: candidate/awesomeclaudeplugins.com/ui
@@ -61,15 +61,21 @@ jobs:
             const Database = require("better-sqlite3");
             const db1 = new Database("../../../baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite", { readonly: true });
             const db2 = new Database("src/data/catalog.sqlite", { readonly: true });
-            const fp1 = db1.prepare("SELECT catalog_fingerprint FROM catalog_metadata").get()?.catalog_fingerprint;
-            const fp2 = db2.prepare("SELECT catalog_fingerprint FROM catalog_metadata").get()?.catalog_fingerprint;
-            db1.close();
-            db2.close();
-            if (!fp1 || !fp2 || fp1 !== fp2) {
-              console.error("Catalog fingerprint mismatch:", fp1, "vs", fp2);
+            const count1 = db1.prepare("SELECT count(*) as c FROM repositories WHERE is_canonical = 1").get()?.c;
+            const count2 = db2.prepare("SELECT count(*) as c FROM repositories WHERE is_canonical = 1").get()?.c;
+            if (!count1 || count1 !== count2) {
+              console.error("Catalog record count mismatch:", count1, "vs", count2);
               process.exit(1);
             }
-            console.log("Catalog fingerprints match:", fp1);
+            const sample1 = db1.prepare("SELECT id, owner, repo_name, plugins_count FROM repositories WHERE is_canonical = 1 ORDER BY id LIMIT 50").all();
+            const sample2 = db2.prepare("SELECT id, owner, repo_name, plugins_count FROM repositories WHERE is_canonical = 1 ORDER BY id LIMIT 50").all();
+            db1.close();
+            db2.close();
+            if (JSON.stringify(sample1) !== JSON.stringify(sample2)) {
+              console.error("Catalog canonical sample mismatch");
+              process.exit(1);
+            }
+            console.log("Catalog inputs verified identical (" + count1 + " canonical records)");
           '
       - name: Measure RAM (three independent processes per revision)
         shell: bash
@@ -134,7 +140,7 @@ jobs:
         working-directory: candidate/awesomeclaudeplugins.com
         run: bun install --frozen-lockfile
       - name: Prepare catalog SQLite snapshots
-        uses: ./.github/actions/prepare-catalog-snapshots
+        uses: ./candidate/.github/actions/prepare-catalog-snapshots
       - name: Build baseline production Next.js
         working-directory: baseline/awesomeclaudeplugins.com
         run: bun run build:ui

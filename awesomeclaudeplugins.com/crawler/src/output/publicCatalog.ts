@@ -16,10 +16,33 @@ export interface BuildPublicCatalogOptions {
   createdAt?: string
 }
 
+function attachPlugins(record: CatalogRecord, pluginsJson: string | null | undefined): void {
+  const plugins = parsePluginSummariesJson(pluginsJson ?? null)
+  if (plugins !== null) {
+    record.plugins = plugins.map((p) => ({
+      name: p.name ?? '',
+      ...(p.description ? { description: p.description } : {}),
+    }))
+  }
+}
+
+function attachMetadata(record: CatalogRecord, row: PublishableRepository): void {
+  if (row.manifest_kind === 'standalone-plugin') {
+    record.manifest_kind = row.manifest_kind
+  }
+  record.catalog_updated_at = row.catalog_updated_at ?? new Date(0).toISOString()
+  const pushed = publicTimestamp(row.pushed_at)
+  if (pushed) record.pushed_at = pushed
+  const added = publicTimestamp(row.catalog_added_at)
+  if (added) record.catalog_added_at = added
+  if (row.license) record.license = row.license
+  if (row.archived != null) {
+    record.archived = row.archived === true || row.archived === 1
+  }
+}
+
 export function formatPublicCatalogRecord(row: PublishableRepository): CatalogRecord {
-  const plugins = parsePluginSummariesJson(row.plugins_json ?? null)
-  const record: CatalogRecord = {
-    id: row.id,
+  const record = {
     stargazers_count: row.stargazers_count ?? 0,
     forks_count: row.forks_count ?? 0,
     subscribers_count: row.subscribers_count ?? 0,
@@ -27,32 +50,11 @@ export function formatPublicCatalogRecord(row: PublishableRepository): CatalogRe
     owner: row.owner ?? '',
     repo_name: row.repo_name ?? '',
     plugins_count: row.plugins_count,
-    catalog_updated_at: row.catalog_updated_at ?? new Date(0).toISOString(),
-  }
+  } as CatalogRecord
 
-  if (plugins !== null) {
-    record.plugins = plugins.map((p) => ({
-      name: p.name ?? '',
-      ...(p.description ? { description: p.description } : {}),
-    }))
-  }
-  if (row.manifest_kind === 'standalone-plugin' || row.manifest_kind === 'marketplace') {
-    record.manifest_kind = row.manifest_kind
-  }
-  const pushed = publicTimestamp(row.pushed_at)
-  if (pushed) {
-    record.pushed_at = pushed
-  }
-  const added = publicTimestamp(row.catalog_added_at)
-  if (added) {
-    record.catalog_added_at = added
-  }
-  if (row.license) {
-    record.license = row.license
-  }
-  if (row.archived != null) {
-    record.archived = row.archived === true || row.archived === 1
-  }
+  attachPlugins(record, row.plugins_json)
+  attachMetadata(record, row)
+  record.id = row.id
 
   return record
 }

@@ -55,8 +55,21 @@ function readCurrentCatalog() {
   return buildCatalogRecordsFromSqlite(CATALOG_PATH, SITE_URL)
 }
 
+function hasBaseline() {
+  if (existsSync(BASELINE_PATH)) return true
+  const legacyPath = fileURLToPath(new URL('../.indexnow-cache/repos.json', import.meta.url))
+  return existsSync(legacyPath)
+}
+
 function readBaseline() {
   if (!existsSync(BASELINE_PATH)) {
+    const legacyPath = fileURLToPath(new URL('../.indexnow-cache/repos.json', import.meta.url))
+    if (existsSync(legacyPath)) {
+      console.log(`Migrating legacy IndexNow baseline from ${legacyPath}...`)
+      const legacyRecords = loadBaseline(legacyPath)
+      writeBaseline(legacyRecords)
+      return legacyRecords
+    }
     throw new Error('No successful IndexNow baseline exists. Run workflow_dispatch with mode=full on the default branch first.')
   }
   return loadBaseline(BASELINE_PATH)
@@ -161,7 +174,7 @@ const { records: currentRecords, fingerprint: currentFingerprint } = readCurrent
 // Never advance the baseline until the deployed build exposes the exact catalog snapshot.
 if (await waitForCatalogDeployment(currentFingerprint)) {
   // On a fresh install the scheduled job establishes the baseline automatically.
-  if (MODE === 'full' || !existsSync(BASELINE_PATH)) {
+  if (MODE === 'full' || !hasBaseline()) {
     if (MODE === 'changed') console.log('IndexNow baseline missing; submitting the live sitemap to initialize it.')
     const urls = await sitemapUrls(SITEMAP_URL)
     await submitUrls(urls)
@@ -173,6 +186,9 @@ if (await waitForCatalogDeployment(currentFingerprint)) {
     if (changedUrls.length > 0) await waitForChangedPages(changedUrls)
     const urls = [...new Set([...changedUrls, ...retiredUrls])]
     if (urls.length > 0) {
+      if (changedUrls.length > 0) {
+        await waitForCatalogDeployment(currentFingerprint)
+      }
       await submitUrls(urls)
       writeBaseline(currentRecords)
     } else {

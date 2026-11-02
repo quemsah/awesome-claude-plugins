@@ -424,6 +424,7 @@ describe('GitHubGitClient', () => {
       const { client, requests } = mockClient([
         Response.json({ id: 20, upload_url: 'https://uploads.github.com/repos/acme/catalog/releases/20/assets{?name,label}' }),
         Response.json([{ id: 102, name: 'catalog.sqlite', browser_download_url: downloadUrl }]),
+        new Response(content),
       ])
 
       const result = await client.uploadReleaseAsset('catalog-snap2', 'catalog.sqlite', filePath)
@@ -431,7 +432,31 @@ describe('GitHubGitClient', () => {
       expect(requests.map((r) => [r.init?.method ?? 'GET', r.url])).toEqual([
         ['GET', 'https://api.github.com/repos/acme/catalog/releases/tags/catalog-snap2'],
         ['GET', 'https://api.github.com/repos/acme/catalog/releases/20/assets'],
+        ['GET', downloadUrl],
       ])
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects existing release asset if remote SHA-256 does not match local file', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'git-upload-mismatch-'))
+    const filePath = join(tmp, 'catalog.sqlite')
+    const content = Buffer.from('sqlite sample catalog database content')
+    writeFileSync(filePath, content)
+
+    try {
+      const downloadUrl = 'https://github.com/acme/catalog/releases/download/catalog-snap3/catalog.sqlite'
+      const differentContent = Buffer.from('different remote sqlite bytes')
+      const { client } = mockClient([
+        Response.json({ id: 30, upload_url: 'https://uploads.github.com/repos/acme/catalog/releases/30/assets{?name,label}' }),
+        Response.json([{ id: 103, name: 'catalog.sqlite', browser_download_url: downloadUrl }]),
+        new Response(differentContent),
+      ])
+
+      await expect(client.uploadReleaseAsset('catalog-snap3', 'catalog.sqlite', filePath)).rejects.toThrow(
+        /Existing release asset SHA-256 does not match/,
+      )
     } finally {
       rmSync(tmp, { recursive: true, force: true })
     }

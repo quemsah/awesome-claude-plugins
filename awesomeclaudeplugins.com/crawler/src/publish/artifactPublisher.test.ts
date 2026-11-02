@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
@@ -187,5 +187,49 @@ describe('artifactPublisher', () => {
     })
     expect(second.publication.state).toBe('uploaded')
     expect(second.publication.snapshot_id).toBe('snap-same')
+  })
+
+  it('recovers a failed publication using preserved artifact on disk without mutating snapshot ID', () => {
+    const runId = 'test-recovery-success'
+    const now = new Date().toISOString()
+    beginRun(db, runId, now)
+    completeRun(db, runId, now, 0)
+
+    const outputPath = join(tempDir, 'catalog-recovery.sqlite')
+    const first = prepareArtifactPublication(db, runId, {
+      outputPath,
+      snapshotId: 'snap-recover-1',
+    })
+    expect(first.publication.state).toBe('prepared')
+
+    // Simulate failure during upload
+    markArtifactFailed(db, runId, 'NETWORK_DROP')
+    expect(getArtifactPublication(db, runId)?.state).toBe('failed')
+
+    // Re-prepare should recover preserved artifact and revert state to prepared
+    const recovered = prepareArtifactPublication(db, runId, { outputPath })
+    expect(recovered.publication.state).toBe('prepared')
+    expect(recovered.publication.snapshot_id).toBe('snap-recover-1')
+    expect(recovered.manifest.snapshotId).toBe('snap-recover-1')
+    expect(recovered.manifest.artifactSha256).toBe(first.manifest.artifactSha256)
+  })
+
+  it('rejects recovery of a failed publication when preserved artifact is missing or corrupted', () => {
+    const runId = 'test-recovery-corrupt'
+    const now = new Date().toISOString()
+    beginRun(db, runId, now)
+    completeRun(db, runId, now, 0)
+
+    const outputPath = join(tempDir, 'catalog-corrupt.sqlite')
+    prepareArtifactPublication(db, runId, {
+      outputPath,
+      snapshotId: 'snap-corrupt-1',
+    })
+    markArtifactFailed(db, runId, 'CRASH')
+
+    // Corrupt artifact
+    writeFileSync(outputPath, 'corrupted content')
+
+    expect(() => prepareArtifactPublication(db, runId, { outputPath })).toThrow('Cannot recover failed publication')
   })
 })

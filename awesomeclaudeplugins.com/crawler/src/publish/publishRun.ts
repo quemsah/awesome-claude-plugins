@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import type { SnapshotManifest } from '@awesome-claude-plugins/catalog-snapshot'
 import type Database from 'better-sqlite3'
 import { renderMarkdownPaths, renderRepos, renderStats } from '../output/catalogSnapshot.js'
@@ -267,46 +269,93 @@ export function prepareDraft(
         }
       }
       if (hasArtifactTable(db)) {
-        const paths = resolveArtifactPaths(options, runId)
-        if (paths) {
-          try {
-            const existingPub = getArtifactPublication(db, runId)
-            let preserved = false
-            if (existingPub && (existingPub.state === 'prepared' || existingPub.state === 'uploaded')) {
-              ensureReleasePointerFile(paths, existingPub, db)
-              if (existsSync(paths.pointerPath)) {
-                try {
-                  const pointerRaw = readFileSync(paths.pointerPath, 'utf8')
-                  const pointer = JSON.parse(pointerRaw) as Partial<CatalogReleasePointer>
-                  if (
-                    pointer.snapshotId === existingPub.snapshot_id &&
-                    pointer.catalogFingerprint === existingPub.catalog_fingerprint &&
-                    pointer.artifactSha256 === existingPub.artifact_sha256
-                  ) {
-                    snapshot.files.catalogReleaseJson = pointerRaw
-                    preserved = true
-                  }
-                } catch {}
-              }
-            }
-            if (!preserved) {
-              const { manifest } = prepareArtifactPublication(db, runId, {
-                outputPath: paths.outputPath,
-                createdAt: now.toISOString(),
-                draftStats: { id: draft.id, date: draft.date, size: draft.size },
-              })
-              const pointer = writeReleasePointer(manifest, paths.pointerPath)
-              snapshot.files.catalogReleaseJson = `${JSON.stringify(pointer, null, 2)}\n`
-            }
-          } catch (error) {
-            markArtifactFailed(db, runId, error instanceof Error ? error.message : String(error))
-            throw new PublicationError('snapshot_invalid')
-          }
-        }
+        attachArtifactToDraft(db, runId, now, draft, snapshot, options)
       }
       return draft
     })(),
   )
+}
+
+function attachArtifactToDraft(
+  db: Database.Database,
+  runId: string,
+  now: Date,
+  draft: RunDraft,
+  snapshot: RenderedSnapshot,
+  options?: { artifactOutputPath?: string; releasePointerPath?: string },
+): void {
+  const paths = resolveArtifactPaths(options, runId)
+  if (!paths) return
+  try {
+    const existingPub = getArtifactPublication(db, runId)
+    let preserved = false
+    if (existingPub && (existingPub.state === 'prepared' || existingPub.state === 'uploaded')) {
+      ensureReleasePointerFile(paths, existingPub, db)
+      if (existsSync(paths.pointerPath)) {
+        try {
+          const pointerRaw = readFileSync(paths.pointerPath, 'utf8')
+          const pointer = JSON.parse(pointerRaw) as Partial<CatalogReleasePointer>
+          if (
+            pointer.snapshotId === existingPub.snapshot_id &&
+            pointer.catalogFingerprint === existingPub.catalog_fingerprint &&
+            pointer.artifactSha256 === existingPub.artifact_sha256
+          ) {
+            snapshot.files.catalogReleaseJson = pointerRaw
+            preserved = true
+          }
+        } catch {}
+      }
+    }
+    if (!preserved) {
+      const { manifest } = prepareArtifactPublication(db, runId, {
+        outputPath: paths.outputPath,
+        createdAt: now.toISOString(),
+        draftStats: { id: draft.id, date: draft.date, size: draft.size },
+      })
+      const pointer = writeReleasePointer(manifest, paths.pointerPath)
+      snapshot.files.catalogReleaseJson = `${JSON.stringify(pointer, null, 2)}\n`
+    }
+  } catch (error) {
+    markArtifactFailed(db, runId, error instanceof Error ? error.message : String(error))
+    throw new PublicationError('snapshot_invalid')
+  }
+}
+
+function resolveCheckedReleasePointer(
+  db: Database.Database,
+  runId: string,
+  options?: { artifactOutputPath?: string; releasePointerPath?: string },
+): string | null {
+  if (!hasArtifactTable(db)) return null
+  const publication = getArtifactPublication(db, runId)
+  const paths = resolveArtifactPaths(options)
+  if (!publication || (publication.state !== 'uploaded' && publication.state !== 'prepared')) {
+    if (paths) throw new PublicationError('snapshot_invalid')
+    return null
+  }
+  let pointerRaw: string | null = null
+  if (paths) {
+    ensureReleasePointerFile(paths, publication)
+    if (existsSync(paths.pointerPath)) pointerRaw = readFileSync(paths.pointerPath, 'utf8')
+  }
+  if (!pointerRaw && publication.release_pointer) pointerRaw = publication.release_pointer
+  if (!pointerRaw) {
+    if (paths) throw new PublicationError('snapshot_invalid')
+    return null
+  }
+  try {
+    const pointer = JSON.parse(pointerRaw) as Partial<CatalogReleasePointer>
+    if (
+      pointer.snapshotId !== publication.snapshot_id ||
+      pointer.catalogFingerprint !== publication.catalog_fingerprint ||
+      pointer.artifactSha256 !== publication.artifact_sha256
+    ) {
+      throw new Error('Pointer mismatch')
+    }
+    return pointerRaw
+  } catch {
+    throw new PublicationError('snapshot_invalid')
+  }
 }
 
 function checkedSnapshot(
@@ -322,41 +371,8 @@ function checkedSnapshot(
       const snapshot = renderFiles(db, draft)
       const files = filesForDraftHash(draft.hash, snapshot)
       if (!files) throw new PublicationError('snapshot_changed')
-      if (hasArtifactTable(db)) {
-        const publication = getArtifactPublication(db, runId)
-        const paths = resolveArtifactPaths(options)
-        if (publication && (publication.state === 'uploaded' || publication.state === 'prepared')) {
-          let pointerRaw: string | null = null
-          if (paths) {
-            ensureReleasePointerFile(paths, publication)
-            if (existsSync(paths.pointerPath)) {
-              pointerRaw = readFileSync(paths.pointerPath, 'utf8')
-            }
-          }
-          if (!pointerRaw && publication.release_pointer) {
-            pointerRaw = publication.release_pointer
-          }
-          if (pointerRaw) {
-            try {
-              const pointer = JSON.parse(pointerRaw) as Partial<CatalogReleasePointer>
-              if (
-                pointer.snapshotId !== publication.snapshot_id ||
-                pointer.catalogFingerprint !== publication.catalog_fingerprint ||
-                pointer.artifactSha256 !== publication.artifact_sha256
-              ) {
-                throw new Error('Pointer mismatch')
-              }
-              files.catalogReleaseJson = pointerRaw
-            } catch {
-              throw new PublicationError('snapshot_invalid')
-            }
-          } else if (paths) {
-            throw new PublicationError('snapshot_invalid')
-          }
-        } else if (paths) {
-          throw new PublicationError('snapshot_invalid')
-        }
-      }
+      const releasePointer = resolveCheckedReleasePointer(db, runId, options)
+      if (releasePointer) files.catalogReleaseJson = releasePointer
       return { draft, files, pending: run.pending_commit_sha }
     })(),
   )
@@ -521,6 +537,131 @@ function releaseUnpublishedLease(db: Database.Database, runId: string, owner: st
   }
 }
 
+function verifyFinalPublication(
+  paths: { outputPath: string; pointerPath: string },
+  finalPublication: NonNullable<ReturnType<typeof getArtifactPublication>>,
+  db: Database.Database,
+): void {
+  if (finalPublication.state !== 'uploaded') {
+    throw new PublicationError('snapshot_invalid')
+  }
+  ensureReleasePointerFile(paths, finalPublication, db)
+  if (!existsSync(paths.pointerPath)) {
+    throw new PublicationError('snapshot_invalid')
+  }
+  try {
+    const pointer = JSON.parse(readFileSync(paths.pointerPath, 'utf8')) as Partial<CatalogReleasePointer>
+    if (
+      pointer.snapshotId !== finalPublication.snapshot_id ||
+      pointer.catalogFingerprint !== finalPublication.catalog_fingerprint ||
+      pointer.artifactSha256 !== finalPublication.artifact_sha256 ||
+      (finalPublication.artifact_url && pointer.artifactUrl !== finalPublication.artifact_url)
+    ) {
+      throw new Error('Pointer mismatch')
+    }
+  } catch {
+    throw new PublicationError('snapshot_invalid')
+  }
+}
+
+async function uploadPublicationAsset(
+  db: Database.Database,
+  git: GitHubGit,
+  runId: string,
+  paths: { outputPath: string; pointerPath: string },
+  publication: NonNullable<ReturnType<typeof getArtifactPublication>>,
+  manifest: SnapshotManifest | undefined,
+  now: () => Date,
+): Promise<void> {
+  if (!git.uploadReleaseAsset) {
+    markArtifactFailed(db, runId, 'release_asset_uploader_missing')
+    throw new PublicationError('snapshot_invalid')
+  }
+  const tagName = `catalog-${publication.snapshot_id}`
+  const assetName = 'catalog.sqlite'
+  const artifactPath = publication.artifact_path ?? paths.outputPath
+  try {
+    const uploaded = await git.uploadReleaseAsset(tagName, assetName, artifactPath)
+    if (uploaded.sha256 !== publication.artifact_sha256) {
+      throw new Error(`Uploaded asset SHA-256 mismatch: expected ${publication.artifact_sha256}, got ${uploaded.sha256}`)
+    }
+    let pointer: CatalogReleasePointer
+    if (manifest) {
+      pointer = writeReleasePointer(manifest, paths.pointerPath, uploaded.downloadUrl)
+    } else {
+      ensureReleasePointerFile(paths, publication, db)
+      if (!existsSync(paths.pointerPath)) {
+        throw new Error('Release pointer could not be reconstructed from durable publication')
+      }
+      pointer = JSON.parse(readFileSync(paths.pointerPath, 'utf8')) as CatalogReleasePointer
+      pointer.artifactUrl = uploaded.downloadUrl
+      writeFileSync(paths.pointerPath, `${JSON.stringify(pointer, null, 2)}\n`, 'utf8')
+    }
+    if (
+      pointer.snapshotId !== publication.snapshot_id ||
+      pointer.catalogFingerprint !== publication.catalog_fingerprint ||
+      pointer.artifactSha256 !== publication.artifact_sha256
+    ) {
+      throw new Error(`Release pointer mismatch for publication ${publication.snapshot_id}: pointer=${pointer.snapshotId}`)
+    }
+    markArtifactUploaded(db, runId, now().toISOString(), {
+      releasePointer: JSON.stringify(pointer, null, 2),
+      artifactUrl: uploaded.downloadUrl,
+    })
+  } catch (error) {
+    markArtifactFailed(db, runId, error instanceof Error ? error.message : 'upload_failed')
+    throw new PublicationError('snapshot_invalid')
+  }
+}
+
+async function publishArtifactRelease(
+  db: Database.Database,
+  git: GitHubGit,
+  runId: string,
+  prepared: RunDraft,
+  options: {
+    artifactOutputPath?: string
+    releasePointerPath?: string
+    allowLegacyJsonPublication?: boolean
+    requireArtifactPublication?: boolean
+  },
+  now: () => Date,
+): Promise<void> {
+  if (!hasArtifactTable(db)) return
+  const paths = resolveArtifactPaths(options, runId)
+  const isTestEnv = Boolean(process.env.VITEST || process.env.NODE_ENV === 'test')
+  const requireArtifact = options.requireArtifactPublication ?? (!isTestEnv && !options.allowLegacyJsonPublication)
+  if (!paths && requireArtifact) {
+    throw new PublicationError('snapshot_invalid')
+  }
+  if (!paths) return
+
+  let manifest: SnapshotManifest | undefined
+  let publication = getArtifactPublication(db, runId)
+  if (!publication || publication.state === 'failed') {
+    try {
+      const preparedArtifact = prepareArtifactPublication(db, runId, {
+        outputPath: paths.outputPath,
+        createdAt: now().toISOString(),
+        draftStats: { id: prepared.id, date: prepared.date, size: prepared.size },
+      })
+      manifest = preparedArtifact.manifest
+      publication = preparedArtifact.publication
+    } catch (error) {
+      markArtifactFailed(db, runId, error instanceof Error ? error.message : String(error))
+      throw new PublicationError('snapshot_invalid')
+    }
+  }
+
+  if (publication && publication.state !== 'uploaded') {
+    await uploadPublicationAsset(db, git, runId, paths, publication, manifest, now)
+  }
+
+  const finalPublication = getArtifactPublication(db, runId)
+  if (!finalPublication) throw new PublicationError('snapshot_invalid')
+  verifyFinalPublication(paths, finalPublication, db)
+}
+
 export async function publishRun(
   db: Database.Database,
   git: GitHubGit,
@@ -544,96 +685,7 @@ export async function publishRun(
   const owner = randomUUID()
   claimPublishLease(db, runId, owner, options.recover)
   try {
-    if (hasArtifactTable(db)) {
-      const paths = resolveArtifactPaths(options, runId)
-      const isTestEnv = Boolean(process.env.VITEST || process.env.NODE_ENV === 'test')
-      const requireArtifact = options.requireArtifactPublication ?? (!isTestEnv && !options.allowLegacyJsonPublication)
-      if (!paths && requireArtifact) {
-        throw new PublicationError('snapshot_invalid')
-      }
-      if (paths) {
-        let manifest: SnapshotManifest | undefined
-        let publication = getArtifactPublication(db, runId)
-        if (!publication || publication.state === 'failed') {
-          try {
-            const preparedArtifact = prepareArtifactPublication(db, runId, {
-              outputPath: paths.outputPath,
-              createdAt: now().toISOString(),
-              draftStats: { id: prepared.id, date: prepared.date, size: prepared.size },
-            })
-            manifest = preparedArtifact.manifest
-            publication = preparedArtifact.publication
-          } catch (error) {
-            markArtifactFailed(db, runId, error instanceof Error ? error.message : String(error))
-            throw new PublicationError('snapshot_invalid')
-          }
-        }
-
-        const artifactPath = publication?.artifact_path ?? paths.outputPath
-        if (publication && publication.state !== 'uploaded') {
-          if (!git.uploadReleaseAsset) {
-            markArtifactFailed(db, runId, 'release_asset_uploader_missing')
-            throw new PublicationError('snapshot_invalid')
-          }
-          const tagName = `catalog-${publication.snapshot_id}`
-          const assetName = 'catalog.sqlite'
-          try {
-            const uploaded = await git.uploadReleaseAsset(tagName, assetName, artifactPath)
-            if (uploaded.sha256 !== publication.artifact_sha256) {
-              throw new Error(`Uploaded asset SHA-256 mismatch: expected ${publication.artifact_sha256}, got ${uploaded.sha256}`)
-            }
-            let pointer: CatalogReleasePointer
-            if (manifest) {
-              pointer = writeReleasePointer(manifest, paths.pointerPath, uploaded.downloadUrl)
-            } else {
-              ensureReleasePointerFile(paths, publication, db)
-              if (!existsSync(paths.pointerPath)) {
-                throw new Error('Release pointer could not be reconstructed from durable publication')
-              }
-              pointer = JSON.parse(readFileSync(paths.pointerPath, 'utf8')) as CatalogReleasePointer
-              pointer.artifactUrl = uploaded.downloadUrl
-              writeFileSync(paths.pointerPath, `${JSON.stringify(pointer, null, 2)}\n`, 'utf8')
-            }
-            if (
-              pointer.snapshotId !== publication.snapshot_id ||
-              pointer.catalogFingerprint !== publication.catalog_fingerprint ||
-              pointer.artifactSha256 !== publication.artifact_sha256
-            ) {
-              throw new Error(`Release pointer mismatch for publication ${publication.snapshot_id}: pointer=${pointer.snapshotId}`)
-            }
-            markArtifactUploaded(db, runId, now().toISOString(), {
-              releasePointer: JSON.stringify(pointer, null, 2),
-              artifactUrl: uploaded.downloadUrl,
-            })
-          } catch (error) {
-            markArtifactFailed(db, runId, error instanceof Error ? error.message : 'upload_failed')
-            throw new PublicationError('snapshot_invalid')
-          }
-        }
-
-        const finalPublication = getArtifactPublication(db, runId)
-        if (finalPublication?.state !== 'uploaded') {
-          throw new PublicationError('snapshot_invalid')
-        }
-        ensureReleasePointerFile(paths, finalPublication, db)
-        if (!existsSync(paths.pointerPath)) {
-          throw new PublicationError('snapshot_invalid')
-        }
-        try {
-          const pointer = JSON.parse(readFileSync(paths.pointerPath, 'utf8')) as Partial<CatalogReleasePointer>
-          if (
-            pointer.snapshotId !== finalPublication.snapshot_id ||
-            pointer.catalogFingerprint !== finalPublication.catalog_fingerprint ||
-            pointer.artifactSha256 !== finalPublication.artifact_sha256 ||
-            (finalPublication.artifact_url && pointer.artifactUrl !== finalPublication.artifact_url)
-          ) {
-            throw new Error('Pointer mismatch')
-          }
-        } catch {
-          throw new PublicationError('snapshot_invalid')
-        }
-      }
-    }
+    await publishArtifactRelease(db, git, runId, prepared, options, now)
     const pending = await resumePendingCommit(db, git, runId, completedRun, prepared, owner, now, options)
     if (typeof pending === 'string') return pending
     return await createAndPublishSnapshot(db, git, runId, owner, pending.snapshot, now)
