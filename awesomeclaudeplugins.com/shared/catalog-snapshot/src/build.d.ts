@@ -7,6 +7,7 @@ export {
   IncompatibleSchemaError,
   CorruptedSnapshotError,
   SnapshotMismatchError,
+  SnapshotBuildLockedError,
   InvalidSnapshotInputError,
   MarkdownPathCollisionError,
 } from './errors.js'
