@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { after, describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
@@ -11,6 +11,7 @@ import {
   InvalidSnapshotInputError,
   MarkdownPathCollisionError,
   SnapshotMismatchError,
+  SnapshotBuildLockedError,
 } from '../src/errors.js'
 import { openPublicCatalog } from '../src/read.js'
 
@@ -393,4 +394,66 @@ describe('readerAndValidation', () => {
       reader.close()
     }
   })
+  it('does not overwrite an existing snapshot while another builder owns the lock', () => {
+    const snapshot = buildPublicCatalog(
+      { records: inputRepos, stats: inputStats, snapshotId: 'concurrency-test' },
+      tempDbPath
+    )
+    const lockPath = `${tempDbPath}.build-lock`
+    mkdirSync(lockPath)
+    try {
+      assert.throws(
+        () => buildPublicCatalog(
+          { records: inputRepos, stats: inputStats, snapshotId: 'other-concurrent-run' },
+          tempDbPath
+        ),
+        SnapshotBuildLockedError
+      )
+    } finally {
+      rmdirSync(lockPath)
+    }
+    const reader = openPublicCatalog(tempDbPath)
+    try {
+      assert.equal(reader.getCatalogMetadata().snapshot_id, snapshot.snapshotId)
+    } finally {
+      reader.close()
+    }
+  })
+
+  it('reuses an identical one-shot iterable without replacing the existing SQLite bytes', () => {
+    function* records() {
+      yield* inputRepos
+    }
+    const first = buildPublicCatalog(
+      { records: records(), stats: inputStats, snapshotId: 'generator-repeat', createdAt: '2026-01-01' },
+      tempDbPath
+    )
+    const repeated = buildPublicCatalog(
+      { records: records(), stats: inputStats, snapshotId: 'generator-repeat', createdAt: '2026-05-05' },
+      tempDbPath
+    )
+    assert.equal(repeated.artifactSha256, first.artifactSha256)
+    assert.equal(repeated.createdAt, first.createdAt)
+  })
+
+  it('rejects reuse if the FTS content no longer matches the canonical rows', () => {
+    buildPublicCatalog(
+      { records: inputRepos, stats: inputStats, snapshotId: 'fts-integrity-test' },
+      tempDbPath
+    )
+    const db = new Database(tempDbPath)
+    try {
+      db.prepare('UPDATE repo_fts SET text = ? WHERE rowid = 1').run('tampered missing search terms')
+    } finally {
+      db.close()
+    }
+    assert.throws(
+      () => buildPublicCatalog(
+        { records: inputRepos, stats: inputStats, snapshotId: 'fts-integrity-test' },
+        tempDbPath
+      ),
+      SnapshotMismatchError
+    )
+  })
+
 })
