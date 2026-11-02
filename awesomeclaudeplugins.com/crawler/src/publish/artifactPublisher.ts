@@ -173,25 +173,48 @@ export function markArtifactFailed(db: Database.Database, runId: string, diagnos
 }
 
 export function ensureReleasePointerFile(paths: { pointerPath: string; outputPath?: string }, publication: ArtifactPublicationRow): void {
-  if (existsSync(paths.pointerPath)) {
+  if (publication.release_pointer) {
     try {
-      const existing = JSON.parse(readFileSync(paths.pointerPath, 'utf8')) as Partial<CatalogReleasePointer>
+      const stored = JSON.parse(publication.release_pointer) as CatalogReleasePointer
       if (
-        existing.snapshotId === publication.snapshot_id &&
-        existing.catalogFingerprint === publication.catalog_fingerprint &&
-        existing.artifactSha256 === publication.artifact_sha256
+        stored.snapshotId === publication.snapshot_id &&
+        stored.catalogFingerprint === publication.catalog_fingerprint &&
+        stored.artifactSha256 === publication.artifact_sha256
       ) {
+        if (publication.artifact_url && stored.artifactUrl !== publication.artifact_url) {
+          stored.artifactUrl = publication.artifact_url
+        }
+        mkdirSync(dirname(paths.pointerPath), { recursive: true })
+        const tmpPath = `${paths.pointerPath}.tmp.${process.pid}.${Date.now()}`
+        writeFileSync(tmpPath, `${JSON.stringify(stored, null, 2)}\n`, 'utf8')
+        renameSync(tmpPath, paths.pointerPath)
         return
       }
     } catch {}
   }
 
-  if (publication.release_pointer) {
-    mkdirSync(dirname(paths.pointerPath), { recursive: true })
-    const tmpPath = `${paths.pointerPath}.tmp.${process.pid}.${Date.now()}`
-    writeFileSync(tmpPath, `${publication.release_pointer.trim()}\n`, 'utf8')
-    renameSync(tmpPath, paths.pointerPath)
-    return
+  if (existsSync(paths.pointerPath)) {
+    try {
+      const existing = JSON.parse(readFileSync(paths.pointerPath, 'utf8')) as CatalogReleasePointer
+      const urlMatches = !publication.artifact_url || existing.artifactUrl === publication.artifact_url
+      if (
+        existing.snapshotId === publication.snapshot_id &&
+        existing.catalogFingerprint === publication.catalog_fingerprint &&
+        existing.artifactSha256 === publication.artifact_sha256
+      ) {
+        if (urlMatches) {
+          return
+        }
+        if (publication.artifact_url) {
+          existing.artifactUrl = publication.artifact_url
+          mkdirSync(dirname(paths.pointerPath), { recursive: true })
+          const tmpPath = `${paths.pointerPath}.tmp.${process.pid}.${Date.now()}`
+          writeFileSync(tmpPath, `${JSON.stringify(existing, null, 2)}\n`, 'utf8')
+          renameSync(tmpPath, paths.pointerPath)
+          return
+        }
+      }
+    } catch {}
   }
 
   const artifactPath = publication.artifact_path ?? paths.outputPath

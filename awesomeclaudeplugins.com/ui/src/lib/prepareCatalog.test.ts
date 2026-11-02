@@ -127,4 +127,52 @@ describe('prepareCatalog script', () => {
     expect(refreshed.artifactSha256).toBe(second.artifactSha256)
     expect(refreshed.snapshotId).toBe(second.snapshotId)
   })
+
+  it('refreshes stale local sqlite when pointer identifies release without artifactUrl using fallback', async () => {
+    writeSample()
+    await prepareCatalog({ dataDir: tempDir })
+
+    const secondDir = join(tempDir, 'sub2')
+    mkdirSync(secondDir, { recursive: true })
+    const secondRecord = {
+      id: 3,
+      owner: 'example',
+      repo_name: 'third-plugin',
+      description: 'Third plugin',
+      plugins_count: 1,
+      stargazers_count: 15,
+    }
+    writeFileSync(join(secondDir, 'repos.json'), JSON.stringify([secondRecord]))
+    writeFileSync(join(secondDir, 'stats.json'), JSON.stringify([{ id: 1, date: '2026-04-01', size: 1 }]))
+    const second = await prepareCatalog({ dataDir: secondDir })
+
+    const pointer = {
+      schemaVersion: second.schemaVersion,
+      generatorVersion: second.generatorVersion,
+      snapshotId: second.snapshotId,
+      catalogFingerprint: second.catalogFingerprint,
+      artifactSha256: second.artifactSha256,
+      recordCount: second.recordCount,
+      canonicalCount: second.canonicalCount,
+      pluginsCount: second.pluginsCount,
+      statsCount: second.statsCount,
+    }
+    writeFileSync(join(tempDir, 'catalog-release.json'), JSON.stringify(pointer))
+    rmSync(join(tempDir, 'repos.json'))
+    rmSync(join(tempDir, 'stats.json'))
+
+    const previousUrl = process.env.CATALOG_SQLITE_URL
+    process.env.CATALOG_SQLITE_URL = pathToFileURL(join(secondDir, 'catalog.sqlite')).href
+    try {
+      const refreshed = await prepareCatalog({ dataDir: tempDir })
+      expect(refreshed.artifactSha256).toBe(second.artifactSha256)
+      expect(refreshed.snapshotId).toBe(second.snapshotId)
+    } finally {
+      if (previousUrl === undefined) {
+        delete process.env.CATALOG_SQLITE_URL
+      } else {
+        process.env.CATALOG_SQLITE_URL = previousUrl
+      }
+    }
+  })
 })

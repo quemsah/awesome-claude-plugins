@@ -1008,3 +1008,51 @@ it('replaces a stale pointer file from a previous release when recovering or pub
   const finalPointer = JSON.parse(readFileSync(releasePointerPath2, 'utf8')) as CatalogReleasePointer
   expect(finalPointer.snapshotId).not.toBe('stale-older-snapshot')
 })
+
+it('replaces a pointer with matching identity fields but a stale artifactUrl during recovery', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-stale-url-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  // Fail git update to leave run in-flight with uploaded artifact
+  git.failure = 'patch-before'
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toThrowError(PublicationError)
+  git.failure = null
+
+  const validUrl = 'https://github.com/example/repo/releases/download/catalog-authentic/catalog.sqlite'
+  db.prepare("UPDATE artifact_publications SET state = 'uploaded', artifact_url = ? WHERE run_id = 'r1'").run(validUrl)
+
+  // Overwrite pointer file with matching identity but stale artifactUrl
+  const genuinePointer = JSON.parse(readFileSync(releasePointerPath, 'utf8')) as CatalogReleasePointer
+  const staleUrlPointer: CatalogReleasePointer = {
+    ...genuinePointer,
+    artifactUrl: 'https://github.com/example/repo/releases/download/catalog-stale/catalog.sqlite',
+  }
+  writeFileSync(releasePointerPath, JSON.stringify(staleUrlPointer, null, 2), 'utf8')
+
+  const commit = await publishRun(db, git, 'r1', {
+    writeEnabled: true,
+    recover: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  expect(commit).toBe(git.head)
+  const restoredPointer = JSON.parse(readFileSync(releasePointerPath, 'utf8')) as CatalogReleasePointer
+  expect(restoredPointer.artifactUrl).toBe(validUrl)
+  expect(restoredPointer.snapshotId).toBe(genuinePointer.snapshotId)
+})

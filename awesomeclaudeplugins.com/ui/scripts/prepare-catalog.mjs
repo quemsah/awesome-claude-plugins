@@ -214,7 +214,7 @@ export async function prepareCatalog(options = {}) {
     try {
       return verifySqliteArtifact(outputPath, manifestPath, pointer)
     } catch (err) {
-      if (pointer?.artifactUrl) {
+      if (pointer && (pointer.artifactUrl || pointer.snapshotId)) {
         console.warn('[prepare-catalog] Existing SQLite artifact is invalid or stale for pointer; re-downloading...')
         try {
           unlinkSync(outputPath)

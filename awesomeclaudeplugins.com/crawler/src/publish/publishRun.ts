@@ -586,7 +586,8 @@ export async function publishRun(
           if (
             pointer.snapshotId !== finalPublication.snapshot_id ||
             pointer.catalogFingerprint !== finalPublication.catalog_fingerprint ||
-            pointer.artifactSha256 !== finalPublication.artifact_sha256
+            pointer.artifactSha256 !== finalPublication.artifact_sha256 ||
+            (finalPublication.artifact_url && pointer.artifactUrl !== finalPublication.artifact_url)
           ) {
             throw new Error('Pointer mismatch')
           }
