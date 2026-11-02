@@ -1,9 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
 import type { SnapshotManifest } from '@awesome-claude-plugins/catalog-snapshot'
 import type Database from 'better-sqlite3'
 import { renderMarkdownPaths, renderRepos, renderStats } from '../output/catalogSnapshot.js'
+import { getHistoricalStats } from '../output/publicCatalog.js'
 import { renderReadme } from '../output/readme.js'
 import { assertValidStatsDraft, createStatsDraft, type StatsRecord } from '../output/statsDraft.js'
 import { SnapshotValidationError, validateSnapshot } from '../output/validate.js'
@@ -68,10 +67,6 @@ function databaseResult<T>(operation: () => T): T {
   }
 }
 
-function historicalStats(db: Database.Database): StatsRecord[] {
-  return db.prepare('SELECT id, date, size FROM stats ORDER BY id').all() as StatsRecord[]
-}
-
 function checkHistory(history: readonly StatsRecord[], draft: StatsRecord): void {
   if (history.some((entry) => entry.id >= draft.id || entry.date === draft.date)) {
     throw new PublicationError('historical_conflict')
@@ -126,11 +121,15 @@ function snapshotHash(files: GitSnapshotFiles, includeMarkdownPaths: boolean): s
   return createHash('sha256').update(JSON.stringify(contents), 'utf8').digest('hex')
 }
 
-type RenderedSnapshot = { files: GitSnapshotFiles; hash: string; compatibility: { hash: string; files: GitSnapshotFiles }[] }
+type RenderedSnapshot = {
+  files: GitSnapshotFiles
+  hash: string
+  getCompatibility: () => { hash: string; files: GitSnapshotFiles }[]
+}
 
 function filesForDraftHash(savedHash: string, snapshot: RenderedSnapshot): GitSnapshotFiles | null {
   if (savedHash === snapshot.hash) return snapshot.files
-  return snapshot.compatibility.find((candidate) => savedHash === candidate.hash)?.files ?? null
+  return snapshot.getCompatibility().find((candidate) => savedHash === candidate.hash)?.files ?? null
 }
 
 function renderFiles(
@@ -138,7 +137,7 @@ function renderFiles(
   draft: StatsRecord,
   repositories: readonly PublishableRepository[] = listPublishable(db),
 ): RenderedSnapshot {
-  checkHistory(historicalStats(db), draft)
+  checkHistory(getHistoricalStats(db), draft)
   let files: GitSnapshotFiles
   try {
     const publicDraft = { id: draft.id, date: draft.date, size: draft.size }
@@ -160,29 +159,32 @@ function renderFiles(
     }
     throw new PublicationError('snapshot_invalid')
   }
-  // Keep the exact pre-metadata repos.json bytes for drafts saved before this release.
-  const preMetadataFiles = { ...files, reposJson: renderRepos(repositories, { includeNewCatalogMetadata: false }) }
-  const previousReposFiles = { ...files, reposJson: renderRepos(repositories, { includeCatalogUpdatedAt: false }) }
-  const legacyUrlFiles = { ...files, reposJson: renderRepos(repositories, { legacyUrls: true }) }
+
   return {
     files,
     hash: snapshotHash(files, true),
-    compatibility: [
-      { hash: snapshotHash(preMetadataFiles, true), files: preMetadataFiles },
-      {
-        // The immediately preceding main branch published line-separated JSON without timestamps.
-        hash: snapshotHash(previousReposFiles, true),
-        files: previousReposFiles,
-      },
-      // Older drafts used a compact single-line JSON array with canonical URL fields.
-      { hash: snapshotHash(legacyUrlFiles, true), files: legacyUrlFiles },
-      // Some drafts preceded the markdown-paths.json sidecar; preserve the matching
-      // exact repos.json bytes for each historical serialization.
-      { hash: snapshotHash(files, false), files },
-      { hash: snapshotHash(preMetadataFiles, false), files: preMetadataFiles },
-      { hash: snapshotHash(previousReposFiles, false), files: previousReposFiles },
-      { hash: snapshotHash(legacyUrlFiles, false), files: legacyUrlFiles },
-    ],
+    getCompatibility: () => {
+      // Lazy computation: only allocate compatibility objects if saved hash doesn't match primary
+      const preMetadataFiles = { ...files, reposJson: renderRepos(repositories, { includeNewCatalogMetadata: false }) }
+      const previousReposFiles = { ...files, reposJson: renderRepos(repositories, { includeCatalogUpdatedAt: false }) }
+      const legacyUrlFiles = { ...files, reposJson: renderRepos(repositories, { legacyUrls: true }) }
+      return [
+        { hash: snapshotHash(preMetadataFiles, true), files: preMetadataFiles },
+        {
+          // The immediately preceding main branch published line-separated JSON without timestamps.
+          hash: snapshotHash(previousReposFiles, true),
+          files: previousReposFiles,
+        },
+        // Older drafts used a compact single-line JSON array with canonical URL fields.
+        { hash: snapshotHash(legacyUrlFiles, true), files: legacyUrlFiles },
+        // Some drafts preceded the markdown-paths.json sidecar; preserve the matching
+        // exact repos.json bytes for each historical serialization.
+        { hash: snapshotHash(files, false), files },
+        { hash: snapshotHash(preMetadataFiles, false), files: preMetadataFiles },
+        { hash: snapshotHash(previousReposFiles, false), files: previousReposFiles },
+        { hash: snapshotHash(legacyUrlFiles, false), files: legacyUrlFiles },
+      ]
+    },
   }
 }
 
@@ -195,26 +197,34 @@ export function hasArtifactTable(db: Database.Database): boolean {
   }
 }
 
-export function resolveArtifactPaths(options?: { artifactOutputPath?: string; releasePointerPath?: string }): {
+export function resolveArtifactPaths(
+  options?: { artifactOutputPath?: string; releasePointerPath?: string },
+  runId?: string,
+): {
   outputPath: string
   pointerPath: string
 } | null {
   if (options?.artifactOutputPath && options?.releasePointerPath) {
-    return { outputPath: options.artifactOutputPath, pointerPath: options.releasePointerPath }
+    const outputPath = runId ? options.artifactOutputPath.replaceAll('{runId}', runId) : options.artifactOutputPath
+    const pointerPath = runId ? options.releasePointerPath.replaceAll('{runId}', runId) : options.releasePointerPath
+    return { outputPath, pointerPath }
   }
   if (process.env.CATALOG_SQLITE_OUTPUT_PATH && process.env.CATALOG_RELEASE_PATH) {
+    const outputPath = runId ? process.env.CATALOG_SQLITE_OUTPUT_PATH.replaceAll('{runId}', runId) : process.env.CATALOG_SQLITE_OUTPUT_PATH
+    const pointerPath = runId ? process.env.CATALOG_RELEASE_PATH.replaceAll('{runId}', runId) : process.env.CATALOG_RELEASE_PATH
     return {
-      outputPath: process.env.CATALOG_SQLITE_OUTPUT_PATH,
-      pointerPath: process.env.CATALOG_RELEASE_PATH,
+      outputPath,
+      pointerPath,
     }
   }
   if (process.env.VITEST || process.env.NODE_ENV === 'test') {
     return null
   }
-  const outputPath = resolve(import.meta.dirname, '../../../ui/src/data/catalog.sqlite')
+  const defaultDir = resolve(import.meta.dirname, '../../../ui/src/data')
+  const outputPath = runId ? resolve(defaultDir, `artifacts/${runId}/catalog.sqlite`) : resolve(defaultDir, 'catalog.sqlite')
   const pointerPath = resolve(import.meta.dirname, '../../../ui/catalog-release.json')
 
-  if (existsSync(dirname(outputPath)) || existsSync(dirname(pointerPath))) {
+  if (existsSync(dirname(outputPath)) || existsSync(dirname(pointerPath)) || existsSync(defaultDir)) {
     return { outputPath, pointerPath }
   }
   return null
@@ -240,7 +250,7 @@ export function prepareDraft(
         draft = savedDraft(run)
       } else {
         try {
-          draft = { ...createStatsDraft(historicalStats(db), repositories.length, now), hash: '' }
+          draft = { ...createStatsDraft(getHistoricalStats(db), repositories.length, now), hash: '' }
         } catch {
           throw new PublicationError('draft_invalid')
         }
@@ -257,13 +267,13 @@ export function prepareDraft(
         }
       }
       if (hasArtifactTable(db)) {
-        const paths = resolveArtifactPaths(options)
+        const paths = resolveArtifactPaths(options, runId)
         if (paths) {
           try {
             const existingPub = getArtifactPublication(db, runId)
             let preserved = false
             if (existingPub && (existingPub.state === 'prepared' || existingPub.state === 'uploaded')) {
-              ensureReleasePointerFile(paths, existingPub)
+              ensureReleasePointerFile(paths, existingPub, db)
               if (existsSync(paths.pointerPath)) {
                 try {
                   const pointerRaw = readFileSync(paths.pointerPath, 'utf8')
@@ -521,6 +531,8 @@ export async function publishRun(
     now?: () => Date
     artifactOutputPath?: string
     releasePointerPath?: string
+    allowLegacyJsonPublication?: boolean
+    requireArtifactPublication?: boolean
   } = {},
 ): Promise<string> {
   const now = options.now ?? (() => new Date())
@@ -533,7 +545,12 @@ export async function publishRun(
   claimPublishLease(db, runId, owner, options.recover)
   try {
     if (hasArtifactTable(db)) {
-      const paths = resolveArtifactPaths(options)
+      const paths = resolveArtifactPaths(options, runId)
+      const isTestEnv = Boolean(process.env.VITEST || process.env.NODE_ENV === 'test')
+      const requireArtifact = options.requireArtifactPublication ?? (!isTestEnv && !options.allowLegacyJsonPublication)
+      if (!paths && requireArtifact) {
+        throw new PublicationError('snapshot_invalid')
+      }
       if (paths) {
         let manifest: SnapshotManifest | undefined
         let publication = getArtifactPublication(db, runId)
@@ -569,7 +586,7 @@ export async function publishRun(
             if (manifest) {
               pointer = writeReleasePointer(manifest, paths.pointerPath, uploaded.downloadUrl)
             } else {
-              ensureReleasePointerFile(paths, publication)
+              ensureReleasePointerFile(paths, publication, db)
               if (!existsSync(paths.pointerPath)) {
                 throw new Error('Release pointer could not be reconstructed from durable publication')
               }
@@ -598,7 +615,7 @@ export async function publishRun(
         if (finalPublication?.state !== 'uploaded') {
           throw new PublicationError('snapshot_invalid')
         }
-        ensureReleasePointerFile(paths, finalPublication)
+        ensureReleasePointerFile(paths, finalPublication, db)
         if (!existsSync(paths.pointerPath)) {
           throw new PublicationError('snapshot_invalid')
         }

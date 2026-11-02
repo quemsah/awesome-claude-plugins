@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import Database from 'better-sqlite3'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { prepareCatalog, validateReleasePointer } from '../../scripts/prepare-catalog.mjs'
+import { prepareCatalog, validateDownloadUrl, validateReleasePointer } from '../../scripts/prepare-catalog.mjs'
 
 const MISSING_STATS_PATTERN = /Catalog statistics dataset not found/
 const ARTIFACT_MISMATCH_PATTERN = /published SHA-256/
@@ -335,6 +335,44 @@ describe('prepareCatalog script', () => {
     it('rejects a pointer containing only artifactUrl when preparing catalog', async () => {
       writeFileSync(join(tempDir, 'catalog-release.json'), JSON.stringify({ artifactUrl: 'http://example.com/catalog.sqlite' }))
       await expect(prepareCatalog({ dataDir: tempDir })).rejects.toThrow('missing or invalid snapshotId')
+    })
+  })
+
+  describe('validateDownloadUrl', () => {
+    it('accepts official GitHub release asset URLs', () => {
+      expect(validateDownloadUrl('https://github.com/quemsah/awesome-claude-plugins/releases/download/v1/catalog.sqlite').hostname).toBe(
+        'github.com'
+      )
+      expect(validateDownloadUrl('https://objects.githubusercontent.com/github-production-release-asset/catalog.sqlite').hostname).toBe(
+        'objects.githubusercontent.com'
+      )
+    })
+
+    it('rejects insecure HTTP protocols', () => {
+      expect(() => validateDownloadUrl('http://github.com/quemsah/catalog.sqlite')).toThrow('Insecure download protocol')
+    })
+
+    it('rejects unauthorized external hosts', () => {
+      expect(() => validateDownloadUrl('https://malicious.evil.com/catalog.sqlite')).toThrow('Disallowed catalog download host')
+    })
+
+    it('accepts file:// URLs in test environment', () => {
+      expect(validateDownloadUrl('file:///path/to/catalog.sqlite').protocol).toBe('file:')
+    })
+
+    it('honors custom allowed hosts from environment variable', () => {
+      const prev = process.env.CATALOG_ALLOWED_HOSTS
+      try {
+        process.env.CATALOG_ALLOWED_HOSTS = 'custom.cdn.net, mirrors.acme.org'
+        expect(validateDownloadUrl('https://custom.cdn.net/catalog.sqlite').hostname).toBe('custom.cdn.net')
+        expect(validateDownloadUrl('https://mirrors.acme.org/catalog.sqlite').hostname).toBe('mirrors.acme.org')
+      } finally {
+        if (prev !== undefined) {
+          process.env.CATALOG_ALLOWED_HOSTS = prev
+        } else {
+          delete process.env.CATALOG_ALLOWED_HOSTS
+        }
+      }
     })
   })
 })

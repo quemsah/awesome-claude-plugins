@@ -145,4 +145,47 @@ describe('artifactPublisher', () => {
     const pub = getArtifactPublication(db, runId)
     expect(pub?.state).toBe('uploaded')
   })
+
+  it('rejects re-preparing an uploaded publication with conflicting properties', () => {
+    const runId = 'test-reprepare-conflict'
+    const now = new Date().toISOString()
+    beginRun(db, runId, now)
+    completeRun(db, runId, now, 0)
+
+    const outputPath = join(tempDir, 'catalog.sqlite')
+    prepareArtifactPublication(db, runId, {
+      outputPath,
+      snapshotId: 'snap-orig',
+    })
+    markArtifactUploaded(db, runId, now, { artifactUrl: 'https://example.com/asset', releasePointer: '{}' })
+
+    const otherOutputPath = join(tempDir, 'other-catalog.sqlite')
+    expect(() =>
+      prepareArtifactPublication(db, runId, {
+        outputPath: otherOutputPath,
+        snapshotId: 'snap-diff',
+      }),
+    ).toThrow('Cannot re-prepare already uploaded publication')
+  })
+
+  it('safely returns existing publication when re-preparing an uploaded publication with identical properties', () => {
+    const runId = 'test-reprepare-identical'
+    const now = new Date().toISOString()
+    beginRun(db, runId, now)
+    completeRun(db, runId, now, 0)
+
+    const outputPath = join(tempDir, 'catalog.sqlite')
+    prepareArtifactPublication(db, runId, {
+      outputPath,
+      snapshotId: 'snap-same',
+    })
+    markArtifactUploaded(db, runId, now, { artifactUrl: 'https://example.com/asset', releasePointer: '{}' })
+
+    const second = prepareArtifactPublication(db, runId, {
+      outputPath,
+      snapshotId: 'snap-same',
+    })
+    expect(second.publication.state).toBe('uploaded')
+    expect(second.publication.snapshot_id).toBe('snap-same')
+  })
 })

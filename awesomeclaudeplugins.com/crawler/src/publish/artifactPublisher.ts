@@ -95,6 +95,23 @@ export function prepareArtifactPublication(
     }
   }
 
+  const existingPub = getArtifactPublication(db, runId)
+  if (existingPub?.state === 'uploaded') {
+    if (
+      existingPub.snapshot_id === manifest.snapshotId &&
+      existingPub.artifact_sha256 === manifest.artifactSha256 &&
+      existingPub.catalog_fingerprint === manifest.catalogFingerprint &&
+      existingPub.byte_size === byteSize &&
+      existingPub.artifact_path === options.outputPath
+    ) {
+      return { manifest, publication: existingPub }
+    }
+    throw new ArtifactPublicationError(
+      `Cannot re-prepare already uploaded publication with conflicting properties for run ${runId}`,
+      'ALREADY_UPLOADED_CONFLICT',
+    )
+  }
+
   const initialPointer: CatalogReleasePointer = {
     snapshotId: manifest.snapshotId,
     catalogFingerprint: manifest.catalogFingerprint,
@@ -120,17 +137,17 @@ export function prepareArtifactPublication(
       NULL, @release_pointer
     )
     ON CONFLICT(run_id) DO UPDATE SET
-      snapshot_id = CASE WHEN artifact_publications.state = 'uploaded' THEN artifact_publications.snapshot_id ELSE excluded.snapshot_id END,
-      catalog_fingerprint = CASE WHEN artifact_publications.state = 'uploaded' THEN artifact_publications.catalog_fingerprint ELSE excluded.catalog_fingerprint END,
-      artifact_sha256 = CASE WHEN artifact_publications.state = 'uploaded' THEN artifact_publications.artifact_sha256 ELSE excluded.artifact_sha256 END,
-      state = CASE WHEN artifact_publications.state = 'uploaded' THEN 'uploaded' ELSE excluded.state END,
+      snapshot_id = excluded.snapshot_id,
+      catalog_fingerprint = excluded.catalog_fingerprint,
+      artifact_sha256 = excluded.artifact_sha256,
+      state = excluded.state,
       byte_size = excluded.byte_size,
       artifact_path = excluded.artifact_path,
       diagnostic_code = NULL,
       prepared_at = excluded.prepared_at,
-      uploaded_at = CASE WHEN artifact_publications.state = 'uploaded' THEN artifact_publications.uploaded_at ELSE NULL END,
-      artifact_url = CASE WHEN artifact_publications.state = 'uploaded' THEN artifact_publications.artifact_url ELSE NULL END,
-      release_pointer = CASE WHEN artifact_publications.state = 'uploaded' AND artifact_publications.release_pointer IS NOT NULL THEN artifact_publications.release_pointer ELSE excluded.release_pointer END
+      uploaded_at = NULL,
+      artifact_url = NULL,
+      release_pointer = excluded.release_pointer
   `
 
   db.prepare(insertSql).run({
@@ -172,7 +189,23 @@ export function markArtifactFailed(db: Database.Database, runId: string, diagnos
   return result.changes > 0
 }
 
-export function ensureReleasePointerFile(paths: { pointerPath: string; outputPath?: string }, publication: ArtifactPublicationRow): void {
+export function ensureReleasePointerFile(
+  paths: { pointerPath: string; outputPath?: string },
+  publication: ArtifactPublicationRow,
+  db?: Database.Database,
+): void {
+  const syncDb = (url: string, pointerObj: unknown) => {
+    if (db) {
+      try {
+        db.prepare('UPDATE artifact_publications SET artifact_url = ?, release_pointer = ? WHERE run_id = ?').run(
+          url,
+          JSON.stringify(pointerObj, null, 2),
+          publication.run_id,
+        )
+      } catch {}
+    }
+  }
+
   if (publication.release_pointer) {
     try {
       const stored = JSON.parse(publication.release_pointer) as CatalogReleasePointer
@@ -183,6 +216,7 @@ export function ensureReleasePointerFile(paths: { pointerPath: string; outputPat
       ) {
         if (publication.artifact_url && stored.artifactUrl !== publication.artifact_url) {
           stored.artifactUrl = publication.artifact_url
+          syncDb(publication.artifact_url, stored)
         }
         mkdirSync(dirname(paths.pointerPath), { recursive: true })
         const tmpPath = `${paths.pointerPath}.tmp.${process.pid}.${Date.now()}`
@@ -203,6 +237,9 @@ export function ensureReleasePointerFile(paths: { pointerPath: string; outputPat
         existing.artifactSha256 === publication.artifact_sha256
       ) {
         if (urlMatches) {
+          if (existing.artifactUrl && !publication.artifact_url) {
+            syncDb(existing.artifactUrl, existing)
+          }
           return
         }
         if (publication.artifact_url) {
@@ -211,6 +248,7 @@ export function ensureReleasePointerFile(paths: { pointerPath: string; outputPat
           const tmpPath = `${paths.pointerPath}.tmp.${process.pid}.${Date.now()}`
           writeFileSync(tmpPath, `${JSON.stringify(existing, null, 2)}\n`, 'utf8')
           renameSync(tmpPath, paths.pointerPath)
+          syncDb(publication.artifact_url, existing)
           return
         }
       }
@@ -239,6 +277,9 @@ export function ensureReleasePointerFile(paths: { pointerPath: string; outputPat
       const tmpPath = `${paths.pointerPath}.tmp.${process.pid}.${Date.now()}`
       writeFileSync(tmpPath, `${JSON.stringify(reconstructed, null, 2)}\n`, 'utf8')
       renameSync(tmpPath, paths.pointerPath)
+      if (publication.artifact_url) {
+        syncDb(publication.artifact_url, reconstructed)
+      }
     } finally {
       reader.close()
     }

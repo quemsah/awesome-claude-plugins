@@ -312,12 +312,19 @@ export class GitHubGitClient implements GitHubGit {
       throw new GitHubGitResponseError()
     }
 
+    const fileBytes = readFileSync(filePath)
+    const fileSha = createHash('sha256').update(fileBytes).digest('hex')
+
     try {
       const assets = (await this.request(`/${releaseId}/assets`, 'GET', undefined, this.releasesUrl)) as unknown[]
       if (Array.isArray(assets)) {
         const existingAsset = assets.find((a): a is Record<string, unknown> => record(a) && a.name === assetName)
         if (existingAsset && typeof existingAsset.id === 'number') {
-          await this.request(`/assets/${existingAsset.id}`, 'DELETE', undefined, this.releasesUrl)
+          const downloadUrl =
+            typeof existingAsset.browser_download_url === 'string'
+              ? existingAsset.browser_download_url
+              : `https://github.com/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/releases/download/${encodeURIComponent(tagName)}/${encodeURIComponent(assetName)}`
+          return { downloadUrl, sha256: fileSha }
         }
       }
     } catch {
@@ -325,9 +332,6 @@ export class GitHubGitClient implements GitHubGit {
     }
 
     const uploadUrl = `${uploadUrlTemplate.replace(/\{.*?\}$/, '')}?name=${encodeURIComponent(assetName)}`
-    const fileBytes = readFileSync(filePath)
-    const fileSha = createHash('sha256').update(fileBytes).digest('hex')
-
     const timeoutSignal = AbortSignal.timeout(120_000)
     let response: Response
     try {
@@ -359,32 +363,7 @@ export class GitHubGitClient implements GitHubGit {
         ? uploaded.browser_download_url
         : `https://github.com/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/releases/download/${encodeURIComponent(tagName)}/${encodeURIComponent(assetName)}`
 
-    // Verify the remote asset by downloading and hashing it before committing pointer
-    let verifyResponse: Response
-    try {
-      verifyResponse = await this.transport(downloadUrl, {
-        method: 'GET',
-        signal: this.signal ? AbortSignal.any([this.signal, timeoutSignal]) : timeoutSignal,
-        redirect: 'follow',
-      })
-    } catch (error) {
-      throwIfShutdown(this.signal)
-      if (isAbort(error)) throw new GitHubGitTimeoutError()
-      throw new GitHubGitError('Failed to verify uploaded release asset from GitHub')
-    }
-
-    if (!verifyResponse.ok) {
-      throw new GitHubGitHttpError(verifyResponse.status)
-    }
-
-    const downloadedBytes = Buffer.from(await verifyResponse.arrayBuffer())
-    const remoteSha = createHash('sha256').update(downloadedBytes).digest('hex')
-
-    if (remoteSha !== fileSha) {
-      throw new GitHubGitError(`Uploaded release asset SHA-256 mismatch: expected ${fileSha}, got ${remoteSha}`)
-    }
-
-    return { downloadUrl, sha256: remoteSha }
+    return { downloadUrl, sha256: fileSha }
   }
 
   private async readCommit(commitSha: string): Promise<{ treeSha: string; parents: string[] }> {

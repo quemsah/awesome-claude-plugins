@@ -41,8 +41,11 @@ export function getSqliteReader(): PublicCatalogReader {
   const root = globalThis as GlobalWithSqliteReader
   const dbPath = getSqliteDbPath()
 
-  if (root[SQLITE_READER_KEY]?.dbPath === dbPath) {
-    return root[SQLITE_READER_KEY].reader
+  const cached = root[SQLITE_READER_KEY]
+  if (cached?.dbPath === dbPath) {
+    if (typeof cached.reader.isOpen === 'function' ? cached.reader.isOpen() : true) {
+      return cached.reader
+    }
   }
 
   if (root[SQLITE_READER_KEY]) {

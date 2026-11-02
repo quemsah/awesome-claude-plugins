@@ -125,6 +125,7 @@ export interface PublicCatalogReader {
   getSitemapPage(limit: number, offset: number): SitemapRecord[]
   getStatistics(): StatRecord[]
   getCatalogMetadata(): CatalogMetadata
+  isOpen(): boolean
   close(): void
 }
 

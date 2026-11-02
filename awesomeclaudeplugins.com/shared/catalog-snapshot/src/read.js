@@ -503,6 +503,10 @@ export function openPublicCatalog(path, expected = {}) {
       return { ...metadata }
     },
 
+    isOpen() {
+      return Boolean(db && db.open)
+    },
+
     close() {
       if (db) {
         db.close()

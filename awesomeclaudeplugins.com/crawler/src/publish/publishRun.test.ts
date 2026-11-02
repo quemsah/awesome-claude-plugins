@@ -10,7 +10,7 @@ import { listPublishable } from '../storage/repositories.js'
 import { beginRun, completeRun, failRun, getRun } from '../storage/runs.js'
 import { type CatalogReleasePointer, getArtifactPublication } from './artifactPublisher.js'
 import { type GitHubGit, GitHubGitConflictError, GitHubGitHttpError, GitHubGitTimeoutError, type GitSnapshotFiles } from './githubGit.js'
-import { PublicationError, prepareDraft, publishRun, readDraftSnapshot } from './publishRun.js'
+import { PublicationError, prepareDraft, publishRun, readDraftSnapshot, resolveArtifactPaths } from './publishRun.js'
 
 const databases: Database.Database[] = []
 const directories: string[] = []
@@ -1132,4 +1132,34 @@ it('preserves uploaded artifact publication state across git failures and reuses
   const finalPub = getArtifactPublication(db, 'r1')
   expect(finalPub?.snapshot_id).toBe(pubAfterGitFailure?.snapshot_id)
   expect(finalPub?.state).toBe('uploaded')
+})
+
+it('refuses publication when artifact paths are missing and legacy publication is disallowed', async () => {
+  const db = fixture()
+  const git = new Branch()
+  prepareDraft(db, 'r1', timestamp)
+
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      requireArtifactPublication: true,
+    }),
+  ).rejects.toMatchObject({ category: 'snapshot_invalid' })
+})
+
+it('isolates artifact paths between sequential crawler runs so artifacts are not overwritten', async () => {
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-isolation-'))
+  directories.push(directory)
+  const paths1 = resolveArtifactPaths(
+    { artifactOutputPath: join(directory, 'artifacts/{runId}/catalog.sqlite'), releasePointerPath: join(directory, 'pointer.json') },
+    'run-1',
+  )
+  const paths2 = resolveArtifactPaths(
+    { artifactOutputPath: join(directory, 'artifacts/{runId}/catalog.sqlite'), releasePointerPath: join(directory, 'pointer.json') },
+    'run-2',
+  )
+
+  expect(paths1?.outputPath).toContain('run-1')
+  expect(paths2?.outputPath).toContain('run-2')
+  expect(paths1?.outputPath).not.toEqual(paths2?.outputPath)
 })

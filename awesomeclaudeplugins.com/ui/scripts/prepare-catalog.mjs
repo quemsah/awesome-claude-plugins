@@ -9,6 +9,7 @@ import {
   readFileSync,
   readSync,
   renameSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
@@ -99,6 +100,56 @@ function calculateSnapshotIdentity(repos, stats, schemaVersion, generatorVersion
   return hasher.digest('hex').slice(0, 16)
 }
 
+const MAX_ARTIFACT_BYTE_SIZE = 500 * 1024 * 1024 // 500 MB
+const DOWNLOAD_TIMEOUT_MS = 300_000 // 300 seconds
+
+const DEFAULT_ALLOWED_HOSTS = new Set([
+  'github.com',
+  'api.github.com',
+  'objects.githubusercontent.com',
+  'release-assets.githubusercontent.com',
+  'raw.githubusercontent.com',
+])
+
+export function validateDownloadUrl(urlStr) {
+  let parsed
+  try {
+    parsed = new URL(urlStr)
+  } catch (err) {
+    throw new Error(`Invalid download URL: "${urlStr}"`, { cause: err })
+  }
+
+  const isTest = Boolean(process.env.VITEST || process.env.NODE_ENV === 'test')
+  if (parsed.protocol === 'file:') {
+    if (!isTest) {
+      throw new Error(`Insecure download protocol "${parsed.protocol}": file URLs are only allowed in test environments`)
+    }
+    return parsed
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw new Error(`Insecure download protocol "${parsed.protocol}": expected HTTPS`)
+  }
+
+  const customAllowed = process.env.CATALOG_ALLOWED_HOSTS
+    ? process.env.CATALOG_ALLOWED_HOSTS.split(',').map((h) => h.trim().toLowerCase())
+    : []
+  const allowed = new Set([...DEFAULT_ALLOWED_HOSTS, ...customAllowed])
+  if (isTest) {
+    allowed.add('localhost')
+    allowed.add('127.0.0.1')
+  }
+
+  const hostname = parsed.hostname.toLowerCase()
+  const isAllowed = allowed.has(hostname) || hostname.endsWith('.githubusercontent.com') || hostname.endsWith('.github.com')
+
+  if (!isAllowed) {
+    throw new Error(`Disallowed catalog download host: "${parsed.hostname}". Allowed hosts: ${[...allowed].join(', ')}`)
+  }
+
+  return parsed
+}
+
 async function downloadSqliteArtifact(pointer, outputPath) {
   const repo = process.env.GITHUB_REPOSITORY || 'quemsah/awesome-claude-plugins'
   const downloadUrl =
@@ -106,6 +157,7 @@ async function downloadSqliteArtifact(pointer, outputPath) {
     process.env.CATALOG_SQLITE_URL ||
     `https://github.com/${repo}/releases/download/catalog-${pointer.snapshotId}/catalog.sqlite`
 
+  const parsedUrl = validateDownloadUrl(downloadUrl)
   console.log(`[prepare-catalog] Downloading SQLite snapshot artifact from ${downloadUrl}...`)
 
   mkdirSync(dirname(outputPath), { recursive: true })
@@ -113,12 +165,8 @@ async function downloadSqliteArtifact(pointer, outputPath) {
 
   let downloaded = false
   try {
-    const curlArgs = ['-sSL', '--fail', '--retry', '3', '-o', tmpPath]
-    let isGitHubApi = false
-    try {
-      isGitHubApi = new URL(downloadUrl).hostname === 'api.github.com'
-    } catch {}
-    if (process.env.GITHUB_TOKEN && isGitHubApi) {
+    const curlArgs = ['-sSL', '--fail', '--retry', '3', '--max-time', '300', '-o', tmpPath]
+    if (process.env.GITHUB_TOKEN && parsedUrl.hostname === 'api.github.com') {
       curlArgs.push('-H', `Authorization: Bearer ${process.env.GITHUB_TOKEN}`)
     }
     curlArgs.push(downloadUrl)
@@ -129,12 +177,25 @@ async function downloadSqliteArtifact(pointer, outputPath) {
   }
 
   if (!downloaded) {
-    const response = await fetch(downloadUrl, { redirect: 'follow' })
+    const timeoutSignal = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)
+    const response = await fetch(downloadUrl, { redirect: 'follow', signal: timeoutSignal })
     if (!response.ok) {
       throw new Error(`Failed to download catalog artifact from ${downloadUrl}: ${response.status} ${response.statusText}`)
     }
+    const contentLength = Number(response.headers.get('content-length'))
+    if (Number.isFinite(contentLength) && contentLength > MAX_ARTIFACT_BYTE_SIZE) {
+      throw new Error(`Artifact size ${contentLength} bytes exceeds limit of ${MAX_ARTIFACT_BYTE_SIZE} bytes`)
+    }
     const fileStream = createWriteStream(tmpPath)
     await pipeline(Readable.fromWeb(response.body), fileStream)
+  }
+
+  const stat = statSync(tmpPath)
+  if (stat.size > MAX_ARTIFACT_BYTE_SIZE) {
+    try {
+      unlinkSync(tmpPath)
+    } catch {}
+    throw new Error(`Downloaded artifact exceeds maximum allowed size of ${MAX_ARTIFACT_BYTE_SIZE} bytes`)
   }
 
   const downloadedSha = hashFileSha256(tmpPath)
@@ -266,7 +327,18 @@ export async function prepareCatalog(options = {}) {
       ].find((p) => existsSync(p)))
 
   let pointer = null
-  if (pointerPath) {
+  if (options.pointer) {
+    pointer = validateReleasePointer(options.pointer)
+  } else if (process.env.CATALOG_RELEASE_POINTER) {
+    try {
+      const raw = process.env.CATALOG_RELEASE_POINTER.trim().startsWith('{')
+        ? JSON.parse(process.env.CATALOG_RELEASE_POINTER)
+        : JSON.parse(readFileSync(process.env.CATALOG_RELEASE_POINTER, 'utf8'))
+      pointer = validateReleasePointer(raw)
+    } catch (err) {
+      throw new Error(`Invalid CATALOG_RELEASE_POINTER environment variable: ${err.message}`, { cause: err })
+    }
+  } else if (pointerPath) {
     const rawPointer = JSON.parse(readFileSync(pointerPath, 'utf8'))
     pointer = validateReleasePointer(rawPointer)
   }
