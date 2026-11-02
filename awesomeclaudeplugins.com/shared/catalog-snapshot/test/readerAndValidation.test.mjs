@@ -232,23 +232,22 @@ describe('readerAndValidation', () => {
       SnapshotMismatchError
     )
 
-    // Non-array iterable (generator) with SAME snapshotId -> throws SnapshotMismatchError because reuse cannot be verified
+    // Non-array one-shot records are compared after staging and should reuse
+    // the existing immutable artifact if the source content is identical.
     function* generateRecords() {
       for (const r of inputRepos) yield r
     }
-    assert.throws(
-      () =>
-        buildPublicCatalog(
-          {
-            records: generateRecords(),
-            stats: inputStats,
-            snapshotId: 'reuse-test-run',
-            createdAt: '2026-04-04T00:00:00.000Z',
-          },
-          tempDbPath
-        ),
-      SnapshotMismatchError
+    const fromGenerator = buildPublicCatalog(
+      {
+        records: generateRecords(),
+        stats: inputStats,
+        snapshotId: 'reuse-test-run',
+        createdAt: '2026-04-04T00:00:00.000Z',
+      },
+      tempDbPath
     )
+    assert.equal(fromGenerator.artifactSha256, m1.artifactSha256)
+    assert.equal(fromGenerator.createdAt, m1.createdAt)
   })
 
   it('excludes records with null plugins_count from iterateIndexableRepos', () => {
