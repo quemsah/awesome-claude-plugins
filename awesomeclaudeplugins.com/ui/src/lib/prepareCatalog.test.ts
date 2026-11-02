@@ -64,5 +64,4 @@ describe('prepareCatalog script', () => {
     expect(manifest.artifactSha256).toBe(first.artifactSha256)
     expect(() => prepareCatalog({ dataDir: tempDir })).toThrow(ARTIFACT_MISMATCH_PATTERN)
   })
-
 })
