@@ -1,6 +1,7 @@
 /** biome-ignore-all lint/style/useNamingConvention: JSON fixture preserves published field names */
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import Database from 'better-sqlite3'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { prepareCatalog } from '../../scripts/prepare-catalog.mjs'
@@ -86,5 +87,44 @@ describe('prepareCatalog script', () => {
 
     const validated = await prepareCatalog({ dataDir: tempDir })
     expect(validated.artifactSha256).toBe(first.artifactSha256)
+  })
+
+  it('refreshes stale sqlite and manifest when pointer advances to a newer release', async () => {
+    writeSample()
+    await prepareCatalog({ dataDir: tempDir })
+
+    const secondDir = join(tempDir, 'sub')
+    mkdirSync(secondDir, { recursive: true })
+    const secondRecord = {
+      id: 2,
+      owner: 'example',
+      repo_name: 'second-plugin',
+      description: 'Another plugin',
+      plugins_count: 1,
+      stargazers_count: 10,
+    }
+    writeFileSync(join(secondDir, 'repos.json'), JSON.stringify([secondRecord]))
+    writeFileSync(join(secondDir, 'stats.json'), JSON.stringify([{ id: 1, date: '2026-03-01', size: 1 }]))
+    const second = await prepareCatalog({ dataDir: secondDir })
+
+    const pointer = {
+      schemaVersion: second.schemaVersion,
+      generatorVersion: second.generatorVersion,
+      snapshotId: second.snapshotId,
+      catalogFingerprint: second.catalogFingerprint,
+      artifactSha256: second.artifactSha256,
+      recordCount: second.recordCount,
+      canonicalCount: second.canonicalCount,
+      pluginsCount: second.pluginsCount,
+      statsCount: second.statsCount,
+      artifactUrl: pathToFileURL(join(secondDir, 'catalog.sqlite')).href,
+    }
+    writeFileSync(join(tempDir, 'catalog-release.json'), JSON.stringify(pointer))
+    rmSync(join(tempDir, 'repos.json'))
+    rmSync(join(tempDir, 'stats.json'))
+
+    const refreshed = await prepareCatalog({ dataDir: tempDir })
+    expect(refreshed.artifactSha256).toBe(second.artifactSha256)
+    expect(refreshed.snapshotId).toBe(second.snapshotId)
   })
 })

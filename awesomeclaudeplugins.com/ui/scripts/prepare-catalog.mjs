@@ -163,8 +163,8 @@ function verifySqliteArtifact(outputPath, manifestPath, pointer) {
     createdAt: metadataRow.created_at,
   }
 
-  // Check manifest if exists
-  if (existsSync(manifestPath)) {
+  // Check manifest if exists (when pointer is absent; pointer is authoritative when present)
+  if (!pointer && existsSync(manifestPath)) {
     try {
       const existing = JSON.parse(readFileSync(manifestPath, 'utf8'))
       if (existing.artifactSha256 && existing.artifactSha256 !== sha256) {
@@ -218,6 +218,9 @@ export async function prepareCatalog(options = {}) {
         console.warn('[prepare-catalog] Existing SQLite artifact is invalid or stale for pointer; re-downloading...')
         try {
           unlinkSync(outputPath)
+        } catch {}
+        try {
+          if (existsSync(manifestPath)) unlinkSync(manifestPath)
         } catch {}
         await downloadSqliteArtifact(pointer, outputPath)
         return verifySqliteArtifact(outputPath, manifestPath, pointer)
