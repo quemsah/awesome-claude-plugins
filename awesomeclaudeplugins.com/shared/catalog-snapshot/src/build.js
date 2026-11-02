@@ -102,6 +102,10 @@ function compareExistingToStaging(outputPath, stagingPath, snapshotId) {
   if (!existsSync(outputPath)) return null
   const existing = new Database(outputPath, { readonly: true, fileMustExist: true })
   try {
+    const check = existing.pragma('quick_check')
+    if (!Array.isArray(check) || check[0]?.quick_check !== 'ok') {
+      throw new CorruptedSnapshotError(`Existing snapshot failed quick_check: ${outputPath}`)
+    }
     const meta = existing.prepare('SELECT * FROM catalog_metadata WHERE id = 1').get()
     if (!meta || meta.snapshot_id !== snapshotId) return null
     const staging = new Database(stagingPath, { readonly: true, fileMustExist: true })
@@ -135,10 +139,10 @@ function tryReuseExistingSnapshot(outputPath, snapshotId, records, stats) {
     try {
       const check = existingDb.pragma('quick_check')
       if (!Array.isArray(check) || check.length === 0 || check[0].quick_check !== 'ok') {
-        return null
+        throw new CorruptedSnapshotError(`Existing catalog database failed quick_check: ${outputPath}`)
       }
       const meta = existingDb.prepare('SELECT * FROM catalog_metadata WHERE id = 1').get()
-      if (!meta) return null
+      if (!meta) throw new CorruptedSnapshotError(`Existing catalog database lacks metadata: ${outputPath}`)
 
       if (meta.snapshot_id === snapshotId) {
         // A one-shot Iterable must be compared after writing a staging DB, without consuming it twice.
@@ -167,10 +171,10 @@ function tryReuseExistingSnapshot(outputPath, snapshotId, records, stats) {
       existingDb.close()
     }
   } catch (error) {
-    if (error instanceof SnapshotMismatchError) {
+    if (error instanceof SnapshotMismatchError || error instanceof CorruptedSnapshotError) {
       throw error
     }
-    // Existing database cannot be read, fall through to full build
+    throw new CorruptedSnapshotError(`Existing catalog database cannot be reused: ${outputPath}`, { cause: error })
   }
   return null
 }
