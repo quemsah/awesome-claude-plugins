@@ -9,3 +9,4 @@ export class IncompatibleSchemaError extends CatalogSnapshotError {}
 export class CorruptedSnapshotError extends CatalogSnapshotError {}
 export class SnapshotMismatchError extends CatalogSnapshotError {}
 export class InvalidSnapshotInputError extends CatalogSnapshotError {}
+export class MarkdownPathCollisionError extends InvalidSnapshotInputError {}

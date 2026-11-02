@@ -49,7 +49,7 @@ function toInteger(value, fallback, min) {
 const sortSql = {
   'stars-desc': 'archived ASC, stargazers_count DESC, has_description DESC, source_order ASC',
   'forks-desc': 'archived ASC, forks_count DESC, source_order ASC',
-  'plugins-desc': 'archived ASC, plugin_signal DESC, plugins_count DESC, source_order ASC',
+  'plugins-desc': 'archived ASC, plugin_signal DESC, COALESCE(plugins_count, 0) DESC, source_order ASC',
   'updated-desc': 'archived ASC, pushed_at_unix DESC, stargazers_count DESC, source_order ASC',
   'created-desc': 'archived ASC, catalog_added_at_unix DESC, stargazers_count DESC, source_order ASC',
 }
@@ -60,6 +60,11 @@ const rankColumns = {
   'plugins-desc': 'rank_plugins',
   'updated-desc': 'rank_updated',
   'created-desc': 'rank_created',
+}
+
+function toCardRecord(record) {
+  const { plugins, ...card } = record
+  return card
 }
 
 /**
@@ -190,6 +195,7 @@ export function openPublicCatalog(path, expected = {}) {
       const sort = options.sort && sortSql[options.sort] ? options.sort : 'stars-desc'
       const page = toInteger(options.page, 0, 0)
       const pageSize = toInteger(options.pageSize, 24, 1)
+      const view = options.view ?? 'full'
       const offset = page * pageSize
 
       const orderClause = sortSql[sort]
@@ -200,10 +206,20 @@ export function openPublicCatalog(path, expected = {}) {
         LIMIT ? OFFSET ?
       `).all(pageSize, offset)
 
+      let items = rows.map((r) => JSON.parse(r.record_json))
+      if (view === 'cards') {
+        items = items.map(toCardRecord)
+      }
+
+      const total = metadata.canonical_count
+      const hasMore = offset + items.length < total
+
       return {
-        matches: rows.map((r) => JSON.parse(r.record_json)),
-        total: metadata.canonical_count,
+        matches: items,
+        rows: items,
+        total,
         pluginsCount: metadata.plugins_count,
+        hasMore,
       }
     },
 
@@ -211,10 +227,11 @@ export function openPublicCatalog(path, expected = {}) {
       const sort = options.sort && rankColumns[options.sort] ? options.sort : 'stars-desc'
       const page = toInteger(options.page, 0, 0)
       const pageSize = toInteger(options.pageSize, 24, 1)
+      const view = options.view ?? 'full'
       const terms = getSearchTerms(query)
 
       if (terms.length === 0) {
-        return { matches: [], total: 0, pluginsCount: 0 }
+        return { matches: [], rows: [], total: 0, pluginsCount: 0, hasMore: false }
       }
 
       const expression = terms.map((term, i) => `"${term}"${i === terms.length - 1 ? '*' : ''}`).join(' AND ')
@@ -255,16 +272,23 @@ export function openPublicCatalog(path, expected = {}) {
           offset
         )
 
-        matches = rows.map((row) => ({
-          item: JSON.parse(row.record_json),
-          score: row.score,
-        }))
+        matches = rows.map((row) => {
+          const item = JSON.parse(row.record_json)
+          return {
+            item: view === 'cards' ? toCardRecord(item) : item,
+            score: row.score,
+          }
+        })
       }
+
+      const hasMore = offset + matches.length < counts.total
 
       return {
         matches,
+        rows: matches,
         total: counts.total,
         pluginsCount: counts.pluginsCount,
+        hasMore,
       }
     },
 

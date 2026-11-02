@@ -13,6 +13,7 @@ export type PageOptions = {
   sort?: SortOption
   page?: number
   pageSize?: number
+  view?: 'full' | 'cards'
 }
 
 export type StatRecord = {
@@ -33,14 +34,18 @@ export type SeoRecord = {
 
 export type CatalogPage = {
   matches: CatalogRecord[]
+  rows: CatalogRecord[]
   total: number
   pluginsCount: number
+  hasMore: boolean
 }
 
 export type SearchPage = {
   matches: Array<{ item: CatalogRecord; score: number }>
+  rows: Array<{ item: CatalogRecord; score: number }>
   total: number
   pluginsCount: number
+  hasMore: boolean
 }
 
 export type CatalogMetadata = {
@@ -112,3 +117,4 @@ export class IncompatibleSchemaError extends CatalogSnapshotError {}
 export class CorruptedSnapshotError extends CatalogSnapshotError {}
 export class SnapshotMismatchError extends CatalogSnapshotError {}
 export class InvalidSnapshotInputError extends CatalogSnapshotError {}
+export class MarkdownPathCollisionError extends InvalidSnapshotInputError {}

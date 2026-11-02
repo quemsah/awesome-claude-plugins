@@ -8,6 +8,7 @@ import {
   CorruptedSnapshotError,
   IncompatibleSchemaError,
   InvalidSnapshotInputError,
+  MarkdownPathCollisionError,
   SnapshotMismatchError,
 } from '../src/errors.js'
 import { openPublicCatalog } from '../src/read.js'
@@ -292,5 +293,49 @@ describe('readerAndValidation', () => {
     } finally {
       reader.close()
     }
+  })
+
+  it('rejects snapshots with markdown path collisions (owner/repo and owner/repo.md)', () => {
+    const collidingRepos = [
+      {
+        id: 9201,
+        owner: 'clash-org',
+        repo_name: 'collision-target',
+        description: 'First path without extension',
+      },
+      {
+        id: 9202,
+        owner: 'clash-org',
+        repo_name: 'collision-target.md',
+        description: 'Colliding path with .md extension',
+      },
+    ]
+
+    assert.throws(
+      () =>
+        buildPublicCatalog(
+          {
+            records: collidingRepos,
+            stats: [],
+            snapshotId: 'collision-test',
+          },
+          tempDbPath
+        ),
+      MarkdownPathCollisionError
+    )
+
+    // Reverse order of arrival should also collide
+    assert.throws(
+      () =>
+        buildPublicCatalog(
+          {
+            records: collidingRepos.slice().reverse(),
+            stats: [],
+            snapshotId: 'collision-test-reverse',
+          },
+          tempDbPath
+        ),
+      MarkdownPathCollisionError
+    )
   })
 })

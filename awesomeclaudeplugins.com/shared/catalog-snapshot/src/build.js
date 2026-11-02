@@ -5,6 +5,7 @@ import Database from 'better-sqlite3'
 import {
   CorruptedSnapshotError,
   InvalidSnapshotInputError,
+  MarkdownPathCollisionError,
 } from './errors.js'
 import {
   calculateCatalogFingerprint,
@@ -50,6 +51,10 @@ function tryReuseExistingSnapshot(outputPath, snapshotId, records, stats) {
   try {
     const existingDb = new Database(outputPath, { readonly: true, fileMustExist: true })
     try {
+      const check = existingDb.pragma('quick_check')
+      if (!Array.isArray(check) || check.length === 0 || check[0].quick_check !== 'ok') {
+        return null
+      }
       const meta = existingDb.prepare('SELECT * FROM catalog_metadata WHERE id = 1').get()
       if (
         meta &&
@@ -116,7 +121,7 @@ function initCatalogSchema(db) {
       forks_count INTEGER NOT NULL,
       subscribers_count INTEGER NOT NULL,
       plugins_count INTEGER DEFAULT NULL,
-      plugin_signal REAL DEFAULT NULL,
+      plugin_signal REAL NOT NULL DEFAULT 0,
       pushed_at TEXT DEFAULT NULL,
       catalog_added_at TEXT DEFAULT NULL,
       catalog_updated_at TEXT DEFAULT NULL,
@@ -167,7 +172,7 @@ function initCatalogSchema(db) {
       stargazers_count,
       archived
     FROM repositories
-    WHERE is_canonical = 1;
+    WHERE is_canonical = 1 AND plugins_count IS NOT NULL;
   `)
 }
 
@@ -208,7 +213,7 @@ function calcDescMetrics(description) {
 }
 
 function calcPluginMetrics(pluginsCount, stars) {
-  if (typeof pluginsCount !== 'number') return [null, null]
+  if (typeof pluginsCount !== 'number') return [null, 0]
   return [pluginsCount, pluginsCount * Math.log10(stars + 10)]
 }
 
@@ -283,6 +288,21 @@ function populateRepositories(db, records, hasher) {
 
       let isCanonical = 0
       if (!seenCanonicalKeys.has(canonicalKey)) {
+        if (canonicalKey.endsWith('.md')) {
+          const baseKey = canonicalKey.slice(0, -3)
+          if (seenCanonicalKeys.has(baseKey)) {
+            throw new MarkdownPathCollisionError(
+              `Markdown path collision detected: "${canonicalKey}" conflicts with canonical repository "${baseKey}"`
+            )
+          }
+        } else {
+          const mdKey = `${canonicalKey}.md`
+          if (seenCanonicalKeys.has(mdKey)) {
+            throw new MarkdownPathCollisionError(
+              `Markdown path collision detected: "${canonicalKey}" conflicts with canonical repository "${mdKey}"`
+            )
+          }
+        }
         seenCanonicalKeys.add(canonicalKey)
         isCanonical = 1
         canonicalCount++
@@ -321,7 +341,7 @@ function calculateDenseRanksAndIndexes(db) {
       row_id,
       dense_rank() OVER (ORDER BY archived ASC, stargazers_count DESC, has_description DESC) AS r_stars,
       dense_rank() OVER (ORDER BY archived ASC, forks_count DESC) AS r_forks,
-      dense_rank() OVER (ORDER BY archived ASC, plugin_signal DESC, plugins_count DESC) AS r_plugins,
+      dense_rank() OVER (ORDER BY archived ASC, plugin_signal DESC, (COALESCE(plugins_count, 0)) DESC) AS r_plugins,
       dense_rank() OVER (ORDER BY archived ASC, pushed_at_unix DESC, stargazers_count DESC) AS r_updated,
       dense_rank() OVER (ORDER BY archived ASC, catalog_added_at_unix DESC, stargazers_count DESC) AS r_created
     FROM repositories;
@@ -342,7 +362,7 @@ function calculateDenseRanksAndIndexes(db) {
     CREATE INDEX idx_repositories_id ON repositories(id);
     CREATE INDEX idx_repositories_canonical_browse_stars ON repositories(is_canonical, archived ASC, stargazers_count DESC, has_description DESC, source_order ASC);
     CREATE INDEX idx_repositories_canonical_browse_forks ON repositories(is_canonical, archived ASC, forks_count DESC, source_order ASC);
-    CREATE INDEX idx_repositories_canonical_browse_plugins ON repositories(is_canonical, archived ASC, plugin_signal DESC, plugins_count DESC, source_order ASC);
+    CREATE INDEX idx_repositories_canonical_browse_plugins ON repositories(is_canonical, archived ASC, plugin_signal DESC, (COALESCE(plugins_count, 0)) DESC, source_order ASC);
     CREATE INDEX idx_repositories_canonical_browse_updated ON repositories(is_canonical, archived ASC, pushed_at_unix DESC, stargazers_count DESC, source_order ASC);
     CREATE INDEX idx_repositories_canonical_browse_created ON repositories(is_canonical, archived ASC, catalog_added_at_unix DESC, stargazers_count DESC, source_order ASC);
 

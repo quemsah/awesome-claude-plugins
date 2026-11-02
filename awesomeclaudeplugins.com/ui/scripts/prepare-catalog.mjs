@@ -25,11 +25,14 @@ export function prepareCatalog(options = {}) {
   if (!existsSync(reposPath)) {
     throw new Error(`Catalog source dataset not found: ${reposPath}`)
   }
+  if (!existsSync(statsPath)) {
+    throw new Error(`Catalog statistics dataset not found: ${statsPath}`)
+  }
 
   const startTime = Date.now()
   console.log(`[prepare-catalog] Reading source dataset from ${dataDir}...`)
   const repos = JSON.parse(readFileSync(reposPath, 'utf8'))
-  const stats = existsSync(statsPath) ? JSON.parse(readFileSync(statsPath, 'utf8')) : []
+  const stats = JSON.parse(readFileSync(statsPath, 'utf8'))
 
   const snapshotId = options.snapshotId ?? process.env.CATALOG_SNAPSHOT_ID ?? `snapshot-${calculateCatalogFingerprint(repos).slice(0, 16)}`
 
