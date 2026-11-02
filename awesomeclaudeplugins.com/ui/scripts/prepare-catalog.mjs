@@ -38,6 +38,37 @@ function hashFileSha256(filePath) {
   }
 }
 
+export function validateReleasePointer(pointer) {
+  if (!pointer || typeof pointer !== 'object' || Array.isArray(pointer)) {
+    throw new Error('Invalid catalog release pointer: expected a JSON object')
+  }
+  if (typeof pointer.snapshotId !== 'string' || !pointer.snapshotId.trim()) {
+    throw new Error('Invalid catalog release pointer: missing or invalid snapshotId')
+  }
+  if (typeof pointer.catalogFingerprint !== 'string' || !pointer.catalogFingerprint.trim()) {
+    throw new Error('Invalid catalog release pointer: missing or invalid catalogFingerprint')
+  }
+  if (typeof pointer.artifactSha256 !== 'string' || !SHA256_HEX.test(pointer.artifactSha256)) {
+    throw new Error(`Invalid catalog release pointer: invalid artifactSha256 (expected 64-char hex, got "${pointer.artifactSha256}")`)
+  }
+  if (typeof pointer.schemaVersion !== 'number' || pointer.schemaVersion !== SCHEMA_VERSION) {
+    throw new Error(`Invalid catalog release pointer: unsupported schemaVersion ${pointer.schemaVersion} (expected ${SCHEMA_VERSION})`)
+  }
+  if (typeof pointer.recordCount !== 'number' || pointer.recordCount < 0) {
+    throw new Error('Invalid catalog release pointer: missing or invalid recordCount')
+  }
+  if (typeof pointer.canonicalCount !== 'number' || pointer.canonicalCount < 0) {
+    throw new Error('Invalid catalog release pointer: missing or invalid canonicalCount')
+  }
+  if (typeof pointer.pluginsCount !== 'number' || pointer.pluginsCount < 0) {
+    throw new Error('Invalid catalog release pointer: missing or invalid pluginsCount')
+  }
+  if (typeof pointer.statsCount !== 'number' || pointer.statsCount < 0) {
+    throw new Error('Invalid catalog release pointer: missing or invalid statsCount')
+  }
+  return pointer
+}
+
 function verifyExistingManifest(outputPath, manifestPath, snapshotId) {
   if (!(existsSync(outputPath) && existsSync(manifestPath))) return
   let manifest
@@ -103,7 +134,7 @@ async function downloadSqliteArtifact(pointer, outputPath) {
   }
 
   const downloadedSha = hashFileSha256(tmpPath)
-  if (pointer.artifactSha256 && downloadedSha !== pointer.artifactSha256) {
+  if (downloadedSha !== pointer.artifactSha256) {
     try {
       unlinkSync(tmpPath)
     } catch {}
@@ -119,7 +150,7 @@ function verifySqliteArtifact(outputPath, manifestPath, pointer) {
   console.log(`[prepare-catalog] Validating existing SQLite catalog snapshot at ${outputPath}...`)
 
   const sha256 = hashFileSha256(outputPath)
-  if (pointer?.artifactSha256 && sha256 !== pointer.artifactSha256) {
+  if (pointer && sha256 !== pointer.artifactSha256) {
     throw new Error(`Artifact SHA-256 mismatch with pointer: expected ${pointer.artifactSha256}, got ${sha256}`)
   }
 
@@ -139,13 +170,27 @@ function verifySqliteArtifact(outputPath, manifestPath, pointer) {
   }
 
   if (pointer) {
-    if (pointer.snapshotId && metadataRow.snapshot_id !== pointer.snapshotId) {
+    if (metadataRow.snapshot_id !== pointer.snapshotId) {
       throw new Error(`Artifact snapshotId mismatch with pointer: expected ${pointer.snapshotId}, got ${metadataRow.snapshot_id}`)
     }
-    if (pointer.catalogFingerprint && metadataRow.catalog_fingerprint !== pointer.catalogFingerprint) {
+    if (metadataRow.catalog_fingerprint !== pointer.catalogFingerprint) {
       throw new Error(
         `Artifact catalogFingerprint mismatch with pointer: expected ${pointer.catalogFingerprint}, got ${metadataRow.catalog_fingerprint}`
       )
+    }
+    if (metadataRow.record_count !== pointer.recordCount) {
+      throw new Error(`Artifact recordCount mismatch with pointer: expected ${pointer.recordCount}, got ${metadataRow.record_count}`)
+    }
+    if (metadataRow.canonical_count !== pointer.canonicalCount) {
+      throw new Error(
+        `Artifact canonicalCount mismatch with pointer: expected ${pointer.canonicalCount}, got ${metadataRow.canonical_count}`
+      )
+    }
+    if (metadataRow.plugins_count !== pointer.pluginsCount) {
+      throw new Error(`Artifact pluginsCount mismatch with pointer: expected ${pointer.pluginsCount}, got ${metadataRow.plugins_count}`)
+    }
+    if (metadataRow.stats_count !== pointer.statsCount) {
+      throw new Error(`Artifact statsCount mismatch with pointer: expected ${pointer.statsCount}, got ${metadataRow.stats_count}`)
     }
   }
 
@@ -207,14 +252,18 @@ export async function prepareCatalog(options = {}) {
       join(process.cwd(), 'ui/catalog-release.json'),
     ].find((p) => existsSync(p))
 
-  const pointer = pointerPath ? JSON.parse(readFileSync(pointerPath, 'utf8')) : null
+  let pointer = null
+  if (pointerPath) {
+    const rawPointer = JSON.parse(readFileSync(pointerPath, 'utf8'))
+    pointer = validateReleasePointer(rawPointer)
+  }
 
   // If SQLite exists and source repos.json does not exist, validate existing SQLite
   if (existsSync(outputPath) && !existsSync(reposPath)) {
     try {
       return verifySqliteArtifact(outputPath, manifestPath, pointer)
     } catch (err) {
-      if (pointer && (pointer.artifactUrl || pointer.snapshotId)) {
+      if (pointer) {
         console.warn('[prepare-catalog] Existing SQLite artifact is invalid or stale for pointer; re-downloading...')
         try {
           unlinkSync(outputPath)

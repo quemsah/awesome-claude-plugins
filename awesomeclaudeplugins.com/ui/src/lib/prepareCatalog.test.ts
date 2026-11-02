@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import Database from 'better-sqlite3'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { prepareCatalog } from '../../scripts/prepare-catalog.mjs'
+import { prepareCatalog, validateReleasePointer } from '../../scripts/prepare-catalog.mjs'
 
 const MISSING_STATS_PATTERN = /Catalog statistics dataset not found/
 const ARTIFACT_MISMATCH_PATTERN = /published SHA-256/
@@ -209,5 +209,98 @@ describe('prepareCatalog script', () => {
     } finally {
       db.close()
     }
+  })
+
+  describe('validateReleasePointer', () => {
+    const validPointer = {
+      schemaVersion: 1,
+      generatorVersion: 'catalog-snapshot@1.0.0',
+      snapshotId: 'snap-12345',
+      catalogFingerprint: 'fingerprint-abc',
+      artifactSha256: 'a'.repeat(64),
+      recordCount: 10,
+      canonicalCount: 8,
+      pluginsCount: 12,
+      statsCount: 5,
+    }
+
+    it('accepts a fully specified valid release pointer', () => {
+      expect(validateReleasePointer(validPointer)).toEqual(validPointer)
+    })
+
+    it.each([
+      ['snapshotId (empty)', { ...validPointer, snapshotId: '' }, 'missing or invalid snapshotId'],
+      [
+        'snapshotId (omitted)',
+        (() => {
+          const { snapshotId: _, ...p } = validPointer
+          return p
+        })(),
+        'missing or invalid snapshotId',
+      ],
+      ['catalogFingerprint (blank)', { ...validPointer, catalogFingerprint: '   ' }, 'missing or invalid catalogFingerprint'],
+      [
+        'catalogFingerprint (omitted)',
+        (() => {
+          const { catalogFingerprint: _, ...p } = validPointer
+          return p
+        })(),
+        'missing or invalid catalogFingerprint',
+      ],
+      ['artifactSha256 (non-hex)', { ...validPointer, artifactSha256: 'xyz' }, 'invalid artifactSha256'],
+      ['artifactSha256 (short)', { ...validPointer, artifactSha256: 'a'.repeat(63) }, 'invalid artifactSha256'],
+      [
+        'artifactSha256 (omitted)',
+        (() => {
+          const { artifactSha256: _, ...p } = validPointer
+          return p
+        })(),
+        'invalid artifactSha256',
+      ],
+      ['schemaVersion', { ...validPointer, schemaVersion: 999 }, 'unsupported schemaVersion'],
+      ['recordCount', { ...validPointer, recordCount: -1 }, 'missing or invalid recordCount'],
+      [
+        'recordCount (omitted)',
+        (() => {
+          const { recordCount: _, ...p } = validPointer
+          return p
+        })(),
+        'missing or invalid recordCount',
+      ],
+      ['canonicalCount', { ...validPointer, canonicalCount: -1 }, 'missing or invalid canonicalCount'],
+      [
+        'canonicalCount (omitted)',
+        (() => {
+          const { canonicalCount: _, ...p } = validPointer
+          return p
+        })(),
+        'missing or invalid canonicalCount',
+      ],
+      ['pluginsCount', { ...validPointer, pluginsCount: -1 }, 'missing or invalid pluginsCount'],
+      [
+        'pluginsCount (omitted)',
+        (() => {
+          const { pluginsCount: _, ...p } = validPointer
+          return p
+        })(),
+        'missing or invalid pluginsCount',
+      ],
+      ['statsCount', { ...validPointer, statsCount: -1 }, 'missing or invalid statsCount'],
+      [
+        'statsCount (omitted)',
+        (() => {
+          const { statsCount: _, ...p } = validPointer
+          return p
+        })(),
+        'missing or invalid statsCount',
+      ],
+    ])('rejects pointer missing or invalid %s', (_field, pointer, message) => {
+      expect(() => validateReleasePointer(pointer)).toThrow(message)
+    })
+
+    it('rejects a pointer containing only artifactUrl when preparing catalog', async () => {
+      writeFileSync(join(tempDir, 'catalog-release.json'), JSON.stringify({ artifactUrl: 'http://example.com/catalog.sqlite' }))
+      await expect(prepareCatalog({ dataDir: tempDir })).rejects.toThrow('missing or invalid snapshotId')
+    })
   })
 })
