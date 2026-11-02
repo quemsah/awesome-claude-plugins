@@ -1,3 +1,7 @@
+import { createHash } from 'node:crypto'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { GitHubGitClient, GitHubGitConflictError, GitHubGitHttpError, GitHubGitResponseError, GitHubGitTimeoutError } from './githubGit.js'
 
@@ -379,5 +383,58 @@ describe('GitHubGitClient', () => {
     const { client, requests } = mockClient([])
     await expect(client.isCommitReachable('not-a-sha')).rejects.toThrow('SHA')
     expect(requests).toHaveLength(0)
+  })
+
+  it('uploads a release asset and verifies its remote SHA-256 before returning', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'git-upload-test-'))
+    const filePath = join(tmp, 'catalog.sqlite')
+    const content = Buffer.from('sqlite sample catalog database content')
+    const expectedSha = createHash('sha256').update(content).digest('hex')
+    writeFileSync(filePath, content)
+
+    try {
+      const downloadUrl = 'https://github.com/acme/catalog/releases/download/catalog-snap1/catalog.sqlite'
+      const { client, requests } = mockClient([
+        Response.json({ id: 10, upload_url: 'https://uploads.github.com/repos/acme/catalog/releases/10/assets{?name,label}' }),
+        Response.json([]),
+        Response.json({ id: 101, browser_download_url: downloadUrl }, { status: 201 }),
+        new Response(content, { status: 200 }),
+      ])
+
+      const result = await client.uploadReleaseAsset('catalog-snap1', 'catalog.sqlite', filePath)
+      expect(result).toEqual({ downloadUrl, sha256: expectedSha })
+      expect(requests.map((r) => [r.init?.method ?? 'GET', r.url])).toEqual([
+        ['GET', 'https://api.github.com/repos/acme/catalog/releases/tags/catalog-snap1'],
+        ['GET', 'https://api.github.com/repos/acme/catalog/releases/10/assets'],
+        ['POST', 'https://uploads.github.com/repos/acme/catalog/releases/10/assets?name=catalog.sqlite'],
+        ['GET', downloadUrl],
+      ])
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('throws an error if the downloaded remote asset SHA-256 does not match the uploaded local file', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'git-upload-tamper-'))
+    const filePath = join(tmp, 'catalog.sqlite')
+    const content = Buffer.from('sqlite sample catalog database content')
+    writeFileSync(filePath, content)
+
+    try {
+      const downloadUrl = 'https://github.com/acme/catalog/releases/download/catalog-snap2/catalog.sqlite'
+      const corruptedRemote = Buffer.from('corrupted remote content')
+      const { client } = mockClient([
+        Response.json({ id: 20, upload_url: 'https://uploads.github.com/repos/acme/catalog/releases/20/assets{?name,label}' }),
+        Response.json([]),
+        Response.json({ id: 102, browser_download_url: downloadUrl }, { status: 201 }),
+        new Response(corruptedRemote, { status: 200 }),
+      ])
+
+      await expect(client.uploadReleaseAsset('catalog-snap2', 'catalog.sqlite', filePath)).rejects.toThrow(
+        /Uploaded release asset SHA-256 mismatch/,
+      )
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
   })
 })

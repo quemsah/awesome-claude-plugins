@@ -359,7 +359,32 @@ export class GitHubGitClient implements GitHubGit {
         ? uploaded.browser_download_url
         : `https://github.com/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/releases/download/${encodeURIComponent(tagName)}/${encodeURIComponent(assetName)}`
 
-    return { downloadUrl, sha256: fileSha }
+    // Verify the remote asset by downloading and hashing it before committing pointer
+    let verifyResponse: Response
+    try {
+      verifyResponse = await this.transport(downloadUrl, {
+        method: 'GET',
+        signal: this.signal ? AbortSignal.any([this.signal, timeoutSignal]) : timeoutSignal,
+        redirect: 'follow',
+      })
+    } catch (error) {
+      throwIfShutdown(this.signal)
+      if (isAbort(error)) throw new GitHubGitTimeoutError()
+      throw new GitHubGitError('Failed to verify uploaded release asset from GitHub')
+    }
+
+    if (!verifyResponse.ok) {
+      throw new GitHubGitHttpError(verifyResponse.status)
+    }
+
+    const downloadedBytes = Buffer.from(await verifyResponse.arrayBuffer())
+    const remoteSha = createHash('sha256').update(downloadedBytes).digest('hex')
+
+    if (remoteSha !== fileSha) {
+      throw new GitHubGitError(`Uploaded release asset SHA-256 mismatch: expected ${fileSha}, got ${remoteSha}`)
+    }
+
+    return { downloadUrl, sha256: remoteSha }
   }
 
   private async readCommit(commitSha: string): Promise<{ treeSha: string; parents: string[] }> {
