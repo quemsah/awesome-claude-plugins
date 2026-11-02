@@ -65,3 +65,21 @@ it('refuses to export under the live UI directory', async () => {
     db.close()
   }
 })
+
+it('exports verified SQLite artifact and catalog-release.json alongside snapshot', async () => {
+  const { dir, db } = await fixture()
+  try {
+    const artifactOutputPath = join(dir, 'source-catalog.sqlite')
+    const releasePointerPath = join(dir, 'source-release.json')
+    prepareDraft(db, 'prepared', now, { artifactOutputPath, releasePointerPath })
+
+    const out = join(dir, 'sqlite-draft')
+    exportDraftSnapshot(db, 'prepared', out)
+    expect(existsSync(join(out, 'ui/catalog-release.json'))).toBe(true)
+    expect(existsSync(join(out, 'ui/src/data/catalog.sqlite'))).toBe(true)
+    const pointer = JSON.parse(readFileSync(join(out, 'ui/catalog-release.json'), 'utf8')) as { snapshotId?: string }
+    expect(pointer.snapshotId).toBeDefined()
+  } finally {
+    db.close()
+  }
+})

@@ -30,6 +30,7 @@ function cli(args: string[], dbPath: string) {
     encoding: 'utf8',
     env: {
       ...process.env,
+      NODE_ENV: 'test',
       DB_PATH: dbPath,
       GITHUB_READ_TOKEN: 'fake-read-token',
       PUBLISH_ENABLED: 'false',

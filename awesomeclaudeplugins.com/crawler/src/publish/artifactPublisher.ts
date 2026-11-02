@@ -120,17 +120,17 @@ export function prepareArtifactPublication(
       NULL, @release_pointer
     )
     ON CONFLICT(run_id) DO UPDATE SET
-      snapshot_id = excluded.snapshot_id,
-      catalog_fingerprint = excluded.catalog_fingerprint,
-      artifact_sha256 = excluded.artifact_sha256,
-      state = excluded.state,
+      snapshot_id = CASE WHEN artifact_publications.state = 'uploaded' THEN artifact_publications.snapshot_id ELSE excluded.snapshot_id END,
+      catalog_fingerprint = CASE WHEN artifact_publications.state = 'uploaded' THEN artifact_publications.catalog_fingerprint ELSE excluded.catalog_fingerprint END,
+      artifact_sha256 = CASE WHEN artifact_publications.state = 'uploaded' THEN artifact_publications.artifact_sha256 ELSE excluded.artifact_sha256 END,
+      state = CASE WHEN artifact_publications.state = 'uploaded' THEN 'uploaded' ELSE excluded.state END,
       byte_size = excluded.byte_size,
       artifact_path = excluded.artifact_path,
       diagnostic_code = NULL,
       prepared_at = excluded.prepared_at,
-      uploaded_at = NULL,
-      artifact_url = NULL,
-      release_pointer = excluded.release_pointer
+      uploaded_at = CASE WHEN artifact_publications.state = 'uploaded' THEN artifact_publications.uploaded_at ELSE NULL END,
+      artifact_url = CASE WHEN artifact_publications.state = 'uploaded' THEN artifact_publications.artifact_url ELSE NULL END,
+      release_pointer = CASE WHEN artifact_publications.state = 'uploaded' AND artifact_publications.release_pointer IS NOT NULL THEN artifact_publications.release_pointer ELSE excluded.release_pointer END
   `
 
   db.prepare(insertSql).run({

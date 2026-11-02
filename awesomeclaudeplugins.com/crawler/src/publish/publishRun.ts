@@ -186,7 +186,7 @@ function renderFiles(
   }
 }
 
-function hasArtifactTable(db: Database.Database): boolean {
+export function hasArtifactTable(db: Database.Database): boolean {
   try {
     const row = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='artifact_publications'").get()
     return Boolean(row)
@@ -195,7 +195,7 @@ function hasArtifactTable(db: Database.Database): boolean {
   }
 }
 
-function resolveArtifactPaths(options?: { artifactOutputPath?: string; releasePointerPath?: string }): {
+export function resolveArtifactPaths(options?: { artifactOutputPath?: string; releasePointerPath?: string }): {
   outputPath: string
   pointerPath: string
 } | null {
@@ -260,13 +260,34 @@ export function prepareDraft(
         const paths = resolveArtifactPaths(options)
         if (paths) {
           try {
-            const { manifest } = prepareArtifactPublication(db, runId, {
-              outputPath: paths.outputPath,
-              createdAt: now.toISOString(),
-              draftStats: { id: draft.id, date: draft.date, size: draft.size },
-            })
-            const pointer = writeReleasePointer(manifest, paths.pointerPath)
-            snapshot.files.catalogReleaseJson = `${JSON.stringify(pointer, null, 2)}\n`
+            const existingPub = getArtifactPublication(db, runId)
+            let preserved = false
+            if (existingPub && (existingPub.state === 'prepared' || existingPub.state === 'uploaded')) {
+              ensureReleasePointerFile(paths, existingPub)
+              if (existsSync(paths.pointerPath)) {
+                try {
+                  const pointerRaw = readFileSync(paths.pointerPath, 'utf8')
+                  const pointer = JSON.parse(pointerRaw) as Partial<CatalogReleasePointer>
+                  if (
+                    pointer.snapshotId === existingPub.snapshot_id &&
+                    pointer.catalogFingerprint === existingPub.catalog_fingerprint &&
+                    pointer.artifactSha256 === existingPub.artifact_sha256
+                  ) {
+                    snapshot.files.catalogReleaseJson = pointerRaw
+                    preserved = true
+                  }
+                } catch {}
+              }
+            }
+            if (!preserved) {
+              const { manifest } = prepareArtifactPublication(db, runId, {
+                outputPath: paths.outputPath,
+                createdAt: now.toISOString(),
+                draftStats: { id: draft.id, date: draft.date, size: draft.size },
+              })
+              const pointer = writeReleasePointer(manifest, paths.pointerPath)
+              snapshot.files.catalogReleaseJson = `${JSON.stringify(pointer, null, 2)}\n`
+            }
           } catch (error) {
             markArtifactFailed(db, runId, error instanceof Error ? error.message : String(error))
             throw new PublicationError('snapshot_invalid')
@@ -294,12 +315,18 @@ function checkedSnapshot(
       if (hasArtifactTable(db)) {
         const publication = getArtifactPublication(db, runId)
         const paths = resolveArtifactPaths(options)
-        if (publication && publication.state === 'uploaded') {
+        if (publication && (publication.state === 'uploaded' || publication.state === 'prepared')) {
+          let pointerRaw: string | null = null
           if (paths) {
             ensureReleasePointerFile(paths, publication)
+            if (existsSync(paths.pointerPath)) {
+              pointerRaw = readFileSync(paths.pointerPath, 'utf8')
+            }
           }
-          if (paths && existsSync(paths.pointerPath)) {
-            const pointerRaw = readFileSync(paths.pointerPath, 'utf8')
+          if (!pointerRaw && publication.release_pointer) {
+            pointerRaw = publication.release_pointer
+          }
+          if (pointerRaw) {
             try {
               const pointer = JSON.parse(pointerRaw) as Partial<CatalogReleasePointer>
               if (
@@ -313,7 +340,7 @@ function checkedSnapshot(
             } catch {
               throw new PublicationError('snapshot_invalid')
             }
-          } else {
+          } else if (paths) {
             throw new PublicationError('snapshot_invalid')
           }
         } else if (paths) {

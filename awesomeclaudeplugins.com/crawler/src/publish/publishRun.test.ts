@@ -8,7 +8,7 @@ import { renderRepos } from '../output/catalogSnapshot.js'
 import { openDatabase } from '../storage/db.js'
 import { listPublishable } from '../storage/repositories.js'
 import { beginRun, completeRun, failRun, getRun } from '../storage/runs.js'
-import type { CatalogReleasePointer } from './artifactPublisher.js'
+import { type CatalogReleasePointer, getArtifactPublication } from './artifactPublisher.js'
 import { type GitHubGit, GitHubGitConflictError, GitHubGitHttpError, GitHubGitTimeoutError, type GitSnapshotFiles } from './githubGit.js'
 import { PublicationError, prepareDraft, publishRun, readDraftSnapshot } from './publishRun.js'
 
@@ -1055,4 +1055,38 @@ it('replaces a pointer with matching identity fields but a stale artifactUrl dur
   const restoredPointer = JSON.parse(readFileSync(releasePointerPath, 'utf8')) as CatalogReleasePointer
   expect(restoredPointer.artifactUrl).toBe(validUrl)
   expect(restoredPointer.snapshotId).toBe(genuinePointer.snapshotId)
+})
+
+it('preserves existing publication and uploaded state when prepareDraft is called again for the same run', async () => {
+  const db = fixture()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-preserve-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  const initialPub = getArtifactPublication(db, 'r1')
+  expect(initialPub).toBeDefined()
+  expect(initialPub?.state).toBe('prepared')
+
+  // Mark uploaded with URL
+  const testUrl = 'https://github.com/example/repo/releases/download/test/catalog.sqlite'
+  db.prepare("UPDATE artifact_publications SET state = 'uploaded', artifact_url = ? WHERE run_id = 'r1'").run(testUrl)
+
+  // Re-enter prepareDraft with another clock value
+  const later = new Date(timestamp.getTime() + 100_000)
+  prepareDraft(db, 'r1', later, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  const postReentryPub = getArtifactPublication(db, 'r1')
+  expect(postReentryPub).toBeDefined()
+  expect(postReentryPub?.snapshot_id).toBe(initialPub?.snapshot_id)
+  expect(postReentryPub?.state).toBe('uploaded')
+  expect(postReentryPub?.artifact_url).toBe(testUrl)
 })

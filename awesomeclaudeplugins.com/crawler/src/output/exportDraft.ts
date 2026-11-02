@@ -1,7 +1,8 @@
-import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import type Database from 'better-sqlite3'
-import { readDraftSnapshot } from '../publish/publishRun.js'
+import { getArtifactPublication } from '../publish/artifactPublisher.js'
+import { hasArtifactTable, readDraftSnapshot, resolveArtifactPaths } from '../publish/publishRun.js'
 import { buildRepoDetailsShards, buildSearchIndex } from './splitCatalog.js'
 
 export class DraftExportError extends Error {
@@ -57,6 +58,14 @@ export function exportDraftSnapshot(db: Database.Database, runId: string, direct
 
     if (files.catalogReleaseJson) {
       writeFileSync(resolve(target, 'ui/catalog-release.json'), files.catalogReleaseJson, { flag: 'wx', mode: 0o600 })
+      if (hasArtifactTable(db)) {
+        const publication = getArtifactPublication(db, runId)
+        const paths = resolveArtifactPaths()
+        const artifactPath = publication?.artifact_path ?? paths?.outputPath
+        if (artifactPath && existsSync(artifactPath)) {
+          copyFileSync(artifactPath, resolve(data, 'catalog.sqlite'))
+        }
+      }
     }
   } catch {
     rmSync(target, { recursive: true })
