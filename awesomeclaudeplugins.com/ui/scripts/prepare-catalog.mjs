@@ -12,7 +12,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { pathToFileURL } from 'node:url'
@@ -195,7 +195,7 @@ export async function prepareCatalog(options = {}) {
   const reposPath = join(dataDir, 'repos.json')
   const statsPath = join(dataDir, 'stats.json')
   const outputPath = options.outputPath ?? join(dataDir, 'catalog.sqlite')
-  const manifestPath = options.manifestPath ?? join(dataDir, 'catalog.manifest.json')
+  const manifestPath = options.manifestPath ?? join(dirname(outputPath), 'catalog.manifest.json')
 
   const pointerPath =
     options.pointerPath ??
@@ -293,8 +293,30 @@ export async function prepareCatalog(options = {}) {
   return manifest
 }
 
+function parseCliArgs(argv) {
+  const options = {}
+  for (let i = 2; i < argv.length; i++) {
+    const arg = argv[i]
+    if (arg === '--source' && argv[i + 1]) {
+      options.dataDir = resolve(argv[++i])
+    } else if (arg.startsWith('--source=')) {
+      options.dataDir = resolve(arg.slice('--source='.length))
+    } else if (arg === '--output' && argv[i + 1]) {
+      options.outputPath = resolve(argv[++i])
+    } else if (arg.startsWith('--output=')) {
+      options.outputPath = resolve(arg.slice('--output='.length))
+    } else if (arg === '--pointer' && argv[i + 1]) {
+      options.pointerPath = resolve(argv[++i])
+    } else if (arg.startsWith('--pointer=')) {
+      options.pointerPath = resolve(arg.slice('--pointer='.length))
+    }
+  }
+  return options
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  prepareCatalog().catch((err) => {
+  const options = parseCliArgs(process.argv)
+  prepareCatalog(options).catch((err) => {
     console.error(err)
     process.exit(1)
   })

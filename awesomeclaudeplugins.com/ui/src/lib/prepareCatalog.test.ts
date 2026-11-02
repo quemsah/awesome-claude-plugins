@@ -1,5 +1,6 @@
 /** biome-ignore-all lint/style/useNamingConvention: JSON fixture preserves published field names */
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import Database from 'better-sqlite3'
@@ -173,6 +174,40 @@ describe('prepareCatalog script', () => {
       } else {
         process.env.CATALOG_SQLITE_URL = previousUrl
       }
+    }
+  })
+
+  it('supports --source and --output CLI arguments', () => {
+    const cliSourceDir = join(tempDir, 'cli-source')
+    const cliOutputDir = join(tempDir, 'cli-out')
+    mkdirSync(cliSourceDir, { recursive: true })
+    mkdirSync(cliOutputDir, { recursive: true })
+
+    writeFileSync(
+      join(cliSourceDir, 'repos.json'),
+      JSON.stringify([
+        { id: 42, owner: 'cli-test', repo_name: 'cli-plugin', description: 'CLI plugin', plugins_count: 1, stargazers_count: 10 },
+      ])
+    )
+    writeFileSync(join(cliSourceDir, 'stats.json'), JSON.stringify([{ id: 1, date: '2026-11-01', size: 1 }]))
+
+    const customSqlite = join(cliOutputDir, 'custom.sqlite')
+    const scriptPath = join(process.cwd(), 'scripts/prepare-catalog.mjs')
+
+    execFileSync('node', [scriptPath, '--source', cliSourceDir, '--output', customSqlite], {
+      stdio: 'pipe',
+      env: { ...process.env, NODE_ENV: 'test' },
+    })
+
+    expect(existsSync(customSqlite)).toBe(true)
+    expect(existsSync(join(cliOutputDir, 'catalog.manifest.json'))).toBe(true)
+
+    const db = new Database(customSqlite, { readonly: true })
+    try {
+      const meta = db.prepare('SELECT * FROM catalog_metadata WHERE id = 1').get() as { record_count: number }
+      expect(meta.record_count).toBe(1)
+    } finally {
+      db.close()
     }
   })
 })
