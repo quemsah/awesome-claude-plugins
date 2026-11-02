@@ -12,6 +12,9 @@ it('validates crawler snapshots with the shared catalog and UI stats schemas', a
     completeRun(db, 'integration', '2026-01-12T00:00:00.000Z', 0)
     prepareDraft(db, 'integration', new Date('2026-01-12T00:00:00.000Z'))
     const { reposJson, statsJson } = readDraftSnapshot(db, 'integration')
+    expect(reposJson).toBeDefined()
+    expect(statsJson).toBeDefined()
+    if (!reposJson || !statsJson) throw new Error('Missing reposJson or statsJson in snapshot')
     const [{ PublishedReposArraySchema, ReposArraySchema }, { StatsArraySchema }] = await Promise.all([
       import('@awesome-claude-plugins/catalog-contract'),
       import('../../../ui/src/schemas/stats.schema.ts'),

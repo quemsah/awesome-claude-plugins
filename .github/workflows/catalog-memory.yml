@@ -56,11 +56,16 @@ jobs:
         run: |
           cd candidate/awesomeclaudeplugins.com/ui
           node scripts/prepare-catalog.mjs
-          mkdir -p ../../../baseline/awesomeclaudeplugins.com/ui/src/data
-          if [ -f ../../../baseline/awesomeclaudeplugins.com/ui/scripts/prepare-catalog.mjs ]; then
-            (cd ../../../baseline/awesomeclaudeplugins.com/ui && node scripts/prepare-catalog.mjs) || cp src/data/catalog.sqlite ../../../baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
+          cd ../../..
+          if [ -f baseline/awesomeclaudeplugins.com/ui/scripts/prepare-catalog.mjs ]; then
+            cd baseline/awesomeclaudeplugins.com/ui
+            node scripts/prepare-catalog.mjs
+          elif [ -f baseline/awesomeclaudeplugins.com/ui/src/data/repos.json ]; then
+            cd candidate/awesomeclaudeplugins.com/ui
+            node scripts/prepare-catalog.mjs --source ../../../baseline/awesomeclaudeplugins.com/ui/src/data --output ../../../baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
           else
-            cp src/data/catalog.sqlite ../../../baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
+            echo "Baseline catalog snapshot cannot be prepared"
+            exit 1
           fi
       - name: Check identical catalog inputs
         shell: bash
@@ -147,11 +152,16 @@ jobs:
         run: |
           cd candidate/awesomeclaudeplugins.com/ui
           node scripts/prepare-catalog.mjs
-          mkdir -p ../../../baseline/awesomeclaudeplugins.com/ui/src/data
-          if [ -f ../../../baseline/awesomeclaudeplugins.com/ui/scripts/prepare-catalog.mjs ]; then
-            (cd ../../../baseline/awesomeclaudeplugins.com/ui && node scripts/prepare-catalog.mjs) || cp src/data/catalog.sqlite ../../../baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
+          cd ../../..
+          if [ -f baseline/awesomeclaudeplugins.com/ui/scripts/prepare-catalog.mjs ]; then
+            cd baseline/awesomeclaudeplugins.com/ui
+            node scripts/prepare-catalog.mjs
+          elif [ -f baseline/awesomeclaudeplugins.com/ui/src/data/repos.json ]; then
+            cd candidate/awesomeclaudeplugins.com/ui
+            node scripts/prepare-catalog.mjs --source ../../../baseline/awesomeclaudeplugins.com/ui/src/data --output ../../../baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
           else
-            cp src/data/catalog.sqlite ../../../baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
+            echo "Baseline catalog snapshot cannot be prepared"
+            exit 1
           fi
       - name: Build baseline production Next.js
         working-directory: baseline/awesomeclaudeplugins.com

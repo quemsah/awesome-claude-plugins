@@ -57,7 +57,9 @@ it.each(['code', 'repository'])('indexes a standalone discovered only through %s
       now: () => new Date('2026-11-01T00:00:00Z'),
     })
     expect(result.status).toBe('draft')
-    const records = PublishedReposArraySchema.parse(JSON.parse(readDraftSnapshot(db, 'standalone').reposJson))
+    const snapshot = readDraftSnapshot(db, 'standalone')
+    expect(snapshot.reposJson).toBeDefined()
+    const records = PublishedReposArraySchema.parse(JSON.parse(snapshot.reposJson ?? '[]'))
     expect(records).toHaveLength(1)
     expect(records[0]).toMatchObject({
       owner: 'acme',
@@ -73,7 +75,9 @@ it.each(['code', 'repository'])('indexes a standalone discovered only through %s
       repositorySearchEnabled: source === 'repository',
       now: () => new Date('2026-11-02T00:00:00Z'),
     })
-    const repeated = PublishedReposArraySchema.parse(JSON.parse(readDraftSnapshot(db, 'standalone-repeat').reposJson))
+    const repeatSnapshot = readDraftSnapshot(db, 'standalone-repeat')
+    expect(repeatSnapshot.reposJson).toBeDefined()
+    const repeated = PublishedReposArraySchema.parse(JSON.parse(repeatSnapshot.reposJson ?? '[]'))
     expect(repeated).toHaveLength(1)
     expect(repeated[0].id).toBe(records[0].id)
     expect(repeated[0].plugins_count).toBe(1)
