@@ -274,7 +274,9 @@ export function openPublicCatalog(path, expected = {}) {
       const stmt = db.prepare(`
         SELECT owner, repo_name, canonical_key, pushed_at, catalog_added_at, catalog_updated_at, stargazers_count, source_order
         FROM repositories
-        WHERE is_canonical = 1 AND source_order > ?
+        WHERE is_canonical = 1
+          AND plugins_count IS NOT NULL
+          AND source_order > ?
         ORDER BY source_order ASC
         LIMIT ?
       `)

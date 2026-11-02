@@ -217,7 +217,10 @@ function extractRepoRowParams(parsed, sourceOrder, isCanonical, canonicalKey, re
   const [pluginsCount, pluginSignal] = calcPluginMetrics(parsed.plugins_count, stars)
   const [hasDesc, descriptionQuality] = calcDescMetrics(parsed.description)
   const repoName = parsed.repo_name || ''
-  const isArchived = parsed.archived ? 1 : 0
+  const isArchived =
+    parsed.archived == null
+      ? (/^\[archived\]/i.test(parsed.description?.trim() ?? '') ? 1 : 0)
+      : (parsed.archived ? 1 : 0)
   const isMarkdown = /\.md$/i.test(repoName) ? 1 : 0
 
   return [

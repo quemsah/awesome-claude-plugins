@@ -222,4 +222,75 @@ describe('readerAndValidation', () => {
     )
     assert.equal(m4.createdAt, '2026-04-04T00:00:00.000Z')
   })
+
+  it('excludes records with null plugins_count from iterateIndexableRepos', () => {
+    const reposWithNullPlugins = [
+      ...inputRepos,
+      {
+        id: 9001,
+        owner: 'needs-review-org',
+        repo_name: 'needs-review-repo',
+        description: 'Repo with null plugins_count needs review',
+        plugins_count: null,
+      },
+    ]
+
+    buildPublicCatalog(
+      {
+        records: reposWithNullPlugins,
+        stats: inputStats,
+        snapshotId: 'indexable-filter-test',
+      },
+      tempDbPath
+    )
+
+    const reader = openPublicCatalog(tempDbPath)
+    try {
+      const indexable = Array.from(reader.iterateIndexableRepos())
+      assert.ok(!indexable.some((r) => r.repo_name === 'needs-review-repo'))
+    } finally {
+      reader.close()
+    }
+  })
+
+  it('applies description fallback for nullish archived while preserving explicit false', () => {
+    const customRepos = [
+      {
+        id: 9101,
+        owner: 'archive-test',
+        repo_name: 'implicit-archived',
+        description: '  [Archived] legacy plugin repository  ',
+        stargazers_count: 50,
+        // archived is undefined
+      },
+      {
+        id: 9102,
+        owner: 'archive-test',
+        repo_name: 'explicit-not-archived',
+        description: '[archived] but explicitly false',
+        stargazers_count: 10,
+        archived: false,
+      },
+    ]
+
+    buildPublicCatalog(
+      {
+        records: customRepos,
+        stats: [],
+        snapshotId: 'archive-fallback-test',
+      },
+      tempDbPath
+    )
+
+    const reader = openPublicCatalog(tempDbPath)
+    try {
+      const browse = reader.getBrowsePage({ sort: 'stars-desc', pageSize: 10 })
+      // Even though explicit-not-archived has only 10 stars and implicit-archived has 50 stars,
+      // implicit-archived should sort last because it is archived.
+      assert.equal(browse.matches[0].repo_name, 'explicit-not-archived')
+      assert.equal(browse.matches[1].repo_name, 'implicit-archived')
+    } finally {
+      reader.close()
+    }
+  })
 })
