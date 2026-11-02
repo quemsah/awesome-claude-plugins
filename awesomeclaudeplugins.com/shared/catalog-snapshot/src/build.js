@@ -167,37 +167,57 @@ function extractFtsText(parsed, owner, repoName) {
   return textParts.filter((v) => typeof v === 'string' && v.trim().length > 0).join(' ')
 }
 
+function getNullable(val) {
+  if (val === undefined) return null
+  return val
+}
+
+function getNum(val) {
+  if (typeof val === 'number') return val
+  return 0
+}
+
+function calcDescMetrics(description) {
+  if (!description) return [0, 0]
+  const len = description.trim().length
+  if (len === 0) return [0, 0]
+  return [1, len >= 40 ? 2 : 1]
+}
+
+function calcPluginMetrics(pluginsCount, stars) {
+  if (typeof pluginsCount !== 'number') return [null, null]
+  return [pluginsCount, pluginsCount * Math.log10(stars + 10)]
+}
+
 function extractRepoRowParams(parsed, sourceOrder, isCanonical, canonicalKey, recordJson) {
-  const stars = parsed.stargazers_count ?? 0
-  const pluginsCount = parsed.plugins_count ?? null
-  const pluginSignal = (pluginsCount ?? 0) * Math.log10(stars + 10)
-  const descTrimmed = parsed.description?.trim()
-  const descLen = descTrimmed?.length ?? 0
-  const descriptionQuality = descLen >= 40 ? 2 : descLen > 0 ? 1 : 0
-  const isArchived = parsed.archived === true || parsed.archived === 1 ? 1 : 0
-  const repoName = parsed.repo_name ?? ''
+  const stars = getNum(parsed.stargazers_count)
+  const [pluginsCount, pluginSignal] = calcPluginMetrics(parsed.plugins_count, stars)
+  const [hasDesc, descriptionQuality] = calcDescMetrics(parsed.description)
+  const repoName = parsed.repo_name || ''
+  const isArchived = parsed.archived ? 1 : 0
+  const isMarkdown = /\.md$/i.test(repoName) ? 1 : 0
 
   return [
     sourceOrder,
     parsed.id,
-    parsed.owner ?? '',
+    parsed.owner || '',
     repoName,
     canonicalKey,
     isCanonical,
-    /\.md$/i.test(repoName) ? 1 : 0,
+    isMarkdown,
     stars,
-    parsed.forks_count ?? 0,
-    parsed.subscribers_count ?? 0,
+    getNum(parsed.forks_count),
+    getNum(parsed.subscribers_count),
     pluginsCount,
     pluginSignal,
-    parsed.pushed_at ?? null,
-    parsed.catalog_added_at ?? null,
-    parsed.catalog_updated_at ?? null,
-    parsed.license ?? null,
+    getNullable(parsed.pushed_at),
+    getNullable(parsed.catalog_added_at),
+    getNullable(parsed.catalog_updated_at),
+    getNullable(parsed.license),
     isArchived,
-    descTrimmed ? 1 : 0,
+    hasDesc,
     descriptionQuality,
-    parsed.manifest_kind ?? null,
+    getNullable(parsed.manifest_kind),
     parseUnixDate(parsed.pushed_at),
     parseUnixDate(parsed.catalog_added_at),
     recordJson,
