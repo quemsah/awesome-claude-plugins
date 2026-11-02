@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto'
-import { closeSync, existsSync, mkdirSync, openSync, readSync, renameSync, rmSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readSync, renameSync, rmdirSync, rmSync } from 'node:fs'
 import { dirname } from 'node:path'
 import Database from 'better-sqlite3'
 import {
   CorruptedSnapshotError,
+  SnapshotBuildLockedError,
   InvalidSnapshotInputError,
   MarkdownPathCollisionError,
   SnapshotMismatchError,
@@ -61,6 +62,72 @@ function hashFileSha256Sync(filePath) {
   }
 }
 
+function ftsMatchesCanonicalRecords(db) {
+  const rows = db.prepare(`
+    SELECT repositories.record_json, repositories.owner, repositories.repo_name,
+           repo_fts.text AS indexed_text
+    FROM repositories
+    LEFT JOIN repo_fts ON repo_fts.rowid = repositories.row_id
+    WHERE repositories.is_canonical = 1
+    ORDER BY repositories.source_order
+  `)
+  let indexedCount = 0
+  for (const row of rows.iterate()) {
+    const expected = extractFtsText(JSON.parse(row.record_json), row.owner, row.repo_name)
+    if (row.indexed_text !== expected) return false
+    indexedCount++
+  }
+  return db.prepare('SELECT count(*) AS count FROM repo_fts').get().count === indexedCount
+}
+
+function manifestFromDatabase(db, outputPath) {
+  const meta = db.prepare('SELECT * FROM catalog_metadata WHERE id = 1').get()
+  return {
+    schemaVersion: meta.schema_version,
+    generatorVersion: meta.generator_version,
+    snapshotId: meta.snapshot_id,
+    catalogFingerprint: meta.catalog_fingerprint,
+    artifactSha256: hashFileSha256Sync(outputPath),
+    recordCount: meta.record_count,
+    canonicalCount: meta.canonical_count,
+    pluginsCount: meta.plugins_count,
+    statsCount: meta.stats_count,
+    outputPath,
+    createdAt: meta.created_at,
+    provenance: meta.provenance_json ? JSON.parse(meta.provenance_json) : undefined,
+  }
+}
+
+function compareExistingToStaging(outputPath, stagingPath, snapshotId) {
+  if (!existsSync(outputPath)) return null
+  const existing = new Database(outputPath, { readonly: true, fileMustExist: true })
+  try {
+    const meta = existing.prepare('SELECT * FROM catalog_metadata WHERE id = 1').get()
+    if (!meta || meta.snapshot_id !== snapshotId) return null
+    const staging = new Database(stagingPath, { readonly: true, fileMustExist: true })
+    try {
+      const candidate = staging.prepare('SELECT * FROM catalog_metadata WHERE id = 1').get()
+      const candidateStats = staging.prepare('SELECT id, date, size FROM statistics ORDER BY source_order').all()
+      if (
+        meta.schema_version !== candidate.schema_version ||
+        meta.generator_version !== candidate.generator_version ||
+        meta.catalog_fingerprint !== candidate.catalog_fingerprint ||
+        !statsMatchExistingSnapshot(existing, candidateStats) ||
+        !ftsMatchesCanonicalRecords(existing)
+      ) {
+        throw new SnapshotMismatchError(
+          `Snapshot immutability violation: ID "${snapshotId}" already exists with different or invalid content`
+        )
+      }
+      return manifestFromDatabase(existing, outputPath)
+    } finally {
+      staging.close()
+    }
+  } finally {
+    existing.close()
+  }
+}
+
 function tryReuseExistingSnapshot(outputPath, snapshotId, records, stats) {
   if (!existsSync(outputPath)) return null
   try {
@@ -74,11 +141,8 @@ function tryReuseExistingSnapshot(outputPath, snapshotId, records, stats) {
       if (!meta) return null
 
       if (meta.snapshot_id === snapshotId) {
-        if (!Array.isArray(records) || !Array.isArray(stats)) {
-          throw new SnapshotMismatchError(
-            `A snapshot with ID "${snapshotId}" already exists at "${outputPath}", but non-array inputs cannot be verified for reuse without consuming`
-          )
-        }
+        // A one-shot Iterable must be compared after writing a staging DB, without consuming it twice.
+        if (!Array.isArray(records) || !Array.isArray(stats)) return null
 
         const currentFingerprint = calculateCatalogFingerprint(records)
         const currentStatsMatch = statsMatchExistingSnapshot(existingDb, stats)
@@ -89,28 +153,15 @@ function tryReuseExistingSnapshot(outputPath, snapshotId, records, stats) {
           !schemaMatches ||
           !generatorMatches ||
           currentFingerprint !== meta.catalog_fingerprint ||
-          !currentStatsMatch
+          !currentStatsMatch ||
+          !ftsMatchesCanonicalRecords(existingDb)
         ) {
           throw new SnapshotMismatchError(
             `Snapshot immutability violation: A snapshot with ID "${snapshotId}" already exists at "${outputPath}" with different contents or schema`
           )
         }
 
-        const artifactSha256 = hashFileSha256Sync(outputPath)
-        return {
-          schemaVersion: meta.schema_version,
-          generatorVersion: meta.generator_version,
-          snapshotId: meta.snapshot_id,
-          catalogFingerprint: meta.catalog_fingerprint,
-          artifactSha256,
-          recordCount: meta.record_count,
-          canonicalCount: meta.canonical_count,
-          pluginsCount: meta.plugins_count,
-          statsCount: meta.stats_count,
-          outputPath,
-          createdAt: meta.created_at,
-          provenance: meta.provenance_json ? JSON.parse(meta.provenance_json) : undefined,
-        }
+        return manifestFromDatabase(existingDb, outputPath)
       }
     } finally {
       existingDb.close()
@@ -442,15 +493,32 @@ function verifyAndCloseDatabase(db, stagingPath) {
 export function buildPublicCatalog(input, outputPath) {
   validateSnapshotInput(input, outputPath)
 
+  mkdirSync(dirname(outputPath), { recursive: true })
+  // An exclusive directory lock serializes builders across Node processes.
+  // A collision fails explicitly; a caller can retry after the active build completes.
+  const lockPath = `${outputPath}.build-lock`
+  try {
+    mkdirSync(lockPath)
+  } catch (error) {
+    if (error.code === 'EEXIST') {
+      throw new SnapshotBuildLockedError(`Catalog snapshot build already in progress: ${outputPath}`)
+    }
+    throw error
+  }
+
+  try {
+    return buildUnderLock(input, outputPath)
+  } finally {
+    rmdirSync(lockPath)
+  }
+}
+
+function buildUnderLock(input, outputPath) {
   const existingManifest = tryReuseExistingSnapshot(
-    outputPath,
-    input.snapshotId,
-    input.records,
-    input.stats
+    outputPath, input.snapshotId, input.records, input.stats
   )
   if (existingManifest) return existingManifest
 
-  mkdirSync(dirname(outputPath), { recursive: true })
   const stagingPath = `${outputPath}.staging.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.sqlite`
 
   let db
@@ -489,6 +557,14 @@ export function buildPublicCatalog(input, outputPath) {
 
     verifyAndCloseDatabase(db, stagingPath)
     db = null
+
+    // One-shot iterables cannot be compared before generation. Compare the completed
+    // staging snapshot before replacing an existing snapshot with the same ID.
+    const existingAfterBuild = compareExistingToStaging(outputPath, stagingPath, input.snapshotId)
+    if (existingAfterBuild) {
+      rmSync(stagingPath, { force: true })
+      return existingAfterBuild
+    }
 
     const artifactSha256 = hashFileSha256Sync(stagingPath)
 
