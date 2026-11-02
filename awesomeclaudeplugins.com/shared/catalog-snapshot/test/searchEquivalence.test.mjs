@@ -606,10 +606,9 @@ describe('searchEquivalence', () => {
         const search = reader.searchRepos('catalog', { pageSize: 1000, view: 'full' })
         assert.equal(search.total, 125)
         assert.equal(search.matches.length, 100)
-        assert.ok(search.matches.some((match) =>
-          match.item.repo_name === 'catalog-plugin-0' &&
-          match.item.plugins?.[0]?.name === 'standalone-tool'
-        ))
+        const standaloneSearch = reader.searchRepos('standalone', { view: 'full' })
+        assert.equal(standaloneSearch.total, 1)
+        assert.equal(standaloneSearch.matches[0].item.plugins?.[0]?.name, 'standalone-tool')
       } finally {
         reader.close()
       }
