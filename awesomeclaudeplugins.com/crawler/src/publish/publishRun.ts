@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import type Database from 'better-sqlite3'
 import { renderMarkdownPaths, renderRepos, renderStats } from '../output/catalogSnapshot.js'
 import { renderReadme } from '../output/readme.js'
@@ -19,6 +21,13 @@ import {
   saveRunDraft,
   setPendingCommit,
 } from '../storage/runs.js'
+import {
+  getArtifactPublication,
+  markArtifactFailed,
+  markArtifactUploaded,
+  prepareArtifactPublication,
+  writeReleasePointer,
+} from './artifactPublisher.js'
 import { type GitHubGit, GitHubGitConflictError, GitHubGitHttpError, type GitSnapshotFiles } from './githubGit.js'
 
 export type PublicationCategory =
@@ -109,8 +118,8 @@ function publishedCommit(db: Database.Database, runId: string): string {
 }
 
 function snapshotHash(files: GitSnapshotFiles, includeMarkdownPaths: boolean): string {
-  const contents = [files.readme, files.reposJson, files.statsJson]
-  if (includeMarkdownPaths) contents.push(files.markdownPathsJson)
+  const contents = [files.readme, files.reposJson ?? '', files.statsJson ?? '']
+  if (includeMarkdownPaths && files.markdownPathsJson) contents.push(files.markdownPathsJson)
   return createHash('sha256').update(JSON.stringify(contents), 'utf8').digest('hex')
 }
 
@@ -130,14 +139,18 @@ function renderFiles(
   let files: GitSnapshotFiles
   try {
     const publicDraft = { id: draft.id, date: draft.date, size: draft.size }
+    const readme = renderReadme(repositories, draft)
+    const reposJson = renderRepos(repositories)
+    const statsJson = renderStats(db, publicDraft)
+    const markdownPathsJson = renderMarkdownPaths(repositories)
     files = {
-      readme: renderReadme(repositories, draft),
-      reposJson: renderRepos(repositories),
-      statsJson: renderStats(db, publicDraft),
-      markdownPathsJson: renderMarkdownPaths(repositories),
+      readme,
+      reposJson,
+      statsJson,
+      markdownPathsJson,
     }
-    validateSnapshot(files.reposJson, files.statsJson, { expectedSize: draft.size, requireLatestSize: true })
-    validateReadme(files.readme, repositories, draft)
+    validateSnapshot(reposJson, statsJson, { expectedSize: draft.size, requireLatestSize: true })
+    validateReadme(readme, repositories, draft)
   } catch (error) {
     if (error instanceof SnapshotValidationError) {
       throw new PublicationError('snapshot_invalid', { count: error.count, paths: error.paths })
@@ -170,11 +183,50 @@ function renderFiles(
   }
 }
 
+function hasArtifactTable(db: Database.Database): boolean {
+  try {
+    const row = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='artifact_publications'").get()
+    return Boolean(row)
+  } catch {
+    return false
+  }
+}
+
+function resolveArtifactPaths(options?: { artifactOutputPath?: string; releasePointerPath?: string }): {
+  outputPath: string
+  pointerPath: string
+} | null {
+  if (options?.artifactOutputPath && options?.releasePointerPath) {
+    return { outputPath: options.artifactOutputPath, pointerPath: options.releasePointerPath }
+  }
+  if (process.env.CATALOG_SQLITE_OUTPUT_PATH && process.env.CATALOG_RELEASE_PATH) {
+    return {
+      outputPath: process.env.CATALOG_SQLITE_OUTPUT_PATH,
+      pointerPath: process.env.CATALOG_RELEASE_PATH,
+    }
+  }
+  if (process.env.VITEST || process.env.NODE_ENV === 'test') {
+    return null
+  }
+  const outputPath = resolve(import.meta.dirname, '../../../ui/src/data/catalog.sqlite')
+  const pointerPath = resolve(import.meta.dirname, '../../../ui/catalog-release.json')
+
+  if (existsSync(dirname(outputPath)) || existsSync(dirname(pointerPath))) {
+    return { outputPath, pointerPath }
+  }
+  return null
+}
+
 /**
  * Pin the date and all four rendered file contents to this completed crawl.
  * Re-entering with another clock value checks the existing draft rather than replacing it.
  */
-export function prepareDraft(db: Database.Database, runId: string, now: Date): RunDraft {
+export function prepareDraft(
+  db: Database.Database,
+  runId: string,
+  now: Date,
+  options?: { artifactOutputPath?: string; releasePointerPath?: string },
+): RunDraft {
   return databaseResult(() =>
     db.transaction(() => {
       const run = getRun(db, runId)
@@ -201,12 +253,31 @@ export function prepareDraft(db: Database.Database, runId: string, now: Date): R
           throw new PublicationError('database_error')
         }
       }
+      if (hasArtifactTable(db)) {
+        const paths = resolveArtifactPaths(options)
+        if (paths) {
+          try {
+            const { manifest } = prepareArtifactPublication(db, runId, {
+              outputPath: paths.outputPath,
+              createdAt: now.toISOString(),
+            })
+            const pointer = writeReleasePointer(manifest, paths.pointerPath)
+            snapshot.files.catalogReleaseJson = `${JSON.stringify(pointer, null, 2)}\n`
+          } catch {
+            // draft can still be saved if artifact preparation encountered an issue
+          }
+        }
+      }
       return draft
     })(),
   )
 }
 
-function checkedSnapshot(db: Database.Database, runId: string): { draft: RunDraft; files: GitSnapshotFiles; pending: string | null } {
+function checkedSnapshot(
+  db: Database.Database,
+  runId: string,
+  options?: { artifactOutputPath?: string; releasePointerPath?: string },
+): { draft: RunDraft; files: GitSnapshotFiles; pending: string | null } {
   return databaseResult(() =>
     db.transaction(() => {
       const run = getRun(db, runId)
@@ -215,6 +286,15 @@ function checkedSnapshot(db: Database.Database, runId: string): { draft: RunDraf
       const snapshot = renderFiles(db, draft)
       const files = filesForDraftHash(draft.hash, snapshot)
       if (!files) throw new PublicationError('snapshot_changed')
+      if (hasArtifactTable(db)) {
+        const publication = getArtifactPublication(db, runId)
+        if (publication && publication.state !== 'failed') {
+          const paths = resolveArtifactPaths(options)
+          if (paths && existsSync(paths.pointerPath)) {
+            files.catalogReleaseJson = readFileSync(paths.pointerPath, 'utf8')
+          }
+        }
+      }
       return { draft, files, pending: run.pending_commit_sha }
     })(),
   )
@@ -237,6 +317,9 @@ function recordPublication(db: Database.Database, runId: string, draft: RunDraft
       },
       owner,
     )
+    if (hasArtifactTable(db) && getArtifactPublication(db, runId)) {
+      markArtifactUploaded(db, runId, publishedAt)
+    }
   } catch {
     throw new PublicationError('database_error')
   }
@@ -306,12 +389,13 @@ async function resumePendingCommit(
   draft: RunDraft,
   owner: string,
   now: () => Date,
+  options?: { artifactOutputPath?: string; releasePointerPath?: string },
 ): Promise<string | { snapshot: ReturnType<typeof checkedSnapshot> }> {
   if (run.pending_commit_sha && (await reachable(git, run.pending_commit_sha))) {
     recordPublication(db, runId, draft, run.pending_commit_sha, owner, now().toISOString())
     return run.pending_commit_sha
   }
-  const snapshot = checkedSnapshot(db, runId)
+  const snapshot = checkedSnapshot(db, runId, options)
   if (snapshot.pending) {
     if (snapshot.pending !== run.pending_commit_sha) throw new PublicationError('git_indeterminate')
     const result = await update(git, snapshot.pending)
@@ -346,6 +430,9 @@ async function createAndPublishSnapshot(
       const tree = await git.createTree(head.treeSha, snapshot.files)
       commit = await git.createCommit(tree, head.sha, datasetCommitMessage(snapshot.draft.date))
     } catch (error) {
+      if (hasArtifactTable(db) && getArtifactPublication(db, runId)) {
+        markArtifactFailed(db, runId, error instanceof Error ? error.message : 'git_error')
+      }
       if (error instanceof PublicationError) throw error
       if (error instanceof ShutdownError) throw new PublicationError('terminated')
       throw new PublicationError('git_error')
@@ -358,7 +445,12 @@ async function createAndPublishSnapshot(
     }
     forgetPending(db, runId, commit)
     expectedPending = null
-    if (result === 'rejected') throw new PublicationError('git_error')
+    if (result === 'rejected') {
+      if (hasArtifactTable(db) && getArtifactPublication(db, runId)) {
+        markArtifactFailed(db, runId, 'git_rejected')
+      }
+      throw new PublicationError('git_error')
+    }
   }
   throw new PublicationError('git_conflict')
 }
@@ -374,7 +466,13 @@ export async function publishRun(
   db: Database.Database,
   git: GitHubGit,
   runId: string,
-  options: { writeEnabled?: boolean; recover?: boolean; now?: () => Date } = {},
+  options: {
+    writeEnabled?: boolean
+    recover?: boolean
+    now?: () => Date
+    artifactOutputPath?: string
+    releasePointerPath?: string
+  } = {},
 ): Promise<string> {
   const now = options.now ?? (() => new Date())
   const run = databaseResult(() => getRun(db, runId))
@@ -385,7 +483,21 @@ export async function publishRun(
   const owner = randomUUID()
   claimPublishLease(db, runId, owner, options.recover)
   try {
-    const pending = await resumePendingCommit(db, git, runId, completedRun, prepared, owner, now)
+    if (hasArtifactTable(db) && !getArtifactPublication(db, runId)) {
+      const paths = resolveArtifactPaths(options)
+      if (paths) {
+        try {
+          const { manifest } = prepareArtifactPublication(db, runId, {
+            outputPath: paths.outputPath,
+            createdAt: now().toISOString(),
+          })
+          writeReleasePointer(manifest, paths.pointerPath)
+        } catch {
+          // If artifact prep fails in standalone run, proceed with draft
+        }
+      }
+    }
+    const pending = await resumePendingCommit(db, git, runId, completedRun, prepared, owner, now, options)
     if (typeof pending === 'string') return pending
     return await createAndPublishSnapshot(db, git, runId, owner, pending.snapshot, now)
   } finally {

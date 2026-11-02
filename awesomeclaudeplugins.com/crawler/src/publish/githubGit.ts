@@ -11,9 +11,10 @@ export type GitBranchHead = { sha: string; treeSha: string }
 
 export type GitSnapshotFiles = {
   readme: string
-  reposJson: string
-  statsJson: string
-  markdownPathsJson: string
+  catalogReleaseJson?: string
+  reposJson?: string
+  statsJson?: string
+  markdownPathsJson?: string
 }
 
 export interface GitHubGit {
@@ -161,36 +162,53 @@ export class GitHubGitClient implements GitHubGit {
     if (
       !record(files) ||
       typeof files.readme !== 'string' ||
-      typeof files.reposJson !== 'string' ||
-      typeof files.statsJson !== 'string' ||
-      typeof files.markdownPathsJson !== 'string'
+      (!files.catalogReleaseJson &&
+        (typeof files.reposJson !== 'string' || typeof files.statsJson !== 'string' || typeof files.markdownPathsJson !== 'string'))
     ) {
       throw new GitHubGitError('All four snapshot contents must be strings')
     }
-    // Publish all snapshot parts in intermediate trees without moving the ref.
-    // Only a fully constructed final tree can be committed atomically.
-    let repositories: CatalogRecordInput[]
-    try {
-      repositories = JSON.parse(files.reposJson) as CatalogRecordInput[]
-      if (!Array.isArray(repositories)) throw new Error('Invalid catalog')
-    } catch {
-      throw new GitHubGitError('Invalid repository snapshot JSON')
-    }
-    const dataPath = 'awesomeclaudeplugins.com/ui/src/data'
-    const details = buildRepoDetailsShards(repositories)
-    const entries = [
+    const entries: { path: string; mode: '100644'; type: 'blob'; content: string }[] = [
       { path: 'README.md', mode: '100644', type: 'blob', content: files.readme },
-      { path: `${dataPath}/repos.json`, mode: '100644', type: 'blob', content: files.reposJson },
-      { path: `${dataPath}/search-index.json`, mode: '100644', type: 'blob', content: buildSearchIndex(repositories, files.reposJson) },
-      ...Object.entries(details).map(([name, content]) => ({
-        path: `${dataPath}/repo-details/${name}`,
+    ]
+
+    if (typeof files.catalogReleaseJson === 'string') {
+      entries.push({
+        path: 'awesomeclaudeplugins.com/ui/catalog-release.json',
         mode: '100644',
         type: 'blob',
-        content,
-      })),
-      { path: `${dataPath}/stats.json`, mode: '100644', type: 'blob', content: files.statsJson },
-      { path: `${dataPath}/markdown-paths.json`, mode: '100644', type: 'blob', content: files.markdownPathsJson },
-    ]
+        content: files.catalogReleaseJson,
+      })
+    }
+
+    if (typeof files.reposJson === 'string') {
+      // Publish all legacy snapshot parts in intermediate trees without moving the ref.
+      // Only a fully constructed final tree can be committed atomically.
+      let repositories: CatalogRecordInput[]
+      try {
+        repositories = JSON.parse(files.reposJson) as CatalogRecordInput[]
+        if (!Array.isArray(repositories)) throw new Error('Invalid catalog')
+      } catch {
+        throw new GitHubGitError('Invalid repository snapshot JSON')
+      }
+      const dataPath = 'awesomeclaudeplugins.com/ui/src/data'
+      const details = buildRepoDetailsShards(repositories)
+      entries.push(
+        { path: `${dataPath}/repos.json`, mode: '100644', type: 'blob', content: files.reposJson },
+        { path: `${dataPath}/search-index.json`, mode: '100644', type: 'blob', content: buildSearchIndex(repositories, files.reposJson) },
+        ...Object.entries(details).map(([name, content]) => ({
+          path: `${dataPath}/repo-details/${name}`,
+          mode: '100644' as const,
+          type: 'blob' as const,
+          content,
+        })),
+      )
+      if (typeof files.statsJson === 'string') {
+        entries.push({ path: `${dataPath}/stats.json`, mode: '100644', type: 'blob', content: files.statsJson })
+      }
+      if (typeof files.markdownPathsJson === 'string') {
+        entries.push({ path: `${dataPath}/markdown-paths.json`, mode: '100644', type: 'blob', content: files.markdownPathsJson })
+      }
+    }
 
     // Measure escaped JSON bytes, including entry separators and base-tree SHA.
     // Single blobs larger than the budget still require their own request.

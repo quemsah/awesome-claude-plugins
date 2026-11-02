@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { afterEach, expect, it } from 'vitest'
@@ -190,25 +191,37 @@ it('refuses preparation after the catalog changes instead of replacing its date 
 it('defaults to no writes; a prepared draft publishes exactly four files in one commit and records stats once', async () => {
   const db = fixture()
   const git = new Branch()
-  const draft = prepareDraft(db, 'r1', timestamp)
-  await expect(publishRun(db, git, 'r1')).rejects.toMatchObject({ category: 'write_disabled' })
-  await expect(publishRun(db, git, 'r1', { writeEnabled: false })).rejects.toMatchObject({ category: 'write_disabled' })
+  const tempDir = mkdtempSync(join(tmpdir(), 'publish-run-test-'))
+  directories.push(tempDir)
+  const paths = {
+    artifactOutputPath: join(tempDir, 'catalog.sqlite'),
+    releasePointerPath: join(tempDir, 'catalog-release.json'),
+  }
+  const draft = prepareDraft(db, 'r1', timestamp, paths)
+  await expect(publishRun(db, git, 'r1', paths)).rejects.toMatchObject({ category: 'write_disabled' })
+  await expect(publishRun(db, git, 'r1', { writeEnabled: false, ...paths })).rejects.toMatchObject({ category: 'write_disabled' })
   expect(git.events).toEqual([])
-  const commit = await publishRun(db, git, 'r1', { writeEnabled: true })
+  const commit = await publishRun(db, git, 'r1', { writeEnabled: true, ...paths })
   expect(commit).toBe(git.head)
   expect(git.messages).toEqual(['chore(data): refresh dataset 02.07.2025'])
   expect(git.events).toEqual(['GET ref', 'GET commit', `POST tree ${sha(100)}`, `POST commit ${sha(1)}`, `PATCH ${commit} force:false`])
   expect(git.files).toHaveLength(1)
-  expect(Object.keys(git.files[0]).sort()).toEqual(['markdownPathsJson', 'readme', 'reposJson', 'statsJson'])
-  const { readme, reposJson, statsJson, markdownPathsJson } = git.files[0]
+  expect(Object.keys(git.files[0]).sort()).toEqual(['catalogReleaseJson', 'markdownPathsJson', 'readme', 'reposJson', 'statsJson'])
+  const { readme, reposJson, statsJson, markdownPathsJson, catalogReleaseJson } = git.files[0]
+  if (!catalogReleaseJson || !markdownPathsJson || !statsJson) {
+    throw new Error('Expected files to be defined')
+  }
+  expect(JSON.parse(catalogReleaseJson)).toMatchObject({
+    schemaVersion: 1,
+  })
   expect(draft.hash).toBe(
     createHash('sha256')
       .update(JSON.stringify([readme, reposJson, statsJson, markdownPathsJson]), 'utf8')
       .digest('hex'),
   )
   expect(git.files[0].readme).toContain('Last updated: 02.07.2025 with 1 total repositories indexed.')
-  expect(JSON.parse(git.files[0].markdownPathsJson)).toEqual([])
-  expect(JSON.parse(git.files[0].statsJson)).toEqual([
+  expect(JSON.parse(markdownPathsJson)).toEqual([])
+  expect(JSON.parse(statsJson)).toEqual([
     { id: 264, date: '2024-01-01T00:00:00.000Z', size: 4 },
     { id: 265, date: draft.date, size: draft.size },
   ])
@@ -216,9 +229,12 @@ it('defaults to no writes; a prepared draft publishes exactly four files in one 
     { id: 264, date: '2024-01-01T00:00:00.000Z', size: 4, run_id: null },
     { id: 265, date: draft.date, size: 1, run_id: 'r1' },
   ])
+  expect(db.prepare('SELECT state FROM artifact_publications WHERE run_id = ?').get('r1')).toEqual({
+    state: 'uploaded',
+  })
   expect(getRun(db, 'r1')).toMatchObject({ status: 'published', commit_sha: commit, pending_commit_sha: null })
-  expect(await publishRun(db, git, 'r1', { writeEnabled: true })).toBe(commit)
-  expect(await publishRun(db, git, 'r1')).toBe(commit)
+  expect(await publishRun(db, git, 'r1', { writeEnabled: true, ...paths })).toBe(commit)
+  expect(await publishRun(db, git, 'r1', paths)).toBe(commit)
   expect(git.events).toHaveLength(5)
 })
 

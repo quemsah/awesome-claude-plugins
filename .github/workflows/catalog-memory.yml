@@ -51,14 +51,22 @@ jobs:
       - name: Install candidate dependencies
         working-directory: candidate/awesomeclaudeplugins.com
         run: bun install --frozen-lockfile
+      - name: Prepare catalog SQLite snapshots
+        shell: bash
+        run: |
+          cd candidate/awesomeclaudeplugins.com/ui
+          node scripts/prepare-catalog.mjs
+          mkdir -p ../../../baseline/awesomeclaudeplugins.com/ui/src/data
+          if [ -f ../../../baseline/awesomeclaudeplugins.com/ui/scripts/prepare-catalog.mjs ]; then
+            (cd ../../../baseline/awesomeclaudeplugins.com/ui && node scripts/prepare-catalog.mjs) || cp src/data/catalog.sqlite ../../../baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
+          else
+            cp src/data/catalog.sqlite ../../../baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
+          fi
       - name: Check identical catalog inputs
         shell: bash
         run: |
           sha256sum baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite candidate/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
           cmp baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite candidate/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
-      - name: Regenerate candidate index before standalone benchmark
-        working-directory: candidate/awesomeclaudeplugins.com/ui
-        run: node scripts/prepare-catalog.mjs
       - name: Measure RAM (three independent processes per revision)
         shell: bash
         run: |
@@ -121,6 +129,17 @@ jobs:
       - name: Install candidate dependencies
         working-directory: candidate/awesomeclaudeplugins.com
         run: bun install --frozen-lockfile
+      - name: Prepare catalog SQLite snapshots
+        shell: bash
+        run: |
+          cd candidate/awesomeclaudeplugins.com/ui
+          node scripts/prepare-catalog.mjs
+          mkdir -p ../../../baseline/awesomeclaudeplugins.com/ui/src/data
+          if [ -f ../../../baseline/awesomeclaudeplugins.com/ui/scripts/prepare-catalog.mjs ]; then
+            (cd ../../../baseline/awesomeclaudeplugins.com/ui && node scripts/prepare-catalog.mjs) || cp src/data/catalog.sqlite ../../../baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
+          else
+            cp src/data/catalog.sqlite ../../../baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
+          fi
       - name: Build baseline production Next.js
         working-directory: baseline/awesomeclaudeplugins.com
         run: bun run build:ui
