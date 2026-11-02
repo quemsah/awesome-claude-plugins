@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3'
@@ -62,6 +62,20 @@ class Branch implements GitHubGit {
     | null = null
   conflictCount = 0
   patches = 0
+  uploadedAssets: { tagName: string; assetName: string; filePath: string }[] = []
+  uploadFailure: string | null = null
+
+  async uploadReleaseAsset(tagName: string, assetName: string, filePath: string) {
+    this.events.push(`POST release-asset ${tagName}/${assetName}`)
+    if (this.uploadFailure) throw new Error(this.uploadFailure)
+    this.uploadedAssets.push({ tagName, assetName, filePath })
+    const fileBytes = readFileSync(filePath)
+    const sha256 = createHash('sha256').update(fileBytes).digest('hex')
+    return {
+      downloadUrl: `https://github.com/example/repo/releases/download/${tagName}/${assetName}`,
+      sha256,
+    }
+  }
 
   async getBranchHead() {
     this.events.push('GET ref', 'GET commit')
@@ -204,7 +218,14 @@ it('defaults to no writes; a prepared draft publishes exactly four files in one 
   const commit = await publishRun(db, git, 'r1', { writeEnabled: true, ...paths })
   expect(commit).toBe(git.head)
   expect(git.messages).toEqual(['chore(data): refresh dataset 02.07.2025'])
-  expect(git.events).toEqual(['GET ref', 'GET commit', `POST tree ${sha(100)}`, `POST commit ${sha(1)}`, `PATCH ${commit} force:false`])
+  expect(git.events).toEqual([
+    expect.stringMatching(/^POST release-asset /),
+    'GET ref',
+    'GET commit',
+    `POST tree ${sha(100)}`,
+    `POST commit ${sha(1)}`,
+    `PATCH ${commit} force:false`,
+  ])
   expect(git.files).toHaveLength(1)
   expect(Object.keys(git.files[0]).sort()).toEqual(['catalogReleaseJson', 'markdownPathsJson', 'readme', 'reposJson', 'statsJson'])
   const { readme, reposJson, statsJson, markdownPathsJson, catalogReleaseJson } = git.files[0]
@@ -235,7 +256,7 @@ it('defaults to no writes; a prepared draft publishes exactly four files in one 
   expect(getRun(db, 'r1')).toMatchObject({ status: 'published', commit_sha: commit, pending_commit_sha: null })
   expect(await publishRun(db, git, 'r1', { writeEnabled: true, ...paths })).toBe(commit)
   expect(await publishRun(db, git, 'r1', paths)).toBe(commit)
-  expect(git.events).toHaveLength(5)
+  expect(git.events).toHaveLength(6)
 })
 
 it('accepts a legacy three-file draft hash when recovering a draft prepared before the markdown sidecar existed', async () => {
@@ -686,4 +707,65 @@ it('holds a durable lease across an in-flight PATCH so neither another publisher
   expect(publicationLease(db)).toBeUndefined()
   await expect(publishRun(db, git, 'r2', { writeEnabled: true })).rejects.toMatchObject({ category: 'historical_conflict' })
   expect(git.patches).toBe(1)
+})
+
+it('uploads and verifies release asset before creating and committing release pointer', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-test-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  const commit = await publishRun(db, git, 'r1', {
+    writeEnabled: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  expect(git.head).toBe(commit)
+  expect(git.uploadedAssets).toHaveLength(1)
+  expect(git.uploadedAssets[0].assetName).toBe('catalog.sqlite')
+  expect(existsSync(releasePointerPath)).toBe(true)
+  const pointer = JSON.parse(readFileSync(releasePointerPath, 'utf8'))
+  expect(pointer.artifactUrl).toContain('releases/download')
+  const artifactRow = db.prepare("SELECT state FROM artifact_publications WHERE run_id = 'r1'").get() as { state: string }
+  expect(artifactRow.state).toBe('uploaded')
+})
+
+it('fails publication if release asset upload fails, marking artifact failed and creating no commit', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-fail-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  git.uploadFailure = 'Network error during release asset upload'
+
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toThrowError(PublicationError)
+
+  expect(git.patches).toBe(0)
+  const artifactRow = db.prepare("SELECT state, diagnostic_code FROM artifact_publications WHERE run_id = 'r1'").get() as {
+    state: string
+    diagnostic_code: string
+  }
+  expect(artifactRow.state).toBe('failed')
+  expect(artifactRow.diagnostic_code).toBe('Network error during release asset upload')
 })

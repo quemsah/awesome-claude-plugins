@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
+import type { SnapshotManifest } from '@awesome-claude-plugins/catalog-snapshot'
 import type Database from 'better-sqlite3'
 import { renderMarkdownPaths, renderRepos, renderStats } from '../output/catalogSnapshot.js'
 import { renderReadme } from '../output/readme.js'
@@ -22,6 +23,7 @@ import {
   setPendingCommit,
 } from '../storage/runs.js'
 import {
+  type CatalogReleasePointer,
   getArtifactPublication,
   markArtifactFailed,
   markArtifactUploaded,
@@ -319,8 +321,11 @@ function recordPublication(db: Database.Database, runId: string, draft: RunDraft
       },
       owner,
     )
-    if (hasArtifactTable(db) && getArtifactPublication(db, runId)) {
-      markArtifactUploaded(db, runId, publishedAt)
+    if (hasArtifactTable(db)) {
+      const pub = getArtifactPublication(db, runId)
+      if (pub && pub.state === 'prepared') {
+        markArtifactUploaded(db, runId, publishedAt)
+      }
     }
   } catch {
     throw new PublicationError('database_error')
@@ -485,19 +490,49 @@ export async function publishRun(
   const owner = randomUUID()
   claimPublishLease(db, runId, owner, options.recover)
   try {
-    if (hasArtifactTable(db) && !getArtifactPublication(db, runId)) {
+    if (hasArtifactTable(db)) {
       const paths = resolveArtifactPaths(options)
       if (paths) {
-        try {
-          const { manifest } = prepareArtifactPublication(db, runId, {
-            outputPath: paths.outputPath,
-            createdAt: now().toISOString(),
-            draftStats: { id: prepared.id, date: prepared.date, size: prepared.size },
-          })
+        let manifest: SnapshotManifest | undefined
+        let publication = getArtifactPublication(db, runId)
+        if (!publication) {
+          try {
+            const preparedArtifact = prepareArtifactPublication(db, runId, {
+              outputPath: paths.outputPath,
+              createdAt: now().toISOString(),
+              draftStats: { id: prepared.id, date: prepared.date, size: prepared.size },
+            })
+            manifest = preparedArtifact.manifest
+            publication = preparedArtifact.publication
+          } catch (error) {
+            markArtifactFailed(db, runId, error instanceof Error ? error.message : String(error))
+            throw new PublicationError('snapshot_invalid')
+          }
+        }
+
+        const artifactPath = publication?.artifact_path ?? paths.outputPath
+        if (publication && publication.state !== 'uploaded' && git.uploadReleaseAsset && artifactPath) {
+          const tagName = `catalog-${publication.snapshot_id}`
+          const assetName = 'catalog.sqlite'
+          try {
+            const uploaded = await git.uploadReleaseAsset(tagName, assetName, artifactPath)
+            if (uploaded.sha256 !== publication.artifact_sha256) {
+              throw new Error(`Uploaded asset SHA-256 mismatch: expected ${publication.artifact_sha256}, got ${uploaded.sha256}`)
+            }
+            if (manifest) {
+              writeReleasePointer(manifest, paths.pointerPath, uploaded.downloadUrl)
+            } else if (existsSync(paths.pointerPath)) {
+              const existingPointer = JSON.parse(readFileSync(paths.pointerPath, 'utf8')) as CatalogReleasePointer
+              existingPointer.artifactUrl = uploaded.downloadUrl
+              writeFileSync(paths.pointerPath, `${JSON.stringify(existingPointer, null, 2)}\n`, 'utf8')
+            }
+            markArtifactUploaded(db, runId, now().toISOString())
+          } catch (error) {
+            markArtifactFailed(db, runId, error instanceof Error ? error.message : 'upload_failed')
+            throw new PublicationError('snapshot_invalid')
+          }
+        } else if (publication && manifest && !existsSync(paths.pointerPath)) {
           writeReleasePointer(manifest, paths.pointerPath)
-        } catch (error) {
-          markArtifactFailed(db, runId, error instanceof Error ? error.message : String(error))
-          throw new PublicationError('snapshot_invalid')
         }
       }
     }

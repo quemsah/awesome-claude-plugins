@@ -65,8 +65,20 @@ jobs:
       - name: Check identical catalog inputs
         shell: bash
         run: |
-          sha256sum baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite candidate/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
-          cmp baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite candidate/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
+          node -e '
+            const Database = require("better-sqlite3");
+            const db1 = new Database("baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite", { readonly: true });
+            const db2 = new Database("candidate/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite", { readonly: true });
+            const fp1 = db1.prepare("SELECT catalog_fingerprint FROM catalog_metadata").get()?.catalog_fingerprint;
+            const fp2 = db2.prepare("SELECT catalog_fingerprint FROM catalog_metadata").get()?.catalog_fingerprint;
+            db1.close();
+            db2.close();
+            if (!fp1 || !fp2 || fp1 !== fp2) {
+              console.error("Catalog fingerprint mismatch:", fp1, "vs", fp2);
+              process.exit(1);
+            }
+            console.log("Catalog fingerprints match:", fp1);
+          '
       - name: Measure RAM (three independent processes per revision)
         shell: bash
         run: |

@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import type { components } from '@octokit/openapi-types'
 import { isValidGitBranch, isValidGitHubOwner, isValidGitHubRepositoryName, isValidGitSha } from '../github/identifiers.js'
 import { buildRepoDetailsShards, buildSearchIndex, type CatalogRecordInput } from '../output/splitCatalog.js'
@@ -17,12 +19,18 @@ export type GitSnapshotFiles = {
   markdownPathsJson?: string
 }
 
+export type UploadedReleaseAsset = {
+  downloadUrl: string
+  sha256: string
+}
+
 export interface GitHubGit {
   getBranchHead(): Promise<GitBranchHead>
   createTree(baseTreeSha: string, files: GitSnapshotFiles): Promise<string>
   createCommit(treeSha: string, parentSha: string, message: string): Promise<string>
   updateBranch(sha: string): Promise<void>
   isCommitReachable(pendingSha: string): Promise<boolean>
+  uploadReleaseAsset?(tagName: string, assetName: string, filePath: string): Promise<UploadedReleaseAsset>
 }
 
 export class GitHubGitError extends Error {
@@ -109,9 +117,12 @@ async function refConflictStatus(response: Response): Promise<409 | 422 | null> 
 }
 
 export class GitHubGitClient implements GitHubGit {
+  private readonly owner: string
+  private readonly repo: string
   private readonly url: string
   private readonly compareUrl: string
   private readonly compareHead: string
+  private readonly releasesUrl: string
   private readonly token: string
   private readonly transport: typeof fetch
   private readonly signal?: AbortSignal
@@ -131,6 +142,8 @@ export class GitHubGitClient implements GitHubGit {
     if (!isValidGitBranch(options.branch)) {
       throw new GitHubGitError('Invalid GitHub Git branch')
     }
+    this.owner = options.owner
+    this.repo = options.repo
     this.token = options.token
     this.transport = options.fetch ?? globalThis.fetch
     this.signal = options.signal
@@ -139,6 +152,7 @@ export class GitHubGitClient implements GitHubGit {
     this.url = `${repositoryUrl}/git`
     this.compareUrl = `${repositoryUrl}/compare`
     this.compareHead = encodeURIComponent(options.branch)
+    this.releasesUrl = `${repositoryUrl}/releases`
     this.ref = `heads/${branch}`
   }
 
@@ -257,6 +271,95 @@ export class GitHubGitClient implements GitHubGit {
     if (comparison.status === 'ahead' || comparison.status === 'identical') return true
     if (comparison.status === 'behind' || comparison.status === 'diverged') return false
     throw new GitHubGitResponseError()
+  }
+
+  async uploadReleaseAsset(tagName: string, assetName: string, filePath: string): Promise<UploadedReleaseAsset> {
+    throwIfShutdown(this.signal)
+    let releaseId: number | undefined
+    let uploadUrlTemplate: string | undefined
+    try {
+      const existing = (await this.request(`/tags/${encodeURIComponent(tagName)}`, 'GET', undefined, this.releasesUrl)) as Record<
+        string,
+        unknown
+      >
+      if (record(existing) && typeof existing.id === 'number' && typeof existing.upload_url === 'string') {
+        releaseId = existing.id
+        uploadUrlTemplate = existing.upload_url
+      }
+    } catch (error) {
+      if (error instanceof GitHubGitHttpError && error.status === 404) {
+        const created = (await this.request(
+          '',
+          'POST',
+          {
+            tag_name: tagName,
+            name: tagName,
+            draft: false,
+            prerelease: false,
+          },
+          this.releasesUrl,
+        )) as Record<string, unknown>
+        if (record(created) && typeof created.id === 'number' && typeof created.upload_url === 'string') {
+          releaseId = created.id
+          uploadUrlTemplate = created.upload_url
+        }
+      } else {
+        throw error
+      }
+    }
+
+    if (!releaseId || !uploadUrlTemplate) {
+      throw new GitHubGitResponseError()
+    }
+
+    try {
+      const assets = (await this.request(`/${releaseId}/assets`, 'GET', undefined, this.releasesUrl)) as unknown[]
+      if (Array.isArray(assets)) {
+        const existingAsset = assets.find((a): a is Record<string, unknown> => record(a) && a.name === assetName)
+        if (existingAsset && typeof existingAsset.id === 'number') {
+          await this.request(`/assets/${existingAsset.id}`, 'DELETE', undefined, this.releasesUrl)
+        }
+      }
+    } catch {
+      // Continue to attempt upload
+    }
+
+    const uploadUrl = `${uploadUrlTemplate.replace(/\{.*?\}$/, '')}?name=${encodeURIComponent(assetName)}`
+    const fileBytes = readFileSync(filePath)
+    const fileSha = createHash('sha256').update(fileBytes).digest('hex')
+
+    const timeoutSignal = AbortSignal.timeout(120_000)
+    let response: Response
+    try {
+      response = await this.transport(uploadUrl, {
+        method: 'POST',
+        signal: this.signal ? AbortSignal.any([this.signal, timeoutSignal]) : timeoutSignal,
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Accept: 'application/vnd.github+json',
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': String(fileBytes.length),
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+        body: fileBytes,
+      })
+    } catch (error) {
+      throwIfShutdown(this.signal)
+      if (isAbort(error)) throw new GitHubGitTimeoutError()
+      throw new GitHubGitError('GitHub Git API network request failed')
+    }
+
+    if (!response.ok) {
+      throw new GitHubGitHttpError(response.status)
+    }
+
+    const uploaded = (await response.json()) as Record<string, unknown>
+    const downloadUrl =
+      typeof uploaded.browser_download_url === 'string'
+        ? uploaded.browser_download_url
+        : `https://github.com/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/releases/download/${encodeURIComponent(tagName)}/${encodeURIComponent(assetName)}`
+
+    return { downloadUrl, sha256: fileSha }
   }
 
   private async readCommit(commitSha: string): Promise<{ treeSha: string; parents: string[] }> {
