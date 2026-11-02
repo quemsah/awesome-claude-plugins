@@ -5,6 +5,7 @@ const realCatalogTests = [
   'src/lib/markdownPaths.test.ts',
   'src/schemas/catalogData.test.ts',
   'src/lib/sqliteEquivalence.test.ts',
+  'src/lib/sqliteBackendIntegration.test.ts',
 ]
 
 export default defineConfig({

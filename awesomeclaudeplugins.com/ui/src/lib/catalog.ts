@@ -1,4 +1,4 @@
-﻿/** biome-ignore-all lint/style/useNamingConvention: catalog data uses snake_case fields */
+/** biome-ignore-all lint/style/useNamingConvention: catalog data uses snake_case fields */
 
 import statsData from '../data/stats.json' with { type: 'json' }
 import type { PluginSummary, Repo } from '../schemas/repo.schema.ts'
@@ -369,11 +369,16 @@ export function findCatalogRepo(repoPath: string): CatalogRepo | undefined {
   return hydrateCatalogRepo(repo)
 }
 
+let cachedLegacyLastModified: Date | undefined
+
 export function getCatalogLastModified(): Date {
   if (getCatalogBackend() === 'sqlite') {
     return sqliteGetCatalogLastModified()
   }
-  return getLatestValidStatsDate(statsData)
+  if (!cachedLegacyLastModified) {
+    cachedLegacyLastModified = getLatestValidStatsDate(statsData)
+  }
+  return cachedLegacyLastModified
 }
 
 export function getRepoCanonicalPath(repo: { owner?: string | null; repo_name?: string | null }): string {

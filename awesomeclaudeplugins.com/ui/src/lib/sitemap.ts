@@ -1,4 +1,4 @@
-﻿/** biome-ignore-all lint/style/useNamingConvention: external data */
+/** biome-ignore-all lint/style/useNamingConvention: external data */
 import type { MetadataRoute } from 'next'
 import { type CatalogRepo, getCatalogBackend, getCatalogLastModified, getIndexableCatalogRepos, getRepoCanonicalPath } from './catalog.ts'
 import { BASE_URL } from './constants.ts'
@@ -36,8 +36,16 @@ function getLegacySortedIndexableRepos(): readonly CatalogRepo[] {
   return cachedLegacySortedIndexableRepos
 }
 
+let cachedFallbackLastModified: Date | undefined
+function getFallbackLastModified(): Date {
+  if (!cachedFallbackLastModified) {
+    cachedFallbackLastModified = getCatalogLastModified()
+  }
+  return cachedFallbackLastModified
+}
+
 export function getRepoSitemapLastModified(repo: Pick<CatalogRepo, 'catalog_updated_at'>): Date {
-  return repo.catalog_updated_at ? new Date(repo.catalog_updated_at) : getCatalogLastModified()
+  return repo.catalog_updated_at ? new Date(repo.catalog_updated_at) : getFallbackLastModified()
 }
 
 function repoEntry(repo: CatalogRepo): MetadataRoute.Sitemap[number] {

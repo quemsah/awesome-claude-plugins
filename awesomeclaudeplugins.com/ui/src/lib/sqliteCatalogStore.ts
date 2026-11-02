@@ -60,12 +60,19 @@ export function getSqliteReader(): PublicCatalogReader {
   if (existsSync(manifestPath)) {
     try {
       const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+      if (!manifest || typeof manifest !== 'object') {
+        throw new Error(`Invalid manifest structure at ${manifestPath}`)
+      }
       expected = {
         schemaVersion: 1,
         snapshotId: manifest.snapshotId,
         catalogFingerprint: manifest.catalogFingerprint,
       }
-    } catch {}
+    } catch (error) {
+      throw new Error(`Failed to parse SQLite catalog manifest: ${manifestPath}`, { cause: error })
+    }
+  } else if (process.env.NODE_ENV === 'production') {
+    throw new Error(`Production SQLite catalog manifest does not exist: ${manifestPath}`)
   }
 
   const reader = openPublicCatalog(dbPath, expected)
