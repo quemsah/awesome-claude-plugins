@@ -37,6 +37,11 @@ function getSearchTerms(query) {
   return terms.length === 0 || (terms.length === 1 && [...terms[0]].length < 2) ? [] : terms
 }
 
+function toInteger(value, fallback, min) {
+  const number = Number(value ?? fallback)
+  return Number.isFinite(number) ? Math.max(min, Math.trunc(number)) : fallback
+}
+
 const sortSql = {
   'stars-desc': 'archived ASC, stargazers_count DESC, has_description DESC, source_order ASC',
   'forks-desc': 'archived ASC, forks_count DESC, source_order ASC',
@@ -158,7 +163,7 @@ export function openPublicCatalog(path, expected = {}) {
 
     *iteratePublishedRecords(batchSize = 1000) {
       let lastSourceOrder = -1
-      const batchLimit = Math.max(1, batchSize)
+      const batchLimit = toInteger(batchSize, 1000, 1)
       const stmt = db.prepare(`
         SELECT record_json, source_order
         FROM repositories
@@ -179,8 +184,8 @@ export function openPublicCatalog(path, expected = {}) {
 
     getBrowsePage(options = {}) {
       const sort = options.sort && sortSql[options.sort] ? options.sort : 'stars-desc'
-      const page = Math.max(0, options.page ?? 0)
-      const pageSize = Math.max(1, options.pageSize ?? 24)
+      const page = toInteger(options.page, 0, 0)
+      const pageSize = toInteger(options.pageSize, 24, 1)
       const offset = page * pageSize
 
       const orderClause = sortSql[sort]
@@ -200,8 +205,8 @@ export function openPublicCatalog(path, expected = {}) {
 
     searchRepos(query, options = {}) {
       const sort = options.sort && rankColumns[options.sort] ? options.sort : 'stars-desc'
-      const page = Math.max(0, options.page ?? 0)
-      const pageSize = Math.max(1, options.pageSize ?? 24)
+      const page = toInteger(options.page, 0, 0)
+      const pageSize = toInteger(options.pageSize, 24, 1)
       const terms = getSearchTerms(query)
 
       if (terms.length === 0) {
@@ -261,7 +266,7 @@ export function openPublicCatalog(path, expected = {}) {
 
     *iterateIndexableRepos(batchSize = 1000) {
       let lastSourceOrder = -1
-      const batchLimit = Math.max(1, batchSize)
+      const batchLimit = toInteger(batchSize, 1000, 1)
       const stmt = db.prepare(`
         SELECT owner, repo_name, canonical_key, pushed_at, catalog_added_at, catalog_updated_at, stargazers_count, source_order
         FROM repositories
@@ -290,7 +295,7 @@ export function openPublicCatalog(path, expected = {}) {
 
     *iterateStatistics(batchSize = 1000) {
       let lastOrder = -1
-      const batchLimit = Math.max(1, batchSize)
+      const batchLimit = toInteger(batchSize, 1000, 1)
       const stmt = db.prepare(`
         SELECT id, date, size, source_order
         FROM statistics

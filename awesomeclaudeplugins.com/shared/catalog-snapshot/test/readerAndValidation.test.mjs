@@ -120,4 +120,100 @@ describe('readerAndValidation', () => {
       reader.close()
     }
   })
+
+  it('normalizes fractional, negative, and nonfinite pagination inputs safely', () => {
+    buildPublicCatalog(
+      {
+        records: inputRepos,
+        stats: inputStats,
+        snapshotId: 'pagination-norm-run',
+      },
+      tempDbPath
+    )
+
+    const reader = openPublicCatalog(tempDbPath)
+    try {
+      // Nonfinite, negative, and fractional page and pageSize in getBrowsePage
+      const browseDefault = reader.getBrowsePage({})
+      const browseNegative = reader.getBrowsePage({ page: -5, pageSize: -10 })
+      assert.equal(browseNegative.matches.length, 1) // pageSize min is 1
+      assert.deepEqual(browseNegative.matches[0], browseDefault.matches[0])
+
+      const browseFractional = reader.getBrowsePage({ page: 0.9, pageSize: 2.8 })
+      assert.equal(browseFractional.matches.length, 2) // truncated to 2
+
+      const browseNonfinite = reader.getBrowsePage({ page: NaN, pageSize: Infinity })
+      assert.equal(browseNonfinite.matches.length, browseDefault.matches.length) // fallback to 24, returning all 6 available items
+
+      // searchRepos pagination normalization
+      const searchNorm = reader.searchRepos('plugin', { page: -1, pageSize: NaN })
+      assert.ok(searchNorm.matches.length > 0)
+
+      // iterators batchSize normalization
+      const published = Array.from(reader.iteratePublishedRecords(0.5))
+      assert.equal(published.length, inputRepos.length)
+
+      const indexable = Array.from(reader.iterateIndexableRepos(NaN))
+      assert.ok(indexable.length > 0)
+
+      const stats = Array.from(reader.iterateStatistics(-10))
+      assert.equal(stats.length, inputStats.length)
+    } finally {
+      reader.close()
+    }
+  })
+
+  it('reuses existing snapshot only when records and statistics match', () => {
+    const m1 = buildPublicCatalog(
+      {
+        records: inputRepos,
+        stats: inputStats,
+        snapshotId: 'reuse-test-run',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+      tempDbPath
+    )
+
+    // Identical records and stats -> reuses existing snapshot
+    const m2 = buildPublicCatalog(
+      {
+        records: inputRepos,
+        stats: inputStats,
+        snapshotId: 'reuse-test-run',
+        createdAt: '2026-02-02T00:00:00.000Z', // Different createdAt, should return existing
+      },
+      tempDbPath
+    )
+    assert.equal(m2.createdAt, '2026-01-01T00:00:00.000Z')
+    assert.equal(m2.artifactSha256, m1.artifactSha256)
+
+    // Changed stats -> does NOT reuse, rebuilds
+    const changedStats = [{ id: 99999, date: '2026-03-03', size: 12345 }]
+    const m3 = buildPublicCatalog(
+      {
+        records: inputRepos,
+        stats: changedStats,
+        snapshotId: 'reuse-test-run',
+        createdAt: '2026-03-03T00:00:00.000Z',
+      },
+      tempDbPath
+    )
+    assert.equal(m3.createdAt, '2026-03-03T00:00:00.000Z')
+    assert.equal(m3.statsCount, 1)
+
+    // Non-array iterable (generator) -> does NOT reuse, rebuilds without consuming
+    function* generateRecords() {
+      for (const r of inputRepos) yield r
+    }
+    const m4 = buildPublicCatalog(
+      {
+        records: generateRecords(),
+        stats: changedStats,
+        snapshotId: 'reuse-test-run',
+        createdAt: '2026-04-04T00:00:00.000Z',
+      },
+      tempDbPath
+    )
+    assert.equal(m4.createdAt, '2026-04-04T00:00:00.000Z')
+  })
 })

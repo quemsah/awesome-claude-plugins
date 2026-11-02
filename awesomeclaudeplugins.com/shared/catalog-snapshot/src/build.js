@@ -6,7 +6,10 @@ import {
   CorruptedSnapshotError,
   InvalidSnapshotInputError,
 } from './errors.js'
-import { createCatalogFingerprintHasher } from './fingerprint.js'
+import {
+  calculateCatalogFingerprint,
+  createCatalogFingerprintHasher,
+} from './fingerprint.js'
 
 export const SCHEMA_VERSION = 1
 export const GENERATOR_VERSION = '1.0.0'
@@ -29,13 +32,33 @@ function validateSnapshotInput(input, outputPath) {
   }
 }
 
-function tryReuseExistingSnapshot(outputPath, snapshotId) {
+function statsMatchExistingSnapshot(existingDb, stats) {
+  const rows = existingDb
+    .prepare('SELECT id, date, size FROM statistics ORDER BY source_order')
+    .all()
+
+  if (rows.length !== stats.length) return false
+  return stats.every((stat, index) => {
+    const row = rows[index]
+    return row.id === stat.id && row.date === stat.date && row.size === stat.size
+  })
+}
+
+function tryReuseExistingSnapshot(outputPath, snapshotId, records, stats) {
   if (!existsSync(outputPath)) return null
+  if (!Array.isArray(records) || !Array.isArray(stats)) return null
   try {
     const existingDb = new Database(outputPath, { readonly: true, fileMustExist: true })
     try {
       const meta = existingDb.prepare('SELECT * FROM catalog_metadata WHERE id = 1').get()
-      if (meta && meta.snapshot_id === snapshotId && meta.schema_version === SCHEMA_VERSION) {
+      if (
+        meta &&
+        meta.snapshot_id === snapshotId &&
+        meta.schema_version === SCHEMA_VERSION &&
+        meta.generator_version === GENERATOR_VERSION &&
+        calculateCatalogFingerprint(records) === meta.catalog_fingerprint &&
+        statsMatchExistingSnapshot(existingDb, stats)
+      ) {
         const fileBytes = readFileSync(outputPath)
         const artifactSha256 = createHash('sha256').update(fileBytes).digest('hex')
         return {
@@ -358,7 +381,12 @@ function verifyAndCloseDatabase(db, stagingPath) {
 export function buildPublicCatalog(input, outputPath) {
   validateSnapshotInput(input, outputPath)
 
-  const existingManifest = tryReuseExistingSnapshot(outputPath, input.snapshotId)
+  const existingManifest = tryReuseExistingSnapshot(
+    outputPath,
+    input.snapshotId,
+    input.records,
+    input.stats
+  )
   if (existingManifest) return existingManifest
 
   mkdirSync(dirname(outputPath), { recursive: true })
@@ -402,9 +430,6 @@ export function buildPublicCatalog(input, outputPath) {
     const artifactBytes = readFileSync(stagingPath)
     const artifactSha256 = createHash('sha256').update(artifactBytes).digest('hex')
 
-    if (existsSync(outputPath)) {
-      rmSync(outputPath, { force: true })
-    }
     renameSync(stagingPath, outputPath)
 
     return {

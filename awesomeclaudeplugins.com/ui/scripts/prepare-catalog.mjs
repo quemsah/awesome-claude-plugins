@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { buildPublicCatalog } from '@awesome-claude-plugins/catalog-snapshot/build'
+import { calculateCatalogFingerprint } from '@awesome-claude-plugins/catalog-snapshot/fingerprint'
 
 /**
  * Prepares the SQLite public catalog snapshot from existing dataset files.
@@ -30,7 +31,7 @@ export function prepareCatalog(options = {}) {
   const repos = JSON.parse(readFileSync(reposPath, 'utf8'))
   const stats = existsSync(statsPath) ? JSON.parse(readFileSync(statsPath, 'utf8')) : []
 
-  const snapshotId = options.snapshotId ?? process.env.CATALOG_SNAPSHOT_ID ?? `snapshot-${new Date().toISOString().replace(/[:.]/g, '-')}`
+  const snapshotId = options.snapshotId ?? process.env.CATALOG_SNAPSHOT_ID ?? `snapshot-${calculateCatalogFingerprint(repos).slice(0, 16)}`
 
   console.log(`[prepare-catalog] Building SQLite snapshot for ${repos.length} records and ${stats.length} stats entries...`)
 
