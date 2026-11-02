@@ -6,7 +6,7 @@ import {
   SnapshotMismatchError,
 } from './errors.js'
 
-const queryTerms = /[+#]*[\p{L}\p{N}\p{M}]+(?:[+#]+[\p{L}\p{N}\p{M}]+|[+#]+)*/gu
+const queryTerms = /[+#]*[\p{L}\p{N}\p{M}][\p{L}\p{N}\p{M}+#]*/gu
 
 function getSearchTerms(query) {
   if (typeof query !== 'string') return []
