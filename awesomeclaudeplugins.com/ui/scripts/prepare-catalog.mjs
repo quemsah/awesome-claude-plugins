@@ -1,6 +1,20 @@
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { closeSync, existsSync, openSync, readFileSync, readSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import {
+  closeSync,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { dirname, join } from 'node:path'
+import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import { pathToFileURL } from 'node:url'
 import { buildPublicCatalog, GENERATOR_VERSION, SCHEMA_VERSION } from '@awesome-claude-plugins/catalog-snapshot/build'
 import { calculateCatalogFingerprint } from '@awesome-claude-plugins/catalog-snapshot/fingerprint'
@@ -54,11 +68,61 @@ function calculateSnapshotIdentity(repos, stats, schemaVersion, generatorVersion
   return hasher.digest('hex').slice(0, 16)
 }
 
-function verifySqliteArtifact(outputPath, manifestPath) {
+async function downloadSqliteArtifact(pointer, outputPath) {
+  const repo = process.env.GITHUB_REPOSITORY || 'quemsah/awesome-claude-plugins'
+  const downloadUrl =
+    pointer.artifactUrl ||
+    process.env.CATALOG_SQLITE_URL ||
+    `https://github.com/${repo}/releases/download/catalog-${pointer.snapshotId}/catalog.sqlite`
+
+  console.log(`[prepare-catalog] Downloading SQLite snapshot artifact from ${downloadUrl}...`)
+
+  mkdirSync(dirname(outputPath), { recursive: true })
+  const tmpPath = `${outputPath}.download.${process.pid}.${Date.now()}`
+
+  let downloaded = false
+  try {
+    const curlArgs = ['-sSL', '--fail', '--retry', '3', '-o', tmpPath]
+    if (process.env.GITHUB_TOKEN && downloadUrl.includes('api.github.com')) {
+      curlArgs.push('-H', `Authorization: Bearer ${process.env.GITHUB_TOKEN}`)
+    }
+    curlArgs.push(downloadUrl)
+    execFileSync('curl', curlArgs, { stdio: 'inherit' })
+    downloaded = true
+  } catch {
+    downloaded = false
+  }
+
+  if (!downloaded) {
+    const response = await fetch(downloadUrl, { redirect: 'follow' })
+    if (!response.ok) {
+      throw new Error(`Failed to download catalog artifact from ${downloadUrl}: ${response.status} ${response.statusText}`)
+    }
+    const fileStream = createWriteStream(tmpPath)
+    await pipeline(Readable.fromWeb(response.body), fileStream)
+  }
+
+  const downloadedSha = hashFileSha256(tmpPath)
+  if (pointer.artifactSha256 && downloadedSha !== pointer.artifactSha256) {
+    try {
+      unlinkSync(tmpPath)
+    } catch {}
+    throw new Error(`Downloaded artifact SHA-256 mismatch: got ${downloadedSha}, expected ${pointer.artifactSha256}`)
+  }
+
+  renameSync(tmpPath, outputPath)
+  console.log(`[prepare-catalog] Successfully downloaded and verified artifact (SHA: ${downloadedSha})`)
+}
+
+function verifySqliteArtifact(outputPath, manifestPath, pointer) {
   const startTime = Date.now()
   console.log(`[prepare-catalog] Validating existing SQLite catalog snapshot at ${outputPath}...`)
 
   const sha256 = hashFileSha256(outputPath)
+  if (pointer?.artifactSha256 && sha256 !== pointer.artifactSha256) {
+    throw new Error(`Artifact SHA-256 mismatch with pointer: expected ${pointer.artifactSha256}, got ${sha256}`)
+  }
+
   const db = new Database(outputPath, { readonly: true, fileMustExist: true })
   let metadataRow
   try {
@@ -72,6 +136,17 @@ function verifySqliteArtifact(outputPath, manifestPath) {
     }
   } finally {
     db.close()
+  }
+
+  if (pointer) {
+    if (pointer.snapshotId && metadataRow.snapshot_id !== pointer.snapshotId) {
+      throw new Error(`Artifact snapshotId mismatch with pointer: expected ${pointer.snapshotId}, got ${metadataRow.snapshot_id}`)
+    }
+    if (pointer.catalogFingerprint && metadataRow.catalog_fingerprint !== pointer.catalogFingerprint) {
+      throw new Error(
+        `Artifact catalogFingerprint mismatch with pointer: expected ${pointer.catalogFingerprint}, got ${metadataRow.catalog_fingerprint}`
+      )
+    }
   }
 
   const manifest = {
@@ -115,16 +190,37 @@ function verifySqliteArtifact(outputPath, manifestPath) {
   return manifest
 }
 
-export function prepareCatalog(options = {}) {
+export async function prepareCatalog(options = {}) {
   const dataDir = options.dataDir ?? join(process.cwd(), 'src/data')
   const reposPath = join(dataDir, 'repos.json')
   const statsPath = join(dataDir, 'stats.json')
   const outputPath = options.outputPath ?? join(dataDir, 'catalog.sqlite')
   const manifestPath = options.manifestPath ?? join(dataDir, 'catalog.manifest.json')
 
+  const pointerPath =
+    options.pointerPath ??
+    [
+      join(dataDir, 'catalog-release.json'),
+      join(dataDir, '../catalog-release.json'),
+      join(dataDir, '../../catalog-release.json'),
+      join(process.cwd(), 'catalog-release.json'),
+      join(process.cwd(), 'ui/catalog-release.json'),
+    ].find((p) => existsSync(p))
+
+  const pointer = pointerPath ? JSON.parse(readFileSync(pointerPath, 'utf8')) : null
+
   // If SQLite exists and source repos.json does not exist, validate existing SQLite
   if (existsSync(outputPath) && !existsSync(reposPath)) {
-    return verifySqliteArtifact(outputPath, manifestPath)
+    return verifySqliteArtifact(outputPath, manifestPath, pointer)
+  }
+
+  // If SQLite does not exist and repos.json does not exist, retrieve SQLite using release pointer
+  if (!(existsSync(outputPath) || existsSync(reposPath))) {
+    if (pointer) {
+      await downloadSqliteArtifact(pointer, outputPath)
+      return verifySqliteArtifact(outputPath, manifestPath, pointer)
+    }
+    throw new Error(`Catalog source dataset not found: ${reposPath}`)
   }
 
   if (!existsSync(reposPath)) {
@@ -183,5 +279,8 @@ export function prepareCatalog(options = {}) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  prepareCatalog()
+  prepareCatalog().catch((err) => {
+    console.error(err)
+    process.exit(1)
+  })
 }

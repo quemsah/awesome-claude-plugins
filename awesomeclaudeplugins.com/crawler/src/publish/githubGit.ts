@@ -178,9 +178,7 @@ export class GitHubGitClient implements GitHubGit {
         type: 'blob',
         content: files.catalogReleaseJson,
       })
-    }
-
-    if (typeof files.reposJson === 'string') {
+    } else if (typeof files.reposJson === 'string') {
       // Publish all legacy snapshot parts in intermediate trees without moving the ref.
       // Only a fully constructed final tree can be committed atomically.
       let repositories: CatalogRecordInput[]

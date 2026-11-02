@@ -1,6 +1,6 @@
 import { mkdirSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { SnapshotManifest } from '@awesome-claude-plugins/catalog-snapshot'
+import { openPublicCatalog, type SnapshotManifest } from '@awesome-claude-plugins/catalog-snapshot'
 import type Database from 'better-sqlite3'
 import { type BuildPublicCatalogOptions, buildPublicCatalogFromCrawler } from '../output/publicCatalog.js'
 import { getRun } from '../storage/runs.js'
@@ -29,6 +29,7 @@ export interface CatalogReleasePointer {
   schemaVersion: number
   generatorVersion: string
   createdAt: string
+  artifactUrl?: string
 }
 
 export class ArtifactPublicationError extends Error {
@@ -38,6 +39,20 @@ export class ArtifactPublicationError extends Error {
   ) {
     super(message)
     this.name = 'ArtifactPublicationError'
+  }
+}
+
+export function verifyReleasePointer(pointer: CatalogReleasePointer, manifest: SnapshotManifest): void {
+  if (
+    pointer.snapshotId !== manifest.snapshotId ||
+    pointer.artifactSha256 !== manifest.artifactSha256 ||
+    pointer.catalogFingerprint !== manifest.catalogFingerprint ||
+    pointer.recordCount !== manifest.recordCount ||
+    pointer.canonicalCount !== manifest.canonicalCount ||
+    pointer.pluginsCount !== manifest.pluginsCount ||
+    pointer.statsCount !== manifest.statsCount
+  ) {
+    throw new ArtifactPublicationError('Release pointer disagrees with manifest metadata', 'POINTER_MISMATCH')
   }
 }
 
@@ -59,6 +74,24 @@ export function prepareArtifactPublication(
   const manifest = buildPublicCatalogFromCrawler(db, options)
   const byteSize = statSync(options.outputPath).size
   const preparedAt = new Date().toISOString()
+
+  if (options.draftStats) {
+    const reader = openPublicCatalog(options.outputPath)
+    try {
+      const history = reader.getStatistics()
+      const latest = history.at(-1)
+      if (
+        !latest ||
+        latest.id !== options.draftStats.id ||
+        latest.date !== options.draftStats.date ||
+        latest.size !== options.draftStats.size
+      ) {
+        throw new ArtifactPublicationError('Generated SQLite artifact statistics row does not match draft stats', 'STATS_MISMATCH')
+      }
+    } finally {
+      reader.close()
+    }
+  }
 
   const insertSql = `
     INSERT INTO artifact_publications (
@@ -111,7 +144,7 @@ export function markArtifactFailed(db: Database.Database, runId: string, diagnos
   return result.changes > 0
 }
 
-export function writeReleasePointer(manifest: SnapshotManifest, pointerPath: string): CatalogReleasePointer {
+export function writeReleasePointer(manifest: SnapshotManifest, pointerPath: string, artifactUrl?: string): CatalogReleasePointer {
   mkdirSync(dirname(pointerPath), { recursive: true })
 
   const pointer: CatalogReleasePointer = {
@@ -125,7 +158,10 @@ export function writeReleasePointer(manifest: SnapshotManifest, pointerPath: str
     schemaVersion: manifest.schemaVersion,
     generatorVersion: manifest.generatorVersion,
     createdAt: manifest.createdAt,
+    ...(artifactUrl ? { artifactUrl } : {}),
   }
+
+  verifyReleasePointer(pointer, manifest)
 
   const tmpPath = `${pointerPath}.tmp.${process.pid}.${Date.now()}`
   writeFileSync(tmpPath, `${JSON.stringify(pointer, null, 2)}\n`, 'utf8')

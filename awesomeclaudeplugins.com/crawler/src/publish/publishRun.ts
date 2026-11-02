@@ -260,11 +260,13 @@ export function prepareDraft(
             const { manifest } = prepareArtifactPublication(db, runId, {
               outputPath: paths.outputPath,
               createdAt: now.toISOString(),
+              draftStats: { id: draft.id, date: draft.date, size: draft.size },
             })
             const pointer = writeReleasePointer(manifest, paths.pointerPath)
             snapshot.files.catalogReleaseJson = `${JSON.stringify(pointer, null, 2)}\n`
-          } catch {
-            // draft can still be saved if artifact preparation encountered an issue
+          } catch (error) {
+            markArtifactFailed(db, runId, error instanceof Error ? error.message : String(error))
+            throw new PublicationError('snapshot_invalid')
           }
         }
       }
@@ -490,10 +492,12 @@ export async function publishRun(
           const { manifest } = prepareArtifactPublication(db, runId, {
             outputPath: paths.outputPath,
             createdAt: now().toISOString(),
+            draftStats: { id: prepared.id, date: prepared.date, size: prepared.size },
           })
           writeReleasePointer(manifest, paths.pointerPath)
-        } catch {
-          // If artifact prep fails in standalone run, proceed with draft
+        } catch (error) {
+          markArtifactFailed(db, runId, error instanceof Error ? error.message : String(error))
+          throw new PublicationError('snapshot_invalid')
         }
       }
     }

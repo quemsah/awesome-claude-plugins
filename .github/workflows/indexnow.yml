@@ -56,6 +56,12 @@ jobs:
         run: bun install --frozen-lockfile
         working-directory: awesomeclaudeplugins.com
 
+      - name: Prepare and verify catalog SQLite snapshot
+        run: bun run prepare:catalog
+        working-directory: awesomeclaudeplugins.com/ui
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Test IndexNow change detection
         run: node --test scripts/indexnow-*.test.mjs
         working-directory: awesomeclaudeplugins.com/ui
@@ -92,6 +98,12 @@ jobs:
       - name: Install Bun workspace dependencies
         run: bun install --frozen-lockfile
         working-directory: awesomeclaudeplugins.com
+
+      - name: Prepare and verify catalog SQLite snapshot
+        run: bun run prepare:catalog
+        working-directory: awesomeclaudeplugins.com/ui
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Test IndexNow change detection
         run: node --test scripts/indexnow-*.test.mjs

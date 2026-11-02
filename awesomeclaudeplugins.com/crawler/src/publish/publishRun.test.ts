@@ -294,7 +294,8 @@ it.each([true, false])('publishes a frozen pre-metadata draft with plugins and s
 ]
 `
   expect(renderRepos(listPublishable(db), { includeNewCatalogMetadata: false })).toBe(preUpgradeReposJson)
-  expect(JSON.parse(currentFiles.reposJson)[0]).toMatchObject({
+  expect(currentFiles.reposJson).toBeDefined()
+  expect(JSON.parse(currentFiles.reposJson as string)[0]).toMatchObject({
     plugins: [{ name: 'one', description: 'A plugin' }],
     license: 'MIT',
     archived: true,
@@ -374,7 +375,7 @@ it('reconciles a visible legacy-format pending commit after a later catalog muta
   const pending = getRun(db, 'r1')?.pending_commit_sha
   expect(pending).toBe(git.head)
   expect(git.files[0].reposJson).toBe(oldReposJson)
-  expect(JSON.parse(git.files[0].reposJson)[0]).not.toHaveProperty('catalog_updated_at')
+  expect(JSON.parse(git.files[0].reposJson as string)[0]).not.toHaveProperty('catalog_updated_at')
 
   db.prepare('UPDATE repositories SET description = ? WHERE id = 18').run('genuinely changed')
   db.exec('DROP TRIGGER reject_publication')
