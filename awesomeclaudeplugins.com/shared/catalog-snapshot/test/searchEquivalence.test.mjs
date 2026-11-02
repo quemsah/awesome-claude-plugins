@@ -567,4 +567,55 @@ describe('searchEquivalence', () => {
       } catch {}
     }
   })
+  it('preserves full API plugin summaries and caps browse/search pages at 100', () => {
+    const largeRepos = Array.from({ length: 125 }, (_, i) => ({
+      id: 5000 + i,
+      owner: 'catalog-owner',
+      repo_name: `catalog-plugin-${i}`,
+      stargazers_count: 100,
+      plugins_count: 1,
+      description: 'A searchable catalog entry',
+      ...(i === 0
+        ? { plugin_name: '  standalone-tool  ', plugin_description: '  A useful tool  ' }
+        : i === 1
+          ? { plugin_summaries: [{ name: '  summary-tool  ', description: ' Summary text  ' }] }
+          : {}),
+    }))
+    const path = join(__dirname, 'test-full-api-compat.sqlite')
+    try {
+      buildPublicCatalog(
+        { records: largeRepos, stats: [], snapshotId: 'full-api-compat' },
+        path
+      )
+      const reader = openPublicCatalog(path)
+      try {
+        const browse = reader.getBrowsePage({ pageSize: 500, sort: 'stars-desc', view: 'full' })
+        assert.equal(browse.matches.length, 100)
+        assert.equal(browse.hasMore, true)
+        assert.deepEqual(browse.matches[0].plugins, [
+          { name: 'standalone-tool', description: 'A useful tool' }
+        ])
+        assert.deepEqual(browse.matches[1].plugins, [
+          { name: 'summary-tool', description: 'Summary text' }
+        ])
+        const raw = reader.getRepoByPath('catalog-owner/catalog-plugin-0')
+        assert.equal(raw.plugins, undefined, 'published raw record must remain unchanged')
+
+        const secondPage = reader.getBrowsePage({ page: 1, pageSize: 1000 })
+        assert.equal(secondPage.matches.length, 25)
+        const search = reader.searchRepos('catalog', { pageSize: 1000, view: 'full' })
+        assert.equal(search.total, 125)
+        assert.equal(search.matches.length, 100)
+        assert.ok(search.matches.some((match) =>
+          match.item.repo_name === 'catalog-plugin-0' &&
+          match.item.plugins?.[0]?.name === 'standalone-tool'
+        ))
+      } finally {
+        reader.close()
+      }
+    } finally {
+      rmSync(path, { force: true })
+    }
+  })
+
 })
