@@ -177,6 +177,33 @@ describe('prepareCatalog script', () => {
     }
   })
 
+  it('builds an isolated standalone SQLite fixture instead of using the release pointer', () => {
+    const scriptPath = join(process.cwd(), 'scripts/prepare-catalog.mjs')
+    const fixturePath = join(process.cwd(), 'tests/e2e/fixtures/standalone-repos.json')
+    const outputPath = join(tempDir, 'standalone.sqlite')
+    const manifestPath = join(tempDir, 'standalone.manifest.json')
+
+    execFileSync('node', [scriptPath], {
+      stdio: 'pipe',
+      env: {
+        ...process.env,
+        STANDALONE_E2E: '1',
+        CATALOG_DATA_PATH: fixturePath,
+        CATALOG_SQLITE_PATH: outputPath,
+        CATALOG_MANIFEST_PATH: manifestPath,
+      },
+    })
+
+    expect(existsSync(manifestPath)).toBe(true)
+    const db = new Database(outputPath, { readonly: true })
+    try {
+      const metadata = db.prepare('SELECT record_count FROM catalog_metadata WHERE id = 1').get() as { record_count: number }
+      expect(metadata.record_count).toBe(2)
+    } finally {
+      db.close()
+    }
+  })
+
   it('supports --source and --output CLI arguments', () => {
     const cliSourceDir = join(tempDir, 'cli-source')
     const cliOutputDir = join(tempDir, 'cli-out')
