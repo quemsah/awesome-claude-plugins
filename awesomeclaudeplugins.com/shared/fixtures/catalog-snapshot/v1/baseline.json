@@ -1,0 +1,24 @@
+{
+  "base_commit": "25c0b5dbfcee3c649933199cf5ab110abefb31a1",
+  "dataset": {
+    "record_count": 54226,
+    "stats_count": 299,
+    "markdown_paths_count": 23,
+    "catalog_fingerprint": "d41318aece459b826b8f93c07db16ce798f81e03358f6fa154d8c4262cecd331",
+    "first_record_id": 1,
+    "last_stat_id": 338,
+    "last_stat_date": "2026-11-01T01:00:01.595Z"
+  },
+  "runtime": {
+    "node": "24.22.1",
+    "bun": "1.4.4",
+    "better_sqlite3": "12.11.1",
+    "sqlite": "3.49.1"
+  },
+  "railway": {
+    "service": "awesome-claude-plugins-ui",
+    "environment": "production",
+    "replicas": 1,
+    "process": "web"
+  }
+}

@@ -107,6 +107,22 @@ jobs:
         run: bun run test:unit
         working-directory: awesomeclaudeplugins.com/ui
 
+      - name: Run catalog snapshot tests
+        run: bun run test:snapshot
+        working-directory: awesomeclaudeplugins.com
+
+      - name: Build and verify catalog SQLite snapshot
+        run: bun run prepare:catalog
+        working-directory: awesomeclaudeplugins.com
+
+      - name: Upload catalog snapshot manifest artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: catalog-manifest-${{ github.run_id }}
+          path: awesomeclaudeplugins.com/ui/src/data/catalog.manifest.json
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Cache Next.js build cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
