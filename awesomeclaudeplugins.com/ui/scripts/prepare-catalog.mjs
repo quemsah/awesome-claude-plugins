@@ -241,13 +241,19 @@ function verifySqliteArtifact(outputPath, manifestPath, pointer) {
 
 export async function prepareCatalog(options = {}) {
   const dataDir = options.dataDir ?? join(process.cwd(), 'src/data')
-  const reposPath = join(dataDir, 'repos.json')
+  // Standalone browser tests must build their own SQLite database, not reuse the release catalog.
+  const fixturePath = process.env.STANDALONE_E2E === '1' ? process.env.CATALOG_DATA_PATH : undefined
+  if (process.env.STANDALONE_E2E === '1' && !fixturePath) {
+    throw new Error('STANDALONE_E2E requires CATALOG_DATA_PATH')
+  }
+  const reposPath = fixturePath ?? join(dataDir, 'repos.json')
   const statsPath = join(dataDir, 'stats.json')
-  const outputPath = options.outputPath ?? join(dataDir, 'catalog.sqlite')
-  const manifestPath = options.manifestPath ?? join(dirname(outputPath), 'catalog.manifest.json')
+  const outputPath = options.outputPath ?? (fixturePath ? process.env.CATALOG_SQLITE_PATH : undefined) ?? join(dataDir, 'catalog.sqlite')
+  const manifestPath =
+    options.manifestPath ?? (fixturePath ? process.env.CATALOG_MANIFEST_PATH : undefined) ?? join(dirname(outputPath), 'catalog.manifest.json')
 
   const pointerPath =
-    options.pointerPath ??
+    fixturePath ? undefined : options.pointerPath ??
     [
       join(dataDir, 'catalog-release.json'),
       join(dataDir, '../catalog-release.json'),
@@ -294,14 +300,16 @@ export async function prepareCatalog(options = {}) {
   if (!existsSync(reposPath)) {
     throw new Error(`Catalog source dataset not found: ${reposPath}`)
   }
-  if (!existsSync(statsPath)) {
+  if (!fixturePath && !existsSync(statsPath)) {
     throw new Error(`Catalog statistics dataset not found: ${statsPath}`)
   }
 
   const startTime = Date.now()
   console.log(`[prepare-catalog] Reading source dataset from ${dataDir}...`)
   const repos = JSON.parse(readFileSync(reposPath, 'utf8'))
-  const stats = JSON.parse(readFileSync(statsPath, 'utf8'))
+  const stats = fixturePath
+    ? [{ id: 1, date: '2026-11-01T00:00:00.000Z', size: repos.length }]
+    : JSON.parse(readFileSync(statsPath, 'utf8'))
 
   const identity = calculateSnapshotIdentity(repos, stats, SCHEMA_VERSION, GENERATOR_VERSION)
   const snapshotId = options.snapshotId ?? process.env.CATALOG_SNAPSHOT_ID ?? `snapshot-${identity}`
