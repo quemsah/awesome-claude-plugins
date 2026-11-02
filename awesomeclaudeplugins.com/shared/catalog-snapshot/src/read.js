@@ -6,11 +6,34 @@ import {
   SnapshotMismatchError,
 } from './errors.js'
 
-const queryTerms = /[+#]*[\p{L}\p{N}\p{M}][\p{L}\p{N}\p{M}+#]*/gu
+const WORD_OR_TOKEN_CHAR = /[\p{L}\p{N}\p{M}+#]/u
+const LETTER_OR_NUMBER_CHAR = /[\p{L}\p{N}\p{M}]/u
 
 function getSearchTerms(query) {
   if (typeof query !== 'string') return []
-  const terms = query.match(queryTerms) ?? []
+  const terms = []
+  let current = ''
+  let hasLetterOrNumber = false
+
+  for (const ch of query) {
+    if (WORD_OR_TOKEN_CHAR.test(ch)) {
+      current += ch
+      if (LETTER_OR_NUMBER_CHAR.test(ch)) {
+        hasLetterOrNumber = true
+      }
+    } else if (current.length > 0) {
+      if (hasLetterOrNumber) {
+        terms.push(current)
+      }
+      current = ''
+      hasLetterOrNumber = false
+    }
+  }
+
+  if (current.length > 0 && hasLetterOrNumber) {
+    terms.push(current)
+  }
+
   return terms.length === 0 || (terms.length === 1 && [...terms[0]].length < 2) ? [] : terms
 }
 
