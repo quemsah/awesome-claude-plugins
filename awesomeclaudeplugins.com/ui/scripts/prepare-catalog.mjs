@@ -5,13 +5,16 @@ import { pathToFileURL } from 'node:url'
 import { buildPublicCatalog, GENERATOR_VERSION, SCHEMA_VERSION } from '@awesome-claude-plugins/catalog-snapshot/build'
 import { calculateCatalogFingerprint } from '@awesome-claude-plugins/catalog-snapshot/fingerprint'
 
+const SHA256_HEX = /^[a-f0-9]{64}$/
+
 function hashFileSha256(filePath) {
   const hash = createHash('sha256')
   const fd = openSync(filePath, 'r')
   try {
     const chunk = Buffer.allocUnsafe(64 * 1024)
-    let length
-    while ((length = readSync(fd, chunk, 0, chunk.length, null)) > 0) {
+    while (true) {
+      const length = readSync(fd, chunk, 0, chunk.length, null)
+      if (length === 0) break
       hash.update(chunk.subarray(0, length))
     }
     return hash.digest('hex')
@@ -21,7 +24,7 @@ function hashFileSha256(filePath) {
 }
 
 function verifyExistingManifest(outputPath, manifestPath, snapshotId) {
-  if (!existsSync(outputPath) || !existsSync(manifestPath)) return
+  if (!(existsSync(outputPath) && existsSync(manifestPath))) return
   let manifest
   try {
     manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
@@ -29,7 +32,7 @@ function verifyExistingManifest(outputPath, manifestPath, snapshotId) {
     throw new Error(`Existing catalog manifest is unreadable: ${manifestPath}`, { cause: error })
   }
   if (manifest.snapshotId !== snapshotId) return
-  if (!/^[a-f0-9]{64}$/.test(manifest.artifactSha256 ?? '')) {
+  if (!SHA256_HEX.test(manifest.artifactSha256 ?? '')) {
     throw new Error(`Existing catalog manifest lacks a valid SHA-256: ${manifestPath}`)
   }
   if (hashFileSha256(outputPath) !== manifest.artifactSha256) {
