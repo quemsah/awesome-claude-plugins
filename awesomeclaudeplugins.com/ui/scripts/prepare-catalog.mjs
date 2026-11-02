@@ -114,7 +114,11 @@ async function downloadSqliteArtifact(pointer, outputPath) {
   let downloaded = false
   try {
     const curlArgs = ['-sSL', '--fail', '--retry', '3', '-o', tmpPath]
-    if (process.env.GITHUB_TOKEN && downloadUrl.includes('api.github.com')) {
+    let isGitHubApi = false
+    try {
+      isGitHubApi = new URL(downloadUrl).hostname === 'api.github.com'
+    } catch {}
+    if (process.env.GITHUB_TOKEN && isGitHubApi) {
       curlArgs.push('-H', `Authorization: Bearer ${process.env.GITHUB_TOKEN}`)
     }
     curlArgs.push(downloadUrl)
