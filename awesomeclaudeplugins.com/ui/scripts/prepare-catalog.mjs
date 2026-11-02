@@ -1,9 +1,41 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, openSync, readFileSync, readSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { buildPublicCatalog, GENERATOR_VERSION, SCHEMA_VERSION } from '@awesome-claude-plugins/catalog-snapshot/build'
 import { calculateCatalogFingerprint } from '@awesome-claude-plugins/catalog-snapshot/fingerprint'
+
+function hashFileSha256(filePath) {
+  const hash = createHash('sha256')
+  const fd = openSync(filePath, 'r')
+  try {
+    const chunk = Buffer.allocUnsafe(64 * 1024)
+    let length
+    while ((length = readSync(fd, chunk, 0, chunk.length, null)) > 0) {
+      hash.update(chunk.subarray(0, length))
+    }
+    return hash.digest('hex')
+  } finally {
+    closeSync(fd)
+  }
+}
+
+function verifyExistingManifest(outputPath, manifestPath, snapshotId) {
+  if (!existsSync(outputPath) || !existsSync(manifestPath)) return
+  let manifest
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  } catch (error) {
+    throw new Error(`Existing catalog manifest is unreadable: ${manifestPath}`, { cause: error })
+  }
+  if (manifest.snapshotId !== snapshotId) return
+  if (!/^[a-f0-9]{64}$/.test(manifest.artifactSha256 ?? '')) {
+    throw new Error(`Existing catalog manifest lacks a valid SHA-256: ${manifestPath}`)
+  }
+  if (hashFileSha256(outputPath) !== manifest.artifactSha256) {
+    throw new Error(`Existing catalog artifact differs from its published SHA-256: ${outputPath}`)
+  }
+}
 
 function calculateSnapshotIdentity(repos, stats, schemaVersion, generatorVersion) {
   const reposFingerprint = calculateCatalogFingerprint(repos)
@@ -11,7 +43,8 @@ function calculateSnapshotIdentity(repos, stats, schemaVersion, generatorVersion
   hasher.update(`schema_version:${schemaVersion};generator_version:${generatorVersion};fingerprint:${reposFingerprint};`)
   if (Array.isArray(stats)) {
     for (const stat of stats) {
-      hasher.update(`${stat.id}:${stat.date}:${stat.size};`)
+      hasher.update(JSON.stringify(stat))
+      hasher.update('\n')
     }
   }
   return hasher.digest('hex').slice(0, 16)
@@ -50,6 +83,8 @@ export function prepareCatalog(options = {}) {
 
   const identity = calculateSnapshotIdentity(repos, stats, SCHEMA_VERSION, GENERATOR_VERSION)
   const snapshotId = options.snapshotId ?? process.env.CATALOG_SNAPSHOT_ID ?? `snapshot-${identity}`
+
+  verifyExistingManifest(outputPath, manifestPath, snapshotId)
 
   const provenance =
     options.provenance ??
