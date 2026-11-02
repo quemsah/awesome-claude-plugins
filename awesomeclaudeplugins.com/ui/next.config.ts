@@ -51,8 +51,17 @@ const nextConfig: NextConfig = {
   typescript: { tsconfigPath: standaloneE2e ? 'tsconfig.standalone.json' : 'tsconfig.json' },
   reactStrictMode: true,
   poweredByHeader: false,
+  serverExternalPackages: ['better-sqlite3'],
   outputFileTracingIncludes: {
-    '/**': ['./src/data/search-index.json', './src/data/repo-details/**', './src/data/repos.json'],
+    '/**': [
+      './src/data/search-index.json',
+      './src/data/repo-details/**',
+      './src/data/repos.json',
+      './src/data/catalog.sqlite',
+      './src/data/catalog.manifest.json',
+      './src/data/stats.json',
+      './src/data/markdown-paths.json',
+    ],
   },
   env: {
     // biome-ignore lint/style/useNamingConvention: Next.js env keys must match the names already used by the application.

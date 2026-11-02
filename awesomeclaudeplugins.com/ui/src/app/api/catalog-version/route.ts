@@ -1,10 +1,14 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { sqliteGetCatalogVersionHash } from '../../../lib/sqliteCatalogStore.ts'
 
 export const dynamic = 'force-static'
 
 function getCatalogVersionHash(): string {
+  if (process.env.CATALOG_BACKEND === 'sqlite') {
+    return sqliteGetCatalogVersionHash()
+  }
   const reposFile = process.env.CATALOG_DATA_PATH || join(process.cwd(), 'src/data/repos.json')
   if (!existsSync(reposFile)) return ''
   try {

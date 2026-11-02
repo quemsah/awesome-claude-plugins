@@ -1,22 +1,14 @@
 import { Breadcrumbs } from '../../components/common/Breadcrumbs.tsx'
 import { StatsPage } from '../../components/stats/StatsPage.tsx'
 import StatsStructuredData from '../../components/stats/StatsStructuredData.tsx'
-import statsData from '../../data/stats.json' with { type: 'json' }
 import { getStatsBreadcrumbs } from '../../lib/breadcrumbs.ts'
+import { getStatsHistory } from '../../lib/catalog.ts'
 import type { StatsItem } from '../../schemas/stats.schema.ts'
-import { StatsArraySchema } from '../../schemas/stats.schema.ts'
 
 export const dynamic = 'force-dynamic'
 
 export default function StatsPageRoute() {
-  let stats: StatsItem[] = []
-
-  const validationResult = StatsArraySchema.safeParse(statsData)
-  if (validationResult.success) {
-    stats = [...validationResult.data].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-  } else {
-    console.error('Invalid stats data format:', validationResult.error)
-  }
+  const stats: StatsItem[] = getStatsHistory()
 
   const startDate = stats.length > 0 ? stats[0].date : undefined
   const endDate = stats.length > 0 ? stats[stats.length - 1].date : undefined

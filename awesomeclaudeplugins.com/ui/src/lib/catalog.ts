@@ -2,23 +2,87 @@
 
 import statsData from '../data/stats.json' with { type: 'json' }
 import type { PluginSummary, Repo } from '../schemas/repo.schema.ts'
+import type { StatsItem } from '../schemas/stats.schema.ts'
+import { StatsArraySchema } from '../schemas/stats.schema.ts'
 import { getLatestValidStatsDate } from './catalogDates.ts'
 import { CATALOG_PAGE_SIZE } from './catalogPagination.ts'
 import { type CatalogQuality, getCatalogQuality } from './catalogQuality.ts'
 import { getCatalog, hydrateCatalogRepo } from './catalogStore.ts'
 import { createCatalogSearchIndex, hasSearchableTerms } from './fuzzySearch.ts'
+import { type CatalogSummary, getCatalogSummary } from './llmsText.ts'
 import { isArchivedRepo } from './repoMetadata.ts'
 import { getGitHubRepoPath } from './repositoryIdentity.ts'
 import { normalizeSearchQuery } from './searchQuery.ts'
 import type { SortOption } from './sortOptions.ts'
+import {
+  sqliteFindCatalogRepo,
+  sqliteGetBrowsePageCount,
+  sqliteGetCatalogCanonicalCount,
+  sqliteGetCatalogLastModified,
+  sqliteGetCatalogQualityForRepo,
+  sqliteGetCatalogSummary,
+  sqliteGetStatsHistory,
+  sqliteSearchCatalogRepos,
+} from './sqliteCatalogStore.ts'
 
 export type CatalogRepo = Repo
 
-const catalogRepos: readonly CatalogRepo[] = getCatalog().filter(
-  (repo): repo is CatalogRepo => repo.owner != null && repo.repo_name != null
-)
-const canonicalCatalogRepos = getUniqueCatalogRepos(catalogRepos)
-const canonicalCatalogRepoIdentities = new Set(canonicalCatalogRepos.map((repo) => `${repo.id}:${repo.owner}/${repo.repo_name}`))
+export type CatalogBackend = 'legacy-json' | 'sqlite'
+
+export function getCatalogBackend(): CatalogBackend {
+  return process.env.CATALOG_BACKEND === 'sqlite' ? 'sqlite' : 'legacy-json'
+}
+
+interface LegacyCatalogState {
+  catalogRepos: readonly CatalogRepo[]
+  canonicalCatalogRepos: readonly CatalogRepo[]
+  canonicalCatalogRepoIdentities: Set<string>
+  catalogReposBySort: Record<SortOption, readonly CatalogRepo[]>
+  catalogReposByPath: Map<string, CatalogRepo>
+  catalogPluginsCount: number
+  indexableCatalogRepos: readonly CatalogRepo[]
+}
+
+let cachedLegacyState: LegacyCatalogState | null = null
+
+function getLegacyCatalogState(): LegacyCatalogState {
+  if (cachedLegacyState) return cachedLegacyState
+
+  const catalogRepos: readonly CatalogRepo[] = getCatalog().filter(
+    (repo): repo is CatalogRepo => repo.owner != null && repo.repo_name != null
+  )
+  const canonicalCatalogRepos = getUniqueCatalogRepos(catalogRepos)
+  const canonicalCatalogRepoIdentities = new Set(canonicalCatalogRepos.map((repo) => `${repo.id}:${repo.owner}/${repo.repo_name}`))
+  const indexableCatalogRepos = canonicalCatalogRepos.filter((repo) => getCatalogQuality(repo, true).publicationState === 'indexable')
+  const catalogReposByPath = new Map<string, CatalogRepo>()
+  for (const repo of catalogRepos) {
+    const path = `${repo.owner}/${repo.repo_name}`.toLowerCase()
+    if (!catalogReposByPath.has(path)) {
+      catalogReposByPath.set(path, repo)
+    }
+  }
+
+  const catalogReposBySort: Record<SortOption, readonly CatalogRepo[]> = {
+    'stars-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'stars-desc')),
+    'forks-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'forks-desc')),
+    'plugins-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'plugins-desc')),
+    'updated-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'updated-desc')),
+    'created-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'created-desc')),
+  }
+  const catalogPluginsCount = canonicalCatalogRepos.reduce((total, repo) => total + (repo.plugins_count ?? 0), 0)
+
+  cachedLegacyState = {
+    catalogRepos,
+    canonicalCatalogRepos,
+    canonicalCatalogRepoIdentities,
+    catalogReposBySort,
+    catalogReposByPath,
+    catalogPluginsCount,
+    indexableCatalogRepos,
+  }
+  return cachedLegacyState
+}
+
 // Different Next.js route bundles can have different module registries in the same process.
 // Key the shared index by the original catalog array, which catalogStore already shares globally.
 const CATALOG_SEARCH_INDEX_KEY = Symbol.for('awesome-claude-plugins.catalog-search-index')
@@ -63,7 +127,8 @@ function getCatalogSearchIndex() {
   const cached = root[CATALOG_SEARCH_INDEX_KEY]
   if (cached?.source === source) return cached.index
 
-  const index = createCatalogSearchIndex(canonicalCatalogRepos)
+  const state = getLegacyCatalogState()
+  const index = createCatalogSearchIndex(state.canonicalCatalogRepos)
   root[CATALOG_SEARCH_INDEX_KEY] = { source, index }
   return index
 }
@@ -74,14 +139,6 @@ function searchIndexedCatalogQuery(query: string, sortOption: SortOption, page: 
     return { matches: [], total: 0, pluginsCount: 0 }
   }
   return getCatalogSearchIndex().search(query, sortOption, page, pageSize)
-}
-const indexableCatalogRepos = canonicalCatalogRepos.filter((repo) => getCatalogQuality(repo, true).publicationState === 'indexable')
-const catalogReposByPath = new Map<string, CatalogRepo>()
-for (const repo of catalogRepos) {
-  const path = `${repo.owner}/${repo.repo_name}`.toLowerCase()
-  if (!catalogReposByPath.has(path)) {
-    catalogReposByPath.set(path, repo)
-  }
 }
 
 function sortDateValue(value: string | null | undefined): number {
@@ -126,15 +183,6 @@ export function compareCatalogRepos(left: CatalogRepo, right: CatalogRepo, sortO
   }
 }
 
-const catalogReposBySort: Record<SortOption, readonly CatalogRepo[]> = {
-  'stars-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'stars-desc')),
-  'forks-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'forks-desc')),
-  'plugins-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'plugins-desc')),
-  'updated-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'updated-desc')),
-  'created-desc': [...canonicalCatalogRepos].sort((left, right) => compareCatalogRepos(left, right, 'created-desc')),
-}
-const catalogPluginsCount = canonicalCatalogRepos.reduce((total, repo) => total + (repo.plugins_count ?? 0), 0)
-
 export type CatalogSearchResult = {
   hasMore: boolean
   pluginsCount: number
@@ -143,7 +191,10 @@ export type CatalogSearchResult = {
 }
 
 export function getCatalogRepos(): readonly CatalogRepo[] {
-  return catalogRepos
+  if (getCatalogBackend() === 'sqlite') {
+    throw new Error('getCatalogRepos is not supported when CATALOG_BACKEND=sqlite. Use specific catalog projections instead.')
+  }
+  return getLegacyCatalogState().catalogRepos
 }
 
 /**
@@ -154,20 +205,49 @@ export function getCatalogRepos(): readonly CatalogRepo[] {
  * (the sitemap, IndexNow) must therefore skip them.
  */
 export function getCanonicalCatalogRepos(): readonly CatalogRepo[] {
-  return canonicalCatalogRepos
+  if (getCatalogBackend() === 'sqlite') {
+    throw new Error(
+      'getCanonicalCatalogRepos is not supported when CATALOG_BACKEND=sqlite. Use specific catalog projections or counts instead.'
+    )
+  }
+  return getLegacyCatalogState().canonicalCatalogRepos
 }
 
 export function getIndexableCatalogRepos(): readonly CatalogRepo[] {
-  return indexableCatalogRepos
+  if (getCatalogBackend() === 'sqlite') {
+    throw new Error(
+      'getIndexableCatalogRepos is not supported when CATALOG_BACKEND=sqlite. Use sitemap projections or specific queries instead.'
+    )
+  }
+  return getLegacyCatalogState().indexableCatalogRepos
+}
+
+/** Total canonical repository count. */
+export function getCatalogCanonicalCount(): number {
+  if (getCatalogBackend() === 'sqlite') {
+    return sqliteGetCatalogCanonicalCount()
+  }
+  return getLegacyCatalogState().canonicalCatalogRepos.length
 }
 
 /** Pages the browse route serves: it paginates the whole canonical catalog, which is larger than the indexable subset. */
 export function getBrowsePageCount(): number {
-  return Math.ceil(canonicalCatalogRepos.length / CATALOG_PAGE_SIZE)
+  if (getCatalogBackend() === 'sqlite') {
+    return sqliteGetBrowsePageCount()
+  }
+  return Math.ceil(getLegacyCatalogState().canonicalCatalogRepos.length / CATALOG_PAGE_SIZE)
 }
 
 export function getCatalogQualityForRepo(repo: CatalogRepo, fallbackDescription?: string | null): CatalogQuality {
-  return getCatalogQuality(repo, canonicalCatalogRepoIdentities.has(`${repo.id}:${repo.owner}/${repo.repo_name}`), fallbackDescription)
+  if (getCatalogBackend() === 'sqlite') {
+    return sqliteGetCatalogQualityForRepo(repo, fallbackDescription)
+  }
+  const state = getLegacyCatalogState()
+  return getCatalogQuality(
+    repo,
+    state.canonicalCatalogRepoIdentities.has(`${repo.id}:${repo.owner}/${repo.repo_name}`),
+    fallbackDescription
+  )
 }
 
 function getUniqueCatalogRepos(repos: readonly CatalogRepo[]): readonly CatalogRepo[] {
@@ -182,7 +262,7 @@ function getUniqueCatalogRepos(repos: readonly CatalogRepo[]): readonly CatalogR
   })
 }
 
-type CatalogSearchOptions = { summaries?: 'full' | 'omit' }
+export type CatalogSearchOptions = { summaries?: 'full' | 'omit' }
 
 /** Keep public API summaries by default; the card UI opts into lightweight results. */
 export function searchCatalogRepos(
@@ -192,14 +272,19 @@ export function searchCatalogRepos(
   pageSize = CATALOG_PAGE_SIZE,
   options: CatalogSearchOptions = {}
 ): CatalogSearchResult {
+  if (getCatalogBackend() === 'sqlite') {
+    return sqliteSearchCatalogRepos(query, sortOption, page, pageSize, options)
+  }
+
+  const state = getLegacyCatalogState()
   const normalizedQuery = normalizeSearchQuery(query)
   const matches = normalizedQuery ? searchIndexedCatalogQuery(normalizedQuery, sortOption, page, pageSize) : undefined
   const repos = matches
     ? matches.matches.map((match) => match.item)
-    : catalogReposBySort[sortOption].slice(page * pageSize, (page + 1) * pageSize)
+    : state.catalogReposBySort[sortOption].slice(page * pageSize, (page + 1) * pageSize)
   const start = page * pageSize
-  const total = matches?.total ?? canonicalCatalogRepos.length
-  const pluginsCount = matches?.pluginsCount ?? catalogPluginsCount
+  const total = matches?.total ?? state.canonicalCatalogRepos.length
+  const pluginsCount = matches?.pluginsCount ?? state.catalogPluginsCount
 
   return {
     hasMore: start + pageSize < total,
@@ -274,19 +359,46 @@ export function formatCatalogRepo(repo: CatalogRepo): CatalogRepo {
   return repo
 }
 
-export function findCatalogRepo(repoPath: string) {
-  const repo = catalogReposByPath.get(repoPath.toLowerCase())
+export function findCatalogRepo(repoPath: string): CatalogRepo | undefined {
+  if (getCatalogBackend() === 'sqlite') {
+    return sqliteFindCatalogRepo(repoPath)
+  }
+  const state = getLegacyCatalogState()
+  const repo = state.catalogReposByPath.get(repoPath.toLowerCase())
   if (!repo) return undefined
   return hydrateCatalogRepo(repo)
 }
 
-export function getCatalogLastModified() {
-  return getLatestValidStatsDate(statsData)
+let cachedLegacyLastModified: Date | undefined
+
+export function getCatalogLastModified(): Date {
+  if (getCatalogBackend() === 'sqlite') {
+    return sqliteGetCatalogLastModified()
+  }
+  if (!cachedLegacyLastModified) {
+    cachedLegacyLastModified = getLatestValidStatsDate(statsData)
+  }
+  return cachedLegacyLastModified
 }
 
-export function getRepoCanonicalPath(repo: CatalogRepo) {
+export function getRepoCanonicalPath(repo: { owner?: string | null; repo_name?: string | null }): string {
   if (!(repo.owner && repo.repo_name)) {
     return ''
   }
   return getGitHubRepoPath(repo.owner, repo.repo_name)
+}
+
+export function getPublishedCatalogSummary(): CatalogSummary {
+  if (getCatalogBackend() === 'sqlite') {
+    return sqliteGetCatalogSummary()
+  }
+  return getCatalogSummary(getLegacyCatalogState().canonicalCatalogRepos, statsData)
+}
+
+export function getStatsHistory(): StatsItem[] {
+  if (getCatalogBackend() === 'sqlite') {
+    return sqliteGetStatsHistory()
+  }
+  const validationResult = StatsArraySchema.safeParse(statsData)
+  return validationResult.success ? [...validationResult.data].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()) : []
 }

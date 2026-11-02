@@ -1,6 +1,12 @@
 import { defineConfig } from 'vitest/config'
 
-const realCatalogTests = ['src/app/api/catalog/contract.test.ts', 'src/lib/markdownPaths.test.ts', 'src/schemas/catalogData.test.ts']
+const realCatalogTests = [
+  'src/app/api/catalog/contract.test.ts',
+  'src/lib/markdownPaths.test.ts',
+  'src/schemas/catalogData.test.ts',
+  'src/lib/sqliteEquivalence.test.ts',
+  'src/lib/sqliteBackendIntegration.test.ts',
+]
 
 export default defineConfig({
   test: {
@@ -16,7 +22,11 @@ export default defineConfig({
       },
       {
         extends: true,
-        test: { name: 'catalog-data', include: realCatalogTests },
+        test: {
+          name: 'catalog-data',
+          include: realCatalogTests,
+          fileParallelism: false,
+        },
       },
     ],
   },

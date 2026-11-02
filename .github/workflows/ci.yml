@@ -103,16 +103,16 @@ jobs:
         run: bun run lint
         working-directory: awesomeclaudeplugins.com/ui
 
+      - name: Build and verify catalog SQLite snapshot
+        run: bun run prepare:catalog
+        working-directory: awesomeclaudeplugins.com
+
       - name: Run unit tests
         run: bun run test:unit
         working-directory: awesomeclaudeplugins.com/ui
 
       - name: Run catalog snapshot tests
         run: bun run test:snapshot
-        working-directory: awesomeclaudeplugins.com
-
-      - name: Build and verify catalog SQLite snapshot
-        run: bun run prepare:catalog
         working-directory: awesomeclaudeplugins.com
 
       - name: Upload catalog snapshot manifest artifact

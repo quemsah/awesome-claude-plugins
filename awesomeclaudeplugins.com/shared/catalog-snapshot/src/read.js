@@ -102,25 +102,22 @@ function formatFullRecord(record) {
   return summaries?.length ? { ...record, plugins: summaries } : record
 }
 
-/**
- * Opens a public SQLite catalog snapshot for reading and search.
- *
- * @param {string} path
- * @param {import('./index.d.ts').ExpectedSnapshot} [expected]
- * @returns {import('./index.d.ts').PublicCatalogReader}
- */
-export function openPublicCatalog(path, expected = {}) {
-  if (!path || typeof path !== 'string' || !existsSync(path)) {
-    throw new CorruptedSnapshotError(`Database file does not exist: ${path}`)
-  }
-
-  let db
+function openDatabase(path) {
   try {
-    db = new Database(path, { readonly: true, fileMustExist: true })
+    const db = new Database(path, { readonly: true, fileMustExist: true })
+    try {
+      db.pragma('cache_size = -8000')
+      db.pragma('mmap_size = 0')
+    } catch {
+      // Non-fatal if pragma is restricted
+    }
+    return db
   } catch (error) {
     throw new CorruptedSnapshotError(`Cannot open database at ${path}`, { cause: error })
   }
+}
 
+function readAndValidateMetadata(db, expected = {}) {
   let metadataRow
   try {
     metadataRow = db.prepare('SELECT * FROM catalog_metadata WHERE id = 1').get()
@@ -165,6 +162,10 @@ export function openPublicCatalog(path, expected = {}) {
     )
   }
 
+  return metadataRow
+}
+
+function verifyRequiredTables(db) {
   try {
     db.prepare('SELECT 1 FROM repositories LIMIT 1').get()
     db.prepare('SELECT 1 FROM statistics LIMIT 1').get()
@@ -175,6 +176,23 @@ export function openPublicCatalog(path, expected = {}) {
     db.close()
     throw new IncompatibleSchemaError('Required catalog tables or views are missing or corrupt', { cause: error })
   }
+}
+
+/**
+ * Opens a public SQLite catalog snapshot for reading and search.
+ *
+ * @param {string} path
+ * @param {import('./index.d.ts').ExpectedSnapshot} [expected]
+ * @returns {import('./index.d.ts').PublicCatalogReader}
+ */
+export function openPublicCatalog(path, expected = {}) {
+  if (!path || typeof path !== 'string' || !existsSync(path)) {
+    throw new CorruptedSnapshotError(`Database file does not exist: ${path}`)
+  }
+
+  let db = openDatabase(path)
+  const metadataRow = readAndValidateMetadata(db, expected)
+  verifyRequiredTables(db)
 
   const metadata = {
     schema_version: metadataRow.schema_version,
@@ -206,6 +224,37 @@ export function openPublicCatalog(path, expected = {}) {
     SELECT 1 FROM repositories
     WHERE canonical_key = ? AND is_canonical = 1 AND is_markdown_repo = 1
     LIMIT 1
+  `)
+
+  const isCanonicalStmt = db.prepare(`
+    SELECT 1 FROM repositories
+    WHERE id = ? AND canonical_key = ? AND is_canonical = 1
+    LIMIT 1
+  `)
+
+  const isCanonicalByIdStmt = db.prepare(`
+    SELECT 1 FROM repositories
+    WHERE id = ? AND is_canonical = 1
+    LIMIT 1
+  `)
+
+  const countIndexableStmt = db.prepare(`
+    SELECT count(*) as count FROM repositories
+    WHERE is_canonical = 1 AND plugins_count IS NOT NULL
+  `)
+
+  const sitemapStmt = db.prepare(`
+    SELECT owner, repo_name, catalog_updated_at
+    FROM repositories
+    WHERE is_canonical = 1 AND plugins_count IS NOT NULL
+    ORDER BY stargazers_count DESC, has_description DESC, source_order ASC
+    LIMIT ? OFFSET ?
+  `)
+
+  const allStatsStmt = db.prepare(`
+    SELECT id, date, size
+    FROM statistics
+    ORDER BY source_order ASC
   `)
 
   const countCanonicalStmt = db.prepare('SELECT count(*) as count FROM repositories WHERE is_canonical = 1')
@@ -408,6 +457,34 @@ export function openPublicCatalog(path, expected = {}) {
       if (!path || typeof path !== 'string') return false
       const row = isMarkdownStmt.get(path.toLowerCase())
       return Boolean(row)
+    },
+
+    isCanonicalRepo(id, owner, repoName) {
+      if (typeof id !== 'number') return false
+      if (owner && repoName) {
+        return Boolean(isCanonicalStmt.get(id, `${owner}/${repoName}`.toLowerCase()))
+      }
+      return Boolean(isCanonicalByIdStmt.get(id))
+    },
+
+    getIndexableCount() {
+      return countIndexableStmt.get().count
+    },
+
+    getSitemapPage(limit, offset) {
+      const pageLimit = Math.max(0, toInteger(limit, 25000, 0))
+      const pageOffset = Math.max(0, toInteger(offset, 0, 0))
+      const rows = sitemapStmt.all(pageLimit, pageOffset)
+      return rows.map((r) => ({
+        owner: r.owner,
+        repo_name: r.repo_name,
+        path: `${r.owner}/${r.repo_name}`,
+        catalog_updated_at: r.catalog_updated_at,
+      }))
+    },
+
+    getStatistics() {
+      return allStatsStmt.all()
     },
 
     getCatalogMetadata() {
