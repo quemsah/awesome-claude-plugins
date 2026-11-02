@@ -145,9 +145,15 @@ describe('readerAndValidation', () => {
       const browseNonfinite = reader.getBrowsePage({ page: NaN, pageSize: Infinity })
       assert.equal(browseNonfinite.matches.length, browseDefault.matches.length) // fallback to 24, returning all 6 available items
 
+      // Very large finite numbers (overflowing int64 / producing Infinity in page * pageSize)
+      const browseHuge = reader.getBrowsePage({ page: 1e308, pageSize: 1e20 })
+      assert.equal(browseHuge.matches.length, 0)
+
       // searchRepos pagination normalization
       const searchNorm = reader.searchRepos('plugin', { page: -1, pageSize: NaN })
       assert.ok(searchNorm.matches.length > 0)
+      const searchHuge = reader.searchRepos('plugin', { page: 1e308, pageSize: 1e20 })
+      assert.equal(searchHuge.matches.length, 0)
 
       // iterators batchSize normalization
       const published = Array.from(reader.iteratePublishedRecords(0.5))

@@ -37,9 +37,13 @@ function getSearchTerms(query) {
   return terms.length === 0 || (terms.length === 1 && [...terms[0]].length < 2) ? [] : terms
 }
 
+const MAX_PAGINATION_VALUE = 2 ** 31 - 1
+
 function toInteger(value, fallback, min) {
   const number = Number(value ?? fallback)
-  return Number.isFinite(number) ? Math.max(min, Math.trunc(number)) : fallback
+  return Number.isFinite(number)
+    ? Math.min(MAX_PAGINATION_VALUE, Math.max(min, Math.trunc(number)))
+    : fallback
 }
 
 const sortSql = {
