@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { openPublicCatalog, type PublicCatalogReader } from '@awesome-claude-plugins/catalog-snapshot/read'
 import type { MetadataRoute } from 'next'
-import type { StatsItem } from '../schemas/stats.schema.ts'
+import { StatsArraySchema, type StatsItem } from '../schemas/stats.schema.ts'
 import type { CatalogRepo, CatalogSearchOptions, CatalogSearchResult } from './catalog.ts'
 import { formatCatalogRepo, getRepoCanonicalPath } from './catalog.ts'
 import { getLatestValidStatsDate } from './catalogDates.ts'
@@ -207,7 +207,9 @@ export function sqliteGetCatalogSummary(): {
 export function sqliteGetStatsHistory(): StatsItem[] {
   const reader = getSqliteReader()
   const stats = reader.getStatistics()
-  return [...stats].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  const sorted = [...stats].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  const parsed = StatsArraySchema.safeParse(sorted)
+  return parsed.success ? parsed.data : []
 }
 
 const SITEMAP_SHARD_SIZE = 25_000

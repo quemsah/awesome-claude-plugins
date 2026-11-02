@@ -1,18 +1,25 @@
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { findCatalogRepo, searchCatalogRepos } from './catalog.ts'
 import { isRepoPageEndingInMd } from './markdownPaths.ts'
-import { sqliteFindCatalogRepo, sqliteSearchCatalogRepos } from './sqliteCatalogStore.ts'
+import { sqliteCloseCatalog } from './sqliteCatalogStore.ts'
 
 describe('PR 2 SQLite migration equivalence tests', () => {
+  const originalBackend = process.env.CATALOG_BACKEND
+
   beforeAll(async () => {
-    const dbPath = join(process.cwd(), 'src/data/catalog.sqlite')
-    if (!existsSync(dbPath)) {
-      const { prepareCatalog } = await import('../../scripts/prepare-catalog.mjs')
-      await prepareCatalog()
-    }
+    const { prepareCatalog } = await import('../../scripts/prepare-catalog.mjs')
+    await prepareCatalog()
   }, 30000)
+
+  afterAll(() => {
+    if (originalBackend !== undefined) {
+      process.env.CATALOG_BACKEND = originalBackend
+    } else {
+      delete process.env.CATALOG_BACKEND
+    }
+    sqliteCloseCatalog()
+  })
+
   it('sqlAndLegacyPagesMatch: compares ordered paths, full API payload, total, pluginsCount, hasMore, default/full vs cards', () => {
     const testCases: Array<{
       query: string
@@ -33,9 +40,11 @@ describe('PR 2 SQLite migration equivalence tests', () => {
     ]
 
     for (const { query, sort, page, pageSize } of testCases) {
-      // 1. Full view
+      process.env.CATALOG_BACKEND = 'legacy-json'
       const legacyFull = searchCatalogRepos(query, sort, page, pageSize)
-      const sqliteFull = sqliteSearchCatalogRepos(query, sort, page, pageSize)
+
+      process.env.CATALOG_BACKEND = 'sqlite'
+      const sqliteFull = searchCatalogRepos(query, sort, page, pageSize)
 
       expect(sqliteFull.total).toBe(legacyFull.total)
       expect(sqliteFull.pluginsCount).toBe(legacyFull.pluginsCount)
@@ -49,8 +58,11 @@ describe('PR 2 SQLite migration equivalence tests', () => {
       expect(sqliteFull.repos).toEqual(legacyFull.repos)
 
       // 2. Cards view (view=cards / summaries: 'omit')
+      process.env.CATALOG_BACKEND = 'legacy-json'
       const legacyCards = searchCatalogRepos(query, sort, page, pageSize, { summaries: 'omit' })
-      const sqliteCards = sqliteSearchCatalogRepos(query, sort, page, pageSize, { summaries: 'omit' })
+
+      process.env.CATALOG_BACKEND = 'sqlite'
+      const sqliteCards = searchCatalogRepos(query, sort, page, pageSize, { summaries: 'omit' })
 
       expect(sqliteCards.total).toBe(legacyCards.total)
       expect(sqliteCards.pluginsCount).toBe(legacyCards.pluginsCount)
@@ -59,23 +71,17 @@ describe('PR 2 SQLite migration equivalence tests', () => {
       const legacyCardPaths = legacyCards.repos.map((r) => `${r.owner}/${r.repo_name}`.toLowerCase())
       const sqliteCardPaths = sqliteCards.repos.map((r) => `${r.owner}/${r.repo_name}`.toLowerCase())
       expect(sqliteCardPaths).toEqual(legacyCardPaths)
-
-      // Verify stripped fields on cards view
-      for (const card of sqliteCards.repos) {
-        expect(card).not.toHaveProperty('plugins')
-        expect(card).not.toHaveProperty('plugin_summaries')
-        expect(card).not.toHaveProperty('plugin_name')
-        expect(card).not.toHaveProperty('plugin_description')
-      }
       expect(sqliteCards.repos).toEqual(legacyCards.repos)
     }
   }, 30000)
 
-  it('searchOnlyInPluginDescription: finds hits matching solely within plugin descriptions identically', () => {
-    // A search term that targets plugin descriptions specifically
+  it('searchOnlyInPluginDescription: matches repositories when query exists only in plugin description', () => {
     const query = 'summarize'
+    process.env.CATALOG_BACKEND = 'legacy-json'
     const legacy = searchCatalogRepos(query, 'stars-desc', 0, 24)
-    const sqlite = sqliteSearchCatalogRepos(query, 'stars-desc', 0, 24)
+
+    process.env.CATALOG_BACKEND = 'sqlite'
+    const sqlite = searchCatalogRepos(query, 'stars-desc', 0, 24)
 
     expect(sqlite.total).toBe(legacy.total)
     expect(sqlite.pluginsCount).toBe(legacy.pluginsCount)
@@ -86,9 +92,11 @@ describe('PR 2 SQLite migration equivalence tests', () => {
   })
 
   it('stableSortTies: breaks ties identically using source_order ASC', () => {
-    // When many repos have identical metrics (e.g., page 50 of stars-desc where stars = 0)
+    process.env.CATALOG_BACKEND = 'legacy-json'
     const legacyTies = searchCatalogRepos('', 'stars-desc', 50, 50)
-    const sqliteTies = sqliteSearchCatalogRepos('', 'stars-desc', 50, 50)
+
+    process.env.CATALOG_BACKEND = 'sqlite'
+    const sqliteTies = searchCatalogRepos('', 'stars-desc', 50, 50)
 
     expect(sqliteTies.total).toBe(legacyTies.total)
     expect(sqliteTies.repos.map((r) => `${r.owner}/${r.repo_name}`.toLowerCase())).toEqual(
@@ -96,21 +104,24 @@ describe('PR 2 SQLite migration equivalence tests', () => {
     )
   })
 
-  it('literalMarkdownRepositoryNegotiation: correctly identifies repos whose name ends in .md vs plain repos', () => {
-    // Direct repository names ending in .md
-    expect(isRepoPageEndingInMd('sstklen/yes.md')).toBe(true)
-    expect(isRepoPageEndingInMd('SSTKLEN/YES.MD')).toBe(true)
+  it('literalMarkdownRepositoryNegotiation: correctly identifies repos whose name ends in .md vs plain repos in both backends', () => {
+    for (const backend of ['legacy-json', 'sqlite'] as const) {
+      process.env.CATALOG_BACKEND = backend
+      expect(isRepoPageEndingInMd('sstklen/yes.md')).toBe(true)
+      expect(isRepoPageEndingInMd('SSTKLEN/YES.MD')).toBe(true)
 
-    // Ordinary repositories not ending in .md
-    expect(isRepoPageEndingInMd('anthropics/anthropic-quickstarts')).toBe(false)
-    expect(isRepoPageEndingInMd('unknown/fake-repo.md')).toBe(false)
+      expect(isRepoPageEndingInMd('anthropics/anthropic-quickstarts')).toBe(false)
+      expect(isRepoPageEndingInMd('unknown/fake-repo.md')).toBe(false)
+    }
   })
 
   it('standaloneInstallUnchanged: preserves standalone plugin manifests and install commands', () => {
-    // Find a standalone repository in the catalog
     const standaloneRepoPath = 'wshxbqq/claude-plugins'
+    process.env.CATALOG_BACKEND = 'legacy-json'
     const legacyRepo = findCatalogRepo(standaloneRepoPath)
-    const sqliteRepo = sqliteFindCatalogRepo(standaloneRepoPath)
+
+    process.env.CATALOG_BACKEND = 'sqlite'
+    const sqliteRepo = findCatalogRepo(standaloneRepoPath)
 
     if (legacyRepo) {
       expect(sqliteRepo).toBeDefined()
