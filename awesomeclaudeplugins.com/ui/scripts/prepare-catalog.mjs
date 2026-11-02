@@ -250,17 +250,20 @@ export async function prepareCatalog(options = {}) {
   const statsPath = join(dataDir, 'stats.json')
   const outputPath = options.outputPath ?? (fixturePath ? process.env.CATALOG_SQLITE_PATH : undefined) ?? join(dataDir, 'catalog.sqlite')
   const manifestPath =
-    options.manifestPath ?? (fixturePath ? process.env.CATALOG_MANIFEST_PATH : undefined) ?? join(dirname(outputPath), 'catalog.manifest.json')
+    options.manifestPath ??
+    (fixturePath ? process.env.CATALOG_MANIFEST_PATH : undefined) ??
+    join(dirname(outputPath), 'catalog.manifest.json')
 
-  const pointerPath =
-    fixturePath ? undefined : options.pointerPath ??
-    [
-      join(dataDir, 'catalog-release.json'),
-      join(dataDir, '../catalog-release.json'),
-      join(dataDir, '../../catalog-release.json'),
-      join(process.cwd(), 'catalog-release.json'),
-      join(process.cwd(), 'ui/catalog-release.json'),
-    ].find((p) => existsSync(p))
+  const pointerPath = fixturePath
+    ? undefined
+    : (options.pointerPath ??
+      [
+        join(dataDir, 'catalog-release.json'),
+        join(dataDir, '../catalog-release.json'),
+        join(dataDir, '../../catalog-release.json'),
+        join(process.cwd(), 'catalog-release.json'),
+        join(process.cwd(), 'ui/catalog-release.json'),
+      ].find((p) => existsSync(p)))
 
   let pointer = null
   if (pointerPath) {
@@ -300,7 +303,7 @@ export async function prepareCatalog(options = {}) {
   if (!existsSync(reposPath)) {
     throw new Error(`Catalog source dataset not found: ${reposPath}`)
   }
-  if (!fixturePath && !existsSync(statsPath)) {
+  if (!(fixturePath || existsSync(statsPath))) {
     throw new Error(`Catalog statistics dataset not found: ${statsPath}`)
   }
 
