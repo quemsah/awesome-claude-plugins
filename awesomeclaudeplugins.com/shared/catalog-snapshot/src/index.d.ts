@@ -59,6 +59,11 @@ export type CatalogMetadata = {
   canonical_count: number
   plugins_count: number
   stats_count: number
+  provenance?: {
+    commit?: string
+    runId?: string
+    source?: string
+  }
 }
 
 export type SnapshotInput = {
@@ -85,6 +90,11 @@ export type SnapshotManifest = {
   statsCount: number
   outputPath: string
   createdAt: string
+  provenance?: {
+    commit?: string
+    runId?: string
+    source?: string
+  }
 }
 
 export type ExpectedSnapshot = {
@@ -106,9 +116,20 @@ export interface PublicCatalogReader {
   close(): void
 }
 
+export const SCHEMA_VERSION: number
+export const GENERATOR_VERSION: string
+export const SUPPORTED_SCHEMA_VERSION: number
+
 export function buildPublicCatalog(input: SnapshotInput, outputPath: string): SnapshotManifest
 
 export function openPublicCatalog(path: string, expected?: ExpectedSnapshot): PublicCatalogReader
+
+export interface CatalogFingerprintHasher {
+  updateRecord(recordOrJson: CatalogRecord | string): void
+  digest(): string
+}
+
+export function createCatalogFingerprintHasher(): CatalogFingerprintHasher
 
 export function calculateCatalogFingerprint(records: Iterable<CatalogRecord | string>): string
 

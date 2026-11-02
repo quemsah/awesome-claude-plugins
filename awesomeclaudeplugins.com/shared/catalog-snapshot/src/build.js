@@ -14,7 +14,7 @@ import {
 } from './fingerprint.js'
 
 export const SCHEMA_VERSION = 1
-export const GENERATOR_VERSION = '1.0.0'
+export const GENERATOR_VERSION = '1.1.0'
 
 function validateSnapshotInput(input, outputPath) {
   if (!input || typeof input !== 'object') {

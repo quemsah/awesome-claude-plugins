@@ -275,6 +275,7 @@ describe('readerAndValidation', () => {
     try {
       const indexable = Array.from(reader.iterateIndexableRepos())
       assert.ok(!indexable.some((r) => r.repo_name === 'needs-review-repo'))
+      assert.ok(indexable.some((r) => r.path === 'reused-id-org/reused-id-repo'))
     } finally {
       reader.close()
     }

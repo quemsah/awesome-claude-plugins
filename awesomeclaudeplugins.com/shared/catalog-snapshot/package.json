@@ -9,15 +9,15 @@
       "import": "./src/index.js"
     },
     "./build": {
-      "types": "./src/index.d.ts",
+      "types": "./src/build.d.ts",
       "import": "./src/build.js"
     },
     "./read": {
-      "types": "./src/index.d.ts",
+      "types": "./src/read.d.ts",
       "import": "./src/read.js"
     },
     "./fingerprint": {
-      "types": "./src/index.d.ts",
+      "types": "./src/fingerprint.d.ts",
       "import": "./src/fingerprint.js"
     }
   },
