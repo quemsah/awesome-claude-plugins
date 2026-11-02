@@ -102,31 +102,22 @@ function formatFullRecord(record) {
   return summaries?.length ? { ...record, plugins: summaries } : record
 }
 
-/**
- * Opens a public SQLite catalog snapshot for reading and search.
- *
- * @param {string} path
- * @param {import('./index.d.ts').ExpectedSnapshot} [expected]
- * @returns {import('./index.d.ts').PublicCatalogReader}
- */
-export function openPublicCatalog(path, expected = {}) {
-  if (!path || typeof path !== 'string' || !existsSync(path)) {
-    throw new CorruptedSnapshotError(`Database file does not exist: ${path}`)
-  }
-
-  let db
+function openDatabase(path) {
   try {
-    db = new Database(path, { readonly: true, fileMustExist: true })
+    const db = new Database(path, { readonly: true, fileMustExist: true })
     try {
       db.pragma('cache_size = -8000')
       db.pragma('mmap_size = 0')
     } catch {
       // Non-fatal if pragma is restricted
     }
+    return db
   } catch (error) {
     throw new CorruptedSnapshotError(`Cannot open database at ${path}`, { cause: error })
   }
+}
 
+function readAndValidateMetadata(db, expected = {}) {
   let metadataRow
   try {
     metadataRow = db.prepare('SELECT * FROM catalog_metadata WHERE id = 1').get()
@@ -171,6 +162,10 @@ export function openPublicCatalog(path, expected = {}) {
     )
   }
 
+  return metadataRow
+}
+
+function verifyRequiredTables(db) {
   try {
     db.prepare('SELECT 1 FROM repositories LIMIT 1').get()
     db.prepare('SELECT 1 FROM statistics LIMIT 1').get()
@@ -181,6 +176,23 @@ export function openPublicCatalog(path, expected = {}) {
     db.close()
     throw new IncompatibleSchemaError('Required catalog tables or views are missing or corrupt', { cause: error })
   }
+}
+
+/**
+ * Opens a public SQLite catalog snapshot for reading and search.
+ *
+ * @param {string} path
+ * @param {import('./index.d.ts').ExpectedSnapshot} [expected]
+ * @returns {import('./index.d.ts').PublicCatalogReader}
+ */
+export function openPublicCatalog(path, expected = {}) {
+  if (!path || typeof path !== 'string' || !existsSync(path)) {
+    throw new CorruptedSnapshotError(`Database file does not exist: ${path}`)
+  }
+
+  let db = openDatabase(path)
+  const metadataRow = readAndValidateMetadata(db, expected)
+  verifyRequiredTables(db)
 
   const metadata = {
     schema_version: metadataRow.schema_version,
