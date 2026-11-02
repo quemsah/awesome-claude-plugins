@@ -292,11 +292,13 @@ function checkedSnapshot(
       if (!files) throw new PublicationError('snapshot_changed')
       if (hasArtifactTable(db)) {
         const publication = getArtifactPublication(db, runId)
-        if (publication && publication.state !== 'failed') {
-          const paths = resolveArtifactPaths(options)
+        const paths = resolveArtifactPaths(options)
+        if (publication && publication.state === 'uploaded') {
           if (paths && existsSync(paths.pointerPath)) {
             files.catalogReleaseJson = readFileSync(paths.pointerPath, 'utf8')
           }
+        } else if (paths) {
+          throw new PublicationError('snapshot_invalid')
         }
       }
       return { draft, files, pending: run.pending_commit_sha }
@@ -495,7 +497,7 @@ export async function publishRun(
       if (paths) {
         let manifest: SnapshotManifest | undefined
         let publication = getArtifactPublication(db, runId)
-        if (!publication) {
+        if (!publication || publication.state === 'failed') {
           try {
             const preparedArtifact = prepareArtifactPublication(db, runId, {
               outputPath: paths.outputPath,
@@ -511,7 +513,11 @@ export async function publishRun(
         }
 
         const artifactPath = publication?.artifact_path ?? paths.outputPath
-        if (publication && publication.state !== 'uploaded' && git.uploadReleaseAsset && artifactPath) {
+        if (publication && publication.state !== 'uploaded') {
+          if (!git.uploadReleaseAsset) {
+            markArtifactFailed(db, runId, 'release_asset_uploader_missing')
+            throw new PublicationError('snapshot_invalid')
+          }
           const tagName = `catalog-${publication.snapshot_id}`
           const assetName = 'catalog.sqlite'
           try {
@@ -531,8 +537,11 @@ export async function publishRun(
             markArtifactFailed(db, runId, error instanceof Error ? error.message : 'upload_failed')
             throw new PublicationError('snapshot_invalid')
           }
-        } else if (publication && manifest && !existsSync(paths.pointerPath)) {
-          writeReleasePointer(manifest, paths.pointerPath)
+        }
+
+        const finalPublication = getArtifactPublication(db, runId)
+        if (finalPublication?.state !== 'uploaded' || !existsSync(paths.pointerPath)) {
+          throw new PublicationError('snapshot_invalid')
         }
       }
     }

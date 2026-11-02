@@ -174,9 +174,9 @@ if (await waitForCatalogDeployment(currentFingerprint)) {
     const urls = [...new Set([...changedUrls, ...retiredUrls])]
     if (urls.length > 0) {
       await submitUrls(urls)
+      writeBaseline(currentRecords)
     } else {
       console.log('No changed or retired indexable repository URLs.')
     }
-    writeBaseline(currentRecords)
   }
 }

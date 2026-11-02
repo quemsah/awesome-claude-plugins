@@ -769,3 +769,68 @@ it('fails publication if release asset upload fails, marking artifact failed and
   expect(artifactRow.state).toBe('failed')
   expect(artifactRow.diagnostic_code).toBe('Network error during release asset upload')
 })
+
+it('resets a failed publication to prepared and completes publication on retry', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-retry-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  git.uploadFailure = 'Temporary connection reset'
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toThrowError(PublicationError)
+
+  expect(git.patches).toBe(0)
+  expect((db.prepare("SELECT state FROM artifact_publications WHERE run_id = 'r1'").get() as { state: string }).state).toBe('failed')
+
+  // Retry with working upload
+  git.uploadFailure = null
+  const commit = await publishRun(db, git, 'r1', {
+    writeEnabled: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  expect(commit).toBe(git.head)
+  expect(git.patches).toBe(1)
+  expect((db.prepare("SELECT state FROM artifact_publications WHERE run_id = 'r1'").get() as { state: string }).state).toBe('uploaded')
+  expect(git.files[0].catalogReleaseJson).toBeDefined()
+})
+
+it('refuses to commit when uploadReleaseAsset is not provided on the git client', async () => {
+  const db = fixture()
+  const git = new Branch()
+  git.uploadReleaseAsset = undefined
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-nouploader-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toThrowError(PublicationError)
+
+  expect(git.patches).toBe(0)
+  expect((db.prepare("SELECT state FROM artifact_publications WHERE run_id = 'r1'").get() as { state: string }).state).toBe('failed')
+})

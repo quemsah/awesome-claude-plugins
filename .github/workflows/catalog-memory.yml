@@ -64,11 +64,12 @@ jobs:
           fi
       - name: Check identical catalog inputs
         shell: bash
+        working-directory: candidate/awesomeclaudeplugins.com/ui
         run: |
           node -e '
             const Database = require("better-sqlite3");
-            const db1 = new Database("baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite", { readonly: true });
-            const db2 = new Database("candidate/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite", { readonly: true });
+            const db1 = new Database("../../../baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite", { readonly: true });
+            const db2 = new Database("src/data/catalog.sqlite", { readonly: true });
             const fp1 = db1.prepare("SELECT catalog_fingerprint FROM catalog_metadata").get()?.catalog_fingerprint;
             const fp2 = db2.prepare("SELECT catalog_fingerprint FROM catalog_metadata").get()?.catalog_fingerprint;
             db1.close();

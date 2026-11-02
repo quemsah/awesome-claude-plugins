@@ -81,6 +81,17 @@ export function saveBaseline(filePathOrDb, records, includedUrls = null) {
   try {
     initSqliteBaseline(db)
     const filtered = [...records].filter(([, record]) => includedUrls === null || includedUrls.has(record.url))
+    const existing = db.prepare('SELECT key, url, fingerprint FROM records').all()
+    if (existing.length === filtered.length) {
+      const existingMap = new Map(existing.map((r) => [r.key, r]))
+      const isIdentical = filtered.every(([key, record]) => {
+        const prev = existingMap.get(key)
+        return prev && prev.url === record.url && prev.fingerprint === record.fingerprint
+      })
+      if (isIdentical) {
+        return
+      }
+    }
     const insertTx = db.transaction(() => {
       db.prepare('DELETE FROM records').run()
       db.prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES ('version', '1'), ('updated_at', ?)").run(new Date().toISOString())
