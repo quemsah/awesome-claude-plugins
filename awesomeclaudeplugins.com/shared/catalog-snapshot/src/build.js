@@ -167,6 +167,43 @@ function extractFtsText(parsed, owner, repoName) {
   return textParts.filter((v) => typeof v === 'string' && v.trim().length > 0).join(' ')
 }
 
+function extractRepoRowParams(parsed, sourceOrder, isCanonical, canonicalKey, recordJson) {
+  const stars = parsed.stargazers_count ?? 0
+  const pluginsCount = parsed.plugins_count ?? null
+  const pluginSignal = (pluginsCount ?? 0) * Math.log10(stars + 10)
+  const descTrimmed = parsed.description?.trim()
+  const descLen = descTrimmed?.length ?? 0
+  const descriptionQuality = descLen >= 40 ? 2 : descLen > 0 ? 1 : 0
+  const isArchived = parsed.archived === true || parsed.archived === 1 ? 1 : 0
+  const repoName = parsed.repo_name ?? ''
+
+  return [
+    sourceOrder,
+    parsed.id,
+    parsed.owner ?? '',
+    repoName,
+    canonicalKey,
+    isCanonical,
+    /\.md$/i.test(repoName) ? 1 : 0,
+    stars,
+    parsed.forks_count ?? 0,
+    parsed.subscribers_count ?? 0,
+    pluginsCount,
+    pluginSignal,
+    parsed.pushed_at ?? null,
+    parsed.catalog_added_at ?? null,
+    parsed.catalog_updated_at ?? null,
+    parsed.license ?? null,
+    isArchived,
+    descTrimmed ? 1 : 0,
+    descriptionQuality,
+    parsed.manifest_kind ?? null,
+    parseUnixDate(parsed.pushed_at),
+    parseUnixDate(parsed.catalog_added_at),
+    recordJson,
+  ]
+}
+
 function populateRepositories(db, records, hasher) {
   const insertRepo = db.prepare(`
     INSERT INTO repositories (
@@ -208,39 +245,8 @@ function populateRepositories(db, records, hasher) {
         }
       }
 
-      const isMarkdown = /\.md$/i.test(repoName) ? 1 : 0
-      const stars = parsed.stargazers_count ?? 0
-      const pluginsCount = parsed.plugins_count ?? null
-      const pluginSignal = (pluginsCount ?? 0) * Math.log10(stars + 10)
-      const descLen = parsed.description?.trim()?.length ?? 0
-      const descriptionQuality = descLen >= 40 ? 2 : descLen > 0 ? 1 : 0
-
-      const info = insertRepo.run(
-        sourceOrder,
-        parsed.id,
-        owner,
-        repoName,
-        canonicalKey,
-        isCanonical,
-        isMarkdown,
-        stars,
-        parsed.forks_count ?? 0,
-        parsed.subscribers_count ?? 0,
-        pluginsCount,
-        pluginSignal,
-        parsed.pushed_at ?? null,
-        parsed.catalog_added_at ?? null,
-        parsed.catalog_updated_at ?? null,
-        parsed.license ?? null,
-        parsed.archived === true || parsed.archived === 1 ? 1 : 0,
-        parsed.description?.trim() ? 1 : 0,
-        descriptionQuality,
-        parsed.manifest_kind ?? null,
-        parseUnixDate(parsed.pushed_at),
-        parseUnixDate(parsed.catalog_added_at),
-        recordJson
-      )
-
+      const params = extractRepoRowParams(parsed, sourceOrder, isCanonical, canonicalKey, recordJson)
+      const info = insertRepo.run(...params)
       insertFts.run(info.lastInsertRowid, extractFtsText(parsed, owner, repoName))
     }
   })
