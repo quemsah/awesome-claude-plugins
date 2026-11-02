@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3'
@@ -8,6 +8,7 @@ import { renderRepos } from '../output/catalogSnapshot.js'
 import { openDatabase } from '../storage/db.js'
 import { listPublishable } from '../storage/repositories.js'
 import { beginRun, completeRun, failRun, getRun } from '../storage/runs.js'
+import type { CatalogReleasePointer } from './artifactPublisher.js'
 import { type GitHubGit, GitHubGitConflictError, GitHubGitHttpError, GitHubGitTimeoutError, type GitSnapshotFiles } from './githubGit.js'
 import { PublicationError, prepareDraft, publishRun, readDraftSnapshot } from './publishRun.js'
 
@@ -912,4 +913,98 @@ it('recovers after a restart when artifact is already uploaded and pointer file 
   expect(existsSync(releasePointerPath2)).toBe(true)
   const restoredPointer = JSON.parse(readFileSync(releasePointerPath2, 'utf8')) as { snapshotId?: string }
   expect(restoredPointer.snapshotId).toBeDefined()
+})
+
+it('replaces a stale pointer file from a previous release when recovering or publishing on a restarted checkout', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-stale-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  // Write a stale pointer from an older release into checkout before publish
+  const stalePointer: CatalogReleasePointer = {
+    snapshotId: 'stale-older-snapshot',
+    catalogFingerprint: '0000000000000000000000000000000000000000000000000000000000000000',
+    artifactSha256: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+    recordCount: 1,
+    canonicalCount: 1,
+    pluginsCount: 1,
+    statsCount: 1,
+    schemaVersion: 1,
+    generatorVersion: '0.1.0',
+    createdAt: '2020-01-01T00:00:00.000Z',
+    artifactUrl: 'https://github.com/example/repo/releases/download/catalog-stale/catalog.sqlite',
+  }
+  writeFileSync(releasePointerPath, JSON.stringify(stalePointer, null, 2), 'utf8')
+
+  // Publish should overwrite the stale pointer with the authentic current release pointer
+  const commit = await publishRun(db, git, 'r1', {
+    writeEnabled: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  expect(commit).toBe(git.head)
+  const restoredPointer = JSON.parse(readFileSync(releasePointerPath, 'utf8')) as CatalogReleasePointer
+  expect(restoredPointer.snapshotId).not.toBe('stale-older-snapshot')
+  expect(restoredPointer.catalogFingerprint).not.toBe('0000000000000000000000000000000000000000000000000000000000000000')
+  expect(restoredPointer.artifactUrl).toContain(restoredPointer.snapshotId)
+
+  // Verify the row in artifact_publications stored the correct release pointer, NOT the stale one
+  const row = db.prepare("SELECT release_pointer, artifact_url FROM artifact_publications WHERE run_id = 'r1'").get() as {
+    release_pointer: string
+    artifact_url: string
+  }
+  const persistedPointer = JSON.parse(row.release_pointer) as CatalogReleasePointer
+  expect(persistedPointer.snapshotId).toBe(restoredPointer.snapshotId)
+  expect(persistedPointer.snapshotId).not.toBe('stale-older-snapshot')
+
+  // Now simulate a restarted checkout with a stale pointer when publication state is already 'uploaded'
+  const db2 = fixture()
+  const git2 = new Branch()
+  const directory2 = mkdtempSync(join(import.meta.dirname, '.artifact-stale2-'))
+  directories.push(directory2)
+  const artifactOutputPath2 = join(directory2, 'catalog.sqlite')
+  const releasePointerPath2 = join(directory2, 'catalog-release.json')
+
+  prepareDraft(db2, 'r1', timestamp, {
+    artifactOutputPath: artifactOutputPath2,
+    releasePointerPath: releasePointerPath2,
+  })
+
+  // Fail git update to leave run in-flight with uploaded artifact
+  git2.failure = 'patch-before'
+  await expect(
+    publishRun(db2, git2, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath: artifactOutputPath2,
+      releasePointerPath: releasePointerPath2,
+    }),
+  ).rejects.toThrowError(PublicationError)
+  git2.failure = null
+
+  // Ensure state is uploaded
+  db2.prepare("UPDATE artifact_publications SET state = 'uploaded' WHERE run_id = 'r1'").run()
+
+  // Replace checkout's pointer with stale pointer from another release
+  writeFileSync(releasePointerPath2, JSON.stringify(stalePointer, null, 2), 'utf8')
+
+  // Recovery should detect that the pointer file is stale, replace it from durable publication data, and complete commit
+  const commit2 = await publishRun(db2, git2, 'r1', {
+    writeEnabled: true,
+    recover: true,
+    artifactOutputPath: artifactOutputPath2,
+    releasePointerPath: releasePointerPath2,
+  })
+
+  expect(commit2).toBe(git2.head)
+  const finalPointer = JSON.parse(readFileSync(releasePointerPath2, 'utf8')) as CatalogReleasePointer
+  expect(finalPointer.snapshotId).not.toBe('stale-older-snapshot')
 })

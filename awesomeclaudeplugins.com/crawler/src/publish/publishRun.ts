@@ -547,15 +547,21 @@ export async function publishRun(
             let pointer: CatalogReleasePointer
             if (manifest) {
               pointer = writeReleasePointer(manifest, paths.pointerPath, uploaded.downloadUrl)
-            } else if (existsSync(paths.pointerPath)) {
-              pointer = JSON.parse(readFileSync(paths.pointerPath, 'utf8')) as CatalogReleasePointer
-              pointer.artifactUrl = uploaded.downloadUrl
-              writeFileSync(paths.pointerPath, `${JSON.stringify(pointer, null, 2)}\n`, 'utf8')
             } else {
               ensureReleasePointerFile(paths, publication)
+              if (!existsSync(paths.pointerPath)) {
+                throw new Error('Release pointer could not be reconstructed from durable publication')
+              }
               pointer = JSON.parse(readFileSync(paths.pointerPath, 'utf8')) as CatalogReleasePointer
               pointer.artifactUrl = uploaded.downloadUrl
               writeFileSync(paths.pointerPath, `${JSON.stringify(pointer, null, 2)}\n`, 'utf8')
+            }
+            if (
+              pointer.snapshotId !== publication.snapshot_id ||
+              pointer.catalogFingerprint !== publication.catalog_fingerprint ||
+              pointer.artifactSha256 !== publication.artifact_sha256
+            ) {
+              throw new Error(`Release pointer mismatch for publication ${publication.snapshot_id}: pointer=${pointer.snapshotId}`)
             }
             markArtifactUploaded(db, runId, now().toISOString(), {
               releasePointer: JSON.stringify(pointer, null, 2),

@@ -116,7 +116,7 @@ it('upgrades populated v21 data without changing timestamps or search checkpoint
       PRAGMA user_version = 21;`)
     initializeSchema(db)
     initializeSchema(db)
-    expect(db.pragma('user_version', { simple: true })).toBe(23)
+    expect(db.pragma('user_version', { simple: true })).toBe(24)
     expect(
       db
         .prepare(
