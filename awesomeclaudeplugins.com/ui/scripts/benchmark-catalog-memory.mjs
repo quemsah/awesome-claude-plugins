@@ -97,7 +97,8 @@ if (values.baseline || values.candidate) {
   }
   const phases = { beforeImport: collect() }
   const catalog = await import(pathToFileURL(resolve(process.cwd(), 'src/lib/catalog.ts')).href)
-  const catalogSize = catalog.getCatalogCanonicalCount()
+  const catalogSize =
+    typeof catalog.getCatalogCanonicalCount === 'function' ? catalog.getCatalogCanonicalCount() : catalog.getCanonicalCatalogRepos().length
   phases.afterImport = collect()
   const search = (q, sort) => catalog.searchCatalogRepos(q, sort, 0, 24, { summaries: 'omit' })
   const firstResultTotal = search('superpowers', 'stars-desc').total
