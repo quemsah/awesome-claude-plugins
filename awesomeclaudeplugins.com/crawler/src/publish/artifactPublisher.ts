@@ -1,4 +1,4 @@
-import { mkdirSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { openPublicCatalog, type SnapshotManifest } from '@awesome-claude-plugins/catalog-snapshot'
 import type Database from 'better-sqlite3'
@@ -16,6 +16,8 @@ export interface ArtifactPublicationRow {
   diagnostic_code: string | null
   prepared_at: string
   uploaded_at: string | null
+  artifact_url?: string | null
+  release_pointer?: string | null
 }
 
 export interface CatalogReleasePointer {
@@ -93,13 +95,29 @@ export function prepareArtifactPublication(
     }
   }
 
+  const initialPointer: CatalogReleasePointer = {
+    snapshotId: manifest.snapshotId,
+    catalogFingerprint: manifest.catalogFingerprint,
+    artifactSha256: manifest.artifactSha256,
+    canonicalCount: manifest.canonicalCount,
+    pluginsCount: manifest.pluginsCount,
+    statsCount: manifest.statsCount,
+    recordCount: manifest.recordCount,
+    schemaVersion: manifest.schemaVersion,
+    generatorVersion: manifest.generatorVersion,
+    createdAt: manifest.createdAt,
+  }
+  const initialPointerJson = JSON.stringify(initialPointer, null, 2)
+
   const insertSql = `
     INSERT INTO artifact_publications (
       run_id, snapshot_id, catalog_fingerprint, artifact_sha256,
-      state, byte_size, artifact_path, diagnostic_code, prepared_at, uploaded_at
+      state, byte_size, artifact_path, diagnostic_code, prepared_at, uploaded_at,
+      artifact_url, release_pointer
     ) VALUES (
       @run_id, @snapshot_id, @catalog_fingerprint, @artifact_sha256,
-      'prepared', @byte_size, @artifact_path, NULL, @prepared_at, NULL
+      'prepared', @byte_size, @artifact_path, NULL, @prepared_at, NULL,
+      NULL, @release_pointer
     )
     ON CONFLICT(run_id) DO UPDATE SET
       snapshot_id = excluded.snapshot_id,
@@ -110,7 +128,9 @@ export function prepareArtifactPublication(
       artifact_path = excluded.artifact_path,
       diagnostic_code = NULL,
       prepared_at = excluded.prepared_at,
-      uploaded_at = NULL
+      uploaded_at = NULL,
+      artifact_url = NULL,
+      release_pointer = excluded.release_pointer
   `
 
   db.prepare(insertSql).run({
@@ -121,6 +141,7 @@ export function prepareArtifactPublication(
     byte_size: byteSize,
     artifact_path: options.outputPath,
     prepared_at: preparedAt,
+    release_pointer: initialPointerJson,
   })
 
   const publication = getArtifactPublication(db, runId)
@@ -130,10 +151,17 @@ export function prepareArtifactPublication(
   return { manifest, publication }
 }
 
-export function markArtifactUploaded(db: Database.Database, runId: string, uploadedAt = new Date().toISOString()): boolean {
+export function markArtifactUploaded(
+  db: Database.Database,
+  runId: string,
+  uploadedAt = new Date().toISOString(),
+  details?: { releasePointer?: string; artifactUrl?: string },
+): boolean {
   const result = db
-    .prepare("UPDATE artifact_publications SET state = 'uploaded', uploaded_at = ? WHERE run_id = ? AND state = 'prepared'")
-    .run(uploadedAt, runId)
+    .prepare(
+      "UPDATE artifact_publications SET state = 'uploaded', uploaded_at = ?, release_pointer = coalesce(?, release_pointer), artifact_url = coalesce(?, artifact_url) WHERE run_id = ? AND state = 'prepared'",
+    )
+    .run(uploadedAt, details?.releasePointer ?? null, details?.artifactUrl ?? null, runId)
   return result.changes > 0
 }
 
@@ -142,6 +170,56 @@ export function markArtifactFailed(db: Database.Database, runId: string, diagnos
     .prepare("UPDATE artifact_publications SET state = 'failed', diagnostic_code = ? WHERE run_id = ?")
     .run(diagnosticCode, runId)
   return result.changes > 0
+}
+
+export function ensureReleasePointerFile(paths: { pointerPath: string; outputPath?: string }, publication: ArtifactPublicationRow): void {
+  if (existsSync(paths.pointerPath)) {
+    try {
+      const existing = JSON.parse(readFileSync(paths.pointerPath, 'utf8')) as Partial<CatalogReleasePointer>
+      if (
+        existing.snapshotId === publication.snapshot_id &&
+        existing.catalogFingerprint === publication.catalog_fingerprint &&
+        existing.artifactSha256 === publication.artifact_sha256
+      ) {
+        return
+      }
+    } catch {}
+  }
+
+  if (publication.release_pointer) {
+    mkdirSync(dirname(paths.pointerPath), { recursive: true })
+    const tmpPath = `${paths.pointerPath}.tmp.${process.pid}.${Date.now()}`
+    writeFileSync(tmpPath, `${publication.release_pointer.trim()}\n`, 'utf8')
+    renameSync(tmpPath, paths.pointerPath)
+    return
+  }
+
+  const artifactPath = publication.artifact_path ?? paths.outputPath
+  if (artifactPath && existsSync(artifactPath)) {
+    const reader = openPublicCatalog(artifactPath)
+    try {
+      const meta = reader.getCatalogMetadata()
+      const reconstructed: CatalogReleasePointer = {
+        snapshotId: meta.snapshot_id,
+        catalogFingerprint: meta.catalog_fingerprint,
+        artifactSha256: publication.artifact_sha256,
+        recordCount: meta.record_count,
+        canonicalCount: meta.canonical_count,
+        pluginsCount: meta.plugins_count,
+        statsCount: meta.stats_count,
+        schemaVersion: meta.schema_version,
+        generatorVersion: meta.generator_version,
+        createdAt: meta.created_at,
+        ...(publication.artifact_url ? { artifactUrl: publication.artifact_url } : {}),
+      }
+      mkdirSync(dirname(paths.pointerPath), { recursive: true })
+      const tmpPath = `${paths.pointerPath}.tmp.${process.pid}.${Date.now()}`
+      writeFileSync(tmpPath, `${JSON.stringify(reconstructed, null, 2)}\n`, 'utf8')
+      renameSync(tmpPath, paths.pointerPath)
+    } finally {
+      reader.close()
+    }
+  }
 }
 
 export function writeReleasePointer(manifest: SnapshotManifest, pointerPath: string, artifactUrl?: string): CatalogReleasePointer {

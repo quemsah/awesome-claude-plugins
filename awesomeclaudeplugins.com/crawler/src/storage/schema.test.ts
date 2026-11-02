@@ -711,6 +711,8 @@ it('upgrades a populated v22 database to v23 creating artifact_publications', ()
       'diagnostic_code',
       'prepared_at',
       'uploaded_at',
+      'artifact_url',
+      'release_pointer',
     ])
   } finally {
     db.close()

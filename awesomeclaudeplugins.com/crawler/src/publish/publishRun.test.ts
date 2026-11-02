@@ -836,3 +836,80 @@ it('refuses to commit when uploadReleaseAsset is not provided on the git client'
   expect(git.patches).toBe(0)
   expect((db.prepare("SELECT state FROM artifact_publications WHERE run_id = 'r1'").get() as { state: string }).state).toBe('failed')
 })
+
+it('recovers after a restart when artifact is already uploaded and pointer file is missing or stale', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-restart-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  // Simulate a crash right after release asset upload:
+  // publication is marked uploaded, but process crashed and pointer file was deleted or lost on restart
+  rmSync(releasePointerPath, { force: true })
+  expect(existsSync(releasePointerPath)).toBe(false)
+
+  // publishRun should detect missing pointer, upload/reconstruct it, and complete commit
+  const commit = await publishRun(db, git, 'r1', {
+    writeEnabled: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  expect(commit).toBe(git.head)
+  expect(existsSync(releasePointerPath)).toBe(true)
+
+  // Now test with publication.state === 'uploaded' already set, simulating a restart after upload
+  // Reset run to completed with pending commit to test recovery with uploaded state
+  const db2 = fixture()
+  const git2 = new Branch()
+  const directory2 = mkdtempSync(join(import.meta.dirname, '.artifact-restart2-'))
+  directories.push(directory2)
+  const artifactOutputPath2 = join(directory2, 'catalog.sqlite')
+  const releasePointerPath2 = join(directory2, 'catalog-release.json')
+
+  prepareDraft(db2, 'r1', timestamp, {
+    artifactOutputPath: artifactOutputPath2,
+    releasePointerPath: releasePointerPath2,
+  })
+
+  // Mock failure during branch update
+  git2.failure = 'patch-before'
+
+  // First call uploads asset, writes pointer, but fails during commit/patch
+  await expect(
+    publishRun(db2, git2, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath: artifactOutputPath2,
+      releasePointerPath: releasePointerPath2,
+    }),
+  ).rejects.toThrowError(PublicationError)
+
+  git2.failure = null
+
+  // Now publication was marked failed due to git failure: reset to uploaded to simulate restart after successful upload
+  db2.prepare("UPDATE artifact_publications SET state = 'uploaded' WHERE run_id = 'r1'").run()
+
+  // Corrupt or delete pointer file in checkout
+  rmSync(releasePointerPath2, { force: true })
+  expect(existsSync(releasePointerPath2)).toBe(false)
+
+  // Recovery should reconstruct pointer from durable data and complete publication
+  const commit2 = await publishRun(db2, git2, 'r1', {
+    writeEnabled: true,
+    recover: true,
+    artifactOutputPath: artifactOutputPath2,
+    releasePointerPath: releasePointerPath2,
+  })
+
+  expect(commit2).toBe(git2.head)
+  expect(existsSync(releasePointerPath2)).toBe(true)
+  const restoredPointer = JSON.parse(readFileSync(releasePointerPath2, 'utf8')) as { snapshotId?: string }
+  expect(restoredPointer.snapshotId).toBeDefined()
+})

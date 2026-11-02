@@ -24,6 +24,7 @@ import {
 } from '../storage/runs.js'
 import {
   type CatalogReleasePointer,
+  ensureReleasePointerFile,
   getArtifactPublication,
   markArtifactFailed,
   markArtifactUploaded,
@@ -294,6 +295,9 @@ function checkedSnapshot(
         const publication = getArtifactPublication(db, runId)
         const paths = resolveArtifactPaths(options)
         if (publication && publication.state === 'uploaded') {
+          if (paths) {
+            ensureReleasePointerFile(paths, publication)
+          }
           if (paths && existsSync(paths.pointerPath)) {
             const pointerRaw = readFileSync(paths.pointerPath, 'utf8')
             try {
@@ -540,14 +544,23 @@ export async function publishRun(
             if (uploaded.sha256 !== publication.artifact_sha256) {
               throw new Error(`Uploaded asset SHA-256 mismatch: expected ${publication.artifact_sha256}, got ${uploaded.sha256}`)
             }
+            let pointer: CatalogReleasePointer
             if (manifest) {
-              writeReleasePointer(manifest, paths.pointerPath, uploaded.downloadUrl)
+              pointer = writeReleasePointer(manifest, paths.pointerPath, uploaded.downloadUrl)
             } else if (existsSync(paths.pointerPath)) {
-              const existingPointer = JSON.parse(readFileSync(paths.pointerPath, 'utf8')) as CatalogReleasePointer
-              existingPointer.artifactUrl = uploaded.downloadUrl
-              writeFileSync(paths.pointerPath, `${JSON.stringify(existingPointer, null, 2)}\n`, 'utf8')
+              pointer = JSON.parse(readFileSync(paths.pointerPath, 'utf8')) as CatalogReleasePointer
+              pointer.artifactUrl = uploaded.downloadUrl
+              writeFileSync(paths.pointerPath, `${JSON.stringify(pointer, null, 2)}\n`, 'utf8')
+            } else {
+              ensureReleasePointerFile(paths, publication)
+              pointer = JSON.parse(readFileSync(paths.pointerPath, 'utf8')) as CatalogReleasePointer
+              pointer.artifactUrl = uploaded.downloadUrl
+              writeFileSync(paths.pointerPath, `${JSON.stringify(pointer, null, 2)}\n`, 'utf8')
             }
-            markArtifactUploaded(db, runId, now().toISOString())
+            markArtifactUploaded(db, runId, now().toISOString(), {
+              releasePointer: JSON.stringify(pointer, null, 2),
+              artifactUrl: uploaded.downloadUrl,
+            })
           } catch (error) {
             markArtifactFailed(db, runId, error instanceof Error ? error.message : 'upload_failed')
             throw new PublicationError('snapshot_invalid')
@@ -555,7 +568,11 @@ export async function publishRun(
         }
 
         const finalPublication = getArtifactPublication(db, runId)
-        if (finalPublication?.state !== 'uploaded' || !existsSync(paths.pointerPath)) {
+        if (finalPublication?.state !== 'uploaded') {
+          throw new PublicationError('snapshot_invalid')
+        }
+        ensureReleasePointerFile(paths, finalPublication)
+        if (!existsSync(paths.pointerPath)) {
           throw new PublicationError('snapshot_invalid')
         }
         try {

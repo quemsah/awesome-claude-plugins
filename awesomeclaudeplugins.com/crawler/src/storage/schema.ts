@@ -474,6 +474,10 @@ function migrateTo22(db: Database.Database): void {
   db.pragma('user_version = 22')
 }
 
+function hasArtifactPubColumn(db: Database.Database, name: string): boolean {
+  return (db.pragma('table_info(artifact_publications)') as Array<{ name: string }>).some((column) => column.name === name)
+}
+
 function migrateTo23(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS artifact_publications (
@@ -486,11 +490,15 @@ function migrateTo23(db: Database.Database): void {
       artifact_path TEXT,
       diagnostic_code TEXT,
       prepared_at TEXT NOT NULL,
-      uploaded_at TEXT
+      uploaded_at TEXT,
+      artifact_url TEXT,
+      release_pointer TEXT
     );
     CREATE INDEX IF NOT EXISTS artifact_publications_state ON artifact_publications(state);
     PRAGMA user_version = 23;
   `)
+  if (!hasArtifactPubColumn(db, 'artifact_url')) db.exec('ALTER TABLE artifact_publications ADD COLUMN artifact_url TEXT')
+  if (!hasArtifactPubColumn(db, 'release_pointer')) db.exec('ALTER TABLE artifact_publications ADD COLUMN release_pointer TEXT')
 }
 
 // Keep the migration sequence explicit while avoiding a growing chain of conditional branches.
