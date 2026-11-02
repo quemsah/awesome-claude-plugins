@@ -1,4 +1,5 @@
-import { copyFileSync, existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import type Database from 'better-sqlite3'
 import { getArtifactPublication } from '../publish/artifactPublisher.js'
@@ -57,15 +58,22 @@ export function exportDraftSnapshot(db: Database.Database, runId: string, direct
     }
 
     if (files.catalogReleaseJson) {
-      writeFileSync(resolve(target, 'ui/catalog-release.json'), files.catalogReleaseJson, { flag: 'wx', mode: 0o600 })
       if (hasArtifactTable(db)) {
         const publication = getArtifactPublication(db, runId)
         const paths = resolveArtifactPaths()
         const artifactPath = publication?.artifact_path ?? paths?.outputPath
-        if (artifactPath && existsSync(artifactPath)) {
-          copyFileSync(artifactPath, resolve(data, 'catalog.sqlite'))
+        if (!artifactPath || !existsSync(artifactPath)) {
+          throw new DraftExportError('export_write_failed')
         }
+        if (publication?.artifact_sha256) {
+          const actualSha = createHash('sha256').update(readFileSync(artifactPath)).digest('hex')
+          if (actualSha !== publication.artifact_sha256) {
+            throw new DraftExportError('export_write_failed')
+          }
+        }
+        copyFileSync(artifactPath, resolve(data, 'catalog.sqlite'))
       }
+      writeFileSync(resolve(target, 'ui/catalog-release.json'), files.catalogReleaseJson, { flag: 'wx', mode: 0o600 })
     }
   } catch {
     rmSync(target, { recursive: true })

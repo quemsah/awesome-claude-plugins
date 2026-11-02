@@ -485,9 +485,6 @@ async function createAndPublishSnapshot(
       const tree = await git.createTree(head.treeSha, snapshot.files)
       commit = await git.createCommit(tree, head.sha, datasetCommitMessage(snapshot.draft.date))
     } catch (error) {
-      if (hasArtifactTable(db) && getArtifactPublication(db, runId)) {
-        markArtifactFailed(db, runId, error instanceof Error ? error.message : 'git_error')
-      }
       if (error instanceof PublicationError) throw error
       if (error instanceof ShutdownError) throw new PublicationError('terminated')
       throw new PublicationError('git_error')
@@ -501,9 +498,6 @@ async function createAndPublishSnapshot(
     forgetPending(db, runId, commit)
     expectedPending = null
     if (result === 'rejected') {
-      if (hasArtifactTable(db) && getArtifactPublication(db, runId)) {
-        markArtifactFailed(db, runId, 'git_rejected')
-      }
       throw new PublicationError('git_error')
     }
   }

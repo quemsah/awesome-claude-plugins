@@ -167,7 +167,7 @@ export function markArtifactUploaded(
 
 export function markArtifactFailed(db: Database.Database, runId: string, diagnosticCode: string): boolean {
   const result = db
-    .prepare("UPDATE artifact_publications SET state = 'failed', diagnostic_code = ? WHERE run_id = ?")
+    .prepare("UPDATE artifact_publications SET state = 'failed', diagnostic_code = ? WHERE run_id = ? AND state != 'uploaded'")
     .run(diagnosticCode, runId)
   return result.changes > 0
 }

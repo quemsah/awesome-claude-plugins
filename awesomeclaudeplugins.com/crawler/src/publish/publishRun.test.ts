@@ -1090,3 +1090,46 @@ it('preserves existing publication and uploaded state when prepareDraft is calle
   expect(postReentryPub?.state).toBe('uploaded')
   expect(postReentryPub?.artifact_url).toBe(testUrl)
 })
+
+it('preserves uploaded artifact publication state across git failures and reuses pointer on retry', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-git-failure-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  // First publish attempt fails at Git commit step
+  git.failure = 'commit-before'
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toThrow(PublicationError)
+
+  const pubAfterGitFailure = getArtifactPublication(db, 'r1')
+  expect(pubAfterGitFailure).toBeDefined()
+  expect(pubAfterGitFailure?.state).toBe('uploaded')
+  expect(git.uploadedAssets.length).toBe(1)
+
+  // Repair Git and retry
+  git.failure = null
+  const commit = await publishRun(db, git, 'r1', {
+    writeEnabled: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  expect(commit).toBe(git.head)
+  expect(git.uploadedAssets.length).toBe(1) // Was NOT re-uploaded!
+  const finalPub = getArtifactPublication(db, 'r1')
+  expect(finalPub?.snapshot_id).toBe(pubAfterGitFailure?.snapshot_id)
+  expect(finalPub?.state).toBe('uploaded')
+})

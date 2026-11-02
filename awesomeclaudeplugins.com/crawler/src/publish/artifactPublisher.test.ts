@@ -125,4 +125,24 @@ describe('artifactPublisher', () => {
     expect(pub?.state).toBe('failed')
     expect(pub?.diagnostic_code).toBe('UPLOAD_TIMEOUT')
   })
+
+  it('refuses to transition an uploaded publication to failed', () => {
+    const runId = 'test-upload-guard'
+    const now = new Date().toISOString()
+    beginRun(db, runId, now)
+    completeRun(db, runId, now, 0)
+
+    const outputPath = join(tempDir, 'catalog.sqlite')
+    prepareArtifactPublication(db, runId, {
+      outputPath,
+      snapshotId: 'snap-guard',
+    })
+    markArtifactUploaded(db, runId, now, { artifactUrl: 'https://example.com/asset', releasePointer: '{}' })
+
+    const failed = markArtifactFailed(db, runId, 'LATE_GIT_ERROR')
+    expect(failed).toBe(false)
+
+    const pub = getArtifactPublication(db, runId)
+    expect(pub?.state).toBe('uploaded')
+  })
 })
