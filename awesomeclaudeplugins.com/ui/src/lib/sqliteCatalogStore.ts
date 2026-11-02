@@ -60,7 +60,13 @@ export function getSqliteReader(): PublicCatalogReader {
   if (existsSync(manifestPath)) {
     try {
       const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
-      if (!manifest || typeof manifest !== 'object') {
+      if (
+        !manifest ||
+        typeof manifest !== 'object' ||
+        Array.isArray(manifest) ||
+        typeof manifest.snapshotId !== 'string' ||
+        typeof manifest.catalogFingerprint !== 'string'
+      ) {
         throw new Error(`Invalid manifest structure at ${manifestPath}`)
       }
       expected = {

@@ -2,7 +2,6 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { GET as getCatalog } from '../app/api/catalog/route.ts'
-import { GET as getCatalogVersion } from '../app/api/catalog-version/route.ts'
 import { GET as getFeedJson } from '../app/feed.json/route.ts'
 import { GET as getLlmsTxt } from '../app/llms.txt/route.ts'
 import {
@@ -16,7 +15,7 @@ import {
 } from './catalog.ts'
 import { isRepoPageEndingInMd } from './markdownPaths.ts'
 import { getSitemapEntryCount, getSitemapShard, getSitemapShardCount } from './sitemap.ts'
-import { sqliteCloseCatalog } from './sqliteCatalogStore.ts'
+import { sqliteCloseCatalog, sqliteGetCatalogVersionHash } from './sqliteCatalogStore.ts'
 
 const SHA256_HEX_REGEX = /^[a-f0-9]{64}$/
 const SITEMAP_URL_REGEX = /^https:\/\/awesomeclaudeplugins\.com\//
@@ -65,10 +64,12 @@ describe('CATALOG_BACKEND=sqlite full UI integration tests', () => {
   })
 
   it('serves /api/catalog-version route with snapshot hash in SQLite mode', async () => {
+    const { GET: getCatalogVersion } = await import('../app/api/catalog-version/route.ts')
     const response = await getCatalogVersion()
     expect(response.status).toBe(200)
     const json = await response.json()
     expect(json.sha256).toMatch(SHA256_HEX_REGEX)
+    expect(json.sha256).toBe(sqliteGetCatalogVersionHash())
   })
 
   it('serves /feed.json route using SQLite catalog summary', async () => {
@@ -86,7 +87,7 @@ describe('CATALOG_BACKEND=sqlite full UI integration tests', () => {
     expect(response.status).toBe(200)
     const text = await response.text()
     expect(text).toContain('# Awesome Claude Plugins')
-    expect(text).toContain('Repositories indexed: 54226')
+    expect(text).toContain(`Repositories indexed: ${getCatalogCanonicalCount()}`)
   })
 
   it('provides stats history directly from SQLite', () => {
