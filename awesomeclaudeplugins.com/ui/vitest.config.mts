@@ -22,7 +22,11 @@ export default defineConfig({
       },
       {
         extends: true,
-        test: { name: 'catalog-data', include: realCatalogTests },
+        test: {
+          name: 'catalog-data',
+          include: realCatalogTests,
+          fileParallelism: false,
+        },
       },
     ],
   },
