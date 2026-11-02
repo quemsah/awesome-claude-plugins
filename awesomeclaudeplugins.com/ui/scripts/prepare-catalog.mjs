@@ -51,19 +51,19 @@ export function validateReleasePointer(pointer) {
   if (typeof pointer.artifactSha256 !== 'string' || !SHA256_HEX.test(pointer.artifactSha256)) {
     throw new Error(`Invalid catalog release pointer: invalid artifactSha256 (expected 64-char hex, got "${pointer.artifactSha256}")`)
   }
-  if (typeof pointer.schemaVersion !== 'number' || pointer.schemaVersion !== SCHEMA_VERSION) {
+  if (!Number.isInteger(pointer.schemaVersion) || pointer.schemaVersion !== SCHEMA_VERSION) {
     throw new Error(`Invalid catalog release pointer: unsupported schemaVersion ${pointer.schemaVersion} (expected ${SCHEMA_VERSION})`)
   }
-  if (typeof pointer.recordCount !== 'number' || pointer.recordCount < 0) {
+  if (!Number.isInteger(pointer.recordCount) || pointer.recordCount < 0) {
     throw new Error('Invalid catalog release pointer: missing or invalid recordCount')
   }
-  if (typeof pointer.canonicalCount !== 'number' || pointer.canonicalCount < 0) {
+  if (!Number.isInteger(pointer.canonicalCount) || pointer.canonicalCount < 0) {
     throw new Error('Invalid catalog release pointer: missing or invalid canonicalCount')
   }
-  if (typeof pointer.pluginsCount !== 'number' || pointer.pluginsCount < 0) {
+  if (!Number.isInteger(pointer.pluginsCount) || pointer.pluginsCount < 0) {
     throw new Error('Invalid catalog release pointer: missing or invalid pluginsCount')
   }
-  if (typeof pointer.statsCount !== 'number' || pointer.statsCount < 0) {
+  if (!Number.isInteger(pointer.statsCount) || pointer.statsCount < 0) {
     throw new Error('Invalid catalog release pointer: missing or invalid statsCount')
   }
   return pointer

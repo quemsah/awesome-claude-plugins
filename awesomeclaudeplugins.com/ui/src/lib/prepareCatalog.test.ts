@@ -257,8 +257,12 @@ describe('prepareCatalog script', () => {
         })(),
         'invalid artifactSha256',
       ],
-      ['schemaVersion', { ...validPointer, schemaVersion: 999 }, 'unsupported schemaVersion'],
-      ['recordCount', { ...validPointer, recordCount: -1 }, 'missing or invalid recordCount'],
+      ['schemaVersion (unknown)', { ...validPointer, schemaVersion: 999 }, 'unsupported schemaVersion'],
+      ['schemaVersion (fractional)', { ...validPointer, schemaVersion: 1.1 }, 'unsupported schemaVersion'],
+      ['recordCount (negative)', { ...validPointer, recordCount: -1 }, 'missing or invalid recordCount'],
+      ['recordCount (fractional)', { ...validPointer, recordCount: 1.5 }, 'missing or invalid recordCount'],
+      ['recordCount (Infinity)', { ...validPointer, recordCount: Number.POSITIVE_INFINITY }, 'missing or invalid recordCount'],
+      ['recordCount (NaN)', { ...validPointer, recordCount: Number.NaN }, 'missing or invalid recordCount'],
       [
         'recordCount (omitted)',
         (() => {
@@ -267,7 +271,8 @@ describe('prepareCatalog script', () => {
         })(),
         'missing or invalid recordCount',
       ],
-      ['canonicalCount', { ...validPointer, canonicalCount: -1 }, 'missing or invalid canonicalCount'],
+      ['canonicalCount (negative)', { ...validPointer, canonicalCount: -1 }, 'missing or invalid canonicalCount'],
+      ['canonicalCount (fractional)', { ...validPointer, canonicalCount: 2.2 }, 'missing or invalid canonicalCount'],
       [
         'canonicalCount (omitted)',
         (() => {
@@ -276,7 +281,8 @@ describe('prepareCatalog script', () => {
         })(),
         'missing or invalid canonicalCount',
       ],
-      ['pluginsCount', { ...validPointer, pluginsCount: -1 }, 'missing or invalid pluginsCount'],
+      ['pluginsCount (negative)', { ...validPointer, pluginsCount: -1 }, 'missing or invalid pluginsCount'],
+      ['pluginsCount (fractional)', { ...validPointer, pluginsCount: 3.14 }, 'missing or invalid pluginsCount'],
       [
         'pluginsCount (omitted)',
         (() => {
@@ -285,7 +291,8 @@ describe('prepareCatalog script', () => {
         })(),
         'missing or invalid pluginsCount',
       ],
-      ['statsCount', { ...validPointer, statsCount: -1 }, 'missing or invalid statsCount'],
+      ['statsCount (negative)', { ...validPointer, statsCount: -1 }, 'missing or invalid statsCount'],
+      ['statsCount (fractional)', { ...validPointer, statsCount: 0.5 }, 'missing or invalid statsCount'],
       [
         'statsCount (omitted)',
         (() => {
