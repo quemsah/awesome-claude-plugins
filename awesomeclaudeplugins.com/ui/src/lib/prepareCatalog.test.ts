@@ -1,10 +1,12 @@
+/** biome-ignore-all lint/style/useNamingConvention: JSON fixture preserves published field names */
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import Database from 'better-sqlite3'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { prepareCatalog } from '../../scripts/prepare-catalog.mjs'
 
 const MISSING_STATS_PATTERN = /Catalog statistics dataset not found/
+const ARTIFACT_MISMATCH_PATTERN = /published SHA-256/
 
 describe('prepareCatalog script', () => {
   const tempDir = join(process.cwd(), 'src/lib/__temp_test_prepare_catalog__')
@@ -26,21 +28,25 @@ describe('prepareCatalog script', () => {
     expect(() => prepareCatalog({ dataDir: tempDir })).toThrow(MISSING_STATS_PATTERN)
   })
   const writeSample = () => {
-    writeFileSync(join(tempDir, 'repos.json'), JSON.stringify([
-      { id: 1, owner: 'example', repo_name: 'plugin', description: 'A searchable plugin', plugins_count: 1, stargazers_count: 5 }
-    ]))
-    writeFileSync(join(tempDir, 'stats.json'), JSON.stringify([
-      { id: 1, date: '2026-11-01', size: 1 }
-    ]))
+    writeFileSync(
+      join(tempDir, 'repos.json'),
+      JSON.stringify([
+        { id: 1, owner: 'example', repo_name: 'plugin', description: 'A searchable plugin', plugins_count: 1, stargazers_count: 5 },
+      ])
+    )
+    writeFileSync(join(tempDir, 'stats.json'), JSON.stringify([{ id: 1, date: '2026-11-01', size: 1 }]))
   }
 
   it('changes the snapshot identity when statistics change', () => {
     writeSample()
     const first = prepareCatalog({ dataDir: tempDir })
-    writeFileSync(join(tempDir, 'stats.json'), JSON.stringify([
-      { id: 1, date: '2026-11-01', size: 1 },
-      { id: 2, date: '2026-11-02', size: 1 }
-    ]))
+    writeFileSync(
+      join(tempDir, 'stats.json'),
+      JSON.stringify([
+        { id: 1, date: '2026-11-01', size: 1 },
+        { id: 2, date: '2026-11-02', size: 1 },
+      ])
+    )
     const second = prepareCatalog({ dataDir: tempDir })
     expect(second.snapshotId).not.toBe(first.snapshotId)
   })
@@ -56,7 +62,7 @@ describe('prepareCatalog script', () => {
     }
     const manifest = JSON.parse(readFileSync(join(tempDir, 'catalog.manifest.json'), 'utf8'))
     expect(manifest.artifactSha256).toBe(first.artifactSha256)
-    expect(() => prepareCatalog({ dataDir: tempDir })).toThrow(/published SHA-256/)
+    expect(() => prepareCatalog({ dataDir: tempDir })).toThrow(ARTIFACT_MISMATCH_PATTERN)
   })
 
 })
