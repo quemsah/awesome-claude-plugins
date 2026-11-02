@@ -1,11 +1,10 @@
 export const dynamic = 'force-static'
 
-import statsData from '../../data/stats.json' with { type: 'json' }
-import { getCanonicalCatalogRepos } from '../../lib/catalog.ts'
-import { buildLlmsText, getCatalogSummary } from '../../lib/llmsText'
+import { getPublishedCatalogSummary } from '../../lib/catalog.ts'
+import { buildLlmsText } from '../../lib/llmsText.ts'
 
 export function GET() {
-  const llmsContent = buildLlmsText(getCatalogSummary(getCanonicalCatalogRepos(), statsData))
+  const llmsContent = buildLlmsText(getPublishedCatalogSummary())
 
   return new Response(llmsContent, {
     headers: {

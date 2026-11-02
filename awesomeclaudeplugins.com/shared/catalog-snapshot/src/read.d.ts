@@ -7,6 +7,7 @@ import type {
   PublicCatalogReader,
   SearchPage,
   SeoRecord,
+  SitemapRecord,
   SortOption,
   StatRecord,
 } from './index.d.ts'
@@ -20,6 +21,7 @@ export type {
   PublicCatalogReader,
   SearchPage,
   SeoRecord,
+  SitemapRecord,
   SortOption,
   StatRecord,
 }

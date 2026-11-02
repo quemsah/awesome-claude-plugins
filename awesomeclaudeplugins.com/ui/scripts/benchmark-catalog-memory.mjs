@@ -45,7 +45,7 @@ if (values.baseline || values.candidate) {
   const md = [
     '## Catalog search memory A/B (MiB, median of independent processes)',
     '',
-    'Catalog records: ' + sizes[0] + '; runs per revision: main=' + base.length + ', PR=' + pr.length,
+    `Catalog records: ${sizes[0]}; runs per revision: main=${base.length}, PR=${pr.length}`,
     '',
     '| Measurement | main / FTS5 | PR / FTS5 | PR - main |',
     '| --- | ---: | ---: | ---: |',
@@ -53,7 +53,7 @@ if (values.baseline || values.candidate) {
   for (const [name, metric] of rows) {
     const a = median(base.map(metric)),
       b = median(pr.map(metric))
-    md.push('| ' + name + ' | ' + a.toFixed(1) + ' | ' + b.toFixed(1) + ' | ' + (b >= a ? '+' : '') + (b - a).toFixed(1) + ' |')
+    md.push(`| ${name} | ${a.toFixed(1)} | ${b.toFixed(1)} | ${b >= a ? '+' : ''}${(b - a).toFixed(1)} |`)
   }
   md.push(
     '',
@@ -64,7 +64,7 @@ if (values.baseline || values.candidate) {
     ''
   )
   const output = md.join('\n')
-  process.stdout.write(output + '\n')
+  process.stdout.write(`${output}\n`)
   // CI protects the optimization from future memory regressions. An on-demand index
   // may use more transient memory, but it must stay within a bounded overhead.
   const baselineImport = median(base.map(snapshotValue('afterImport')))
@@ -76,7 +76,7 @@ if (values.baseline || values.candidate) {
   assert(candidateImport <= baselineImport * 0.9, 'Catalog initialization must reduce RSS at least 10%')
   assert(candidateWarm <= baselineWarm * 1.1, 'Warm search RSS regression exceeds 10%')
   assert(candidatePeak <= baselinePeak * 1.2, 'Peak RSS regression exceeds 20%')
-  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, output + '\n')
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${output}\n`)
 } else {
   assert(global.gc, 'Run with node --expose-gc')
   assert(values.label && values.out, 'Provide --label and --out')
@@ -123,14 +123,14 @@ if (values.baseline || values.candidate) {
     queries,
     phases,
   }
-  writeFileSync(values.out, JSON.stringify(report, null, 2) + '\n')
+  writeFileSync(values.out, `${JSON.stringify(report, null, 2)}\n`)
   console.log(
     values.label +
       ': catalog=' +
       catalogSize +
       ', RSS=' +
       Object.entries(phases)
-        .map(([k, v]) => k + '=' + v.rssMiB + 'MiB')
+        .map(([k, v]) => `${k}=${v.rssMiB}MiB`)
         .join(', ') +
       ', peak=' +
       phases.afterQueries.peakRssMiB +

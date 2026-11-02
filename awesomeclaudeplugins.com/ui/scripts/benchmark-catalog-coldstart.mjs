@@ -159,8 +159,8 @@ if (values.baseline || values.candidate) {
     let lastError = ''
     while (true) {
       assert(!spawnError, `Next.js spawn error: ${spawnError}`)
-      assert(server.exitCode === null, 'Next.js exited before responding: ' + logs)
-      if (performance.now() - start > 120_000) throw new Error('Cold-start timeout: ' + lastError + '\n' + logs)
+      assert(server.exitCode === null, `Next.js exited before responding: ${logs}`)
+      if (performance.now() - start > 120_000) throw new Error(`Cold-start timeout: ${lastError}\n${logs}`)
       try {
         await request(first, 15_000)
         break
@@ -185,7 +185,7 @@ if (values.baseline || values.candidate) {
       rssAfterSecondMiB,
       sampledPeakRssMiB,
     }
-    writeFileSync(values.out, JSON.stringify(report, null, 2) + '\n')
+    writeFileSync(values.out, `${JSON.stringify(report, null, 2)}\n`)
     console.log(JSON.stringify(report))
   } finally {
     clearInterval(timer)

@@ -32,7 +32,7 @@ test('url, sort control, and catalog results stay aligned when sort is chosen mi
     // `q=...&sort=...` or the other way around.
     urlParams: Object.fromEntries(new URL(page.url()).searchParams),
     searchInput: await searchbox.inputValue(),
-    sortControl: await combobox.innerText(),
+    sortControl: await combobox.textContent(),
     resultsSortedBy: catalogSorts[catalogSorts.length - 1] ?? null,
   })
   const alignedState: Awaited<ReturnType<typeof screenState>> = {
@@ -69,7 +69,7 @@ test('reversing sort before an earlier URL navigation settles restores the corre
 
   const screenState = async () => ({
     sortParam: new URL(page.url()).searchParams.get('sort'),
-    selectedSort: await page.getByRole('combobox', { name: 'Sort by' }).innerText(),
+    selectedSort: await page.getByRole('combobox', { name: 'Sort by' }).textContent(),
   })
   const expected = { sortParam: null, selectedSort: 'Stars' }
   await expect.poll(screenState).toEqual(expected)

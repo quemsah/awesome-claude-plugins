@@ -103,6 +103,13 @@ export type ExpectedSnapshot = {
   catalogFingerprint?: string
 }
 
+export interface SitemapRecord {
+  owner: string
+  repo_name: string
+  path: string
+  catalog_updated_at: string | null
+}
+
 export interface PublicCatalogReader {
   getRepoByPath(path: string): CatalogRecord | undefined
   getRecordBySourceOrder(sourceOrder: number): CatalogRecord | undefined
@@ -112,6 +119,10 @@ export interface PublicCatalogReader {
   iterateIndexableRepos(batchSize?: number): Iterable<SeoRecord>
   iterateStatistics(batchSize?: number): Iterable<StatRecord>
   isLiteralMarkdownRepo(path: string): boolean
+  isCanonicalRepo(id: number, owner?: string, repoName?: string): boolean
+  getIndexableCount(): number
+  getSitemapPage(limit: number, offset: number): SitemapRecord[]
+  getStatistics(): StatRecord[]
   getCatalogMetadata(): CatalogMetadata
   close(): void
 }

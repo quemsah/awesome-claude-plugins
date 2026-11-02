@@ -5,7 +5,7 @@ import { Header } from '../components/common/Header.tsx'
 import { SimpleAnalytics } from '../components/common/SimpleAnalytics.tsx'
 import { WebVitals } from '../components/common/WebVitals.tsx'
 import { shouldLoadAnalytics } from '../lib/analytics.ts'
-import { getCanonicalCatalogRepos } from '../lib/catalog.ts'
+import { getCatalogCanonicalCount } from '../lib/catalog.ts'
 import { BASE_URL, DEFAULT_OG_IMAGE } from '../lib/constants.ts'
 import { GITHUB_RAW_URL } from '../lib/github.ts'
 import { withSiteAlternates } from '../lib/metadata.ts'
@@ -13,7 +13,7 @@ import { Providers } from '../providers/providers.tsx'
 import './globals.css'
 
 export function generateMetadata(): Metadata {
-  const repoCount = getCanonicalCatalogRepos().length
+  const repoCount = getCatalogCanonicalCount()
   const description =
     repoCount > 0
       ? `Search ${repoCount.toLocaleString('en-US')} GitHub repositories with Claude Code plugin marketplaces. Copy install commands. Updated daily.`

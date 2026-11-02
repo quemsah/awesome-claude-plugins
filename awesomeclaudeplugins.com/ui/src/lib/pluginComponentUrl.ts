@@ -61,6 +61,7 @@ function normalizeRelativePath(path: string): string | null {
   }
   const normalized = path.replace(LEADING_RELATIVE_PATTERN, '').replace(TRAILING_SLASHES_PATTERN, '').replace(EXACT_DOT_PATTERN, '')
   // Empty segments and interior dots produce ambiguous GitHub file paths.
+  // biome-ignore lint/complexity/useOptionalChain: empty string must not be split into ['']
   if (normalized && normalized.split('/').some((segment) => !isValidPathSegment(segment))) return null
   return normalized
 }
