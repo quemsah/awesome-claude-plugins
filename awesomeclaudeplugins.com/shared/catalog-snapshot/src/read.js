@@ -38,6 +38,8 @@ function getSearchTerms(query) {
 }
 
 const MAX_PAGINATION_VALUE = 2 ** 31 - 1
+// The public catalog API has always limited pageSize to 100.
+const MAX_PAGE_SIZE = 100
 
 function toInteger(value, fallback, min) {
   const number = Number(value ?? fallback)
@@ -71,6 +73,33 @@ function toCardRecord(record) {
   delete card.plugin_name
   delete card.plugin_description
   return card
+}
+
+function formatFullRecord(record) {
+  // Match catalog.ts:formatCatalogRepo for a full API page without mutating
+  // the published record stored in SQLite.
+  const clean = (candidate) => {
+    const result = {}
+    if (typeof candidate?.name === 'string' && candidate.name.trim()) {
+      result.name = candidate.name.trim()
+    }
+    if (typeof candidate?.description === 'string' && candidate.description.trim()) {
+      result.description = candidate.description.trim()
+    }
+    return Object.keys(result).length > 0 ? result : null
+  }
+  let summaries
+  if (Array.isArray(record.plugins) && record.plugins.length > 0) {
+    summaries = record.plugins.map(clean).filter(Boolean)
+  }
+  if (!summaries?.length && Array.isArray(record.plugin_summaries) && record.plugin_summaries.length > 0) {
+    summaries = record.plugin_summaries.map(clean).filter(Boolean)
+  }
+  if (!summaries?.length && (typeof record.plugin_name === 'string' || typeof record.plugin_description === 'string')) {
+    const standalone = clean({ name: record.plugin_name, description: record.plugin_description })
+    summaries = standalone ? [standalone] : []
+  }
+  return summaries?.length ? { ...record, plugins: summaries } : record
 }
 
 /**
@@ -219,7 +248,7 @@ export function openPublicCatalog(path, expected = {}) {
     getBrowsePage(options = {}) {
       const sort = options.sort && sortSql[options.sort] ? options.sort : 'stars-desc'
       const page = toInteger(options.page, 0, 0)
-      const pageSize = toInteger(options.pageSize, 24, 1)
+      const pageSize = Math.min(MAX_PAGE_SIZE, toInteger(options.pageSize, 24, 1))
       const view = options.view ?? 'full'
       const offset = page * pageSize
 
@@ -234,6 +263,8 @@ export function openPublicCatalog(path, expected = {}) {
       let items = rows.map((r) => JSON.parse(r.record_json))
       if (view === 'cards') {
         items = items.map(toCardRecord)
+      } else {
+        items = items.map(formatFullRecord)
       }
 
       const total = metadata.canonical_count
@@ -251,7 +282,7 @@ export function openPublicCatalog(path, expected = {}) {
     searchRepos(query, options = {}) {
       const sort = options.sort && rankColumns[options.sort] ? options.sort : 'stars-desc'
       const page = toInteger(options.page, 0, 0)
-      const pageSize = toInteger(options.pageSize, 24, 1)
+      const pageSize = Math.min(MAX_PAGE_SIZE, toInteger(options.pageSize, 24, 1))
       const view = options.view ?? 'full'
       const terms = getSearchTerms(query)
 
@@ -300,7 +331,7 @@ export function openPublicCatalog(path, expected = {}) {
         matches = rows.map((row) => {
           const item = JSON.parse(row.record_json)
           return {
-            item: view === 'cards' ? toCardRecord(item) : item,
+            item: view === 'cards' ? toCardRecord(item) : formatFullRecord(item),
             score: row.score,
           }
         })
