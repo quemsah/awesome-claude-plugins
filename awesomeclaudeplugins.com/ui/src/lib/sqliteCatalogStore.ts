@@ -156,16 +156,16 @@ export function sqliteGetBrowsePageCount(): number {
 
 export function sqliteGetCatalogLastModified(): Date {
   const root = globalThis as GlobalWithSqliteReader
+  const reader = getSqliteReader()
   const current = root[SQLITE_READER_KEY]
   if (current?.cachedLastModified) {
     return current.cachedLastModified
   }
 
-  const reader = getSqliteReader()
   const stats = reader.getStatistics()
   const lastModified = getLatestValidStatsDate(stats)
-  if (root[SQLITE_READER_KEY]) {
-    root[SQLITE_READER_KEY].cachedLastModified = lastModified
+  if (current) {
+    current.cachedLastModified = lastModified
   }
   return lastModified
 }
@@ -177,26 +177,15 @@ export function sqliteGetCatalogSummary(): {
   updatedAt: string | null
 } {
   const root = globalThis as GlobalWithSqliteReader
+  const reader = getSqliteReader()
   const current = root[SQLITE_READER_KEY]
   if (current?.cachedSummary) {
     return current.cachedSummary
   }
 
-  const reader = getSqliteReader()
   const meta = reader.getCatalogMetadata()
+  const latestDate = sqliteGetCatalogLastModified().toISOString()
   const pluginRepositoryCount = reader.getIndexableCount()
-  const stats = reader.getStatistics()
-
-  let latestDate: string | null = null
-  let latestDateValue = 0
-  for (const s of stats) {
-    const parsed = Date.parse(s.date)
-    if (!Number.isNaN(parsed) && parsed > latestDateValue) {
-      latestDateValue = parsed
-      latestDate = s.date
-    }
-  }
-
   const summary = {
     repoCount: meta.canonical_count,
     pluginRepositoryCount,

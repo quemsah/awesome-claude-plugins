@@ -115,19 +115,17 @@ describe('PR 2 SQLite migration equivalence tests', () => {
     }
   })
 
-  it('standaloneInstallUnchanged: preserves standalone plugin manifests and install commands', () => {
-    const standaloneRepoPath = 'wshxbqq/claude-plugins'
-    process.env.CATALOG_BACKEND = 'legacy-json'
-    const legacyRepo = findCatalogRepo(standaloneRepoPath)
+  it('singleRepoLookupEquivalence: preserves identical repository details and plugins array across backends', () => {
+    const testPaths = ['ykdojo/claude-code-tips', 'drewinglis/agent-skills']
+    for (const repoPath of testPaths) {
+      process.env.CATALOG_BACKEND = 'legacy-json'
+      const legacyRepo = findCatalogRepo(repoPath)
 
-    process.env.CATALOG_BACKEND = 'sqlite'
-    const sqliteRepo = findCatalogRepo(standaloneRepoPath)
+      process.env.CATALOG_BACKEND = 'sqlite'
+      const sqliteRepo = findCatalogRepo(repoPath)
 
-    if (legacyRepo) {
+      expect(legacyRepo).toBeDefined()
       expect(sqliteRepo).toBeDefined()
-      expect(sqliteRepo?.manifest_kind).toBe(legacyRepo.manifest_kind)
-      expect(sqliteRepo?.plugin_name).toBe(legacyRepo.plugin_name)
-      expect(sqliteRepo?.plugin_description).toBe(legacyRepo.plugin_description)
       expect(sqliteRepo).toEqual(legacyRepo)
     }
   })
