@@ -58,24 +58,41 @@ jobs:
         working-directory: candidate/awesomeclaudeplugins.com/ui
         run: |
           node -e '
+            const crypto = require("node:crypto");
             const Database = require("better-sqlite3");
             const db1 = new Database("../../../baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite", { readonly: true });
             const db2 = new Database("src/data/catalog.sqlite", { readonly: true });
-            const count1 = db1.prepare("SELECT count(*) as c FROM repositories WHERE is_canonical = 1").get()?.c;
-            const count2 = db2.prepare("SELECT count(*) as c FROM repositories WHERE is_canonical = 1").get()?.c;
-            if (!count1 || count1 !== count2) {
-              console.error("Catalog record count mismatch:", count1, "vs", count2);
-              process.exit(1);
+
+            function computeCanonicalDigest(db) {
+              const hash = crypto.createHash("sha256");
+              const count = db.prepare("SELECT count(*) as c FROM repositories WHERE is_canonical = 1").get()?.c ?? 0;
+              hash.update("count:" + count + ";");
+              const stmt = db.prepare("SELECT id, owner, repo_name, record_json FROM repositories WHERE is_canonical = 1 ORDER BY id");
+              for (const row of stmt.iterate()) {
+                hash.update(row.id + "|" + row.owner + "|" + row.repo_name + "|" + row.record_json + ";");
+              }
+              const metaFingerprint = db.prepare("SELECT catalog_fingerprint FROM catalog_metadata LIMIT 1").get()?.catalog_fingerprint || "";
+              return { count, digest: hash.digest("hex"), metaFingerprint };
             }
-            const sample1 = db1.prepare("SELECT id, owner, repo_name, plugins_count FROM repositories WHERE is_canonical = 1 ORDER BY id LIMIT 50").all();
-            const sample2 = db2.prepare("SELECT id, owner, repo_name, plugins_count FROM repositories WHERE is_canonical = 1 ORDER BY id LIMIT 50").all();
+
+            const res1 = computeCanonicalDigest(db1);
+            const res2 = computeCanonicalDigest(db2);
             db1.close();
             db2.close();
-            if (JSON.stringify(sample1) !== JSON.stringify(sample2)) {
-              console.error("Catalog canonical sample mismatch");
+
+            if (!res1.count || res1.count !== res2.count) {
+              console.error("Catalog record count mismatch:", res1.count, "vs", res2.count);
               process.exit(1);
             }
-            console.log("Catalog inputs verified identical (" + count1 + " canonical records)");
+            if (res1.digest !== res2.digest) {
+              console.error("Catalog canonical records digest mismatch:", res1.digest, "vs", res2.digest);
+              process.exit(1);
+            }
+            if (res1.metaFingerprint && res2.metaFingerprint && res1.metaFingerprint !== res2.metaFingerprint) {
+              console.error("Catalog metadata fingerprint mismatch:", res1.metaFingerprint, "vs", res2.metaFingerprint);
+              process.exit(1);
+            }
+            console.log("Catalog inputs verified identical (" + res1.count + " canonical records, digest: " + res1.digest + ")");
           '
       - name: Measure RAM (three independent processes per revision)
         shell: bash

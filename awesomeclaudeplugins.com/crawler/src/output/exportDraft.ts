@@ -73,8 +73,8 @@ function copyArtifactSnapshot(db: Database.Database, runId: string, dataDir: str
 }
 
 export function exportDraftSnapshot(db: Database.Database, runId: string, directory: string): void {
-  const target = resolveExportTarget(directory)
   const files = readDraftSnapshot(db, runId)
+  const target = resolveExportTarget(directory)
   try {
     const data = resolve(target, 'ui/src/data')
     mkdirSync(data, { recursive: true })

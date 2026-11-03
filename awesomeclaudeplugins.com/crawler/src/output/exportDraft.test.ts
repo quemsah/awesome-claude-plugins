@@ -51,6 +51,7 @@ it('refuses a changed draft before creating the output directory', async () => {
     db.prepare('UPDATE repositories SET description = ? WHERE id = 1').run('changed')
     const out = join(dir, 'draft')
     expect(() => exportDraftSnapshot(db, 'prepared', out)).toThrow(/snapshot_changed/)
+    expect(existsSync(out)).toBe(false)
     expect(() => readFileSync(join(out, 'README.md'), 'utf8')).toThrow()
   } finally {
     db.close()
