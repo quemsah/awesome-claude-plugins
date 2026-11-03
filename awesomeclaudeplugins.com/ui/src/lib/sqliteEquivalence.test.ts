@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { findCatalogRepo, searchCatalogRepos } from './catalog.ts'
+import type { Repo } from '../schemas/repo.schema.ts'
+import { type CatalogRepo, compareCatalogRepos, findCatalogRepo, searchCatalogRepos } from './catalog.ts'
 import { isRepoPageEndingInMd } from './markdownPaths.ts'
 import { getSqliteReader, sqliteCloseCatalog, sqliteGetCatalogMetadata } from './sqliteCatalogStore.ts'
-import type { CatalogRepo, Repo } from './types.ts'
 
 const WHITESPACE_REGEX = /\s+/
 
@@ -25,7 +25,7 @@ function referenceSearch(
         repo.owner,
         repo.repo_name,
         repo.description ?? '',
-        ...(repo.plugins ?? []).flatMap((p) => [p.name ?? '', p.description ?? '']),
+        ...(repo.plugins ?? []).flatMap((p: { name?: string; description?: string }) => [p.name ?? '', p.description ?? '']),
       ]
         .join(' ')
         .toLowerCase()
@@ -34,30 +34,8 @@ function referenceSearch(
   }
 
   const sorted = [...filtered].sort((a, b) => {
-    switch (sort) {
-      case 'stars-desc': {
-        const diff = (b.stars ?? 0) - (a.stars ?? 0)
-        return diff !== 0 ? diff : a.id - b.id
-      }
-      case 'forks-desc': {
-        const diff = (b.forks ?? 0) - (a.forks ?? 0)
-        return diff !== 0 ? diff : a.id - b.id
-      }
-      case 'plugins-desc': {
-        const diff = (b.plugins?.length ?? 0) - (a.plugins?.length ?? 0)
-        return diff !== 0 ? diff : a.id - b.id
-      }
-      case 'updated-desc': {
-        const diff = new Date(b.pushed_at ?? 0).getTime() - new Date(a.pushed_at ?? 0).getTime()
-        return diff !== 0 ? diff : a.id - b.id
-      }
-      case 'created-desc': {
-        const diff = new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
-        return diff !== 0 ? diff : a.id - b.id
-      }
-      default:
-        return a.id - b.id
-    }
+    const diff = compareCatalogRepos(a, b, sort)
+    return diff !== 0 ? diff : a.id - b.id
   })
 
   const total = sorted.length

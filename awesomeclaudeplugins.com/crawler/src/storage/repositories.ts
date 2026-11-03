@@ -16,7 +16,7 @@ export interface RepositoryRow {
   archived?: number | null
   plugins_count: number | null
   plugins_json: string | null
-  catalog_updated_at: string
+  catalog_updated_at: string | null
   github_node_id: string | null
   marketplace_oid: string | null
   repository_etag: string | null

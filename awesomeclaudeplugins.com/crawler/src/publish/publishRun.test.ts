@@ -1207,7 +1207,7 @@ it('recovers after restart and complete artifact loss on disk (deterministic reg
   })
 
   // First publication attempt fails during upload
-  git.uploadFailure = new Error('Connection reset')
+  git.uploadFailure = 'Connection reset'
   await expect(
     publishRun(db, git, 'r1', {
       writeEnabled: true,

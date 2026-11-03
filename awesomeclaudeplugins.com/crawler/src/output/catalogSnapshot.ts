@@ -33,13 +33,27 @@ export function publicTimestamp(value: string | null | undefined): string | unde
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : undefined
 }
 
+function attachCatalogMetadata(record: Record<string, unknown>, row: PublishableRepository, includeNewMetadata: boolean): void {
+  if (!includeNewMetadata) return
+
+  const pushed = publicTimestamp(row.pushed_at)
+  if (pushed) record.pushed_at = pushed
+
+  const added = publicTimestamp(row.catalog_added_at)
+  if (added) record.catalog_added_at = added
+
+  if (row.license) record.license = row.license
+
+  if (row.archived != null) {
+    record.archived = row.archived === 1 || row.archived === true
+  }
+}
+
 export function formatPublicCatalogRecord(
   row: PublishableRepository,
   options: { includeCatalogUpdatedAt?: boolean; includeNewCatalogMetadata?: boolean } = {},
 ): CatalogRecord {
   const plugins = parsePluginSummariesJson(row.plugins_json ?? null)
-  const pushed = publicTimestamp(row.pushed_at)
-  const added = publicTimestamp(row.catalog_added_at)
 
   const record: Record<string, unknown> = {
     stargazers_count: row.stargazers_count,
@@ -51,26 +65,11 @@ export function formatPublicCatalogRecord(
     plugins_count: row.plugins_count,
   }
 
-  if (options.includeCatalogUpdatedAt !== false && plugins !== null) {
-    record.plugins = plugins
-  }
-  if (options.includeCatalogUpdatedAt !== false && row.manifest_kind === 'standalone-plugin') {
-    record.manifest_kind = row.manifest_kind
-  }
-  if (options.includeCatalogUpdatedAt !== false && row.catalog_updated_at !== undefined) {
-    record.catalog_updated_at = row.catalog_updated_at
-  }
-  if (options.includeCatalogUpdatedAt !== false && options.includeNewCatalogMetadata !== false && pushed) {
-    record.pushed_at = pushed
-  }
-  if (options.includeCatalogUpdatedAt !== false && options.includeNewCatalogMetadata !== false && added) {
-    record.catalog_added_at = added
-  }
-  if (options.includeCatalogUpdatedAt !== false && options.includeNewCatalogMetadata !== false && row.license) {
-    record.license = row.license
-  }
-  if (options.includeCatalogUpdatedAt !== false && options.includeNewCatalogMetadata !== false && row.archived != null) {
-    record.archived = row.archived === true || row.archived === 1
+  if (options.includeCatalogUpdatedAt !== false) {
+    if (plugins !== null) record.plugins = plugins
+    if (row.manifest_kind === 'standalone-plugin') record.manifest_kind = row.manifest_kind
+    if (row.catalog_updated_at !== undefined) record.catalog_updated_at = row.catalog_updated_at
+    attachCatalogMetadata(record, row, options.includeNewCatalogMetadata !== false)
   }
   record.id = row.id
 

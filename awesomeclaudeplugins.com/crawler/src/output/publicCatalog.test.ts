@@ -218,7 +218,7 @@ describe('publicCatalog', () => {
         catalog_added_at: '2026-01-10T00:00:00.000Z',
         pushed_at: '2026-01-15T10:00:00.000Z',
         license: 'Apache-2.0',
-        archived: true,
+        archived: 1,
       },
     ]
 

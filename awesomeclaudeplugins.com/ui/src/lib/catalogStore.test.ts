@@ -147,7 +147,7 @@ describe('catalogStore', () => {
   it('does not return another repository when the supplied identity disagrees', async () => {
     const { getSqliteReader } = await import('./sqliteCatalogStore.ts')
     const reader = getSqliteReader()
-    const first = reader.iteratePublishedRecords().next().value
+    const [first] = reader.iteratePublishedRecords()
     expect(first).toBeDefined()
     expect(getRepoDetails(first.id, first.owner, first.repo_name)?.id).toBe(first.id)
     expect(getRepoDetails(first.id, 'definitely-not-the-owner', first.repo_name)).toBeNull()
@@ -156,7 +156,7 @@ describe('catalogStore', () => {
   it('delegates repo details lookup directly to sqlite reader', async () => {
     const { getSqliteReader } = await import('./sqliteCatalogStore.ts')
     const reader = getSqliteReader()
-    const first = reader.iteratePublishedRecords().next().value
+    const [first] = reader.iteratePublishedRecords()
     const details = getRepoDetails(first.id, first.owner, first.repo_name)
     expect(details).not.toBeNull()
     expect(details?.id).toBe(first.id)
@@ -177,7 +177,7 @@ describe('catalogStore', () => {
   it('hydrates repo details on demand with full description and plugins from sqlite', async () => {
     const { getSqliteReader } = await import('./sqliteCatalogStore.ts')
     const reader = getSqliteReader()
-    const first = reader.iteratePublishedRecords().next().value
+    const [first] = reader.iteratePublishedRecords()
     const hydrated = hydrateCatalogRepo(first)
 
     expect(hydrated.id).toBe(first.id)
