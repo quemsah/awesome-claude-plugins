@@ -396,6 +396,35 @@ function attachArtifactToDraft(
   }
 }
 
+function isPublicationReady(publication: ArtifactPublicationRow | null): publication is ArtifactPublicationRow {
+  if (!publication) return false
+  return publication.state === 'uploaded' || publication.state === 'prepared'
+}
+
+function readCheckedPointerRaw(
+  paths: { outputPath: string; pointerPath: string } | null,
+  publication: ArtifactPublicationRow,
+): string | null {
+  if (paths) {
+    ensureReleasePointerFile(paths, publication)
+    if (existsSync(paths.pointerPath)) return readFileSync(paths.pointerPath, 'utf8')
+  }
+  return publication.release_pointer ?? null
+}
+
+function validatePointerMatchesPublication(pointerRaw: string, publication: ArtifactPublicationRow): void {
+  try {
+    const pointer = JSON.parse(pointerRaw) as Partial<CatalogReleasePointer>
+    const matches =
+      pointer.snapshotId === publication.snapshot_id &&
+      pointer.catalogFingerprint === publication.catalog_fingerprint &&
+      pointer.artifactSha256 === publication.artifact_sha256
+    if (!matches) throw new Error('Pointer mismatch')
+  } catch {
+    throw new PublicationError('snapshot_invalid')
+  }
+}
+
 function resolveCheckedReleasePointer(
   db: Database.Database,
   runId: string,
@@ -405,36 +434,20 @@ function resolveCheckedReleasePointer(
   if (!hasArtifactTable(db)) return null
   const publication = getArtifactPublication(db, runId)
   const paths = resolveArtifactPaths(options, runId)
-  if (!publication || (publication.state !== 'uploaded' && publication.state !== 'prepared')) {
+  if (!isPublicationReady(publication)) {
     if (paths) throw new PublicationError('snapshot_invalid')
     return null
   }
   if (currentFingerprint && publication.catalog_fingerprint !== currentFingerprint) {
     throw new PublicationError('snapshot_changed')
   }
-  let pointerRaw: string | null = null
-  if (paths) {
-    ensureReleasePointerFile(paths, publication)
-    if (existsSync(paths.pointerPath)) pointerRaw = readFileSync(paths.pointerPath, 'utf8')
-  }
-  if (!pointerRaw && publication.release_pointer) pointerRaw = publication.release_pointer
+  const pointerRaw = readCheckedPointerRaw(paths, publication)
   if (!pointerRaw) {
     if (paths) throw new PublicationError('snapshot_invalid')
     return null
   }
-  try {
-    const pointer = JSON.parse(pointerRaw) as Partial<CatalogReleasePointer>
-    if (
-      pointer.snapshotId !== publication.snapshot_id ||
-      pointer.catalogFingerprint !== publication.catalog_fingerprint ||
-      pointer.artifactSha256 !== publication.artifact_sha256
-    ) {
-      throw new Error('Pointer mismatch')
-    }
-    return pointerRaw
-  } catch {
-    throw new PublicationError('snapshot_invalid')
-  }
+  validatePointerMatchesPublication(pointerRaw, publication)
+  return pointerRaw
 }
 
 function checkedSnapshot(

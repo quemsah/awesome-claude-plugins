@@ -35,13 +35,10 @@ function referenceSearch(
     })
   }
 
-  const sorted = [...filtered].sort((a, b) => {
-    const diff = compareCatalogRepos(a, b, sort)
-    return diff !== 0 ? diff : a.id - b.id
-  })
+  const sorted = [...filtered].sort((a, b) => compareCatalogRepos(a, b, sort))
 
   const total = sorted.length
-  const pluginsCount = sorted.reduce((sum, r) => sum + (r.plugins?.length ?? 0), 0)
+  const pluginsCount = sorted.reduce((sum, r) => sum + (r.plugins_count ?? r.plugins?.length ?? 0), 0)
   const start = page * pageSize
   const paged = sorted.slice(start, start + pageSize)
   const hasMore = start + pageSize < total
@@ -179,6 +176,7 @@ describe('SQLite catalog migration regression and equivalence gate', () => {
         description: 'Claude tools and assistant utilities',
         stargazers_count: 500,
         forks_count: 50,
+        subscribers_count: 10,
         pushed_at: '2026-03-01T00:00:00Z',
         catalog_added_at: '2026-01-01T00:00:00Z',
         plugins: [{ name: 'assistant', description: 'Core assistant plugin' }],
@@ -191,6 +189,7 @@ describe('SQLite catalog migration regression and equivalence gate', () => {
         description: 'Supercharged claude setup',
         stargazers_count: 1000,
         forks_count: 100,
+        subscribers_count: 20,
         pushed_at: '2026-04-01T00:00:00Z',
         catalog_added_at: '2026-02-01T00:00:00Z',
         plugins: [
@@ -206,6 +205,7 @@ describe('SQLite catalog migration regression and equivalence gate', () => {
         description: 'Nothing to see here',
         stargazers_count: 200,
         forks_count: 10,
+        subscribers_count: 5,
         pushed_at: '2026-02-01T00:00:00Z',
         catalog_added_at: '2026-01-15T00:00:00Z',
         plugins: [],
