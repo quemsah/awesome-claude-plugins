@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
-import { deserializeBaseline, sendIndexNowBatch, serializeBaseline } from './indexnow-state.mjs'
+import { deserializeBaseline, loadBaseline, saveBaseline, sendIndexNowBatch, serializeBaseline } from './indexnow-state.mjs'
 
 const url = 'https://awesomeclaudeplugins.com/org/repo'
 const INVALID_BASELINE_PATTERN = /Invalid IndexNow baseline/
@@ -15,6 +18,39 @@ test('baseline roundtrips and filters to URLs confirmed in live sitemap', () => 
   const json = serializeBaseline(records, new Set([url]))
   assert.deepEqual([...deserializeBaseline(json)], [['org/repo', { fingerprint: 'a1', url }]])
   assert.deepEqual([...deserializeBaseline(serializeBaseline(records))], [...records])
+})
+
+test('sqlite baseline roundtrips and filters accurately', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'indexnow-state-test-'))
+  const dbPath = join(dir, 'indexnow-state.sqlite')
+  try {
+    const records = new Map([
+      ['org/repo', { fingerprint: 'a1', url }],
+      ['org/other', { fingerprint: 'a2', url: 'https://awesomeclaudeplugins.com/org/other' }],
+    ])
+    saveBaseline(dbPath, records, new Set([url]))
+    const loaded = loadBaseline(dbPath)
+    assert.deepEqual([...loaded], [['org/repo', { fingerprint: 'a1', url }]])
+
+    saveBaseline(dbPath, records)
+    const reloaded = loadBaseline(dbPath)
+    assert.deepEqual([...reloaded], [...records])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('loadBaseline transparently migrates/reads legacy JSON baseline files', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'indexnow-legacy-test-'))
+  const jsonPath = join(dir, 'repos.json')
+  try {
+    const records = new Map([['org/repo', { fingerprint: 'f1', url }]])
+    writeFileSync(jsonPath, serializeBaseline(records))
+    const loaded = loadBaseline(jsonPath)
+    assert.deepEqual([...loaded], [...records])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 test('rejects invalid or truncated baseline and cannot silently advance it', () => {

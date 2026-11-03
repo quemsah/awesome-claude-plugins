@@ -9,6 +9,7 @@ import { getLatestValidStatsDate } from './catalogDates.ts'
 import { CATALOG_PAGE_SIZE } from './catalogPagination.ts'
 import { type CatalogQuality, getCatalogQuality } from './catalogQuality.ts'
 import { BASE_URL } from './constants.ts'
+import { hasSearchableTerms } from './fuzzySearch.ts'
 import { normalizeSearchQuery } from './searchQuery.ts'
 import type { SortOption } from './sortOptions.ts'
 
@@ -40,8 +41,11 @@ export function getSqliteReader(): PublicCatalogReader {
   const root = globalThis as GlobalWithSqliteReader
   const dbPath = getSqliteDbPath()
 
-  if (root[SQLITE_READER_KEY]?.dbPath === dbPath) {
-    return root[SQLITE_READER_KEY].reader
+  const cached = root[SQLITE_READER_KEY]
+  if (cached?.dbPath === dbPath) {
+    if (typeof cached.reader.isOpen === 'function' ? cached.reader.isOpen() : true) {
+      return cached.reader
+    }
   }
 
   if (root[SQLITE_READER_KEY]) {
@@ -106,8 +110,17 @@ export function sqliteSearchCatalogRepos(
   pageSize: number = CATALOG_PAGE_SIZE,
   options?: CatalogSearchOptions
 ): CatalogSearchResult {
-  const reader = getSqliteReader()
   const normalizedQuery = normalizeSearchQuery(query)
+  if (normalizedQuery && !hasSearchableTerms(normalizedQuery)) {
+    return {
+      hasMore: false,
+      pluginsCount: 0,
+      repos: [],
+      total: 0,
+    }
+  }
+
+  const reader = getSqliteReader()
   const view = options?.summaries === 'omit' ? 'cards' : 'full'
 
   if (normalizedQuery) {
@@ -285,4 +298,8 @@ export function sqliteGetCatalogQualityForRepo(repo: CatalogRepo, fallbackDescri
 
 export function sqliteGetCatalogVersionHash(): string {
   return getSqliteReader().getCatalogMetadata().catalog_fingerprint
+}
+
+export function sqliteGetCatalogMetadata() {
+  return getSqliteReader().getCatalogMetadata()
 }

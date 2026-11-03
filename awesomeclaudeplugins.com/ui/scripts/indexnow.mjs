@@ -1,16 +1,18 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { buildCatalogRecords, diffCatalogRecords, fingerprintCatalog } from './indexnow-changes.mjs'
-import { deserializeBaseline, sendIndexNowBatch, serializeBaseline } from './indexnow-state.mjs'
+import { buildCatalogRecordsFromSqlite, diffCatalogRecords } from './indexnow-changes.mjs'
+import { loadBaseline, saveBaseline, sendIndexNowBatch } from './indexnow-state.mjs'
 
 const SITE_URL = process.env.INDEXNOW_SITE_URL ?? 'https://awesomeclaudeplugins.com'
 const SITEMAP_URL = new URL('/sitemap.xml', SITE_URL)
 const INDEXNOW_KEY = '14273a4aad028282eac8537cb6ea0e5f'
 const KEY_LOCATION = new URL(`/${INDEXNOW_KEY}.txt`, SITE_URL).toString()
-const MAX_URLS_PER_REQUEST = 10_000
+const MAX_URLS_PER_REQUEST = Number(process.env.INDEXNOW_BATCH_SIZE) || 10_000
 const MODE = process.env.INDEXNOW_MODE ?? 'full'
-const BASELINE_PATH = process.env.INDEXNOW_BASELINE_PATH ?? fileURLToPath(new URL('../.indexnow-cache/repos.json', import.meta.url))
+const BASELINE_PATH =
+  process.env.INDEXNOW_BASELINE_PATH ?? fileURLToPath(new URL('../.indexnow-cache/indexnow-state.sqlite', import.meta.url))
+const CATALOG_PATH = process.env.CATALOG_SQLITE_PATH ?? fileURLToPath(new URL('../src/data/catalog.sqlite', import.meta.url))
 const MAX_READY_ATTEMPTS = 12
 const READY_RETRY_DELAY_MS = 15_000
 const READY_CONCURRENCY = 20
@@ -47,21 +49,58 @@ async function sitemapUrls(url) {
 }
 
 function readCurrentCatalog() {
-  const repos = JSON.parse(readFileSync(new URL('../src/data/repos.json', import.meta.url), 'utf8'))
-  if (!Array.isArray(repos)) throw new Error('Catalog snapshot must be an array.')
-  return { records: buildCatalogRecords(repos, SITE_URL), fingerprint: fingerprintCatalog(repos) }
+  if (!existsSync(CATALOG_PATH)) {
+    throw new Error(`Catalog snapshot SQLite database not found at ${CATALOG_PATH}`)
+  }
+  return buildCatalogRecordsFromSqlite(CATALOG_PATH, SITE_URL)
+}
+
+function getLegacyBaselinePath() {
+  const dir = dirname(BASELINE_PATH)
+  const candidateFromBaselineDir = join(dir, 'repos.json')
+  if (existsSync(candidateFromBaselineDir)) return candidateFromBaselineDir
+  const legacyLocal = fileURLToPath(new URL('../.indexnow-cache/repos.json', import.meta.url))
+  if (existsSync(legacyLocal)) return legacyLocal
+  return null
+}
+
+function hasBaseline() {
+  if (existsSync(BASELINE_PATH)) return true
+  return getLegacyBaselinePath() !== null
+}
+
+function verifyMigratedBaseline(sourceRecords, targetPath) {
+  const migrated = loadBaseline(targetPath)
+  if (migrated.size !== sourceRecords.size) {
+    throw new Error(`IndexNow baseline migration verification failed: expected ${sourceRecords.size} records, got ${migrated.size}`)
+  }
+  for (const [key, sourceRecord] of sourceRecords.entries()) {
+    const targetRecord = migrated.get(key)
+    if (!targetRecord || targetRecord.url !== sourceRecord.url || targetRecord.fingerprint !== sourceRecord.fingerprint) {
+      throw new Error(`IndexNow baseline migration verification failed for record key ${key}`)
+    }
+  }
 }
 
 function readBaseline() {
   if (!existsSync(BASELINE_PATH)) {
+    const legacyPath = getLegacyBaselinePath()
+    if (legacyPath) {
+      console.log(`Migrating legacy IndexNow baseline from ${legacyPath}...`)
+      const legacyRecords = loadBaseline(legacyPath)
+      writeBaseline(legacyRecords)
+      verifyMigratedBaseline(legacyRecords, BASELINE_PATH)
+      console.log(`Successfully verified migration of ${legacyRecords.size} records to SQLite baseline.`)
+      return legacyRecords
+    }
     throw new Error('No successful IndexNow baseline exists. Run workflow_dispatch with mode=full on the default branch first.')
   }
-  return deserializeBaseline(readFileSync(BASELINE_PATH, 'utf8'))
+  return loadBaseline(BASELINE_PATH)
 }
 
 function writeBaseline(records, includedUrls = null) {
   mkdirSync(dirname(BASELINE_PATH), { recursive: true })
-  writeFileSync(BASELINE_PATH, serializeBaseline(records, includedUrls))
+  saveBaseline(BASELINE_PATH, records, includedUrls)
   const count = [...records.values()].filter((record) => includedUrls === null || includedUrls.has(record.url)).length
   console.log(`Saved baseline for ${count.toLocaleString()} indexable repositories.`)
 }
@@ -145,23 +184,37 @@ async function waitForChangedPages(urls) {
   }
 }
 
-async function submitUrls(urls) {
+async function submitUrls(urls, expectedFingerprint) {
   for (let offset = 0; offset < urls.length; offset += MAX_URLS_PER_REQUEST) {
+    if (expectedFingerprint && offset > 0) {
+      const stillDeployed = await waitForCatalogDeployment(expectedFingerprint)
+      if (!stillDeployed) {
+        throw new Error('Catalog deployment changed between batch submissions. Aborting IndexNow without advancing baseline.')
+      }
+    }
     const urlList = urls.slice(offset, offset + MAX_URLS_PER_REQUEST)
     await sendIndexNowBatch(urlList, { siteUrl: SITE_URL, key: INDEXNOW_KEY, keyLocation: KEY_LOCATION })
     console.log(`Submitted ${urlList.length} URL${urlList.length === 1 ? '' : 's'} to IndexNow.`)
   }
 }
 
-const { records: currentRecords, fingerprint: currentFingerprint } = readCurrentCatalog()
-// An HTTP 200 on a pre-existing page does not prove that new catalog data is live.
-// Never advance the baseline until the deployed build exposes the exact catalog snapshot.
-if (await waitForCatalogDeployment(currentFingerprint)) {
+async function runIndexNow() {
+  const { records: currentRecords, fingerprint: currentFingerprint } = readCurrentCatalog()
+  // An HTTP 200 on a pre-existing page does not prove that new catalog data is live.
+  // Never advance the baseline until the deployed build exposes the exact catalog snapshot.
+  const isDeployed = await waitForCatalogDeployment(currentFingerprint)
+  if (!isDeployed) return
+
   // On a fresh install the scheduled job establishes the baseline automatically.
-  if (MODE === 'full' || !existsSync(BASELINE_PATH)) {
+  if (MODE === 'full' || !hasBaseline()) {
     if (MODE === 'changed') console.log('IndexNow baseline missing; submitting the live sitemap to initialize it.')
     const urls = await sitemapUrls(SITEMAP_URL)
-    await submitUrls(urls)
+    await submitUrls(urls, currentFingerprint)
+    const stillDeployed = await waitForCatalogDeployment(currentFingerprint)
+    if (!stillDeployed) {
+      console.log('Catalog deployment changed before baseline update. Aborting IndexNow without advancing baseline.')
+      return
+    }
     writeBaseline(currentRecords, new Set(urls))
   } else {
     const previousRecords = readBaseline()
@@ -170,10 +223,24 @@ if (await waitForCatalogDeployment(currentFingerprint)) {
     if (changedUrls.length > 0) await waitForChangedPages(changedUrls)
     const urls = [...new Set([...changedUrls, ...retiredUrls])]
     if (urls.length > 0) {
-      await submitUrls(urls)
+      if (changedUrls.length > 0) {
+        const stillDeployed = await waitForCatalogDeployment(currentFingerprint)
+        if (!stillDeployed) {
+          console.log('Catalog deployment changed before submission. Aborting IndexNow without advancing baseline.')
+          return
+        }
+      }
+      await submitUrls(urls, currentFingerprint)
+      const stillDeployedFinal = await waitForCatalogDeployment(currentFingerprint)
+      if (!stillDeployedFinal) {
+        console.log('Catalog deployment changed before baseline update. Aborting IndexNow without advancing baseline.')
+        return
+      }
+      writeBaseline(currentRecords)
     } else {
       console.log('No changed or retired indexable repository URLs.')
     }
-    writeBaseline(currentRecords)
   }
 }
+
+await runIndexNow()

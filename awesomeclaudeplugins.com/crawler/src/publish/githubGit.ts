@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import type { components } from '@octokit/openapi-types'
 import { isValidGitBranch, isValidGitHubOwner, isValidGitHubRepositoryName, isValidGitSha } from '../github/identifiers.js'
 import { buildRepoDetailsShards, buildSearchIndex, type CatalogRecordInput } from '../output/splitCatalog.js'
@@ -11,9 +13,18 @@ export type GitBranchHead = { sha: string; treeSha: string }
 
 export type GitSnapshotFiles = {
   readme: string
-  reposJson: string
-  statsJson: string
-  markdownPathsJson: string
+  catalogReleaseJson?: string
+  reposJson?: string
+  statsJson?: string
+  markdownPathsJson?: string
+}
+
+export type UploadedReleaseAsset = {
+  downloadUrl: string
+  sha256: string
+  releaseId?: number
+  assetId?: number
+  size?: number
 }
 
 export interface GitHubGit {
@@ -22,6 +33,7 @@ export interface GitHubGit {
   createCommit(treeSha: string, parentSha: string, message: string): Promise<string>
   updateBranch(sha: string): Promise<void>
   isCommitReachable(pendingSha: string): Promise<boolean>
+  uploadReleaseAsset?(tagName: string, assetName: string, filePath: string): Promise<UploadedReleaseAsset>
 }
 
 export class GitHubGitError extends Error {
@@ -108,9 +120,12 @@ async function refConflictStatus(response: Response): Promise<409 | 422 | null> 
 }
 
 export class GitHubGitClient implements GitHubGit {
+  private readonly owner: string
+  private readonly repo: string
   private readonly url: string
   private readonly compareUrl: string
   private readonly compareHead: string
+  private readonly releasesUrl: string
   private readonly token: string
   private readonly transport: typeof fetch
   private readonly signal?: AbortSignal
@@ -130,6 +145,8 @@ export class GitHubGitClient implements GitHubGit {
     if (!isValidGitBranch(options.branch)) {
       throw new GitHubGitError('Invalid GitHub Git branch')
     }
+    this.owner = options.owner
+    this.repo = options.repo
     this.token = options.token
     this.transport = options.fetch ?? globalThis.fetch
     this.signal = options.signal
@@ -138,6 +155,7 @@ export class GitHubGitClient implements GitHubGit {
     this.url = `${repositoryUrl}/git`
     this.compareUrl = `${repositoryUrl}/compare`
     this.compareHead = encodeURIComponent(options.branch)
+    this.releasesUrl = `${repositoryUrl}/releases`
     this.ref = `heads/${branch}`
   }
 
@@ -161,36 +179,51 @@ export class GitHubGitClient implements GitHubGit {
     if (
       !record(files) ||
       typeof files.readme !== 'string' ||
-      typeof files.reposJson !== 'string' ||
-      typeof files.statsJson !== 'string' ||
-      typeof files.markdownPathsJson !== 'string'
+      (!files.catalogReleaseJson &&
+        (typeof files.reposJson !== 'string' || typeof files.statsJson !== 'string' || typeof files.markdownPathsJson !== 'string'))
     ) {
       throw new GitHubGitError('All four snapshot contents must be strings')
     }
-    // Publish all snapshot parts in intermediate trees without moving the ref.
-    // Only a fully constructed final tree can be committed atomically.
-    let repositories: CatalogRecordInput[]
-    try {
-      repositories = JSON.parse(files.reposJson) as CatalogRecordInput[]
-      if (!Array.isArray(repositories)) throw new Error('Invalid catalog')
-    } catch {
-      throw new GitHubGitError('Invalid repository snapshot JSON')
-    }
-    const dataPath = 'awesomeclaudeplugins.com/ui/src/data'
-    const details = buildRepoDetailsShards(repositories)
-    const entries = [
+    const entries: { path: string; mode: '100644'; type: 'blob'; content: string }[] = [
       { path: 'README.md', mode: '100644', type: 'blob', content: files.readme },
-      { path: `${dataPath}/repos.json`, mode: '100644', type: 'blob', content: files.reposJson },
-      { path: `${dataPath}/search-index.json`, mode: '100644', type: 'blob', content: buildSearchIndex(repositories, files.reposJson) },
-      ...Object.entries(details).map(([name, content]) => ({
-        path: `${dataPath}/repo-details/${name}`,
+    ]
+
+    if (typeof files.catalogReleaseJson === 'string') {
+      entries.push({
+        path: 'awesomeclaudeplugins.com/ui/catalog-release.json',
         mode: '100644',
         type: 'blob',
-        content,
-      })),
-      { path: `${dataPath}/stats.json`, mode: '100644', type: 'blob', content: files.statsJson },
-      { path: `${dataPath}/markdown-paths.json`, mode: '100644', type: 'blob', content: files.markdownPathsJson },
-    ]
+        content: files.catalogReleaseJson,
+      })
+    } else if (typeof files.reposJson === 'string') {
+      // Publish all legacy snapshot parts in intermediate trees without moving the ref.
+      // Only a fully constructed final tree can be committed atomically.
+      let repositories: CatalogRecordInput[]
+      try {
+        repositories = JSON.parse(files.reposJson) as CatalogRecordInput[]
+        if (!Array.isArray(repositories)) throw new Error('Invalid catalog')
+      } catch {
+        throw new GitHubGitError('Invalid repository snapshot JSON')
+      }
+      const dataPath = 'awesomeclaudeplugins.com/ui/src/data'
+      const details = buildRepoDetailsShards(repositories)
+      entries.push(
+        { path: `${dataPath}/repos.json`, mode: '100644', type: 'blob', content: files.reposJson },
+        { path: `${dataPath}/search-index.json`, mode: '100644', type: 'blob', content: buildSearchIndex(repositories, files.reposJson) },
+        ...Object.entries(details).map(([name, content]) => ({
+          path: `${dataPath}/repo-details/${name}`,
+          mode: '100644' as const,
+          type: 'blob' as const,
+          content,
+        })),
+      )
+      if (typeof files.statsJson === 'string') {
+        entries.push({ path: `${dataPath}/stats.json`, mode: '100644', type: 'blob', content: files.statsJson })
+      }
+      if (typeof files.markdownPathsJson === 'string') {
+        entries.push({ path: `${dataPath}/markdown-paths.json`, mode: '100644', type: 'blob', content: files.markdownPathsJson })
+      }
+    }
 
     // Measure escaped JSON bytes, including entry separators and base-tree SHA.
     // Single blobs larger than the budget still require their own request.
@@ -241,6 +274,190 @@ export class GitHubGitClient implements GitHubGit {
     if (comparison.status === 'ahead' || comparison.status === 'identical') return true
     if (comparison.status === 'behind' || comparison.status === 'diverged') return false
     throw new GitHubGitResponseError()
+  }
+
+  private async getOrCreateRelease(tagName: string): Promise<{ releaseId: number; uploadUrlTemplate: string }> {
+    try {
+      const existing = (await this.request(`/tags/${encodeURIComponent(tagName)}`, 'GET', undefined, this.releasesUrl)) as Record<
+        string,
+        unknown
+      >
+      if (record(existing) && typeof existing.id === 'number' && typeof existing.upload_url === 'string') {
+        return { releaseId: existing.id, uploadUrlTemplate: existing.upload_url }
+      }
+    } catch (error) {
+      if (!(error instanceof GitHubGitHttpError && error.status === 404)) throw error
+    }
+
+    const created = (await this.request(
+      '',
+      'POST',
+      {
+        tag_name: tagName,
+        name: tagName,
+        draft: false,
+        prerelease: false,
+      },
+      this.releasesUrl,
+    )) as Record<string, unknown>
+    if (record(created) && typeof created.id === 'number' && typeof created.upload_url === 'string') {
+      return { releaseId: created.id, uploadUrlTemplate: created.upload_url }
+    }
+    throw new GitHubGitResponseError()
+  }
+
+  private async verifyExistingAsset(
+    asset: Record<string, unknown>,
+    tagName: string,
+    assetName: string,
+    expectedSha: string,
+    releaseId?: number,
+  ): Promise<UploadedReleaseAsset> {
+    const downloadUrl =
+      typeof asset.browser_download_url === 'string'
+        ? asset.browser_download_url
+        : `https://github.com/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/releases/download/${encodeURIComponent(tagName)}/${encodeURIComponent(assetName)}`
+
+    const timeoutSignal = AbortSignal.timeout(120_000)
+    let response: Response
+    try {
+      response = await this.transport(downloadUrl, {
+        method: 'GET',
+        signal: this.signal ? AbortSignal.any([this.signal, timeoutSignal]) : timeoutSignal,
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Accept: 'application/octet-stream',
+        },
+      })
+    } catch (error) {
+      throwIfShutdown(this.signal)
+      if (isAbort(error)) throw new GitHubGitTimeoutError()
+      throw new GitHubGitError('GitHub Git API network request failed')
+    }
+
+    if (!response.ok) {
+      throw new GitHubGitHttpError(response.status)
+    }
+
+    const hasher = createHash('sha256')
+    let totalBytes = 0
+    const body = response.body as unknown as AsyncIterable<Uint8Array> | null
+    if (body && typeof (body as unknown as Record<symbol, unknown>)[Symbol.asyncIterator] === 'function') {
+      for await (const chunk of body) {
+        hasher.update(chunk)
+        totalBytes += chunk.byteLength
+      }
+    } else {
+      const remoteBytes = Buffer.from(await response.arrayBuffer())
+      hasher.update(remoteBytes)
+      totalBytes = remoteBytes.length
+    }
+    const remoteSha = hasher.digest('hex')
+    if (remoteSha !== expectedSha) {
+      throw new GitHubGitError(`Existing release asset SHA-256 does not match local file: expected ${expectedSha}, remote has ${remoteSha}`)
+    }
+    const assetId = typeof asset.id === 'number' ? asset.id : undefined
+    const size = typeof asset.size === 'number' ? asset.size : totalBytes
+    return {
+      downloadUrl,
+      sha256: remoteSha,
+      ...(releaseId !== undefined ? { releaseId } : {}),
+      ...(assetId !== undefined ? { assetId } : {}),
+      ...(size !== undefined ? { size } : {}),
+    }
+  }
+
+  private async postReleaseAsset(
+    uploadUrlTemplate: string,
+    assetName: string,
+    fileBytes: Buffer,
+    tagName: string,
+    fileSha: string,
+    releaseId: number,
+  ): Promise<UploadedReleaseAsset> {
+    const uploadUrl = `${uploadUrlTemplate.replace(/\{.*?\}$/, '')}?name=${encodeURIComponent(assetName)}`
+    const timeoutSignal = AbortSignal.timeout(120_000)
+    let response: Response
+    try {
+      response = await this.transport(uploadUrl, {
+        method: 'POST',
+        signal: this.signal ? AbortSignal.any([this.signal, timeoutSignal]) : timeoutSignal,
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Accept: 'application/vnd.github+json',
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': String(fileBytes.length),
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+        body: new Uint8Array(fileBytes),
+      })
+    } catch (error) {
+      throwIfShutdown(this.signal)
+      if (isAbort(error)) throw new GitHubGitTimeoutError()
+      throw new GitHubGitError('GitHub Git API network request failed')
+    }
+
+    if (!response.ok) {
+      throw new GitHubGitHttpError(response.status)
+    }
+
+    const uploaded = (await response.json()) as Record<string, unknown>
+    return await this.verifyExistingAsset(uploaded, tagName, assetName, fileSha, releaseId)
+  }
+
+  private async findReleaseAsset(releaseId: number, assetName: string): Promise<Record<string, unknown> | null> {
+    try {
+      const assets = (await this.request(`/${releaseId}/assets`, 'GET', undefined, this.releasesUrl)) as unknown[]
+      if (Array.isArray(assets)) {
+        const found = assets.find((a): a is Record<string, unknown> => record(a) && a.name === assetName)
+        if (found && typeof found.id === 'number') return found
+      }
+      return null
+    } catch (error) {
+      if (error instanceof GitHubGitHttpError && error.status === 404) return null
+      throw error
+    }
+  }
+
+  private async retryVerifyExistingAsset(
+    releaseId: number,
+    tagName: string,
+    assetName: string,
+    fileSha: string,
+    originalError: Error,
+  ): Promise<UploadedReleaseAsset> {
+    const delays = [500, 1500]
+    for (const delay of delays) {
+      throwIfShutdown(this.signal)
+      await new Promise((resolve) => setTimeout(resolve, delay))
+      const asset = await this.findReleaseAsset(releaseId, assetName)
+      if (asset) {
+        return await this.verifyExistingAsset(asset, tagName, assetName, fileSha, releaseId)
+      }
+    }
+    throw originalError
+  }
+
+  async uploadReleaseAsset(tagName: string, assetName: string, filePath: string): Promise<UploadedReleaseAsset> {
+    throwIfShutdown(this.signal)
+    const { releaseId, uploadUrlTemplate } = await this.getOrCreateRelease(tagName)
+
+    const fileBytes = readFileSync(filePath)
+    const fileSha = createHash('sha256').update(fileBytes).digest('hex')
+
+    const existingAsset = await this.findReleaseAsset(releaseId, assetName)
+    if (existingAsset) {
+      return await this.verifyExistingAsset(existingAsset, tagName, assetName, fileSha, releaseId)
+    }
+
+    try {
+      return await this.postReleaseAsset(uploadUrlTemplate, assetName, fileBytes, tagName, fileSha, releaseId)
+    } catch (error) {
+      if (error instanceof GitHubGitHttpError && (error.status === 422 || error.status === 409)) {
+        return await this.retryVerifyExistingAsset(releaseId, tagName, assetName, fileSha, error)
+      }
+      throw error
+    }
   }
 
   private async readCommit(commitSha: string): Promise<{ treeSha: string; parents: string[] }> {

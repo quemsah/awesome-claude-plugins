@@ -5,17 +5,13 @@ import { closeSync, existsSync, openSync, readFileSync, readSync } from 'node:fs
 import { join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import type { Repo } from '../schemas/repo.schema.ts'
+import { getSqliteReader } from './sqliteCatalogStore.ts'
 
 const CATALOG_KEY = Symbol.for('awesome-claude-plugins.catalog')
-const SHARD_CACHE_KEY = Symbol.for('awesome-claude-plugins.shard-cache')
-const FALLBACK_REPOS_KEY = Symbol.for('awesome-claude-plugins.canonical-fallback')
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/
 
-type ShardCache = Map<number, Record<string, Partial<Repo>>>
 type CatalogGlobal = typeof globalThis & {
   [CATALOG_KEY]?: readonly Repo[]
-  [SHARD_CACHE_KEY]?: ShardCache
-  [FALLBACK_REPOS_KEY]?: Map<number, Repo[]> | null
 }
 
 export type SearchIndexV1 = {
@@ -146,45 +142,13 @@ export function getCatalog(): readonly Repo[] {
   if (cachedCatalog !== undefined) return cachedCatalog
 
   const fixturePath = process.env.CATALOG_DATA_PATH
-  const catalog = fixturePath
-    ? (JSON.parse(readFileSync(fixturePath, 'utf8')) as Repo[])
-    : readCatalogFiles(join(process.cwd(), 'src/data/search-index.json'), join(process.cwd(), 'src/data/repos.json'))
-  root[CATALOG_KEY] = catalog
-  return catalog
-}
+  if (fixturePath && existsSync(fixturePath)) {
+    const catalog = JSON.parse(readFileSync(fixturePath, 'utf8')) as Repo[]
+    root[CATALOG_KEY] = catalog
+    return catalog
+  }
 
-function getShardCache(): ShardCache {
-  const root = globalThis as CatalogGlobal
-  if (!root[SHARD_CACHE_KEY]) {
-    root[SHARD_CACHE_KEY] = new Map()
-  }
-  return root[SHARD_CACHE_KEY]
-}
-
-// A broken or absent shard must not trigger a full 42 MB JSON parse per record.
-// Reuse the canonical snapshot only on the exceptional recovery path.
-function getCanonicalFallback(): Map<number, Repo[]> | null {
-  const root = globalThis as CatalogGlobal
-  if (root[FALLBACK_REPOS_KEY] !== undefined) return root[FALLBACK_REPOS_KEY]
-  const path = join(process.cwd(), 'src/data/repos.json')
-  if (!existsSync(path)) {
-    root[FALLBACK_REPOS_KEY] = null
-    return null
-  }
-  try {
-    const repos = JSON.parse(readFileSync(path, 'utf8')) as Repo[]
-    if (!Array.isArray(repos)) throw new Error('Invalid repository snapshot')
-    const lookup = new Map<number, Repo[]>()
-    for (const repo of repos) {
-      const matches = lookup.get(repo.id)
-      if (matches) matches.push(repo)
-      else lookup.set(repo.id, [repo])
-    }
-    root[FALLBACK_REPOS_KEY] = lookup
-  } catch {
-    root[FALLBACK_REPOS_KEY] = null
-  }
-  return root[FALLBACK_REPOS_KEY]
+  throw new Error('Unbounded full catalog materialization is disabled. Use sqliteCatalogStore streaming/paged queries.')
 }
 
 function matchesIdentity(repo: Partial<Repo>, id: number, owner?: string | null, repoName?: string | null): boolean {
@@ -195,37 +159,18 @@ function matchesIdentity(repo: Partial<Repo>, id: number, owner?: string | null,
   )
 }
 
-/** Bounded LRU: touch a hit so frequently used detail buckets are not evicted. */
+function getRepoDetailsFromSqlite(id: number, owner?: string | null, repoName?: string | null): Partial<Repo> | null {
+  const sqlitePath = process.env.CATALOG_SQLITE_PATH || join(process.cwd(), 'src/data/catalog.sqlite')
+  if (!existsSync(sqlitePath)) return null
+  const reader = getSqliteReader()
+  const canonicalPath = owner && repoName ? `${owner}/${repoName}` : undefined
+  const record = reader.getRecordById(id, canonicalPath) ?? (canonicalPath ? reader.getRepoByPath(canonicalPath) : undefined)
+  return record && matchesIdentity(record, id, owner, repoName) ? (record as Repo) : null
+}
+
+/** Detail lookup delegates directly to SQLite point query without legacy JSON shards. */
 export function getRepoDetails(id: number, owner?: string | null, repoName?: string | null): Partial<Repo> | null {
-  const shardId = Math.abs(id % 100)
-  const cache = getShardCache()
-  let shard = cache.get(shardId)
-
-  if (shard !== undefined) {
-    cache.delete(shardId)
-    cache.set(shardId, shard)
-  } else {
-    const shardPath = join(process.cwd(), `src/data/repo-details/${shardId}.json`)
-    if (existsSync(shardPath)) {
-      try {
-        shard = JSON.parse(readFileSync(shardPath, 'utf8')) as Record<string, Partial<Repo>>
-        if (cache.size >= 10) {
-          const oldestKey = cache.keys().next().value
-          if (oldestKey !== undefined) cache.delete(oldestKey)
-        }
-        cache.set(shardId, shard)
-      } catch {
-        // A corrupt shard is equivalent to a missing shard: recover from repos.json.
-      }
-    }
-  }
-
-  const details = shard?.[id]
-  if (details && matchesIdentity(details, id, owner, repoName)) return details
-
-  // Parse the canonical snapshot once across all missing/corrupt shard reads.
-  const canonical = getCanonicalFallback()
-  return canonical?.get(id)?.find((record) => matchesIdentity(record, id, owner, repoName)) ?? null
+  return getRepoDetailsFromSqlite(id, owner, repoName)
 }
 
 export function hydrateCatalogRepo<T extends Repo>(repo: T): T {

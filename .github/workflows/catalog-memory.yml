@@ -12,7 +12,7 @@ on:
       - 'awesomeclaudeplugins.com/ui/src/lib/catalogStore.ts'
       - 'awesomeclaudeplugins.com/crawler/src/output/splitCatalog.ts'
       - 'awesomeclaudeplugins.com/crawler/src/publish/githubGit.ts'
-      - 'awesomeclaudeplugins.com/ui/scripts/split-catalog.mjs'
+      - 'awesomeclaudeplugins.com/ui/scripts/prepare-catalog.mjs'
       - 'awesomeclaudeplugins.com/ui/package.json'
   workflow_dispatch:
 
@@ -51,14 +51,49 @@ jobs:
       - name: Install candidate dependencies
         working-directory: candidate/awesomeclaudeplugins.com
         run: bun install --frozen-lockfile
+      - name: Prepare catalog SQLite snapshots
+        uses: ./candidate/.github/actions/prepare-catalog-snapshots
       - name: Check identical catalog inputs
         shell: bash
-        run: |
-          sha256sum baseline/awesomeclaudeplugins.com/ui/src/data/repos.json candidate/awesomeclaudeplugins.com/ui/src/data/repos.json
-          cmp baseline/awesomeclaudeplugins.com/ui/src/data/repos.json candidate/awesomeclaudeplugins.com/ui/src/data/repos.json
-      - name: Regenerate candidate index before standalone benchmark
         working-directory: candidate/awesomeclaudeplugins.com/ui
-        run: node scripts/split-catalog.mjs
+        run: |
+          node -e '
+            const crypto = require("node:crypto");
+            const Database = require("better-sqlite3");
+            const db1 = new Database("../../../baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite", { readonly: true });
+            const db2 = new Database("src/data/catalog.sqlite", { readonly: true });
+
+            function computeCanonicalDigest(db) {
+              const hash = crypto.createHash("sha256");
+              const count = db.prepare("SELECT count(*) as c FROM repositories WHERE is_canonical = 1").get()?.c ?? 0;
+              hash.update("count:" + count + ";");
+              const stmt = db.prepare("SELECT id, owner, repo_name, record_json FROM repositories WHERE is_canonical = 1 ORDER BY id");
+              for (const row of stmt.iterate()) {
+                hash.update(row.id + "|" + row.owner + "|" + row.repo_name + "|" + row.record_json + ";");
+              }
+              const metaFingerprint = db.prepare("SELECT catalog_fingerprint FROM catalog_metadata LIMIT 1").get()?.catalog_fingerprint || "";
+              return { count, digest: hash.digest("hex"), metaFingerprint };
+            }
+
+            const res1 = computeCanonicalDigest(db1);
+            const res2 = computeCanonicalDigest(db2);
+            db1.close();
+            db2.close();
+
+            if (!res1.count || res1.count !== res2.count) {
+              console.error("Catalog record count mismatch:", res1.count, "vs", res2.count);
+              process.exit(1);
+            }
+            if (res1.digest !== res2.digest) {
+              console.error("Catalog canonical records digest mismatch:", res1.digest, "vs", res2.digest);
+              process.exit(1);
+            }
+            if (res1.metaFingerprint && res2.metaFingerprint && res1.metaFingerprint !== res2.metaFingerprint) {
+              console.error("Catalog metadata fingerprint mismatch:", res1.metaFingerprint, "vs", res2.metaFingerprint);
+              process.exit(1);
+            }
+            console.log("Catalog inputs verified identical (" + res1.count + " canonical records, digest: " + res1.digest + ")");
+          '
       - name: Measure RAM (three independent processes per revision)
         shell: bash
         run: |
@@ -121,6 +156,8 @@ jobs:
       - name: Install candidate dependencies
         working-directory: candidate/awesomeclaudeplugins.com
         run: bun install --frozen-lockfile
+      - name: Prepare catalog SQLite snapshots
+        uses: ./candidate/.github/actions/prepare-catalog-snapshots
       - name: Build baseline production Next.js
         working-directory: baseline/awesomeclaudeplugins.com
         run: bun run build:ui

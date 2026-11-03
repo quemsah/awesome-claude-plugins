@@ -468,6 +468,14 @@ function guardGit(db: Database.Database, git: GitHubGit, onBlocked: () => void, 
       check()
       return git.isCommitReachable(sha)
     },
+    uploadReleaseAsset: (() => {
+      const uploader = git.uploadReleaseAsset
+      if (!uploader) return undefined
+      return (tagName: string, assetName: string, filePath: string) => {
+        check()
+        return uploader.call(git, tagName, assetName, filePath)
+      }
+    })(),
   }
 }
 

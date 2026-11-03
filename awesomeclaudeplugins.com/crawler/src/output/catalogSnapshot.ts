@@ -1,3 +1,4 @@
+import type { CatalogRecord } from '@awesome-claude-plugins/catalog-snapshot'
 import type Database from 'better-sqlite3'
 import { parsePluginSummariesJson } from '../github/pluginSummaries.js'
 import type { PublishableRepository } from '../storage/repositories.js'
@@ -6,7 +7,7 @@ import { assertValidStatsDraft, type StatsRecord } from './statsDraft.js'
 // Recovery hashes written before catalog timestamps must match the exact original
 // repos.json bytes, including canonical URLs, field order, and compact formatting.
 /** Convert real GitHub/first-seen dates into the strict public UTC representation. */
-function publicTimestamp(value: string | null | undefined): string | undefined {
+export function publicTimestamp(value: string | null | undefined): string | undefined {
   if (!value) return undefined
   // Date.parse accepts date-only strings and normalizes impossible dates (e.g. February 30).
   // GitHub timestamps and first-seen dates must be full ISO-8601 instants.
@@ -32,6 +33,49 @@ function publicTimestamp(value: string | null | undefined): string | undefined {
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : undefined
 }
 
+function attachCatalogMetadata(record: Record<string, unknown>, row: PublishableRepository, includeNewMetadata: boolean): void {
+  if (!includeNewMetadata) return
+
+  const pushed = publicTimestamp(row.pushed_at)
+  if (pushed) record.pushed_at = pushed
+
+  const added = publicTimestamp(row.catalog_added_at)
+  if (added) record.catalog_added_at = added
+
+  if (row.license) record.license = row.license
+
+  if (row.archived != null) {
+    record.archived = row.archived === 1 || row.archived === true
+  }
+}
+
+export function formatPublicCatalogRecord(
+  row: PublishableRepository,
+  options: { includeCatalogUpdatedAt?: boolean; includeNewCatalogMetadata?: boolean } = {},
+): CatalogRecord {
+  const plugins = parsePluginSummariesJson(row.plugins_json ?? null)
+
+  const record: Record<string, unknown> = {
+    stargazers_count: row.stargazers_count,
+    forks_count: row.forks_count,
+    subscribers_count: row.subscribers_count,
+    description: row.description,
+    owner: row.owner,
+    repo_name: row.repo_name,
+    plugins_count: row.plugins_count,
+  }
+
+  if (options.includeCatalogUpdatedAt !== false) {
+    if (plugins !== null) record.plugins = plugins
+    if (row.manifest_kind === 'standalone-plugin') record.manifest_kind = row.manifest_kind
+    if (row.catalog_updated_at !== undefined) record.catalog_updated_at = row.catalog_updated_at
+    attachCatalogMetadata(record, row, options.includeNewCatalogMetadata !== false)
+  }
+  record.id = row.id
+
+  return record as CatalogRecord
+}
+
 export function renderRepos(
   rows: readonly PublishableRepository[],
   options: { includeCatalogUpdatedAt?: boolean; includeNewCatalogMetadata?: boolean; legacyUrls?: boolean } = {},
@@ -52,36 +96,7 @@ export function renderRepos(
     return `${JSON.stringify(legacyRepositories)}\n`
   }
 
-  const repositories = rows.map((row) => {
-    const plugins = parsePluginSummariesJson(row.plugins_json ?? null)
-    return JSON.stringify({
-      stargazers_count: row.stargazers_count,
-      forks_count: row.forks_count,
-      subscribers_count: row.subscribers_count,
-      description: row.description,
-      owner: row.owner,
-      repo_name: row.repo_name,
-      plugins_count: row.plugins_count,
-      ...(options.includeCatalogUpdatedAt === false || plugins === null ? {} : { plugins }),
-      ...(options.includeCatalogUpdatedAt === false || row.manifest_kind !== 'standalone-plugin'
-        ? {}
-        : { manifest_kind: row.manifest_kind }),
-      ...(options.includeCatalogUpdatedAt === false ? {} : { catalog_updated_at: row.catalog_updated_at }),
-      ...(options.includeCatalogUpdatedAt === false || options.includeNewCatalogMetadata === false || !publicTimestamp(row.pushed_at)
-        ? {}
-        : { pushed_at: publicTimestamp(row.pushed_at) }),
-      ...(options.includeCatalogUpdatedAt === false || options.includeNewCatalogMetadata === false || !publicTimestamp(row.catalog_added_at)
-        ? {}
-        : { catalog_added_at: publicTimestamp(row.catalog_added_at) }),
-      ...(options.includeCatalogUpdatedAt === false || options.includeNewCatalogMetadata === false || !row.license
-        ? {}
-        : { license: row.license }),
-      ...(options.includeCatalogUpdatedAt === false || options.includeNewCatalogMetadata === false || row.archived == null
-        ? {}
-        : { archived: row.archived === true || row.archived === 1 }),
-      id: row.id,
-    })
-  })
+  const repositories = rows.map((row) => JSON.stringify(formatPublicCatalogRecord(row, options)))
   return `[\n${repositories.join(',\n')}\n]\n`
 }
 

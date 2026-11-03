@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const schemaVersion = 22
+const schemaVersion = 24
 
 function createSchema(db: Database.Database): void {
   db.exec(`
@@ -474,6 +474,35 @@ function migrateTo22(db: Database.Database): void {
   db.pragma('user_version = 22')
 }
 
+function hasArtifactPubColumn(db: Database.Database, name: string): boolean {
+  return (db.pragma('table_info(artifact_publications)') as Array<{ name: string }>).some((column) => column.name === name)
+}
+
+function migrateTo23(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS artifact_publications (
+      run_id TEXT PRIMARY KEY REFERENCES runs(run_id),
+      snapshot_id TEXT NOT NULL,
+      catalog_fingerprint TEXT NOT NULL,
+      artifact_sha256 TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('prepared', 'uploaded', 'failed')),
+      byte_size INTEGER NOT NULL CHECK(byte_size >= 0),
+      artifact_path TEXT,
+      diagnostic_code TEXT,
+      prepared_at TEXT NOT NULL,
+      uploaded_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS artifact_publications_state ON artifact_publications(state);
+    PRAGMA user_version = 23;
+  `)
+}
+
+function migrateTo24(db: Database.Database): void {
+  if (!hasArtifactPubColumn(db, 'artifact_url')) db.exec('ALTER TABLE artifact_publications ADD COLUMN artifact_url TEXT')
+  if (!hasArtifactPubColumn(db, 'release_pointer')) db.exec('ALTER TABLE artifact_publications ADD COLUMN release_pointer TEXT')
+  db.exec('PRAGMA user_version = 24;')
+}
+
 // Keep the migration sequence explicit while avoiding a growing chain of conditional branches.
 const migrations: readonly ((db: Database.Database) => void)[] = [
   migrateTo2,
@@ -497,6 +526,8 @@ const migrations: readonly ((db: Database.Database) => void)[] = [
   migrateTo20,
   migrateTo21,
   migrateTo22,
+  migrateTo23,
+  migrateTo24,
 ]
 
 function migrateSchema(db: Database.Database, version: number): void {

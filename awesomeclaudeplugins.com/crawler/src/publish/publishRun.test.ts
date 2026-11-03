@@ -1,14 +1,19 @@
 import { createHash } from 'node:crypto'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { calculateCatalogFingerprint } from '@awesome-claude-plugins/catalog-snapshot'
 import type Database from 'better-sqlite3'
 import { afterEach, expect, it } from 'vitest'
-import { renderRepos } from '../output/catalogSnapshot.js'
+import { formatPublicCatalogRecord, renderRepos } from '../output/catalogSnapshot.js'
+import { getHistoricalStats } from '../output/publicCatalog.js'
+import { renderReadme } from '../output/readme.js'
 import { openDatabase } from '../storage/db.js'
 import { listPublishable } from '../storage/repositories.js'
 import { beginRun, completeRun, failRun, getRun } from '../storage/runs.js'
+import { type CatalogReleasePointer, getArtifactPublication } from './artifactPublisher.js'
 import { type GitHubGit, GitHubGitConflictError, GitHubGitHttpError, GitHubGitTimeoutError, type GitSnapshotFiles } from './githubGit.js'
-import { PublicationError, prepareDraft, publishRun, readDraftSnapshot } from './publishRun.js'
+import { PublicationError, prepareDraft, publishRun, readDraftSnapshot, resolveArtifactPaths } from './publishRun.js'
 
 const databases: Database.Database[] = []
 const directories: string[] = []
@@ -61,6 +66,22 @@ class Branch implements GitHubGit {
     | null = null
   conflictCount = 0
   patches = 0
+  uploadedAssets: { tagName: string; assetName: string; filePath: string }[] = []
+  uploadFailure: string | null = null
+
+  uploadReleaseAsset?:
+    | ((tagName: string, assetName: string, filePath: string) => Promise<{ downloadUrl: string; sha256: string }>)
+    | undefined = async (tagName, assetName, filePath) => {
+    this.events.push(`POST release-asset ${tagName}/${assetName}`)
+    if (this.uploadFailure) throw new Error(this.uploadFailure)
+    this.uploadedAssets.push({ tagName, assetName, filePath })
+    const fileBytes = readFileSync(filePath)
+    const sha256 = createHash('sha256').update(fileBytes).digest('hex')
+    return {
+      downloadUrl: `https://github.com/example/repo/releases/download/${tagName}/${assetName}`,
+      sha256,
+    }
+  }
 
   async getBranchHead() {
     this.events.push('GET ref', 'GET commit')
@@ -190,25 +211,45 @@ it('refuses preparation after the catalog changes instead of replacing its date 
 it('defaults to no writes; a prepared draft publishes exactly four files in one commit and records stats once', async () => {
   const db = fixture()
   const git = new Branch()
-  const draft = prepareDraft(db, 'r1', timestamp)
-  await expect(publishRun(db, git, 'r1')).rejects.toMatchObject({ category: 'write_disabled' })
-  await expect(publishRun(db, git, 'r1', { writeEnabled: false })).rejects.toMatchObject({ category: 'write_disabled' })
+  const tempDir = mkdtempSync(join(tmpdir(), 'publish-run-test-'))
+  directories.push(tempDir)
+  const paths = {
+    artifactOutputPath: join(tempDir, 'catalog.sqlite'),
+    releasePointerPath: join(tempDir, 'catalog-release.json'),
+    allowLegacyJsonPublication: true,
+  }
+  const draft = prepareDraft(db, 'r1', timestamp, paths)
+  await expect(publishRun(db, git, 'r1', paths)).rejects.toMatchObject({ category: 'write_disabled' })
+  await expect(publishRun(db, git, 'r1', { writeEnabled: false, ...paths })).rejects.toMatchObject({ category: 'write_disabled' })
   expect(git.events).toEqual([])
-  const commit = await publishRun(db, git, 'r1', { writeEnabled: true })
+  const commit = await publishRun(db, git, 'r1', { writeEnabled: true, ...paths })
   expect(commit).toBe(git.head)
   expect(git.messages).toEqual(['chore(data): refresh dataset 02.07.2025'])
-  expect(git.events).toEqual(['GET ref', 'GET commit', `POST tree ${sha(100)}`, `POST commit ${sha(1)}`, `PATCH ${commit} force:false`])
+  expect(git.events).toEqual([
+    expect.stringMatching(/^POST release-asset /),
+    'GET ref',
+    'GET commit',
+    `POST tree ${sha(100)}`,
+    `POST commit ${sha(1)}`,
+    `PATCH ${commit} force:false`,
+  ])
   expect(git.files).toHaveLength(1)
-  expect(Object.keys(git.files[0]).sort()).toEqual(['markdownPathsJson', 'readme', 'reposJson', 'statsJson'])
-  const { readme, reposJson, statsJson, markdownPathsJson } = git.files[0]
+  expect(Object.keys(git.files[0]).sort()).toEqual(['catalogReleaseJson', 'markdownPathsJson', 'readme', 'reposJson', 'statsJson'])
+  const { readme, reposJson, statsJson, markdownPathsJson, catalogReleaseJson } = git.files[0]
+  if (!catalogReleaseJson || !markdownPathsJson || !statsJson) {
+    throw new Error('Expected files to be defined')
+  }
+  expect(JSON.parse(catalogReleaseJson)).toMatchObject({
+    schemaVersion: 1,
+  })
   expect(draft.hash).toBe(
     createHash('sha256')
       .update(JSON.stringify([readme, reposJson, statsJson, markdownPathsJson]), 'utf8')
       .digest('hex'),
   )
   expect(git.files[0].readme).toContain('Last updated: 02.07.2025 with 1 total repositories indexed.')
-  expect(JSON.parse(git.files[0].markdownPathsJson)).toEqual([])
-  expect(JSON.parse(git.files[0].statsJson)).toEqual([
+  expect(JSON.parse(markdownPathsJson)).toEqual([])
+  expect(JSON.parse(statsJson)).toEqual([
     { id: 264, date: '2024-01-01T00:00:00.000Z', size: 4 },
     { id: 265, date: draft.date, size: draft.size },
   ])
@@ -216,10 +257,55 @@ it('defaults to no writes; a prepared draft publishes exactly four files in one 
     { id: 264, date: '2024-01-01T00:00:00.000Z', size: 4, run_id: null },
     { id: 265, date: draft.date, size: 1, run_id: 'r1' },
   ])
+  expect(db.prepare('SELECT state FROM artifact_publications WHERE run_id = ?').get('r1')).toEqual({
+    state: 'uploaded',
+  })
   expect(getRun(db, 'r1')).toMatchObject({ status: 'published', commit_sha: commit, pending_commit_sha: null })
-  expect(await publishRun(db, git, 'r1', { writeEnabled: true })).toBe(commit)
-  expect(await publishRun(db, git, 'r1')).toBe(commit)
-  expect(git.events).toHaveLength(5)
+  expect(await publishRun(db, git, 'r1', { writeEnabled: true, ...paths })).toBe(commit)
+  expect(await publishRun(db, git, 'r1', paths)).toBe(commit)
+  expect(git.events).toHaveLength(6)
+})
+
+it('prepares and publishes in sqlite-native mode without rendering legacy json files', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const tempDir = mkdtempSync(join(tmpdir(), 'publish-run-native-'))
+  directories.push(tempDir)
+  const paths = {
+    artifactOutputPath: join(tempDir, 'catalog.sqlite'),
+    releasePointerPath: join(tempDir, 'catalog-release.json'),
+  }
+  const draft = prepareDraft(db, 'r1', timestamp, paths)
+  const fingerprint = calculateCatalogFingerprint(listPublishable(db).map((r) => formatPublicCatalogRecord(r)))
+  const statsFingerprint = createHash('sha256')
+    .update(JSON.stringify(getHistoricalStats(db)), 'utf8')
+    .digest('hex')
+  const expectedHash = createHash('sha256')
+    .update(
+      JSON.stringify([
+        renderReadme(listPublishable(db), draft),
+        'sqlite-catalog',
+        draft.id,
+        draft.date,
+        draft.size,
+        fingerprint,
+        statsFingerprint,
+      ]),
+      'utf8',
+    )
+    .digest('hex')
+  expect(draft.hash).toBe(expectedHash)
+
+  const commit = await publishRun(db, git, 'r1', { writeEnabled: true, ...paths })
+  expect(commit).toBe(git.head)
+  expect(git.files).toHaveLength(1)
+  expect(Object.keys(git.files[0]).sort()).toEqual(['catalogReleaseJson', 'readme'])
+  expect(git.files[0].reposJson).toBeUndefined()
+  expect(git.files[0].statsJson).toBeUndefined()
+  expect(git.files[0].markdownPathsJson).toBeUndefined()
+  expect(db.prepare('SELECT state FROM artifact_publications WHERE run_id = ?').get('r1')).toEqual({
+    state: 'uploaded',
+  })
 })
 
 it('accepts a legacy three-file draft hash when recovering a draft prepared before the markdown sidecar existed', async () => {
@@ -278,7 +364,8 @@ it.each([true, false])('publishes a frozen pre-metadata draft with plugins and s
 ]
 `
   expect(renderRepos(listPublishable(db), { includeNewCatalogMetadata: false })).toBe(preUpgradeReposJson)
-  expect(JSON.parse(currentFiles.reposJson)[0]).toMatchObject({
+  expect(currentFiles.reposJson).toBeDefined()
+  expect(JSON.parse(currentFiles.reposJson as string)[0]).toMatchObject({
     plugins: [{ name: 'one', description: 'A plugin' }],
     license: 'MIT',
     archived: true,
@@ -358,7 +445,7 @@ it('reconciles a visible legacy-format pending commit after a later catalog muta
   const pending = getRun(db, 'r1')?.pending_commit_sha
   expect(pending).toBe(git.head)
   expect(git.files[0].reposJson).toBe(oldReposJson)
-  expect(JSON.parse(git.files[0].reposJson)[0]).not.toHaveProperty('catalog_updated_at')
+  expect(JSON.parse(git.files[0].reposJson as string)[0]).not.toHaveProperty('catalog_updated_at')
 
   db.prepare('UPDATE repositories SET description = ? WHERE id = 18').run('genuinely changed')
   db.exec('DROP TRIGGER reject_publication')
@@ -669,4 +756,660 @@ it('holds a durable lease across an in-flight PATCH so neither another publisher
   expect(publicationLease(db)).toBeUndefined()
   await expect(publishRun(db, git, 'r2', { writeEnabled: true })).rejects.toMatchObject({ category: 'historical_conflict' })
   expect(git.patches).toBe(1)
+})
+
+it('uploads and verifies release asset before creating and committing release pointer', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-test-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  const commit = await publishRun(db, git, 'r1', {
+    writeEnabled: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  expect(git.head).toBe(commit)
+  expect(git.uploadedAssets).toHaveLength(1)
+  expect(git.uploadedAssets[0].assetName).toBe('catalog.sqlite')
+  expect(existsSync(releasePointerPath)).toBe(true)
+  const pointer = JSON.parse(readFileSync(releasePointerPath, 'utf8'))
+  expect(pointer.artifactUrl).toContain('releases/download')
+  const artifactRow = db.prepare("SELECT state FROM artifact_publications WHERE run_id = 'r1'").get() as { state: string }
+  expect(artifactRow.state).toBe('uploaded')
+})
+
+it('fails publication if release asset upload fails, marking artifact failed and creating no commit', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-fail-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  git.uploadFailure = 'Network error during release asset upload'
+
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toThrowError(PublicationError)
+
+  expect(git.patches).toBe(0)
+  const artifactRow = db.prepare("SELECT state, diagnostic_code FROM artifact_publications WHERE run_id = 'r1'").get() as {
+    state: string
+    diagnostic_code: string
+  }
+  expect(artifactRow.state).toBe('failed')
+  expect(artifactRow.diagnostic_code).toBe('Network error during release asset upload')
+})
+
+it('resets a failed publication to prepared and completes publication on retry', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-retry-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  git.uploadFailure = 'Temporary connection reset'
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toThrowError(PublicationError)
+
+  expect(git.patches).toBe(0)
+  expect((db.prepare("SELECT state FROM artifact_publications WHERE run_id = 'r1'").get() as { state: string }).state).toBe('failed')
+
+  // Retry with working upload
+  git.uploadFailure = null
+  const commit = await publishRun(db, git, 'r1', {
+    writeEnabled: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  expect(commit).toBe(git.head)
+  expect(git.patches).toBe(1)
+  expect((db.prepare("SELECT state FROM artifact_publications WHERE run_id = 'r1'").get() as { state: string }).state).toBe('uploaded')
+  expect(git.files[0].catalogReleaseJson).toBeDefined()
+})
+
+it('refuses to commit when uploadReleaseAsset is not provided on the git client', async () => {
+  const db = fixture()
+  const git = new Branch()
+  git.uploadReleaseAsset = undefined
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-nouploader-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toThrowError(PublicationError)
+
+  expect(git.patches).toBe(0)
+  expect((db.prepare("SELECT state FROM artifact_publications WHERE run_id = 'r1'").get() as { state: string }).state).toBe('failed')
+})
+
+it('recovers after a restart when artifact is already uploaded and pointer file is missing or stale', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-restart-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  // Simulate a crash right after release asset upload:
+  // publication is marked uploaded, but process crashed and pointer file was deleted or lost on restart
+  rmSync(releasePointerPath, { force: true })
+  expect(existsSync(releasePointerPath)).toBe(false)
+
+  // publishRun should detect missing pointer, upload/reconstruct it, and complete commit
+  const commit = await publishRun(db, git, 'r1', {
+    writeEnabled: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  expect(commit).toBe(git.head)
+  expect(existsSync(releasePointerPath)).toBe(true)
+
+  // Now test with publication.state === 'uploaded' already set, simulating a restart after upload
+  // Reset run to completed with pending commit to test recovery with uploaded state
+  const db2 = fixture()
+  const git2 = new Branch()
+  const directory2 = mkdtempSync(join(import.meta.dirname, '.artifact-restart2-'))
+  directories.push(directory2)
+  const artifactOutputPath2 = join(directory2, 'catalog.sqlite')
+  const releasePointerPath2 = join(directory2, 'catalog-release.json')
+
+  prepareDraft(db2, 'r1', timestamp, {
+    artifactOutputPath: artifactOutputPath2,
+    releasePointerPath: releasePointerPath2,
+  })
+
+  // Mock failure during branch update
+  git2.failure = 'patch-before'
+
+  // First call uploads asset, writes pointer, but fails during commit/patch
+  await expect(
+    publishRun(db2, git2, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath: artifactOutputPath2,
+      releasePointerPath: releasePointerPath2,
+    }),
+  ).rejects.toThrowError(PublicationError)
+
+  git2.failure = null
+
+  // Now publication was marked failed due to git failure: reset to uploaded to simulate restart after successful upload
+  db2.prepare("UPDATE artifact_publications SET state = 'uploaded' WHERE run_id = 'r1'").run()
+
+  // Corrupt or delete pointer file in checkout
+  rmSync(releasePointerPath2, { force: true })
+  expect(existsSync(releasePointerPath2)).toBe(false)
+
+  // Recovery should reconstruct pointer from durable data and complete publication
+  const commit2 = await publishRun(db2, git2, 'r1', {
+    writeEnabled: true,
+    recover: true,
+    artifactOutputPath: artifactOutputPath2,
+    releasePointerPath: releasePointerPath2,
+  })
+
+  expect(commit2).toBe(git2.head)
+  expect(existsSync(releasePointerPath2)).toBe(true)
+  const restoredPointer = JSON.parse(readFileSync(releasePointerPath2, 'utf8')) as { snapshotId?: string }
+  expect(restoredPointer.snapshotId).toBeDefined()
+})
+
+it('replaces a stale pointer file from a previous release when recovering or publishing on a restarted checkout', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-stale-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  // Write a stale pointer from an older release into checkout before publish
+  const stalePointer: CatalogReleasePointer = {
+    snapshotId: 'stale-older-snapshot',
+    catalogFingerprint: '0000000000000000000000000000000000000000000000000000000000000000',
+    artifactSha256: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+    recordCount: 1,
+    canonicalCount: 1,
+    pluginsCount: 1,
+    statsCount: 1,
+    schemaVersion: 1,
+    generatorVersion: '0.1.0',
+    createdAt: '2020-01-01T00:00:00.000Z',
+    artifactUrl: 'https://github.com/example/repo/releases/download/catalog-stale/catalog.sqlite',
+  }
+  writeFileSync(releasePointerPath, JSON.stringify(stalePointer, null, 2), 'utf8')
+
+  // Publish should overwrite the stale pointer with the authentic current release pointer
+  const commit = await publishRun(db, git, 'r1', {
+    writeEnabled: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  expect(commit).toBe(git.head)
+  const restoredPointer = JSON.parse(readFileSync(releasePointerPath, 'utf8')) as CatalogReleasePointer
+  expect(restoredPointer.snapshotId).not.toBe('stale-older-snapshot')
+  expect(restoredPointer.catalogFingerprint).not.toBe('0000000000000000000000000000000000000000000000000000000000000000')
+  expect(restoredPointer.artifactUrl).toContain(restoredPointer.snapshotId)
+
+  // Verify the row in artifact_publications stored the correct release pointer, NOT the stale one
+  const row = db.prepare("SELECT release_pointer, artifact_url FROM artifact_publications WHERE run_id = 'r1'").get() as {
+    release_pointer: string
+    artifact_url: string
+  }
+  const persistedPointer = JSON.parse(row.release_pointer) as CatalogReleasePointer
+  expect(persistedPointer.snapshotId).toBe(restoredPointer.snapshotId)
+  expect(persistedPointer.snapshotId).not.toBe('stale-older-snapshot')
+
+  // Now simulate a restarted checkout with a stale pointer when publication state is already 'uploaded'
+  const db2 = fixture()
+  const git2 = new Branch()
+  const directory2 = mkdtempSync(join(import.meta.dirname, '.artifact-stale2-'))
+  directories.push(directory2)
+  const artifactOutputPath2 = join(directory2, 'catalog.sqlite')
+  const releasePointerPath2 = join(directory2, 'catalog-release.json')
+
+  prepareDraft(db2, 'r1', timestamp, {
+    artifactOutputPath: artifactOutputPath2,
+    releasePointerPath: releasePointerPath2,
+  })
+
+  // Fail git update to leave run in-flight with uploaded artifact
+  git2.failure = 'patch-before'
+  await expect(
+    publishRun(db2, git2, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath: artifactOutputPath2,
+      releasePointerPath: releasePointerPath2,
+    }),
+  ).rejects.toThrowError(PublicationError)
+  git2.failure = null
+
+  // Ensure state is uploaded
+  db2.prepare("UPDATE artifact_publications SET state = 'uploaded' WHERE run_id = 'r1'").run()
+
+  // Replace checkout's pointer with stale pointer from another release
+  writeFileSync(releasePointerPath2, JSON.stringify(stalePointer, null, 2), 'utf8')
+
+  // Recovery should detect that the pointer file is stale, replace it from durable publication data, and complete commit
+  const commit2 = await publishRun(db2, git2, 'r1', {
+    writeEnabled: true,
+    recover: true,
+    artifactOutputPath: artifactOutputPath2,
+    releasePointerPath: releasePointerPath2,
+  })
+
+  expect(commit2).toBe(git2.head)
+  const finalPointer = JSON.parse(readFileSync(releasePointerPath2, 'utf8')) as CatalogReleasePointer
+  expect(finalPointer.snapshotId).not.toBe('stale-older-snapshot')
+})
+
+it('replaces a pointer with matching identity fields but a stale artifactUrl during recovery', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-stale-url-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  // Fail git update to leave run in-flight with uploaded artifact
+  git.failure = 'patch-before'
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toThrowError(PublicationError)
+  git.failure = null
+
+  const validUrl = 'https://github.com/example/repo/releases/download/catalog-authentic/catalog.sqlite'
+  db.prepare("UPDATE artifact_publications SET state = 'uploaded', artifact_url = ? WHERE run_id = 'r1'").run(validUrl)
+
+  // Overwrite pointer file with matching identity but stale artifactUrl
+  const genuinePointer = JSON.parse(readFileSync(releasePointerPath, 'utf8')) as CatalogReleasePointer
+  const staleUrlPointer: CatalogReleasePointer = {
+    ...genuinePointer,
+    artifactUrl: 'https://github.com/example/repo/releases/download/catalog-stale/catalog.sqlite',
+  }
+  writeFileSync(releasePointerPath, JSON.stringify(staleUrlPointer, null, 2), 'utf8')
+
+  const commit = await publishRun(db, git, 'r1', {
+    writeEnabled: true,
+    recover: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  expect(commit).toBe(git.head)
+  const restoredPointer = JSON.parse(readFileSync(releasePointerPath, 'utf8')) as CatalogReleasePointer
+  expect(restoredPointer.artifactUrl).toBe(validUrl)
+  expect(restoredPointer.snapshotId).toBe(genuinePointer.snapshotId)
+})
+
+it('preserves existing publication and uploaded state when prepareDraft is called again for the same run', async () => {
+  const db = fixture()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-preserve-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  const initialPub = getArtifactPublication(db, 'r1')
+  expect(initialPub).toBeDefined()
+  expect(initialPub?.state).toBe('prepared')
+
+  // Mark uploaded with URL
+  const testUrl = 'https://github.com/example/repo/releases/download/test/catalog.sqlite'
+  db.prepare("UPDATE artifact_publications SET state = 'uploaded', artifact_url = ? WHERE run_id = 'r1'").run(testUrl)
+
+  // Re-enter prepareDraft with another clock value
+  const later = new Date(timestamp.getTime() + 100_000)
+  prepareDraft(db, 'r1', later, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  const postReentryPub = getArtifactPublication(db, 'r1')
+  expect(postReentryPub).toBeDefined()
+  expect(postReentryPub?.snapshot_id).toBe(initialPub?.snapshot_id)
+  expect(postReentryPub?.state).toBe('uploaded')
+  expect(postReentryPub?.artifact_url).toBe(testUrl)
+})
+
+it('preserves uploaded artifact publication state across git failures and reuses pointer on retry', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-git-failure-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  // First publish attempt fails at Git commit step
+  git.failure = 'commit-before'
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toThrow(PublicationError)
+
+  const pubAfterGitFailure = getArtifactPublication(db, 'r1')
+  expect(pubAfterGitFailure).toBeDefined()
+  expect(pubAfterGitFailure?.state).toBe('uploaded')
+  expect(git.uploadedAssets.length).toBe(1)
+
+  // Repair Git and retry
+  git.failure = null
+  const commit = await publishRun(db, git, 'r1', {
+    writeEnabled: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  expect(commit).toBe(git.head)
+  expect(git.uploadedAssets.length).toBe(1) // Was NOT re-uploaded!
+  const finalPub = getArtifactPublication(db, 'r1')
+  expect(finalPub?.snapshot_id).toBe(pubAfterGitFailure?.snapshot_id)
+  expect(finalPub?.state).toBe('uploaded')
+})
+
+it('refuses publication when artifact paths are missing and legacy publication is disallowed', async () => {
+  const db = fixture()
+  const git = new Branch()
+  prepareDraft(db, 'r1', timestamp)
+
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      requireArtifactPublication: true,
+    }),
+  ).rejects.toMatchObject({ category: 'snapshot_invalid' })
+})
+
+it('isolates artifact paths between sequential crawler runs so artifacts are not overwritten', async () => {
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-isolation-'))
+  directories.push(directory)
+  const paths1 = resolveArtifactPaths(
+    { artifactOutputPath: join(directory, 'artifacts/{runId}/catalog.sqlite'), releasePointerPath: join(directory, 'pointer.json') },
+    'run-1',
+  )
+  const paths2 = resolveArtifactPaths(
+    { artifactOutputPath: join(directory, 'artifacts/{runId}/catalog.sqlite'), releasePointerPath: join(directory, 'pointer.json') },
+    'run-2',
+  )
+
+  expect(paths1?.outputPath).toContain('run-1')
+  expect(paths2?.outputPath).toContain('run-2')
+  expect(paths1?.outputPath).not.toEqual(paths2?.outputPath)
+})
+
+it('recovers after restart and complete artifact loss on disk (deterministic regeneration with same SHA)', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-wipe-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  // First publication attempt fails during upload
+  git.uploadFailure = 'Connection reset'
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toThrowError(PublicationError)
+
+  const pubRow = db.prepare("SELECT * FROM artifact_publications WHERE run_id = 'r1'").get() as {
+    state: string
+    artifact_sha256: string
+    snapshot_id: string
+  }
+  expect(pubRow.state).toBe('failed')
+  const initialSha = pubRow.artifact_sha256
+
+  // Simulate container restart with wiped ephemeral filesystem:
+  // Both SQLite artifact and pointer file are completely removed from disk
+  rmSync(artifactOutputPath, { force: true })
+  rmSync(releasePointerPath, { force: true })
+  expect(existsSync(artifactOutputPath)).toBe(false)
+  expect(existsSync(releasePointerPath)).toBe(false)
+
+  // Recovery should regenerate the artifact deterministically with the same SHA, upload it, and succeed
+  git.uploadFailure = null
+  const commit = await publishRun(db, git, 'r1', {
+    writeEnabled: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  expect(commit).toBe(git.head)
+  expect(existsSync(artifactOutputPath)).toBe(true)
+  expect(existsSync(releasePointerPath)).toBe(true)
+  const finalPub = db.prepare("SELECT * FROM artifact_publications WHERE run_id = 'r1'").get() as {
+    state: string
+    artifact_sha256: string
+  }
+  expect(finalPub.state).toBe('uploaded')
+  expect(finalPub.artifact_sha256).toBe(initialSha)
+})
+
+it('rejects publication with snapshot_changed when a repository outside the top-100 README is modified after draft preparation', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-fingerprint-test-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  // Insert 105 repositories so repos 101-105 are outside the README top-100
+  const insertStmt = db.prepare(`INSERT INTO repositories (
+    id, html_url, stargazers_count, forks_count, subscribers_count, description,
+    owner, owner_url, repo_name, plugins_count, createdAt, updatedAt
+  ) VALUES (?, ?, ?, 10, 5, ?, 'testowner', 'https://github.com/testowner', ?, 1, 'start', 'start')`)
+
+  for (let i = 1; i <= 105; i++) {
+    const id = 1000 + i
+    const stars = 200 - i // Repos 1-100 have stars 199..100; Repos 101-105 have stars 99..95
+    insertStmt.run(id, `https://github.com/testowner/repo-${i}`, stars, `Description ${i}`, `repo-${i}`)
+  }
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  // Mutate repository 105 (strictly outside the README top 100)
+  db.prepare("UPDATE repositories SET description = 'Modified description after draft prepared' WHERE id = ?").run(1105)
+
+  // publishRun must detect that catalogFingerprint has changed and throw snapshot_changed
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toMatchObject({ category: 'snapshot_changed' })
+
+  // Verify artifact was not uploaded before rejecting the modified snapshot
+  expect(git.uploadedAssets.length).toBe(0)
+})
+
+it('rejects publication with snapshot_changed when a historical stats record size is modified after draft preparation', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-stats-size-test-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  // Mutate historical stats record size after draft preparation
+  db.prepare('UPDATE stats SET size = 999 WHERE id = 264').run()
+
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toMatchObject({ category: 'snapshot_changed' })
+
+  // Verify artifact was not uploaded
+  expect(git.uploadedAssets.length).toBe(0)
+})
+
+it('rejects publication with snapshot_changed when a historical stats record date is modified after draft preparation', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-stats-date-test-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  // Mutate historical stats record date after draft preparation
+  db.prepare("UPDATE stats SET date = '2023-12-31T23:59:59.000Z' WHERE id = 264").run()
+
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toMatchObject({ category: 'snapshot_changed' })
+
+  // Verify artifact was not uploaded
+  expect(git.uploadedAssets.length).toBe(0)
+})
+
+it('handles two sequential publications with templated {runId} paths without collision', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-sequential-runs-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, '{runId}/catalog.sqlite')
+  const releasePointerPath = join(directory, '{runId}/catalog-release.json')
+
+  // Prepare and publish run 1
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+  const commit1 = await publishRun(db, git, 'r1', {
+    writeEnabled: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+  expect(commit1).toBe(git.head)
+
+  const paths1 = resolveArtifactPaths({ artifactOutputPath, releasePointerPath }, 'r1')
+  expect(paths1).not.toBeNull()
+  expect(existsSync(paths1?.outputPath ?? '')).toBe(true)
+  expect(existsSync(paths1?.pointerPath ?? '')).toBe(true)
+
+  // Setup second completed run
+  beginRun(db, 'r2', new Date(timestamp.getTime() + 1000).toISOString())
+  completeRun(db, 'r2', new Date(timestamp.getTime() + 1000).toISOString(), 0)
+
+  // Prepare and publish run 2
+  prepareDraft(db, 'r2', new Date(timestamp.getTime() + 2000), {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+  const commit2 = await publishRun(db, git, 'r2', {
+    writeEnabled: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+  expect(commit2).toBe(git.head)
+
+  const paths2 = resolveArtifactPaths({ artifactOutputPath, releasePointerPath }, 'r2')
+  expect(paths2).not.toBeNull()
+  expect(existsSync(paths2?.outputPath ?? '')).toBe(true)
+  expect(existsSync(paths2?.pointerPath ?? '')).toBe(true)
+
+  expect(paths1?.outputPath).not.toEqual(paths2?.outputPath)
+  expect(paths1?.pointerPath).not.toEqual(paths2?.pointerPath)
 })

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { openPublicCatalog } from '@awesome-claude-plugins/catalog-snapshot/read'
 
 export function fingerprintCatalog(repos) {
   return createHash('sha256').update(JSON.stringify(repos)).digest('hex')
@@ -19,6 +20,33 @@ export function buildCatalogRecords(repos, siteUrl) {
     records.set(key, { fingerprint, url })
   }
   return records
+}
+
+export function buildCatalogRecordsFromReader(reader, siteUrl) {
+  const seenPaths = new Set()
+  const records = new Map()
+  for (const repo of reader.iteratePublishedRecords()) {
+    if (typeof repo?.owner !== 'string' || typeof repo.repo_name !== 'string') continue
+    const key = `${repo.owner}/${repo.repo_name}`.toLowerCase()
+    if (seenPaths.has(key)) continue
+    seenPaths.add(key)
+    if (repo.plugins_count === null) continue
+    const url = new URL(`/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo_name)}`, siteUrl).toString()
+    const fingerprint = fingerprintCatalog(repo)
+    records.set(key, { fingerprint, url })
+  }
+  return records
+}
+
+export function buildCatalogRecordsFromSqlite(catalogPath, siteUrl) {
+  const reader = openPublicCatalog(catalogPath)
+  try {
+    const records = buildCatalogRecordsFromReader(reader, siteUrl)
+    const metadata = reader.getCatalogMetadata()
+    return { records, fingerprint: metadata.catalog_fingerprint }
+  } finally {
+    reader.close()
+  }
 }
 
 export function diffCatalogRecords(previous, current) {

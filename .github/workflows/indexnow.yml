@@ -16,12 +16,14 @@ on:
     paths:
       - .github/workflows/indexnow.yml
       - awesomeclaudeplugins.com/ui/scripts/indexnow*.mjs
-      - awesomeclaudeplugins.com/ui/src/data/repos.json
+      - awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
+      - awesomeclaudeplugins.com/ui/catalog-release.json
   pull_request:
     paths:
       - .github/workflows/indexnow.yml
       - awesomeclaudeplugins.com/ui/scripts/indexnow*.mjs
-      - awesomeclaudeplugins.com/ui/src/data/repos.json
+      - awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
+      - awesomeclaudeplugins.com/ui/catalog-release.json
   schedule:
     # Run after deployment, never as a blocking check on the commit being deployed.
     - cron: '17,47 * * * *'
@@ -44,6 +46,21 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: awesomeclaudeplugins.com/.bun-version
+
+      - name: Install Bun workspace dependencies
+        run: bun install --frozen-lockfile
+        working-directory: awesomeclaudeplugins.com
+
+      - name: Prepare and verify catalog SQLite snapshot
+        run: bun run prepare:catalog
+        working-directory: awesomeclaudeplugins.com/ui
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Test IndexNow change detection
         run: node --test scripts/indexnow-*.test.mjs
@@ -73,6 +90,21 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: awesomeclaudeplugins.com/.bun-version
+
+      - name: Install Bun workspace dependencies
+        run: bun install --frozen-lockfile
+        working-directory: awesomeclaudeplugins.com
+
+      - name: Prepare and verify catalog SQLite snapshot
+        run: bun run prepare:catalog
+        working-directory: awesomeclaudeplugins.com/ui
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Test IndexNow change detection
         run: node --test scripts/indexnow-*.test.mjs
         working-directory: awesomeclaudeplugins.com/ui
@@ -90,7 +122,7 @@ jobs:
       - name: Record current baseline fingerprint
         id: baseline_before
         env:
-          BASELINE_PATH: ${{ runner.temp }}/indexnow-state/repos.json
+          BASELINE_PATH: ${{ runner.temp }}/indexnow-state/indexnow-state.sqlite
         run: |
           if [[ -f "$BASELINE_PATH" ]]; then
             echo "sha=$(sha256sum "$BASELINE_PATH" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
@@ -104,14 +136,16 @@ jobs:
         env:
           INDEXNOW_SITE_URL: ${{ vars.INDEXNOW_SITE_URL || 'https://awesomeclaudeplugins.com' }}
           INDEXNOW_MODE: ${{ inputs.mode || 'changed' }}
-          INDEXNOW_BASELINE_PATH: ${{ runner.temp }}/indexnow-state/repos.json
+          INDEXNOW_BASELINE_PATH: ${{ runner.temp }}/indexnow-state/indexnow-state.sqlite
           # A scheduled run skips and retries later if Railway has not deployed the catalog.
           INDEXNOW_DEFER_UNTIL_DEPLOYED: ${{ github.event_name == 'schedule' }}
+          INDEXNOW_RESOLVE_DEPLOYED: 'true'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check whether the baseline changed
         id: baseline_changed
         env:
-          BASELINE_PATH: ${{ runner.temp }}/indexnow-state/repos.json
+          BASELINE_PATH: ${{ runner.temp }}/indexnow-state/indexnow-state.sqlite
           PREVIOUS_SHA: ${{ steps.baseline_before.outputs.sha }}
         run: |
           if [[ -f "$BASELINE_PATH" ]] && [[ "$(sha256sum "$BASELINE_PATH" | cut -d ' ' -f1)" != "$PREVIOUS_SHA" ]]; then

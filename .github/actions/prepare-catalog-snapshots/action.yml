@@ -1,0 +1,22 @@
+﻿name: 'Prepare Catalog Snapshots'
+description: 'Prepares candidate and baseline catalog SQLite snapshots'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Prepare catalog SQLite snapshots
+      shell: bash
+      run: |
+        cd candidate/awesomeclaudeplugins.com/ui
+        node scripts/prepare-catalog.mjs
+        cd ../../..
+        if [ -f baseline/awesomeclaudeplugins.com/ui/scripts/prepare-catalog.mjs ]; then
+          cd baseline/awesomeclaudeplugins.com/ui
+          node scripts/prepare-catalog.mjs
+        elif [ -f baseline/awesomeclaudeplugins.com/ui/src/data/repos.json ]; then
+          cd candidate/awesomeclaudeplugins.com/ui
+          node scripts/prepare-catalog.mjs --source ../../../baseline/awesomeclaudeplugins.com/ui/src/data --output ../../../baseline/awesomeclaudeplugins.com/ui/src/data/catalog.sqlite
+        else
+          echo "Baseline catalog snapshot cannot be prepared"
+          exit 1
+        fi

@@ -10,6 +10,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@awesome-claude-plugins/catalog-contract": "^0.1.0",
+        "@awesome-claude-plugins/catalog-snapshot": "^0.1.0",
         "better-sqlite3": "12.11.1",
       },
       "devDependencies": {

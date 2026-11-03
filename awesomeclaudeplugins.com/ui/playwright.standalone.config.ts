@@ -4,6 +4,8 @@ import { defineConfig } from '@playwright/test'
 import baseConfig from './playwright.config.ts'
 
 const catalogPath = resolve('tests/e2e/fixtures/standalone-repos.json')
+const sqlitePath = resolve('src/data/catalog.standalone-e2e.sqlite')
+const manifestPath = resolve('src/data/catalog.standalone-e2e.manifest.json')
 
 // Build and serve a real catalog independently of the published production snapshot.
 export default defineConfig({
@@ -15,7 +17,13 @@ export default defineConfig({
         ...server,
         // The default CI build belongs to the production catalog; build this fixture separately.
         command: server.command.replace('"bun run start"', '"bun run build && bun run start"'),
-        env: { ...server.env, CATALOG_DATA_PATH: catalogPath, STANDALONE_E2E: '1' },
+        env: {
+          ...server.env,
+          CATALOG_DATA_PATH: catalogPath,
+          CATALOG_SQLITE_PATH: sqlitePath,
+          CATALOG_MANIFEST_PATH: manifestPath,
+          STANDALONE_E2E: '1',
+        },
       }))
     : undefined,
 })

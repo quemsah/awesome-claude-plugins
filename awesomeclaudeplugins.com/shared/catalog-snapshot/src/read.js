@@ -220,6 +220,18 @@ export function openPublicCatalog(path, expected = {}) {
     LIMIT 1
   `)
 
+  const lookupByIdStmt = db.prepare(`
+    SELECT record_json FROM repositories
+    WHERE id = ? AND is_canonical = 1
+    LIMIT 1
+  `)
+
+  const lookupByIdAndPathStmt = db.prepare(`
+    SELECT record_json FROM repositories
+    WHERE id = ? AND canonical_key = ? AND is_canonical = 1
+    LIMIT 1
+  `)
+
   const isMarkdownStmt = db.prepare(`
     SELECT 1 FROM repositories
     WHERE canonical_key = ? AND is_canonical = 1 AND is_markdown_repo = 1
@@ -270,6 +282,16 @@ export function openPublicCatalog(path, expected = {}) {
     getRecordBySourceOrder(sourceOrder) {
       if (typeof sourceOrder !== 'number' || sourceOrder < 0) return undefined
       const row = lookupBySourceOrderStmt.get(sourceOrder)
+      return row ? JSON.parse(row.record_json) : undefined
+    },
+
+    getRecordById(id, canonicalPath) {
+      if (typeof id !== 'number' || !Number.isSafeInteger(id)) return undefined
+      if (canonicalPath && typeof canonicalPath === 'string') {
+        const row = lookupByIdAndPathStmt.get(id, canonicalPath.toLowerCase())
+        if (row) return JSON.parse(row.record_json)
+      }
+      const row = lookupByIdStmt.get(id)
       return row ? JSON.parse(row.record_json) : undefined
     },
 
@@ -489,6 +511,20 @@ export function openPublicCatalog(path, expected = {}) {
 
     getCatalogMetadata() {
       return { ...metadata }
+    },
+
+    verifyIntegrity() {
+      if (!db || !db.open) return false
+      try {
+        const check = db.pragma('quick_check')
+        return Array.isArray(check) && check[0]?.quick_check === 'ok'
+      } catch {
+        return false
+      }
+    },
+
+    isOpen() {
+      return Boolean(db && db.open)
     },
 
     close() {
