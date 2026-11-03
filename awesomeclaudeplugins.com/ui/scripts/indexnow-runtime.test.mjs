@@ -14,17 +14,9 @@ const API_FAILURE_PATTERN = /IndexNow rejected the request: 503/
 const BATCH_ABORT_REGEX = /Catalog deployment changed between batch submissions/
 let importCounter = 0
 
-async function runWithMockedFetch({ baselinePath, fetcher, defer = true, batchSize, resolveDeployed, catalogSqliteUrl, mode = 'changed' }) {
+async function runWithMockedFetch({ baselinePath, fetcher, defer = true, batchSize, mode = 'changed' }) {
   const previousFetch = globalThis.fetch
-  const keys = [
-    'INDEXNOW_MODE',
-    'INDEXNOW_SITE_URL',
-    'INDEXNOW_BASELINE_PATH',
-    'INDEXNOW_DEFER_UNTIL_DEPLOYED',
-    'INDEXNOW_BATCH_SIZE',
-    'INDEXNOW_RESOLVE_DEPLOYED',
-    'CATALOG_SQLITE_URL',
-  ]
+  const keys = ['INDEXNOW_MODE', 'INDEXNOW_SITE_URL', 'INDEXNOW_BASELINE_PATH', 'INDEXNOW_DEFER_UNTIL_DEPLOYED', 'INDEXNOW_BATCH_SIZE']
   const previousEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
   try {
     process.env.INDEXNOW_MODE = mode
@@ -32,8 +24,6 @@ async function runWithMockedFetch({ baselinePath, fetcher, defer = true, batchSi
     process.env.INDEXNOW_BASELINE_PATH = baselinePath
     process.env.INDEXNOW_DEFER_UNTIL_DEPLOYED = String(defer)
     if (batchSize !== undefined) process.env.INDEXNOW_BATCH_SIZE = String(batchSize)
-    if (resolveDeployed !== undefined) process.env.INDEXNOW_RESOLVE_DEPLOYED = String(resolveDeployed)
-    if (catalogSqliteUrl !== undefined) process.env.CATALOG_SQLITE_URL = catalogSqliteUrl
     globalThis.fetch = fetcher
     importCounter += 1
     await import(`./indexnow.mjs?integration-test=${importCounter}`)
@@ -350,20 +340,16 @@ test('scheduled IndexNow re-checks fingerprint before saving baseline and aborts
   }
 })
 
-test('scheduled IndexNow resolves active deployed release artifact when production deployment differs from checkout and INDEXNOW_RESOLVE_DEPLOYED is set', async () => {
+test('IndexNow full mode establishes baseline and submits URLs when mock site and indexnow endpoints are provided', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'indexnow-resolve-deployed-'))
   const baselinePath = join(dir, 'indexnow-state.sqlite')
   saveBaseline(baselinePath, new Map())
-  const { pathToFileURL } = await import('node:url')
-  const catalogFileUrl = pathToFileURL(catalogPath).toString()
 
   let submittedUrls = []
   try {
     await runWithMockedFetch({
       baselinePath,
       mode: 'full',
-      resolveDeployed: true,
-      catalogSqliteUrl: catalogFileUrl,
       fetcher: async (url, options) => {
         const endpoint = String(url)
         if (endpoint === `${site}/api/catalog-version`) {

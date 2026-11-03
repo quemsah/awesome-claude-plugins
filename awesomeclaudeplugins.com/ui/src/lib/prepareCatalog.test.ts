@@ -12,12 +12,22 @@ const ARTIFACT_MISMATCH_PATTERN = /published SHA-256/
 
 describe('prepareCatalog script', () => {
   const tempDir = join(process.cwd(), 'src/lib/__temp_test_prepare_catalog__')
+  let originalSqlitePath: string | undefined
+  let originalManifestPath: string | undefined
 
   beforeEach(() => {
+    originalSqlitePath = process.env.CATALOG_SQLITE_PATH
+    originalManifestPath = process.env.CATALOG_MANIFEST_PATH
+    delete process.env.CATALOG_SQLITE_PATH
+    delete process.env.CATALOG_MANIFEST_PATH
     mkdirSync(tempDir, { recursive: true })
   })
 
   afterEach(() => {
+    if (originalSqlitePath !== undefined) process.env.CATALOG_SQLITE_PATH = originalSqlitePath
+    else delete process.env.CATALOG_SQLITE_PATH
+    if (originalManifestPath !== undefined) process.env.CATALOG_MANIFEST_PATH = originalManifestPath
+    else delete process.env.CATALOG_MANIFEST_PATH
     try {
       rmSync(tempDir, { recursive: true, force: true })
     } catch {}
@@ -232,6 +242,53 @@ describe('prepareCatalog script', () => {
     const db = new Database(customSqlite, { readonly: true })
     try {
       const meta = db.prepare('SELECT * FROM catalog_metadata WHERE id = 1').get() as { record_count: number }
+      expect(meta.record_count).toBe(1)
+    } finally {
+      db.close()
+    }
+  })
+
+  it('builds into custom CATALOG_SQLITE_PATH and CATALOG_MANIFEST_PATH in standard production mode', () => {
+    const cliSourceDir = join(tempDir, 'prod-source')
+    const cliOutputDir = join(tempDir, 'prod-out')
+    mkdirSync(cliSourceDir, { recursive: true })
+    mkdirSync(cliOutputDir, { recursive: true })
+
+    writeFileSync(
+      join(cliSourceDir, 'repos.json'),
+      JSON.stringify([
+        {
+          id: 99,
+          owner: 'prod-test',
+          repo_name: 'prod-plugin',
+          description: 'Production custom path plugin',
+          plugins_count: 1,
+          stargazers_count: 15,
+        },
+      ])
+    )
+    writeFileSync(join(cliSourceDir, 'stats.json'), JSON.stringify([{ id: 1, date: '2026-11-01', size: 1 }]))
+
+    const customSqlite = join(cliOutputDir, 'runtime-custom.sqlite')
+    const customManifest = join(cliOutputDir, 'runtime-custom.manifest.json')
+    const scriptPath = join(process.cwd(), 'scripts/prepare-catalog.mjs')
+
+    execFileSync('node', [scriptPath, '--source', cliSourceDir], {
+      stdio: 'pipe',
+      env: {
+        ...process.env,
+        CATALOG_SQLITE_PATH: customSqlite,
+        CATALOG_MANIFEST_PATH: customManifest,
+        STANDALONE_E2E: undefined,
+      },
+    })
+
+    expect(existsSync(customSqlite)).toBe(true)
+    expect(existsSync(customManifest)).toBe(true)
+
+    const db = new Database(customSqlite, { readonly: true })
+    try {
+      const meta = db.prepare('SELECT record_count FROM catalog_metadata WHERE id = 1').get() as { record_count: number }
       expect(meta.record_count).toBe(1)
     } finally {
       db.close()

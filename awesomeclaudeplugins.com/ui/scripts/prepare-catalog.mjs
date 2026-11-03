@@ -376,11 +376,8 @@ function resolveCatalogPaths(options) {
   }
   const reposPath = fixturePath ?? join(dataDir, 'repos.json')
   const statsPath = join(dataDir, 'stats.json')
-  const outputPath = options.outputPath ?? (fixturePath ? process.env.CATALOG_SQLITE_PATH : undefined) ?? join(dataDir, 'catalog.sqlite')
-  const manifestPath =
-    options.manifestPath ??
-    (fixturePath ? process.env.CATALOG_MANIFEST_PATH : undefined) ??
-    join(dirname(outputPath), 'catalog.manifest.json')
+  const outputPath = options.outputPath ?? process.env.CATALOG_SQLITE_PATH ?? join(dataDir, 'catalog.sqlite')
+  const manifestPath = options.manifestPath ?? process.env.CATALOG_MANIFEST_PATH ?? join(dirname(outputPath), 'catalog.manifest.json')
 
   const pointerPath = fixturePath
     ? undefined

@@ -6,6 +6,7 @@ import { calculateCatalogFingerprint } from '@awesome-claude-plugins/catalog-sna
 import type Database from 'better-sqlite3'
 import { afterEach, expect, it } from 'vitest'
 import { formatPublicCatalogRecord, renderRepos } from '../output/catalogSnapshot.js'
+import { getHistoricalStats } from '../output/publicCatalog.js'
 import { renderReadme } from '../output/readme.js'
 import { openDatabase } from '../storage/db.js'
 import { listPublishable } from '../storage/repositories.js'
@@ -276,9 +277,20 @@ it('prepares and publishes in sqlite-native mode without rendering legacy json f
   }
   const draft = prepareDraft(db, 'r1', timestamp, paths)
   const fingerprint = calculateCatalogFingerprint(listPublishable(db).map((r) => formatPublicCatalogRecord(r)))
+  const statsFingerprint = createHash('sha256')
+    .update(JSON.stringify(getHistoricalStats(db)), 'utf8')
+    .digest('hex')
   const expectedHash = createHash('sha256')
     .update(
-      JSON.stringify([renderReadme(listPublishable(db), draft), 'sqlite-catalog', draft.id, draft.date, draft.size, fingerprint]),
+      JSON.stringify([
+        renderReadme(listPublishable(db), draft),
+        'sqlite-catalog',
+        draft.id,
+        draft.date,
+        draft.size,
+        fingerprint,
+        statsFingerprint,
+      ]),
       'utf8',
     )
     .digest('hex')
@@ -1293,6 +1305,62 @@ it('rejects publication with snapshot_changed when a repository outside the top-
   ).rejects.toMatchObject({ category: 'snapshot_changed' })
 
   // Verify artifact was not uploaded before rejecting the modified snapshot
+  expect(git.uploadedAssets.length).toBe(0)
+})
+
+it('rejects publication with snapshot_changed when a historical stats record size is modified after draft preparation', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-stats-size-test-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  // Mutate historical stats record size after draft preparation
+  db.prepare('UPDATE stats SET size = 999 WHERE id = 264').run()
+
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toMatchObject({ category: 'snapshot_changed' })
+
+  // Verify artifact was not uploaded
+  expect(git.uploadedAssets.length).toBe(0)
+})
+
+it('rejects publication with snapshot_changed when a historical stats record date is modified after draft preparation', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-stats-date-test-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  // Mutate historical stats record date after draft preparation
+  db.prepare("UPDATE stats SET date = '2023-12-31T23:59:59.000Z' WHERE id = 264").run()
+
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toMatchObject({ category: 'snapshot_changed' })
+
+  // Verify artifact was not uploaded
   expect(git.uploadedAssets.length).toBe(0)
 })
 

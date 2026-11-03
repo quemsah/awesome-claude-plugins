@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { openPublicCatalog, type SnapshotManifest } from '@awesome-claude-plugins/catalog-snapshot'
 import type Database from 'better-sqlite3'
@@ -68,6 +68,22 @@ export function getArtifactPublication(db: Database.Database, runId: string): Ar
   return row ?? null
 }
 
+function computeFileSha256(filePath: string): string {
+  const hash = createHash('sha256')
+  const fd = openSync(filePath, 'r')
+  const buffer = Buffer.alloc(64 * 1024)
+  try {
+    while (true) {
+      const bytesRead = readSync(fd, buffer, 0, buffer.length, null)
+      if (bytesRead <= 0) break
+      hash.update(buffer.subarray(0, bytesRead))
+    }
+  } finally {
+    closeSync(fd)
+  }
+  return hash.digest('hex')
+}
+
 function tryReusePreservedArtifact(
   db: Database.Database,
   runId: string,
@@ -75,7 +91,7 @@ function tryReusePreservedArtifact(
 ): { manifest: SnapshotManifest; publication: ArtifactPublicationRow } | null {
   if (!existingPub.artifact_path || !existsSync(existingPub.artifact_path)) return null
   const artifactPath = existingPub.artifact_path
-  const diskSha = createHash('sha256').update(readFileSync(artifactPath)).digest('hex')
+  const diskSha = computeFileSha256(artifactPath)
   if (diskSha !== existingPub.artifact_sha256) return null
 
   const reader = openPublicCatalog(artifactPath)

@@ -118,15 +118,31 @@ function publishedCommit(db: Database.Database, runId: string): string {
   )
 }
 
+function calculateStatsFingerprint(history: readonly StatsRecord[]): string {
+  return createHash('sha256').update(JSON.stringify(history), 'utf8').digest('hex')
+}
+
 function snapshotHash(
   files: GitSnapshotFiles,
   includeMarkdownPaths: boolean,
   draft?: { id: number; date: string; size: number },
   catalogFingerprint?: string,
+  statsFingerprint?: string,
 ): string {
   if (!files.reposJson && draft) {
     return createHash('sha256')
-      .update(JSON.stringify([files.readme, 'sqlite-catalog', draft.id, draft.date, draft.size, catalogFingerprint ?? '']), 'utf8')
+      .update(
+        JSON.stringify([
+          files.readme,
+          'sqlite-catalog',
+          draft.id,
+          draft.date,
+          draft.size,
+          catalogFingerprint ?? '',
+          statsFingerprint ?? '',
+        ]),
+        'utf8',
+      )
       .digest('hex')
   }
   const contents = [files.readme, files.reposJson ?? '', files.statsJson ?? '']
@@ -164,9 +180,7 @@ function getHistoricalRecoverySnapshots(
   const preMetadataFiles = { ...baseFiles, reposJson: renderRepos(repositories, { includeNewCatalogMetadata: false }) }
   const previousReposFiles = { ...baseFiles, reposJson: renderRepos(repositories, { includeCatalogUpdatedAt: false }) }
   const legacyUrlFiles = { ...baseFiles, reposJson: renderRepos(repositories, { legacyUrls: true }) }
-  const legacySqliteWithoutFingerprint: GitSnapshotFiles = { readme }
   return [
-    { hash: snapshotHash(legacySqliteWithoutFingerprint, true, publicDraft), files: legacySqliteWithoutFingerprint },
     { hash: snapshotHash(preMetadataFiles, true), files: preMetadataFiles },
     { hash: snapshotHash(previousReposFiles, true), files: previousReposFiles },
     { hash: snapshotHash(legacyUrlFiles, true), files: legacyUrlFiles },
@@ -186,9 +200,11 @@ function renderFiles(
     allowLegacyJsonPublication?: boolean
     paths?: { outputPath: string; pointerPath: string } | null
     catalogFingerprint?: string
+    statsFingerprint?: string
   },
 ): RenderedSnapshot {
-  checkHistory(getHistoricalStats(db), draft)
+  const history = getHistoricalStats(db)
+  checkHistory(history, draft)
   const publicDraft = { id: draft.id, date: draft.date, size: draft.size }
   let files: GitSnapshotFiles
   try {
@@ -222,10 +238,11 @@ function renderFiles(
 
   const catalogFingerprint =
     options?.catalogFingerprint ?? calculateCatalogFingerprint(repositories.map((r) => formatPublicCatalogRecord(r)))
+  const statsFingerprint = options?.statsFingerprint ?? calculateStatsFingerprint(history)
 
   return {
     files,
-    hash: snapshotHash(files, true, publicDraft, catalogFingerprint),
+    hash: snapshotHash(files, true, publicDraft, catalogFingerprint, statsFingerprint),
     getCompatibility: () => getHistoricalRecoverySnapshots(db, draft, repositories, files.readme),
   }
 }
@@ -460,8 +477,14 @@ function precheckPublicationDraft(
     db.transaction(() => {
       const publishable = listPublishable(db)
       const currentFingerprint = calculateCatalogFingerprint(publishable.map((r) => formatPublicCatalogRecord(r)))
+      const currentStatsFingerprint = calculateStatsFingerprint(getHistoricalStats(db))
       const paths = resolveArtifactPaths(options, runId)
-      const snapshot = renderFiles(db, draft, publishable, { ...options, paths, catalogFingerprint: currentFingerprint })
+      const snapshot = renderFiles(db, draft, publishable, {
+        ...options,
+        paths,
+        catalogFingerprint: currentFingerprint,
+        statsFingerprint: currentStatsFingerprint,
+      })
       if (!filesForDraftHash(draft.hash, snapshot)) {
         throw new PublicationError('snapshot_changed')
       }
@@ -487,8 +510,14 @@ function checkedSnapshot(
       const draft = savedDraft(run)
       const publishable = listPublishable(db)
       const currentFingerprint = calculateCatalogFingerprint(publishable.map((r) => formatPublicCatalogRecord(r)))
+      const currentStatsFingerprint = calculateStatsFingerprint(getHistoricalStats(db))
       const paths = resolveArtifactPaths(options, runId)
-      const snapshot = renderFiles(db, draft, publishable, { ...options, paths, catalogFingerprint: currentFingerprint })
+      const snapshot = renderFiles(db, draft, publishable, {
+        ...options,
+        paths,
+        catalogFingerprint: currentFingerprint,
+        statsFingerprint: currentStatsFingerprint,
+      })
       const releasePointer = resolveCheckedReleasePointer(db, runId, options, currentFingerprint)
       if (releasePointer) snapshot.files.catalogReleaseJson = releasePointer
       const files = filesForDraftHash(draft.hash, snapshot)
