@@ -215,6 +215,21 @@ export function hasArtifactTable(db: Database.Database): boolean {
   }
 }
 
+function formatTemplate(template: string, runId?: string): string {
+  return runId ? template.replaceAll('{runId}', runId) : template
+}
+
+function resolveDefaultPaths(runId?: string): { outputPath: string; pointerPath: string } {
+  const pointerPath = resolve(import.meta.dirname, '../../../ui/catalog-release.json')
+  if (existsSync('/data')) {
+    const outputPath = runId ? `/data/catalog-artifacts/${runId}/catalog.sqlite` : '/data/catalog-artifacts/catalog.sqlite'
+    return { outputPath, pointerPath }
+  }
+  const defaultDir = resolve(import.meta.dirname, '../../../ui/src/data')
+  const outputPath = runId ? resolve(defaultDir, `artifacts/${runId}/catalog.sqlite`) : resolve(defaultDir, 'catalog.sqlite')
+  return { outputPath, pointerPath }
+}
+
 export function resolveArtifactPaths(
   options?: { artifactOutputPath?: string; releasePointerPath?: string },
   runId?: string,
@@ -223,46 +238,33 @@ export function resolveArtifactPaths(
   pointerPath: string
 } | null {
   if (options?.artifactOutputPath && options?.releasePointerPath) {
-    const outputPath = runId ? options.artifactOutputPath.replaceAll('{runId}', runId) : options.artifactOutputPath
-    const pointerPath = runId ? options.releasePointerPath.replaceAll('{runId}', runId) : options.releasePointerPath
-    return { outputPath, pointerPath }
+    return {
+      outputPath: formatTemplate(options.artifactOutputPath, runId),
+      pointerPath: formatTemplate(options.releasePointerPath, runId),
+    }
   }
+
+  const defaultPaths = resolveDefaultPaths(runId)
   if (process.env.CATALOG_SQLITE_OUTPUT_PATH || process.env.CATALOG_RELEASE_PATH) {
-    const defaultPointer = resolve(import.meta.dirname, '../../../ui/catalog-release.json')
-    const defaultOutput = existsSync('/data')
-      ? runId
-        ? `/data/catalog-artifacts/${runId}/catalog.sqlite`
-        : '/data/catalog-artifacts/catalog.sqlite'
-      : runId
-        ? resolve(import.meta.dirname, `../../../ui/src/data/artifacts/${runId}/catalog.sqlite`)
-        : resolve(import.meta.dirname, '../../../ui/src/data/catalog.sqlite')
-    const outputPath = process.env.CATALOG_SQLITE_OUTPUT_PATH
-      ? runId
-        ? process.env.CATALOG_SQLITE_OUTPUT_PATH.replaceAll('{runId}', runId)
-        : process.env.CATALOG_SQLITE_OUTPUT_PATH
-      : defaultOutput
-    const pointerPath = process.env.CATALOG_RELEASE_PATH
-      ? runId
-        ? process.env.CATALOG_RELEASE_PATH.replaceAll('{runId}', runId)
-        : process.env.CATALOG_RELEASE_PATH
-      : defaultPointer
-    return { outputPath, pointerPath }
+    return {
+      outputPath: process.env.CATALOG_SQLITE_OUTPUT_PATH
+        ? formatTemplate(process.env.CATALOG_SQLITE_OUTPUT_PATH, runId)
+        : defaultPaths.outputPath,
+      pointerPath: process.env.CATALOG_RELEASE_PATH ? formatTemplate(process.env.CATALOG_RELEASE_PATH, runId) : defaultPaths.pointerPath,
+    }
   }
+
   if (process.env.VITEST || process.env.NODE_ENV === 'test') {
     return null
   }
-  if (existsSync('/data')) {
-    const dataDir = '/data/catalog-artifacts'
-    const outputPath = runId ? `${dataDir}/${runId}/catalog.sqlite` : `${dataDir}/catalog.sqlite`
-    const pointerPath = resolve(import.meta.dirname, '../../../ui/catalog-release.json')
-    return { outputPath, pointerPath }
-  }
-  const defaultDir = resolve(import.meta.dirname, '../../../ui/src/data')
-  const outputPath = runId ? resolve(defaultDir, `artifacts/${runId}/catalog.sqlite`) : resolve(defaultDir, 'catalog.sqlite')
-  const pointerPath = resolve(import.meta.dirname, '../../../ui/catalog-release.json')
 
-  if (existsSync(dirname(outputPath)) || existsSync(dirname(pointerPath)) || existsSync(defaultDir)) {
-    return { outputPath, pointerPath }
+  if (existsSync('/data')) {
+    return defaultPaths
+  }
+
+  const defaultDir = resolve(import.meta.dirname, '../../../ui/src/data')
+  if (existsSync(dirname(defaultPaths.outputPath)) || existsSync(dirname(defaultPaths.pointerPath)) || existsSync(defaultDir)) {
+    return defaultPaths
   }
   return null
 }
@@ -664,6 +666,45 @@ async function uploadPublicationAsset(
   }
 }
 
+function validateArtifactRequirement(
+  paths: { outputPath: string; pointerPath: string } | null,
+  options: { allowLegacyJsonPublication?: boolean; requireArtifactPublication?: boolean },
+): void {
+  const isTestEnv = Boolean(process.env.VITEST || process.env.NODE_ENV === 'test')
+  const requireArtifact = options.requireArtifactPublication ?? (!isTestEnv && !options.allowLegacyJsonPublication)
+  if (!paths && requireArtifact) {
+    throw new PublicationError('snapshot_invalid')
+  }
+}
+
+function ensurePreparedPublication(
+  db: Database.Database,
+  runId: string,
+  paths: { outputPath: string; pointerPath: string },
+  prepared: RunDraft,
+  existing: ArtifactPublicationRecord | undefined,
+  now: () => Date,
+): { publication: ArtifactPublicationRecord; manifest?: SnapshotManifest } {
+  const artifactMissing = !existing?.artifact_path || !existsSync(existing.artifact_path)
+  if (existing && existing.state !== 'failed' && !artifactMissing) {
+    return { publication: existing }
+  }
+
+  try {
+    const run = getRun(db, runId)
+    const createdAt = existing?.prepared_at ?? run?.completed_at ?? now().toISOString()
+    const preparedArtifact = prepareArtifactPublication(db, runId, {
+      outputPath: paths.outputPath,
+      createdAt,
+      draftStats: { id: prepared.id, date: prepared.date, size: prepared.size },
+    })
+    return { publication: preparedArtifact.publication, manifest: preparedArtifact.manifest }
+  } catch (error) {
+    markArtifactFailed(db, runId, error instanceof Error ? error.message : String(error))
+    throw new PublicationError('snapshot_invalid')
+  }
+}
+
 async function publishArtifactRelease(
   db: Database.Database,
   git: GitHubGit,
@@ -679,34 +720,13 @@ async function publishArtifactRelease(
 ): Promise<void> {
   if (!hasArtifactTable(db)) return
   const paths = resolveArtifactPaths(options, runId)
-  const isTestEnv = Boolean(process.env.VITEST || process.env.NODE_ENV === 'test')
-  const requireArtifact = options.requireArtifactPublication ?? (!isTestEnv && !options.allowLegacyJsonPublication)
-  if (!paths && requireArtifact) {
-    throw new PublicationError('snapshot_invalid')
-  }
+  validateArtifactRequirement(paths, options)
   if (!paths) return
 
-  let manifest: SnapshotManifest | undefined
-  let publication = getArtifactPublication(db, runId)
-  const artifactMissing = !publication?.artifact_path || !existsSync(publication.artifact_path)
-  if (!publication || publication.state === 'failed' || artifactMissing) {
-    try {
-      const run = getRun(db, runId)
-      const createdAt = publication?.prepared_at ?? run?.completed_at ?? now().toISOString()
-      const preparedArtifact = prepareArtifactPublication(db, runId, {
-        outputPath: paths.outputPath,
-        createdAt,
-        draftStats: { id: prepared.id, date: prepared.date, size: prepared.size },
-      })
-      manifest = preparedArtifact.manifest
-      publication = preparedArtifact.publication
-    } catch (error) {
-      markArtifactFailed(db, runId, error instanceof Error ? error.message : String(error))
-      throw new PublicationError('snapshot_invalid')
-    }
-  }
+  const existing = getArtifactPublication(db, runId)
+  const { publication, manifest } = ensurePreparedPublication(db, runId, paths, prepared, existing, now)
 
-  if (publication && publication.state !== 'uploaded') {
+  if (publication.state !== 'uploaded') {
     await uploadPublicationAsset(db, git, runId, paths, publication, manifest, now)
   }
 
