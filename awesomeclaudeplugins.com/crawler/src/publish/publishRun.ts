@@ -24,6 +24,7 @@ import {
   setPendingCommit,
 } from '../storage/runs.js'
 import {
+  type ArtifactPublicationRow,
   type CatalogReleasePointer,
   ensureReleasePointerFile,
   getArtifactPublication,
@@ -139,11 +140,42 @@ function filesForDraftHash(savedHash: string, snapshot: RenderedSnapshot): GitSn
   return snapshot.getCompatibility().find((candidate) => savedHash === candidate.hash)?.files ?? null
 }
 
+function getHistoricalRecoverySnapshots(
+  db: Database.Database,
+  draft: StatsRecord,
+  repositories: readonly PublishableRepository[],
+  readme: string,
+): { hash: string; files: GitSnapshotFiles }[] {
+  const publicDraft = { id: draft.id, date: draft.date, size: draft.size }
+  const legacyJson = renderRepos(repositories)
+  const legacyStats = renderStats(db, publicDraft)
+  const legacyMarkdown = renderMarkdownPaths(repositories)
+  const baseFiles: GitSnapshotFiles = {
+    readme,
+    reposJson: legacyJson,
+    statsJson: legacyStats,
+    markdownPathsJson: legacyMarkdown,
+  }
+  const preMetadataFiles = { ...baseFiles, reposJson: renderRepos(repositories, { includeNewCatalogMetadata: false }) }
+  const previousReposFiles = { ...baseFiles, reposJson: renderRepos(repositories, { includeCatalogUpdatedAt: false }) }
+  const legacyUrlFiles = { ...baseFiles, reposJson: renderRepos(repositories, { legacyUrls: true }) }
+  return [
+    { hash: snapshotHash(preMetadataFiles, true), files: preMetadataFiles },
+    { hash: snapshotHash(previousReposFiles, true), files: previousReposFiles },
+    { hash: snapshotHash(legacyUrlFiles, true), files: legacyUrlFiles },
+    { hash: snapshotHash(baseFiles, false), files: baseFiles },
+    { hash: snapshotHash(preMetadataFiles, false), files: preMetadataFiles },
+    { hash: snapshotHash(previousReposFiles, false), files: previousReposFiles },
+    { hash: snapshotHash(legacyUrlFiles, false), files: legacyUrlFiles },
+    { hash: snapshotHash(baseFiles, true), files: baseFiles },
+  ]
+}
+
 function renderFiles(
   db: Database.Database,
   draft: StatsRecord,
   repositories: readonly PublishableRepository[] = listPublishable(db),
-  options?: { allowLegacyJsonPublication?: boolean },
+  options?: { allowLegacyJsonPublication?: boolean; paths?: { outputPath: string; pointerPath: string } | null },
 ): RenderedSnapshot {
   checkHistory(getHistoricalStats(db), draft)
   const publicDraft = { id: draft.id, date: draft.date, size: draft.size }
@@ -152,7 +184,7 @@ function renderFiles(
     const readme = renderReadme(repositories, draft)
     validateReadme(readme, repositories, draft)
 
-    const shouldRenderLegacyJson = options?.allowLegacyJsonPublication ?? true
+    const shouldRenderLegacyJson = options?.allowLegacyJsonPublication ?? options?.paths === null
     let reposJson: string | undefined
     let statsJson: string | undefined
     let markdownPathsJson: string | undefined
@@ -180,29 +212,7 @@ function renderFiles(
   return {
     files,
     hash: snapshotHash(files, true, publicDraft),
-    getCompatibility: () => {
-      if (!files.reposJson) return []
-      // Lazy computation: only allocate compatibility objects if saved hash doesn't match primary
-      const preMetadataFiles = { ...files, reposJson: renderRepos(repositories, { includeNewCatalogMetadata: false }) }
-      const previousReposFiles = { ...files, reposJson: renderRepos(repositories, { includeCatalogUpdatedAt: false }) }
-      const legacyUrlFiles = { ...files, reposJson: renderRepos(repositories, { legacyUrls: true }) }
-      return [
-        { hash: snapshotHash(preMetadataFiles, true), files: preMetadataFiles },
-        {
-          // The immediately preceding main branch published line-separated JSON without timestamps.
-          hash: snapshotHash(previousReposFiles, true),
-          files: previousReposFiles,
-        },
-        // Older drafts used a compact single-line JSON array with canonical URL fields.
-        { hash: snapshotHash(legacyUrlFiles, true), files: legacyUrlFiles },
-        // Some drafts preceded the markdown-paths.json sidecar; preserve the matching
-        // exact repos.json bytes for each historical serialization.
-        { hash: snapshotHash(files, false), files },
-        { hash: snapshotHash(preMetadataFiles, false), files: preMetadataFiles },
-        { hash: snapshotHash(previousReposFiles, false), files: previousReposFiles },
-        { hash: snapshotHash(legacyUrlFiles, false), files: legacyUrlFiles },
-      ]
-    },
+    getCompatibility: () => getHistoricalRecoverySnapshots(db, draft, repositories, files.readme),
   }
 }
 
@@ -294,7 +304,8 @@ export function prepareDraft(
           throw new PublicationError('draft_invalid')
         }
       }
-      const snapshot = renderFiles(db, draft, repositories, options)
+      const paths = resolveArtifactPaths(options, runId)
+      const snapshot = renderFiles(db, draft, repositories, { ...options, paths })
       if (hasArtifactTable(db)) {
         attachArtifactToDraft(db, runId, now, draft, snapshot, options)
       }
@@ -409,7 +420,8 @@ function checkedSnapshot(
       const run = getRun(db, runId)
       if (run?.status !== 'completed' || run.completed_at === null || run.last_error !== null) throw new PublicationError('invalid_run')
       const draft = savedDraft(run)
-      const snapshot = renderFiles(db, draft, listPublishable(db), options)
+      const paths = resolveArtifactPaths(options, runId)
+      const snapshot = renderFiles(db, draft, listPublishable(db), { ...options, paths })
       const releasePointer = resolveCheckedReleasePointer(db, runId, options)
       if (releasePointer) snapshot.files.catalogReleaseJson = releasePointer
       const files = filesForDraftHash(draft.hash, snapshot)
@@ -682,9 +694,9 @@ function ensurePreparedPublication(
   runId: string,
   paths: { outputPath: string; pointerPath: string },
   prepared: RunDraft,
-  existing: ArtifactPublicationRecord | undefined,
+  existing: ArtifactPublicationRow | null | undefined,
   now: () => Date,
-): { publication: ArtifactPublicationRecord; manifest?: SnapshotManifest } {
+): { publication: ArtifactPublicationRow; manifest?: SnapshotManifest } {
   const artifactMissing = !existing?.artifact_path || !existsSync(existing.artifact_path)
   if (existing && existing.state !== 'failed' && !artifactMissing) {
     return { publication: existing }

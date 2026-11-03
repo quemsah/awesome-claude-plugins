@@ -69,6 +69,19 @@ function hasBaseline() {
   return getLegacyBaselinePath() !== null
 }
 
+function verifyMigratedBaseline(sourceRecords, targetPath) {
+  const migrated = loadBaseline(targetPath)
+  if (migrated.size !== sourceRecords.size) {
+    throw new Error(`IndexNow baseline migration verification failed: expected ${sourceRecords.size} records, got ${migrated.size}`)
+  }
+  for (const [key, sourceRecord] of sourceRecords.entries()) {
+    const targetRecord = migrated.get(key)
+    if (!targetRecord || targetRecord.url !== sourceRecord.url || targetRecord.fingerprint !== sourceRecord.fingerprint) {
+      throw new Error(`IndexNow baseline migration verification failed for record key ${key}`)
+    }
+  }
+}
+
 function readBaseline() {
   if (!existsSync(BASELINE_PATH)) {
     const legacyPath = getLegacyBaselinePath()
@@ -76,6 +89,8 @@ function readBaseline() {
       console.log(`Migrating legacy IndexNow baseline from ${legacyPath}...`)
       const legacyRecords = loadBaseline(legacyPath)
       writeBaseline(legacyRecords)
+      verifyMigratedBaseline(legacyRecords, BASELINE_PATH)
+      console.log(`Successfully verified migration of ${legacyRecords.size} records to SQLite baseline.`)
       return legacyRecords
     }
     throw new Error('No successful IndexNow baseline exists. Run workflow_dispatch with mode=full on the default branch first.')

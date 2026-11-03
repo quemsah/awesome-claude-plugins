@@ -214,6 +214,7 @@ it('defaults to no writes; a prepared draft publishes exactly four files in one 
   const paths = {
     artifactOutputPath: join(tempDir, 'catalog.sqlite'),
     releasePointerPath: join(tempDir, 'catalog-release.json'),
+    allowLegacyJsonPublication: true,
   }
   const draft = prepareDraft(db, 'r1', timestamp, paths)
   await expect(publishRun(db, git, 'r1', paths)).rejects.toMatchObject({ category: 'write_disabled' })
@@ -271,7 +272,6 @@ it('prepares and publishes in sqlite-native mode without rendering legacy json f
   const paths = {
     artifactOutputPath: join(tempDir, 'catalog.sqlite'),
     releasePointerPath: join(tempDir, 'catalog-release.json'),
-    allowLegacyJsonPublication: false,
   }
   const draft = prepareDraft(db, 'r1', timestamp, paths)
   const expectedHash = createHash('sha256')

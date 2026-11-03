@@ -227,5 +227,10 @@ describe('publicCatalog', () => {
       const formatted = JSON.parse(JSON.stringify(formatPublicCatalogRecord(row)))
       expect(formatted).toEqual(legacyRendered)
     }
+
+    const { calculateCatalogFingerprint } = await import('@awesome-claude-plugins/catalog-snapshot')
+    const legacyParsed = JSON.parse(renderRepos(edgeCases))
+    const formattedRecords = edgeCases.map((row) => formatPublicCatalogRecord(row))
+    expect(calculateCatalogFingerprint(formattedRecords)).toBe(calculateCatalogFingerprint(legacyParsed))
   })
 })
