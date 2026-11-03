@@ -1291,6 +1291,9 @@ it('rejects publication with snapshot_changed when a repository outside the top-
       releasePointerPath,
     }),
   ).rejects.toMatchObject({ category: 'snapshot_changed' })
+
+  // Verify artifact was not uploaded before rejecting the modified snapshot
+  expect(git.uploadedAssets.length).toBe(0)
 })
 
 it('handles two sequential publications with templated {runId} paths without collision', async () => {

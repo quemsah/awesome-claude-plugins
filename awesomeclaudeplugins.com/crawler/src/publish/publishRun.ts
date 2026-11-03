@@ -450,6 +450,31 @@ function resolveCheckedReleasePointer(
   return pointerRaw
 }
 
+function precheckPublicationDraft(
+  db: Database.Database,
+  runId: string,
+  draft: RunDraft,
+  options?: { artifactOutputPath?: string; releasePointerPath?: string; allowLegacyJsonPublication?: boolean },
+): void {
+  databaseResult(() =>
+    db.transaction(() => {
+      const publishable = listPublishable(db)
+      const currentFingerprint = calculateCatalogFingerprint(publishable.map((r) => formatPublicCatalogRecord(r)))
+      const paths = resolveArtifactPaths(options, runId)
+      const snapshot = renderFiles(db, draft, publishable, { ...options, paths, catalogFingerprint: currentFingerprint })
+      if (!filesForDraftHash(draft.hash, snapshot)) {
+        throw new PublicationError('snapshot_changed')
+      }
+      if (hasArtifactTable(db)) {
+        const publication = getArtifactPublication(db, runId)
+        if (publication?.catalog_fingerprint && publication.catalog_fingerprint !== currentFingerprint) {
+          throw new PublicationError('snapshot_changed')
+        }
+      }
+    })(),
+  )
+}
+
 function checkedSnapshot(
   db: Database.Database,
   runId: string,
@@ -781,6 +806,7 @@ async function publishArtifactRelease(
   const { publication, manifest } = ensurePreparedPublication(db, runId, paths, prepared, existing, now)
 
   if (publication.state !== 'uploaded') {
+    precheckPublicationDraft(db, runId, prepared, options)
     await uploadPublicationAsset(db, git, runId, paths, publication, manifest, now)
   }
 

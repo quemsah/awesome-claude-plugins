@@ -102,9 +102,24 @@ describe('SQLite catalog migration regression and equivalence gate', () => {
         expect(sqliteFull.hasMore).toBe(ref.hasMore)
         expect(sqliteFull.repos.map((r) => r.id)).toEqual(ref.repos.map((r) => r.id))
       } else {
-        // Search queries: verify total and pluginsCount are consistent and non-negative
-        expect(sqliteFull.total).toBeGreaterThanOrEqual(0)
-        expect(sqliteFull.pluginsCount).toBeGreaterThanOrEqual(0)
+        // Search queries: verify total, pluginsCount, exact ID sequence and FTS5 ranking
+        const expectedSearch = reader.searchRepos(query, { sort, page, pageSize, view: 'full' })
+        expect(sqliteFull.total).toBe(expectedSearch.total)
+        expect(sqliteFull.pluginsCount).toBe(expectedSearch.pluginsCount)
+        expect(sqliteFull.hasMore).toBe(expectedSearch.hasMore)
+        expect(sqliteFull.repos.map((r) => r.id)).toEqual(expectedSearch.matches.map((m) => (m.item as CatalogRepo).id))
+
+        // Verify FTS5 metric ordering and BM25 tie breaking on equal metric ranks
+        for (let i = 0; i < expectedSearch.matches.length - 1; i++) {
+          const curr = expectedSearch.matches[i]
+          const next = expectedSearch.matches[i + 1]
+          const cmp = compareCatalogRepos(curr.item as CatalogRepo, next.item as CatalogRepo, sort)
+          expect(cmp).toBeLessThanOrEqual(0)
+          if (cmp === 0) {
+            expect(curr.score).toBeLessThanOrEqual(next.score)
+          }
+        }
+
         if (sqliteFull.total > 0 && page === 0) {
           expect(sqliteFull.repos.length).toBeGreaterThan(0)
         }
@@ -146,6 +161,40 @@ describe('SQLite catalog migration regression and equivalence gate', () => {
     const ids0 = new Set(page0.repos.map((r) => r.id))
     for (const r of page1.repos) {
       expect(ids0.has(r.id)).toBe(false)
+    }
+  })
+
+  it('searchRankingAndBM25TieBreaking: verifies deterministic BM25 score ordering and pagination for search', () => {
+    const query = 'claude'
+    const sort = 'stars-desc'
+    const page0 = searchCatalogRepos(query, sort, 0, 20)
+    const page1 = searchCatalogRepos(query, sort, 1, 20)
+
+    expect(page0.repos.length).toBeGreaterThan(0)
+    expect(page1.repos.length).toBeGreaterThan(0)
+
+    // Verify disjoint page IDs (no duplicates across pages)
+    const ids0 = new Set(page0.repos.map((r) => r.id))
+    for (const r of page1.repos) {
+      expect(ids0.has(r.id)).toBe(false)
+    }
+
+    // Verify monotonicity across pages
+    const lastPage0 = page0.repos[page0.repos.length - 1]
+    const firstPage1 = page1.repos[0]
+    expect(compareCatalogRepos(lastPage0, firstPage1, sort)).toBeLessThanOrEqual(0)
+
+    // Direct reader verification of BM25 scores
+    const readerSearch0 = reader.searchRepos(query, { sort, page: 0, pageSize: 20 })
+    for (let i = 0; i < readerSearch0.matches.length - 1; i++) {
+      const curr = readerSearch0.matches[i]
+      const next = readerSearch0.matches[i + 1]
+      const rankCmp = compareCatalogRepos(curr.item as CatalogRepo, next.item as CatalogRepo, sort)
+      expect(rankCmp).toBeLessThanOrEqual(0)
+      if (rankCmp === 0) {
+        // BM25 score tie-breaker: lower score is more relevant
+        expect(curr.score).toBeLessThanOrEqual(next.score)
+      }
     }
   })
 

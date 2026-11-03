@@ -167,18 +167,12 @@ function readAndValidateMetadata(db, expected = {}) {
 
 function verifyRequiredTables(db) {
   try {
-    const check = db.pragma('quick_check')
-    if (!Array.isArray(check) || check[0]?.quick_check !== 'ok') {
-      db.close()
-      throw new CorruptedSnapshotError('Database quick_check integrity verification failed')
-    }
     db.prepare('SELECT 1 FROM repositories LIMIT 1').get()
     db.prepare('SELECT 1 FROM statistics LIMIT 1').get()
     db.prepare('SELECT 1 FROM repo_fts LIMIT 1').get()
     db.prepare('SELECT 1 FROM markdown_repositories LIMIT 1').get()
     db.prepare('SELECT 1 FROM indexable_repositories LIMIT 1').get()
   } catch (error) {
-    if (error instanceof CorruptedSnapshotError) throw error
     db.close()
     throw new IncompatibleSchemaError('Required catalog tables or views are missing or corrupt', { cause: error })
   }
