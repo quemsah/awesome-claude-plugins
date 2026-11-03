@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { afterEach, expect, it } from 'vitest'
 import { renderRepos } from '../output/catalogSnapshot.js'
+import { renderReadme } from '../output/readme.js'
 import { openDatabase } from '../storage/db.js'
 import { listPublishable } from '../storage/repositories.js'
 import { beginRun, completeRun, failRun, getRun } from '../storage/runs.js'
@@ -260,6 +261,34 @@ it('defaults to no writes; a prepared draft publishes exactly four files in one 
   expect(await publishRun(db, git, 'r1', { writeEnabled: true, ...paths })).toBe(commit)
   expect(await publishRun(db, git, 'r1', paths)).toBe(commit)
   expect(git.events).toHaveLength(6)
+})
+
+it('prepares and publishes in sqlite-native mode without rendering legacy json files', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const tempDir = mkdtempSync(join(tmpdir(), 'publish-run-native-'))
+  directories.push(tempDir)
+  const paths = {
+    artifactOutputPath: join(tempDir, 'catalog.sqlite'),
+    releasePointerPath: join(tempDir, 'catalog-release.json'),
+    allowLegacyJsonPublication: false,
+  }
+  const draft = prepareDraft(db, 'r1', timestamp, paths)
+  const expectedHash = createHash('sha256')
+    .update(JSON.stringify([renderReadme(listPublishable(db), draft), 'sqlite-catalog', draft.id, draft.date, draft.size]), 'utf8')
+    .digest('hex')
+  expect(draft.hash).toBe(expectedHash)
+
+  const commit = await publishRun(db, git, 'r1', { writeEnabled: true, ...paths })
+  expect(commit).toBe(git.head)
+  expect(git.files).toHaveLength(1)
+  expect(Object.keys(git.files[0]).sort()).toEqual(['catalogReleaseJson', 'readme'])
+  expect(git.files[0].reposJson).toBeUndefined()
+  expect(git.files[0].statsJson).toBeUndefined()
+  expect(git.files[0].markdownPathsJson).toBeUndefined()
+  expect(db.prepare('SELECT state FROM artifact_publications WHERE run_id = ?').get('r1')).toEqual({
+    state: 'uploaded',
+  })
 })
 
 it('accepts a legacy three-file draft hash when recovering a draft prepared before the markdown sidecar existed', async () => {
@@ -1162,4 +1191,61 @@ it('isolates artifact paths between sequential crawler runs so artifacts are not
   expect(paths1?.outputPath).toContain('run-1')
   expect(paths2?.outputPath).toContain('run-2')
   expect(paths1?.outputPath).not.toEqual(paths2?.outputPath)
+})
+
+it('recovers after restart and complete artifact loss on disk (deterministic regeneration with same SHA)', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-wipe-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  // First publication attempt fails during upload
+  git.uploadFailure = new Error('Connection reset')
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toThrowError(PublicationError)
+
+  const pubRow = db.prepare("SELECT * FROM artifact_publications WHERE run_id = 'r1'").get() as {
+    state: string
+    artifact_sha256: string
+    snapshot_id: string
+  }
+  expect(pubRow.state).toBe('failed')
+  const initialSha = pubRow.artifact_sha256
+
+  // Simulate container restart with wiped ephemeral filesystem:
+  // Both SQLite artifact and pointer file are completely removed from disk
+  rmSync(artifactOutputPath, { force: true })
+  rmSync(releasePointerPath, { force: true })
+  expect(existsSync(artifactOutputPath)).toBe(false)
+  expect(existsSync(releasePointerPath)).toBe(false)
+
+  // Recovery should regenerate the artifact deterministically with the same SHA, upload it, and succeed
+  git.uploadFailure = null
+  const commit = await publishRun(db, git, 'r1', {
+    writeEnabled: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  expect(commit).toBe(git.head)
+  expect(existsSync(artifactOutputPath)).toBe(true)
+  expect(existsSync(releasePointerPath)).toBe(true)
+  const finalPub = db.prepare("SELECT * FROM artifact_publications WHERE run_id = 'r1'").get() as {
+    state: string
+    artifact_sha256: string
+  }
+  expect(finalPub.state).toBe('uploaded')
+  expect(finalPub.artifact_sha256).toBe(initialSha)
 })

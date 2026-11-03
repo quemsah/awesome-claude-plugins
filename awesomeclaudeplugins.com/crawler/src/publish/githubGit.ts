@@ -22,6 +22,9 @@ export type GitSnapshotFiles = {
 export type UploadedReleaseAsset = {
   downloadUrl: string
   sha256: string
+  releaseId?: number
+  assetId?: number
+  size?: number
 }
 
 export interface GitHubGit {
@@ -308,6 +311,7 @@ export class GitHubGitClient implements GitHubGit {
     tagName: string,
     assetName: string,
     expectedSha: string,
+    releaseId?: number,
   ): Promise<UploadedReleaseAsset> {
     const downloadUrl =
       typeof asset.browser_download_url === 'string'
@@ -340,7 +344,15 @@ export class GitHubGitClient implements GitHubGit {
     if (remoteSha !== expectedSha) {
       throw new GitHubGitError(`Existing release asset SHA-256 does not match local file: expected ${expectedSha}, remote has ${remoteSha}`)
     }
-    return { downloadUrl, sha256: remoteSha }
+    const assetId = typeof asset.id === 'number' ? asset.id : undefined
+    const size = typeof asset.size === 'number' ? asset.size : remoteBytes.length
+    return {
+      downloadUrl,
+      sha256: remoteSha,
+      ...(releaseId !== undefined ? { releaseId } : {}),
+      ...(assetId !== undefined ? { assetId } : {}),
+      ...(size !== undefined ? { size } : {}),
+    }
   }
 
   private async postReleaseAsset(
@@ -349,6 +361,7 @@ export class GitHubGitClient implements GitHubGit {
     fileBytes: Buffer,
     tagName: string,
     fileSha: string,
+    releaseId: number,
   ): Promise<UploadedReleaseAsset> {
     const uploadUrl = `${uploadUrlTemplate.replace(/\{.*?\}$/, '')}?name=${encodeURIComponent(assetName)}`
     const timeoutSignal = AbortSignal.timeout(120_000)
@@ -377,15 +390,40 @@ export class GitHubGitClient implements GitHubGit {
     }
 
     const uploaded = (await response.json()) as Record<string, unknown>
-    const downloadUrl =
-      typeof uploaded.browser_download_url === 'string'
-        ? uploaded.browser_download_url
-        : `https://github.com/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/releases/download/${encodeURIComponent(tagName)}/${encodeURIComponent(assetName)}`
+    return await this.verifyExistingAsset(uploaded, tagName, assetName, fileSha, releaseId)
+  }
 
-    return {
-      downloadUrl,
-      sha256: fileSha,
+  private async findReleaseAsset(releaseId: number, assetName: string): Promise<Record<string, unknown> | null> {
+    try {
+      const assets = (await this.request(`/${releaseId}/assets`, 'GET', undefined, this.releasesUrl)) as unknown[]
+      if (Array.isArray(assets)) {
+        const found = assets.find((a): a is Record<string, unknown> => record(a) && a.name === assetName)
+        if (found && typeof found.id === 'number') return found
+      }
+      return null
+    } catch (error) {
+      if (error instanceof GitHubGitHttpError && error.status === 404) return null
+      throw error
     }
+  }
+
+  private async retryVerifyExistingAsset(
+    releaseId: number,
+    tagName: string,
+    assetName: string,
+    fileSha: string,
+    originalError: Error,
+  ): Promise<UploadedReleaseAsset> {
+    const delays = [500, 1500]
+    for (const delay of delays) {
+      throwIfShutdown(this.signal)
+      await new Promise((resolve) => setTimeout(resolve, delay))
+      const asset = await this.findReleaseAsset(releaseId, assetName)
+      if (asset) {
+        return await this.verifyExistingAsset(asset, tagName, assetName, fileSha, releaseId)
+      }
+    }
+    throw originalError
   }
 
   async uploadReleaseAsset(tagName: string, assetName: string, filePath: string): Promise<UploadedReleaseAsset> {
@@ -395,21 +433,19 @@ export class GitHubGitClient implements GitHubGit {
     const fileBytes = readFileSync(filePath)
     const fileSha = createHash('sha256').update(fileBytes).digest('hex')
 
-    try {
-      const assets = (await this.request(`/${releaseId}/assets`, 'GET', undefined, this.releasesUrl)) as unknown[]
-      if (Array.isArray(assets)) {
-        const existingAsset = assets.find((a): a is Record<string, unknown> => record(a) && a.name === assetName)
-        if (existingAsset && typeof existingAsset.id === 'number') {
-          return await this.verifyExistingAsset(existingAsset, tagName, assetName, fileSha)
-        }
-      }
-    } catch (error) {
-      if (error instanceof GitHubGitError && String(error).includes('Existing release asset SHA-256 does not match')) {
-        throw error
-      }
+    const existingAsset = await this.findReleaseAsset(releaseId, assetName)
+    if (existingAsset) {
+      return await this.verifyExistingAsset(existingAsset, tagName, assetName, fileSha, releaseId)
     }
 
-    return this.postReleaseAsset(uploadUrlTemplate, assetName, fileBytes, tagName, fileSha)
+    try {
+      return await this.postReleaseAsset(uploadUrlTemplate, assetName, fileBytes, tagName, fileSha, releaseId)
+    } catch (error) {
+      if (error instanceof GitHubGitHttpError && (error.status === 422 || error.status === 409)) {
+        return await this.retryVerifyExistingAsset(releaseId, tagName, assetName, fileSha, error)
+      }
+      throw error
+    }
   }
 
   private async readCommit(commitSha: string): Promise<{ treeSha: string; parents: string[] }> {

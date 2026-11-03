@@ -375,4 +375,42 @@ describe('prepareCatalog script', () => {
       }
     })
   })
+
+  describe('atomic artifact replacement safety', () => {
+    it('preserves existing sqlite catalog and manifest untouched if downloaded replacement fails validation', async () => {
+      writeSample()
+      await prepareCatalog({ dataDir: tempDir })
+      const originalSqliteContent = readFileSync(join(tempDir, 'catalog.sqlite'))
+      const originalManifestContent = readFileSync(join(tempDir, 'catalog.manifest.json'), 'utf8')
+
+      // Remove source json so prepareCatalog relies on sqlite + pointer
+      rmSync(join(tempDir, 'repos.json'))
+      rmSync(join(tempDir, 'stats.json'))
+
+      // Create an invalid corrupt artifact in sub directory
+      const subDir = join(tempDir, 'corrupt-sub')
+      mkdirSync(subDir, { recursive: true })
+      writeFileSync(join(subDir, 'catalog.sqlite'), 'not a valid sqlite file')
+
+      // Pointer claims a valid sha but points to corrupted file
+      const pointer = {
+        schemaVersion: 1,
+        generatorVersion: 1,
+        snapshotId: 'fake-corrupt-snapshot',
+        catalogFingerprint: 'fake-fingerprint',
+        artifactSha256: 'a'.repeat(64),
+        recordCount: 1,
+        canonicalCount: 1,
+        pluginsCount: 1,
+        statsCount: 1,
+        artifactUrl: pathToFileURL(join(subDir, 'catalog.sqlite')).href,
+      }
+
+      await expect(prepareCatalog({ dataDir: tempDir, pointer })).rejects.toThrow()
+
+      // The original sqlite database and manifest MUST be completely unchanged
+      expect(readFileSync(join(tempDir, 'catalog.sqlite'))).toEqual(originalSqliteContent)
+      expect(readFileSync(join(tempDir, 'catalog.manifest.json'), 'utf8')).toBe(originalManifestContent)
+    })
+  })
 })

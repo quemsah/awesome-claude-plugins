@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildCatalogRecordsFromSqlite, diffCatalogRecords } from './indexnow-changes.mjs'
 import { loadBaseline, saveBaseline, sendIndexNowBatch } from './indexnow-state.mjs'
@@ -55,16 +55,24 @@ function readCurrentCatalog() {
   return buildCatalogRecordsFromSqlite(CATALOG_PATH, SITE_URL)
 }
 
+function getLegacyBaselinePath() {
+  const dir = dirname(BASELINE_PATH)
+  const candidateFromBaselineDir = join(dir, 'repos.json')
+  if (existsSync(candidateFromBaselineDir)) return candidateFromBaselineDir
+  const legacyLocal = fileURLToPath(new URL('../.indexnow-cache/repos.json', import.meta.url))
+  if (existsSync(legacyLocal)) return legacyLocal
+  return null
+}
+
 function hasBaseline() {
   if (existsSync(BASELINE_PATH)) return true
-  const legacyPath = fileURLToPath(new URL('../.indexnow-cache/repos.json', import.meta.url))
-  return existsSync(legacyPath)
+  return getLegacyBaselinePath() !== null
 }
 
 function readBaseline() {
   if (!existsSync(BASELINE_PATH)) {
-    const legacyPath = fileURLToPath(new URL('../.indexnow-cache/repos.json', import.meta.url))
-    if (existsSync(legacyPath)) {
+    const legacyPath = getLegacyBaselinePath()
+    if (legacyPath) {
       console.log(`Migrating legacy IndexNow baseline from ${legacyPath}...`)
       const legacyRecords = loadBaseline(legacyPath)
       writeBaseline(legacyRecords)
@@ -169,10 +177,13 @@ async function submitUrls(urls) {
   }
 }
 
-const { records: currentRecords, fingerprint: currentFingerprint } = readCurrentCatalog()
-// An HTTP 200 on a pre-existing page does not prove that new catalog data is live.
-// Never advance the baseline until the deployed build exposes the exact catalog snapshot.
-if (await waitForCatalogDeployment(currentFingerprint)) {
+async function runIndexNow() {
+  const { records: currentRecords, fingerprint: currentFingerprint } = readCurrentCatalog()
+  // An HTTP 200 on a pre-existing page does not prove that new catalog data is live.
+  // Never advance the baseline until the deployed build exposes the exact catalog snapshot.
+  const isDeployed = await waitForCatalogDeployment(currentFingerprint)
+  if (!isDeployed) return
+
   // On a fresh install the scheduled job establishes the baseline automatically.
   if (MODE === 'full' || !hasBaseline()) {
     if (MODE === 'changed') console.log('IndexNow baseline missing; submitting the live sitemap to initialize it.')
@@ -187,7 +198,11 @@ if (await waitForCatalogDeployment(currentFingerprint)) {
     const urls = [...new Set([...changedUrls, ...retiredUrls])]
     if (urls.length > 0) {
       if (changedUrls.length > 0) {
-        await waitForCatalogDeployment(currentFingerprint)
+        const stillDeployed = await waitForCatalogDeployment(currentFingerprint)
+        if (!stillDeployed) {
+          console.log('Catalog deployment changed before submission. Aborting IndexNow without advancing baseline.')
+          return
+        }
       }
       await submitUrls(urls)
       writeBaseline(currentRecords)
@@ -196,3 +211,5 @@ if (await waitForCatalogDeployment(currentFingerprint)) {
     }
   }
 }
+
+await runIndexNow()

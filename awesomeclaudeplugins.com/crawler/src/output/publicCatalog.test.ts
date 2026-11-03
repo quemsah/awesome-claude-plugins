@@ -149,4 +149,83 @@ describe('publicCatalog', () => {
       }),
     ).toThrow(/already present/)
   })
+
+  it('preserves exact serialization equivalence between renderRepos and formatPublicCatalogRecord', async () => {
+    const { renderRepos } = await import('./catalogSnapshot.js')
+
+    const edgeCases = [
+      // Standard repo with multiple plugins
+      {
+        id: 1,
+        html_url: 'https://github.com/alice/plugin-1',
+        stargazers_count: 10,
+        forks_count: 2,
+        subscribers_count: 1,
+        description: 'Standard plugin',
+        owner: 'alice',
+        owner_url: 'https://github.com/alice',
+        repo_name: 'plugin-1',
+        repo_updated: '2026-01-15T10:00:00Z',
+        plugins_count: 2,
+        plugins_json: JSON.stringify([
+          { name: 'p1', description: 'desc 1' },
+          { name: 'p2', description: 'desc 2' },
+        ]),
+        manifest_kind: 'marketplace' as const,
+        catalog_updated_at: '2026-01-15T12:00:00.000Z',
+        catalog_added_at: '2025-12-01T00:00:00.000Z',
+        pushed_at: '2026-01-15T10:00:00.000Z',
+        license: 'MIT',
+        archived: 0,
+      },
+      // Description-only plugin: must NOT add name: ""
+      {
+        id: 2,
+        html_url: 'https://github.com/bob/desc-only',
+        stargazers_count: 5,
+        forks_count: 0,
+        subscribers_count: 0,
+        description: null,
+        owner: 'bob',
+        owner_url: 'https://github.com/bob',
+        repo_name: 'desc-only',
+        repo_updated: '2026-01-15T10:00:00Z',
+        plugins_count: 1,
+        plugins_json: JSON.stringify([{ description: 'Summary with no plugin name' }]),
+        manifest_kind: null,
+        catalog_updated_at: '2026-01-15T12:00:00.000Z',
+        catalog_added_at: null,
+        pushed_at: null,
+        license: null,
+        archived: null,
+      },
+      // Missing catalog_updated_at: must NOT default to 1970
+      {
+        id: 3,
+        html_url: 'https://github.com/charlie/no-updated',
+        stargazers_count: 0,
+        forks_count: 0,
+        subscribers_count: 0,
+        description: 'No updated timestamp',
+        owner: 'charlie',
+        owner_url: 'https://github.com/charlie',
+        repo_name: 'no-updated',
+        repo_updated: '2026-01-15T10:00:00Z',
+        plugins_count: 0,
+        plugins_json: null,
+        manifest_kind: 'standalone-plugin' as const,
+        catalog_updated_at: null,
+        catalog_added_at: '2026-01-10T00:00:00.000Z',
+        pushed_at: '2026-01-15T10:00:00.000Z',
+        license: 'Apache-2.0',
+        archived: true,
+      },
+    ]
+
+    for (const row of edgeCases) {
+      const legacyRendered = JSON.parse(renderRepos([row]))[0]
+      const formatted = JSON.parse(JSON.stringify(formatPublicCatalogRecord(row)))
+      expect(formatted).toEqual(legacyRendered)
+    }
+  })
 })

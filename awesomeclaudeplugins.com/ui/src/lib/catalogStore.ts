@@ -153,6 +153,7 @@ export function getCatalog(): readonly Repo[] {
     return catalog
   }
 
+  // Legacy fallback: if legacy JSON fixtures are explicitly created, prioritize them for tests
   const searchIndexPath = join(process.cwd(), 'src/data/search-index.json')
   const reposPath = join(process.cwd(), 'src/data/repos.json')
   if (existsSync(searchIndexPath) || existsSync(reposPath)) {
@@ -161,6 +162,7 @@ export function getCatalog(): readonly Repo[] {
     return catalog
   }
 
+  // Authoritative SQLite path is preferred whenever present
   const sqlitePath = process.env.CATALOG_SQLITE_PATH || join(process.cwd(), 'src/data/catalog.sqlite')
   if (existsSync(sqlitePath)) {
     const catalog = [...getSqliteReader().iteratePublishedRecords()] as Repo[]
@@ -215,6 +217,24 @@ function matchesIdentity(repo: Partial<Repo>, id: number, owner?: string | null,
 
 /** Bounded LRU: touch a hit so frequently used detail buckets are not evicted. */
 export function getRepoDetails(id: number, owner?: string | null, repoName?: string | null): Partial<Repo> | null {
+  const shardsDir = join(process.cwd(), 'src/data/repo-details')
+  const reposPath = join(process.cwd(), 'src/data/repos.json')
+  const hasLegacyFiles = existsSync(shardsDir) || existsSync(reposPath)
+
+  // Authoritative SQLite path is preferred in production when legacy files are absent
+  if (!hasLegacyFiles) {
+    const sqlitePath = process.env.CATALOG_SQLITE_PATH || join(process.cwd(), 'src/data/catalog.sqlite')
+    if (existsSync(sqlitePath)) {
+      const reader = getSqliteReader()
+      const record = reader.getRecordById(id)
+      if (record && matchesIdentity(record, id, owner, repoName)) {
+        return record as Repo
+      }
+      return null
+    }
+  }
+
+  // Legacy fallback: only reached when running against legacy JSON shards
   const shardId = Math.abs(id % 100)
   const cache = getShardCache()
   let shard = cache.get(shardId)
@@ -245,15 +265,6 @@ export function getRepoDetails(id: number, owner?: string | null, repoName?: str
   const canonical = getCanonicalFallback()
   if (canonical) {
     return canonical.get(id)?.find((record) => matchesIdentity(record, id, owner, repoName)) ?? null
-  }
-
-  const sqlitePath = process.env.CATALOG_SQLITE_PATH || join(process.cwd(), 'src/data/catalog.sqlite')
-  if (existsSync(sqlitePath)) {
-    const reader = getSqliteReader()
-    const record = reader.getRecordById(id)
-    if (record && matchesIdentity(record, id, owner, repoName)) {
-      return record as Repo
-    }
   }
 
   return null

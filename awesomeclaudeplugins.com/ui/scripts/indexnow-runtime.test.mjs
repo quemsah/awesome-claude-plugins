@@ -141,8 +141,97 @@ test('failed IndexNow API submission leaves the previous baseline intact', async
       }),
       API_FAILURE_PATTERN
     )
-    assert.deepEqual(calls, [`${site}/api/catalog-version`, current.url, 'https://api.indexnow.org/indexnow'])
+    assert.deepEqual(calls, [
+      `${site}/api/catalog-version`,
+      current.url,
+      `${site}/api/catalog-version`,
+      'https://api.indexnow.org/indexnow',
+    ])
     assert.deepEqual([...loadBaseline(baselinePath)], [...records])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('scheduled IndexNow aborts without submitting or mutating baseline if deployment version changes between check 1 and check 2', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'indexnow-version-switch-'))
+  const baselinePath = join(dir, 'indexnow-state.sqlite')
+  const records = new Map(catalogRecords)
+  const [key] = [...records.keys()]
+  assert.ok(key, 'Catalog must have an indexable repository for this integration test')
+  const current = records.get(key)
+  records.set(key, { ...current, fingerprint: 'previous-fingerprint' })
+  saveBaseline(baselinePath, records)
+  const calls = []
+  let versionChecks = 0
+  try {
+    await runWithMockedFetch({
+      baselinePath,
+      fetcher: async (url, options) => {
+        const endpoint = String(url)
+        calls.push(endpoint)
+        if (endpoint === `${site}/api/catalog-version`) {
+          versionChecks += 1
+          if (versionChecks === 1) {
+            return { ok: true, json: async () => ({ sha256: catalogFingerprint }) }
+          }
+          // On second check, deployment changed to a newer version
+          return { ok: true, json: async () => ({ sha256: 'newer-in-flight-snapshot' }) }
+        }
+        if (endpoint === current.url && options?.method === 'HEAD') return { status: 200 }
+        if (endpoint === 'https://api.indexnow.org/indexnow') {
+          throw new Error('IndexNow API must not be called when deployment version changed')
+        }
+        throw new Error(`Unexpected request: ${endpoint}`)
+      },
+    })
+    assert.deepEqual(calls, [`${site}/api/catalog-version`, current.url, `${site}/api/catalog-version`])
+    // Baseline was not advanced: retains 'previous-fingerprint'
+    assert.deepEqual([...loadBaseline(baselinePath)], [...records])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('migrates legacy repos.json from baseline cache directory and detects retired URLs', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'indexnow-legacy-migrate-'))
+  const baselinePath = join(dir, 'indexnow-state.sqlite')
+  const legacyJsonPath = join(dir, 'repos.json')
+  const retiredUrl = `${site}/retired-org/retired-plugin`
+  const legacyRecords = new Map([...catalogRecords, ['retired-org/retired-plugin', { fingerprint: 'legacy-hash', url: retiredUrl }]])
+  const legacyJson = JSON.stringify({
+    version: 1,
+    records: Object.fromEntries(legacyRecords),
+  })
+  const { writeFileSync } = await import('node:fs')
+  writeFileSync(legacyJsonPath, legacyJson, 'utf8')
+
+  const calls = []
+  let submittedUrls = []
+  try {
+    await runWithMockedFetch({
+      baselinePath,
+      fetcher: async (url, options) => {
+        const endpoint = String(url)
+        calls.push(endpoint)
+        if (endpoint === `${site}/api/catalog-version`) {
+          return { ok: true, json: async () => ({ sha256: catalogFingerprint }) }
+        }
+        if (endpoint === 'https://api.indexnow.org/indexnow') {
+          const body = JSON.parse(options?.body ?? '{}')
+          submittedUrls = body.urlList ?? []
+          return { ok: true }
+        }
+        throw new Error(`Unexpected request: ${endpoint}`)
+      },
+    })
+    // Baseline should have been migrated to SQLite
+    assert.ok(existsSync(baselinePath), 'indexnow-state.sqlite should be created from legacy cache')
+    // Retired URL was submitted to IndexNow
+    assert.ok(submittedUrls.includes(retiredUrl), 'Retired URL should be submitted to IndexNow')
+    // New baseline should now match current catalog (retired URL removed)
+    const reloaded = loadBaseline(baselinePath)
+    assert.equal(reloaded.has('retired-org/retired-plugin'), false)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

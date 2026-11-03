@@ -398,14 +398,16 @@ describe('GitHubGitClient', () => {
         Response.json({ id: 10, upload_url: 'https://uploads.github.com/repos/acme/catalog/releases/10/assets{?name,label}' }),
         Response.json([]),
         Response.json({ id: 101, browser_download_url: downloadUrl }, { status: 201 }),
+        new Response(content),
       ])
 
       const result = await client.uploadReleaseAsset('catalog-snap1', 'catalog.sqlite', filePath)
-      expect(result).toEqual({ downloadUrl, sha256: expectedSha })
+      expect(result).toEqual({ downloadUrl, sha256: expectedSha, releaseId: 10, assetId: 101, size: content.length })
       expect(requests.map((r) => [r.init?.method ?? 'GET', r.url])).toEqual([
         ['GET', 'https://api.github.com/repos/acme/catalog/releases/tags/catalog-snap1'],
         ['GET', 'https://api.github.com/repos/acme/catalog/releases/10/assets'],
         ['POST', 'https://uploads.github.com/repos/acme/catalog/releases/10/assets?name=catalog.sqlite'],
+        ['GET', downloadUrl],
       ])
     } finally {
       rmSync(tmp, { recursive: true, force: true })
@@ -428,7 +430,7 @@ describe('GitHubGitClient', () => {
       ])
 
       const result = await client.uploadReleaseAsset('catalog-snap2', 'catalog.sqlite', filePath)
-      expect(result).toEqual({ downloadUrl, sha256: expectedSha })
+      expect(result).toEqual({ downloadUrl, sha256: expectedSha, releaseId: 20, assetId: 102, size: content.length })
       expect(requests.map((r) => [r.init?.method ?? 'GET', r.url])).toEqual([
         ['GET', 'https://api.github.com/repos/acme/catalog/releases/tags/catalog-snap2'],
         ['GET', 'https://api.github.com/repos/acme/catalog/releases/20/assets'],
@@ -457,6 +459,56 @@ describe('GitHubGitClient', () => {
       await expect(client.uploadReleaseAsset('catalog-snap3', 'catalog.sqlite', filePath)).rejects.toThrow(
         /Existing release asset SHA-256 does not match/,
       )
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('propagates 503 error when listing release assets without attempting duplicate upload', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'git-upload-err-'))
+    const filePath = join(tmp, 'catalog.sqlite')
+    const content = Buffer.from('sqlite sample catalog database content')
+    writeFileSync(filePath, content)
+
+    try {
+      const { client, requests } = mockClient([
+        Response.json({ id: 40, upload_url: 'https://uploads.github.com/repos/acme/catalog/releases/40/assets{?name,label}' }),
+        new Response('Service Unavailable', { status: 503 }),
+      ])
+
+      await expect(client.uploadReleaseAsset('catalog-snap4', 'catalog.sqlite', filePath)).rejects.toThrow(GitHubGitHttpError)
+      // Must NOT attempt POST to uploads.github.com
+      expect(requests.some((r) => r.init?.method === 'POST')).toBe(false)
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('retries verifying existing asset when POST returns 422 duplicate conflict', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'git-upload-422-'))
+    const filePath = join(tmp, 'catalog.sqlite')
+    const content = Buffer.from('sqlite sample catalog database content')
+    const expectedSha = createHash('sha256').update(content).digest('hex')
+    writeFileSync(filePath, content)
+
+    try {
+      const downloadUrl = 'https://github.com/acme/catalog/releases/download/catalog-snap5/catalog.sqlite'
+      const { client, requests } = mockClient([
+        // 1. getOrCreateRelease
+        Response.json({ id: 50, upload_url: 'https://uploads.github.com/repos/acme/catalog/releases/50/assets{?name,label}' }),
+        // 2. findReleaseAsset: returns empty list
+        Response.json([]),
+        // 3. postReleaseAsset: returns 422 Unprocessable Entity (already exists)
+        new Response('Validation Failed: already_exists', { status: 422 }),
+        // 4. retry findReleaseAsset: finds the asset
+        Response.json([{ id: 105, name: 'catalog.sqlite', browser_download_url: downloadUrl }]),
+        // 5. verifyExistingAsset: downloads and verifies sha
+        new Response(content),
+      ])
+
+      const result = await client.uploadReleaseAsset('catalog-snap5', 'catalog.sqlite', filePath)
+      expect(result).toEqual({ downloadUrl, sha256: expectedSha, releaseId: 50, assetId: 105, size: content.length })
+      expect(requests.some((r) => r.init?.method === 'POST')).toBe(true)
     } finally {
       rmSync(tmp, { recursive: true, force: true })
     }

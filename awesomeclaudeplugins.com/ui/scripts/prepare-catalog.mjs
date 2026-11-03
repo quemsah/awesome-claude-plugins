@@ -1,7 +1,7 @@
-import { execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   closeSync,
+  createReadStream,
   createWriteStream,
   existsSync,
   mkdirSync,
@@ -16,7 +16,7 @@ import {
 import { dirname, join, resolve } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { buildPublicCatalog, GENERATOR_VERSION, SCHEMA_VERSION } from '@awesome-claude-plugins/catalog-snapshot/build'
 import { calculateCatalogFingerprint } from '@awesome-claude-plugins/catalog-snapshot/fingerprint'
 import Database from 'better-sqlite3'
@@ -152,6 +152,58 @@ export function validateDownloadUrl(urlStr) {
   return parsed
 }
 
+async function fetchWithSafeRedirects(initialUrl, maxRedirects = 5) {
+  let currentUrl = initialUrl
+  let redirects = 0
+
+  while (true) {
+    const currentParsed = validateDownloadUrl(currentUrl)
+    if (currentParsed.protocol === 'file:') {
+      const filePath = fileURLToPath(currentUrl)
+      return {
+        body: Readable.toWeb(createReadStream(filePath)),
+        status: 200,
+        ok: true,
+        headers: new Headers({ 'content-length': String(statSync(filePath).size) }),
+      }
+    }
+
+    const headers = {}
+    if (process.env.GITHUB_TOKEN && currentParsed.hostname === 'api.github.com') {
+      headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`
+    }
+
+    const timeoutSignal = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)
+    const response = await fetch(currentUrl, {
+      method: 'GET',
+      headers,
+      redirect: 'manual',
+      signal: timeoutSignal,
+    })
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location')
+      if (!location) {
+        throw new Error(`Redirect from ${currentUrl} returned status ${response.status} without Location header`)
+      }
+      redirects++
+      if (redirects > maxRedirects) {
+        throw new Error(`Too many redirects downloading artifact from ${initialUrl} (max ${maxRedirects})`)
+      }
+      const nextUrl = new URL(location, currentUrl).toString()
+      validateDownloadUrl(nextUrl)
+      currentUrl = nextUrl
+      continue
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to download catalog artifact from ${currentUrl}: ${response.status} ${response.statusText}`)
+    }
+
+    return response
+  }
+}
+
 async function downloadSqliteArtifact(pointer, outputPath) {
   const repo = process.env.GITHUB_REPOSITORY || 'quemsah/awesome-claude-plugins'
   const downloadUrl =
@@ -159,57 +211,40 @@ async function downloadSqliteArtifact(pointer, outputPath) {
     process.env.CATALOG_SQLITE_URL ||
     `https://github.com/${repo}/releases/download/catalog-${pointer.snapshotId}/catalog.sqlite`
 
-  const parsedUrl = validateDownloadUrl(downloadUrl)
+  validateDownloadUrl(downloadUrl)
   console.log(`[prepare-catalog] Downloading SQLite snapshot artifact from ${downloadUrl}...`)
 
   mkdirSync(dirname(outputPath), { recursive: true })
   const tmpPath = `${outputPath}.download.${process.pid}.${Date.now()}`
 
-  let downloaded = false
   try {
-    const curlArgs = ['-sSL', '--fail', '--retry', '3', '--max-time', '300', '-o', tmpPath]
-    if (process.env.GITHUB_TOKEN && parsedUrl.hostname === 'api.github.com') {
-      curlArgs.push('-H', `Authorization: Bearer ${process.env.GITHUB_TOKEN}`)
-    }
-    curlArgs.push(downloadUrl)
-    execFileSync('curl', curlArgs, { stdio: 'inherit' })
-    downloaded = true
-  } catch {
-    downloaded = false
-  }
-
-  if (!downloaded) {
-    const timeoutSignal = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)
-    const response = await fetch(downloadUrl, { redirect: 'follow', signal: timeoutSignal })
-    if (!response.ok) {
-      throw new Error(`Failed to download catalog artifact from ${downloadUrl}: ${response.status} ${response.statusText}`)
-    }
+    const response = await fetchWithSafeRedirects(downloadUrl)
     const contentLength = Number(response.headers.get('content-length'))
     if (Number.isFinite(contentLength) && contentLength > MAX_ARTIFACT_BYTE_SIZE) {
       throw new Error(`Artifact size ${contentLength} bytes exceeds limit of ${MAX_ARTIFACT_BYTE_SIZE} bytes`)
     }
     const fileStream = createWriteStream(tmpPath)
     await pipeline(Readable.fromWeb(response.body), fileStream)
-  }
 
-  const stat = statSync(tmpPath)
-  if (stat.size > MAX_ARTIFACT_BYTE_SIZE) {
-    try {
-      unlinkSync(tmpPath)
-    } catch {}
-    throw new Error(`Downloaded artifact exceeds maximum allowed size of ${MAX_ARTIFACT_BYTE_SIZE} bytes`)
-  }
+    const stat = statSync(tmpPath)
+    if (stat.size > MAX_ARTIFACT_BYTE_SIZE) {
+      throw new Error(`Downloaded artifact exceeds maximum allowed size of ${MAX_ARTIFACT_BYTE_SIZE} bytes`)
+    }
 
-  const downloadedSha = hashFileSha256(tmpPath)
-  if (downloadedSha !== pointer.artifactSha256) {
-    try {
-      unlinkSync(tmpPath)
-    } catch {}
-    throw new Error(`Downloaded artifact SHA-256 mismatch: got ${downloadedSha}, expected ${pointer.artifactSha256}`)
-  }
+    const downloadedSha = hashFileSha256(tmpPath)
+    if (downloadedSha !== pointer.artifactSha256) {
+      throw new Error(`Downloaded artifact SHA-256 mismatch: got ${downloadedSha}, expected ${pointer.artifactSha256}`)
+    }
 
-  renameSync(tmpPath, outputPath)
-  console.log(`[prepare-catalog] Successfully downloaded and verified artifact (SHA: ${downloadedSha})`)
+    renameSync(tmpPath, outputPath)
+    console.log(`[prepare-catalog] Successfully downloaded and verified artifact (SHA: ${downloadedSha})`)
+  } finally {
+    if (existsSync(tmpPath)) {
+      try {
+        unlinkSync(tmpPath)
+      } catch {}
+    }
+  }
 }
 
 function readMetadataFromSqlite(outputPath) {
@@ -253,7 +288,7 @@ function verifyPointerMatchesMetadata(pointer, metadataRow) {
   }
 }
 
-function verifySqliteArtifact(outputPath, manifestPath, pointer) {
+export function verifySqliteArtifact(outputPath, manifestPath, pointer, { writeManifest = true } = {}) {
   const startTime = Date.now()
   console.log(`[prepare-catalog] Validating existing SQLite catalog snapshot at ${outputPath}...`)
 
@@ -290,7 +325,11 @@ function verifySqliteArtifact(outputPath, manifestPath, pointer) {
     }
   }
 
-  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+  if (writeManifest) {
+    const tmpManifest = `${manifestPath}.${randomUUID()}.tmp`
+    writeFileSync(tmpManifest, `${JSON.stringify(manifest, null, 2)}\n`)
+    renameSync(tmpManifest, manifestPath)
+  }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(2)
   console.log(`[prepare-catalog] Validated in ${elapsed}s: ${manifest.recordCount} total, ${manifest.canonicalCount} canonical records`)
@@ -302,10 +341,12 @@ async function downloadAndVerifyAtomic(pointer, outputPath, manifestPath) {
   const tmpPath = `${outputPath}.${randomUUID()}.tmp`
   try {
     await downloadSqliteArtifact(pointer, tmpPath)
-    const verifiedManifest = verifySqliteArtifact(tmpPath, manifestPath, pointer)
+    const verifiedManifest = verifySqliteArtifact(tmpPath, manifestPath, pointer, { writeManifest: false })
     renameSync(tmpPath, outputPath)
     verifiedManifest.outputPath = outputPath
-    writeFileSync(manifestPath, `${JSON.stringify(verifiedManifest, null, 2)}\n`)
+    const tmpManifest = `${manifestPath}.${randomUUID()}.tmp`
+    writeFileSync(tmpManifest, `${JSON.stringify(verifiedManifest, null, 2)}\n`)
+    renameSync(tmpManifest, manifestPath)
     return verifiedManifest
   } finally {
     if (existsSync(tmpPath)) {

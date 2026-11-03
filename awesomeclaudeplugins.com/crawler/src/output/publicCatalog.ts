@@ -19,10 +19,7 @@ export interface BuildPublicCatalogOptions {
 function attachPlugins(record: CatalogRecord, pluginsJson: string | null | undefined): void {
   const plugins = parsePluginSummariesJson(pluginsJson ?? null)
   if (plugins !== null) {
-    record.plugins = plugins.map((p) => ({
-      name: p.name ?? '',
-      ...(p.description ? { description: p.description } : {}),
-    }))
+    record.plugins = plugins
   }
 }
 
@@ -30,13 +27,15 @@ function attachMetadata(record: CatalogRecord, row: PublishableRepository): void
   if (row.manifest_kind === 'standalone-plugin') {
     record.manifest_kind = row.manifest_kind
   }
-  record.catalog_updated_at = row.catalog_updated_at ?? new Date(0).toISOString()
+  if (row.catalog_updated_at !== undefined) {
+    record.catalog_updated_at = row.catalog_updated_at
+  }
   const pushed = publicTimestamp(row.pushed_at)
   if (pushed) record.pushed_at = pushed
   const added = publicTimestamp(row.catalog_added_at)
   if (added) record.catalog_added_at = added
   if (row.license) record.license = row.license
-  if (row.archived != null) {
+  if (row.archived !== null && row.archived !== undefined) {
     record.archived = row.archived === true || row.archived === 1
   }
 }

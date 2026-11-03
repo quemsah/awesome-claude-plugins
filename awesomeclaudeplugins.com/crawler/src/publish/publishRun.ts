@@ -117,7 +117,12 @@ function publishedCommit(db: Database.Database, runId: string): string {
   )
 }
 
-function snapshotHash(files: GitSnapshotFiles, includeMarkdownPaths: boolean): string {
+function snapshotHash(files: GitSnapshotFiles, includeMarkdownPaths: boolean, draft?: { id: number; date: string; size: number }): string {
+  if (!files.reposJson && draft) {
+    return createHash('sha256')
+      .update(JSON.stringify([files.readme, 'sqlite-catalog', draft.id, draft.date, draft.size]), 'utf8')
+      .digest('hex')
+  }
   const contents = [files.readme, files.reposJson ?? '', files.statsJson ?? '']
   if (includeMarkdownPaths && files.markdownPathsJson) contents.push(files.markdownPathsJson)
   return createHash('sha256').update(JSON.stringify(contents), 'utf8').digest('hex')
@@ -138,23 +143,33 @@ function renderFiles(
   db: Database.Database,
   draft: StatsRecord,
   repositories: readonly PublishableRepository[] = listPublishable(db),
+  options?: { allowLegacyJsonPublication?: boolean },
 ): RenderedSnapshot {
   checkHistory(getHistoricalStats(db), draft)
+  const publicDraft = { id: draft.id, date: draft.date, size: draft.size }
   let files: GitSnapshotFiles
   try {
-    const publicDraft = { id: draft.id, date: draft.date, size: draft.size }
     const readme = renderReadme(repositories, draft)
-    const reposJson = renderRepos(repositories)
-    const statsJson = renderStats(db, publicDraft)
-    const markdownPathsJson = renderMarkdownPaths(repositories)
+    validateReadme(readme, repositories, draft)
+
+    const shouldRenderLegacyJson = options?.allowLegacyJsonPublication ?? true
+    let reposJson: string | undefined
+    let statsJson: string | undefined
+    let markdownPathsJson: string | undefined
+
+    if (shouldRenderLegacyJson) {
+      reposJson = renderRepos(repositories)
+      statsJson = renderStats(db, publicDraft)
+      markdownPathsJson = renderMarkdownPaths(repositories)
+      validateSnapshot(reposJson, statsJson, { expectedSize: draft.size, requireLatestSize: true })
+    }
+
     files = {
       readme,
-      reposJson,
-      statsJson,
-      markdownPathsJson,
+      ...(reposJson !== undefined ? { reposJson } : {}),
+      ...(statsJson !== undefined ? { statsJson } : {}),
+      ...(markdownPathsJson !== undefined ? { markdownPathsJson } : {}),
     }
-    validateSnapshot(reposJson, statsJson, { expectedSize: draft.size, requireLatestSize: true })
-    validateReadme(readme, repositories, draft)
   } catch (error) {
     if (error instanceof SnapshotValidationError) {
       throw new PublicationError('snapshot_invalid', { count: error.count, paths: error.paths })
@@ -164,8 +179,9 @@ function renderFiles(
 
   return {
     files,
-    hash: snapshotHash(files, true),
+    hash: snapshotHash(files, true, publicDraft),
     getCompatibility: () => {
+      if (!files.reposJson) return []
       // Lazy computation: only allocate compatibility objects if saved hash doesn't match primary
       const preMetadataFiles = { ...files, reposJson: renderRepos(repositories, { includeNewCatalogMetadata: false }) }
       const previousReposFiles = { ...files, reposJson: renderRepos(repositories, { includeCatalogUpdatedAt: false }) }
@@ -211,16 +227,35 @@ export function resolveArtifactPaths(
     const pointerPath = runId ? options.releasePointerPath.replaceAll('{runId}', runId) : options.releasePointerPath
     return { outputPath, pointerPath }
   }
-  if (process.env.CATALOG_SQLITE_OUTPUT_PATH && process.env.CATALOG_RELEASE_PATH) {
-    const outputPath = runId ? process.env.CATALOG_SQLITE_OUTPUT_PATH.replaceAll('{runId}', runId) : process.env.CATALOG_SQLITE_OUTPUT_PATH
-    const pointerPath = runId ? process.env.CATALOG_RELEASE_PATH.replaceAll('{runId}', runId) : process.env.CATALOG_RELEASE_PATH
-    return {
-      outputPath,
-      pointerPath,
-    }
+  if (process.env.CATALOG_SQLITE_OUTPUT_PATH || process.env.CATALOG_RELEASE_PATH) {
+    const defaultPointer = resolve(import.meta.dirname, '../../../ui/catalog-release.json')
+    const defaultOutput = existsSync('/data')
+      ? runId
+        ? `/data/catalog-artifacts/${runId}/catalog.sqlite`
+        : '/data/catalog-artifacts/catalog.sqlite'
+      : runId
+        ? resolve(import.meta.dirname, `../../../ui/src/data/artifacts/${runId}/catalog.sqlite`)
+        : resolve(import.meta.dirname, '../../../ui/src/data/catalog.sqlite')
+    const outputPath = process.env.CATALOG_SQLITE_OUTPUT_PATH
+      ? runId
+        ? process.env.CATALOG_SQLITE_OUTPUT_PATH.replaceAll('{runId}', runId)
+        : process.env.CATALOG_SQLITE_OUTPUT_PATH
+      : defaultOutput
+    const pointerPath = process.env.CATALOG_RELEASE_PATH
+      ? runId
+        ? process.env.CATALOG_RELEASE_PATH.replaceAll('{runId}', runId)
+        : process.env.CATALOG_RELEASE_PATH
+      : defaultPointer
+    return { outputPath, pointerPath }
   }
   if (process.env.VITEST || process.env.NODE_ENV === 'test') {
     return null
+  }
+  if (existsSync('/data')) {
+    const dataDir = '/data/catalog-artifacts'
+    const outputPath = runId ? `${dataDir}/${runId}/catalog.sqlite` : `${dataDir}/catalog.sqlite`
+    const pointerPath = resolve(import.meta.dirname, '../../../ui/catalog-release.json')
+    return { outputPath, pointerPath }
   }
   const defaultDir = resolve(import.meta.dirname, '../../../ui/src/data')
   const outputPath = runId ? resolve(defaultDir, `artifacts/${runId}/catalog.sqlite`) : resolve(defaultDir, 'catalog.sqlite')
@@ -240,7 +275,7 @@ export function prepareDraft(
   db: Database.Database,
   runId: string,
   now: Date,
-  options?: { artifactOutputPath?: string; releasePointerPath?: string },
+  options?: { artifactOutputPath?: string; releasePointerPath?: string; allowLegacyJsonPublication?: boolean },
 ): RunDraft {
   return databaseResult(() =>
     db.transaction(() => {
@@ -257,7 +292,10 @@ export function prepareDraft(
           throw new PublicationError('draft_invalid')
         }
       }
-      const snapshot = renderFiles(db, draft, repositories)
+      const snapshot = renderFiles(db, draft, repositories, options)
+      if (hasArtifactTable(db)) {
+        attachArtifactToDraft(db, runId, now, draft, snapshot, options)
+      }
       if (draft.hash) {
         if (!filesForDraftHash(draft.hash, snapshot)) throw new PublicationError('snapshot_changed')
       } else {
@@ -267,9 +305,6 @@ export function prepareDraft(
         } catch {
           throw new PublicationError('database_error')
         }
-      }
-      if (hasArtifactTable(db)) {
-        attachArtifactToDraft(db, runId, now, draft, snapshot, options)
       }
       return draft
     })(),
@@ -303,13 +338,17 @@ function attachArtifactToDraft(
             snapshot.files.catalogReleaseJson = pointerRaw
             preserved = true
           }
-        } catch {}
+        } catch (_err) {
+          /* ignore malformed pointer */
+        }
       }
     }
     if (!preserved) {
+      const run = getRun(db, runId)
+      const createdAt = existingPub?.prepared_at ?? run?.completed_at ?? now.toISOString()
       const { manifest } = prepareArtifactPublication(db, runId, {
         outputPath: paths.outputPath,
-        createdAt: now.toISOString(),
+        createdAt,
         draftStats: { id: draft.id, date: draft.date, size: draft.size },
       })
       const pointer = writeReleasePointer(manifest, paths.pointerPath)
@@ -361,17 +400,18 @@ function resolveCheckedReleasePointer(
 function checkedSnapshot(
   db: Database.Database,
   runId: string,
-  options?: { artifactOutputPath?: string; releasePointerPath?: string },
+  options?: { artifactOutputPath?: string; releasePointerPath?: string; allowLegacyJsonPublication?: boolean },
 ): { draft: RunDraft; files: GitSnapshotFiles; pending: string | null } {
   return databaseResult(() =>
     db.transaction(() => {
       const run = getRun(db, runId)
       if (run?.status !== 'completed' || run.completed_at === null || run.last_error !== null) throw new PublicationError('invalid_run')
       const draft = savedDraft(run)
-      const snapshot = renderFiles(db, draft)
+      const snapshot = renderFiles(db, draft, listPublishable(db), options)
+      const releasePointer = resolveCheckedReleasePointer(db, runId, options)
+      if (releasePointer) snapshot.files.catalogReleaseJson = releasePointer
       const files = filesForDraftHash(draft.hash, snapshot)
       if (!files) throw new PublicationError('snapshot_changed')
-      const releasePointer = resolveCheckedReleasePointer(db, runId, options)
       if (releasePointer) files.catalogReleaseJson = releasePointer
       return { draft, files, pending: run.pending_commit_sha }
     })(),
@@ -585,9 +625,15 @@ async function uploadPublicationAsset(
     if (uploaded.sha256 !== publication.artifact_sha256) {
       throw new Error(`Uploaded asset SHA-256 mismatch: expected ${publication.artifact_sha256}, got ${uploaded.sha256}`)
     }
+    const extraMetadata = {
+      releaseId: uploaded.releaseId,
+      assetId: uploaded.assetId,
+      byteSize: uploaded.size ?? publication.byte_size,
+      sourceProvenance: `github-release:${tagName}/${assetName}`,
+    }
     let pointer: CatalogReleasePointer
     if (manifest) {
-      pointer = writeReleasePointer(manifest, paths.pointerPath, uploaded.downloadUrl)
+      pointer = writeReleasePointer(manifest, paths.pointerPath, uploaded.downloadUrl, extraMetadata)
     } else {
       ensureReleasePointerFile(paths, publication, db)
       if (!existsSync(paths.pointerPath)) {
@@ -595,6 +641,10 @@ async function uploadPublicationAsset(
       }
       pointer = JSON.parse(readFileSync(paths.pointerPath, 'utf8')) as CatalogReleasePointer
       pointer.artifactUrl = uploaded.downloadUrl
+      if (uploaded.releaseId) pointer.releaseId = uploaded.releaseId
+      if (uploaded.assetId) pointer.assetId = uploaded.assetId
+      if (uploaded.size) pointer.byteSize = uploaded.size
+      pointer.sourceProvenance = `github-release:${tagName}/${assetName}`
       writeFileSync(paths.pointerPath, `${JSON.stringify(pointer, null, 2)}\n`, 'utf8')
     }
     if (
@@ -638,11 +688,14 @@ async function publishArtifactRelease(
 
   let manifest: SnapshotManifest | undefined
   let publication = getArtifactPublication(db, runId)
-  if (!publication || publication.state === 'failed') {
+  const artifactMissing = !publication?.artifact_path || !existsSync(publication.artifact_path)
+  if (!publication || publication.state === 'failed' || artifactMissing) {
     try {
+      const run = getRun(db, runId)
+      const createdAt = publication?.prepared_at ?? run?.completed_at ?? now().toISOString()
       const preparedArtifact = prepareArtifactPublication(db, runId, {
         outputPath: paths.outputPath,
-        createdAt: now().toISOString(),
+        createdAt,
         draftStats: { id: prepared.id, date: prepared.date, size: prepared.size },
       })
       manifest = preparedArtifact.manifest
