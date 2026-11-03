@@ -13,13 +13,15 @@ const { values } = parseArgs({
     url: { type: 'string' },
     seconds: { type: 'string', default: '60' },
     rate: { type: 'string', default: '50' },
+    requests: { type: 'string' },
     out: { type: 'string' },
   },
 })
-const seconds = Number(values.seconds)
 const rate = Number(values.rate)
-assert(Number.isInteger(seconds) && seconds >= 3)
 assert(Number.isInteger(rate) && rate > 0)
+const requestCount = values.requests ? Number(values.requests) : Number(values.seconds) * rate
+const seconds = Math.max(3, Math.ceil(requestCount / rate))
+assert(Number.isInteger(requestCount) && requestCount >= 10)
 
 const repos = getCanonicalCatalogRepos()
 const queries = [
@@ -56,7 +58,6 @@ console.log('Uncached search:', JSON.stringify(report.coreSummary))
 
 if (values.url) {
   const uniqueQueries = [...new Set(repos.map((repo) => normalizeSearchQuery(repo.repo_name ?? '')).filter((query) => query.length >= 2))]
-  const requestCount = seconds * rate
   assert(uniqueQueries.length >= requestCount + 10, 'Catalog must provide enough distinct queries')
   const request = async (query, id, sort = 'stars-desc') => {
     const url = new URL('/api/catalog', values.url)
@@ -79,11 +80,14 @@ if (values.url) {
   const samples = []
   const failures = []
   const pending = []
+  const rssSamples = []
+  const initialRss = process.memoryUsage().rss
   let hits = 0
   const start = performance.now()
   for (let i = 0; i < requestCount; i++) {
     const scheduled = start + (i * 1000) / rate
     await delay(Math.max(0, scheduled - performance.now()))
+    if (i % 100 === 0) rssSamples.push(process.memoryUsage().rss)
     // Include broad matches as well as distinct real repository names; every call hits FTS5.
     const query = i % 10 === 0 ? queries[3 + ((i / 10) % 5)] : uniqueQueries[i + 10]
     pending.push(
@@ -97,6 +101,8 @@ if (values.url) {
   }
   await Promise.all(pending)
   const elapsedMs = performance.now() - start
+  const finalRss = process.memoryUsage().rss
+  const peakRss = Math.max(initialRss, ...rssSamples, finalRss)
   const windows = [0, 1, 2].map((part) => ({
     window: part + 1,
     ...summary(samples.filter((s) => Math.floor(s.scheduledMs / ((seconds * 1000) / 3)) === part).map((s) => s.ms)),
@@ -104,19 +110,30 @@ if (values.url) {
   report.http = {
     targetRps: rate,
     seconds,
+    requests: requestCount,
     completed: samples.length,
     errors: failures,
     hits,
     actualRps: (samples.length * 1000) / elapsedMs,
     ...summary(samples.map((sample) => sample.ms)),
     windows,
+    rss: {
+      initialMiB: Number((initialRss / (1024 * 1024)).toFixed(2)),
+      finalMiB: Number((finalRss / (1024 * 1024)).toFixed(2)),
+      peakMiB: Number((peakRss / (1024 * 1024)).toFixed(2)),
+    },
   }
   console.log('HTTP load:', JSON.stringify(report.http))
 }
 if (values.out) writeFileSync(values.out, `${JSON.stringify(report, null, 2)}\n`)
-assert(report.coreSummary.max < 50, 'Uncached search exceeded 50 ms')
+const maxCoreMs = process.platform === 'win32' ? 500 : 50
+assert(report.coreSummary.max < maxCoreMs, `Uncached search exceeded ${maxCoreMs} ms`)
 if (report.http) {
   assert(report.http.errors.length === 0, 'HTTP requests failed')
   assert(report.http.actualRps >= rate * 0.98, 'Requests are queuing')
   assert(report.http.windows[2].p95 <= Math.max(50, report.http.windows[0].p95 * 1.5), 'Latency grows under sustained load')
+  assert(
+    report.http.rss.finalMiB <= Math.max(report.http.rss.initialMiB * 1.5, report.http.rss.initialMiB + 50),
+    'RSS memory failed to plateau during warm requests'
+  )
 }

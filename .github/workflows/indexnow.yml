@@ -139,6 +139,8 @@ jobs:
           INDEXNOW_BASELINE_PATH: ${{ runner.temp }}/indexnow-state/indexnow-state.sqlite
           # A scheduled run skips and retries later if Railway has not deployed the catalog.
           INDEXNOW_DEFER_UNTIL_DEPLOYED: ${{ github.event_name == 'schedule' }}
+          INDEXNOW_RESOLVE_DEPLOYED: 'true'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check whether the baseline changed
         id: baseline_changed

@@ -299,3 +299,7 @@ export function sqliteGetCatalogQualityForRepo(repo: CatalogRepo, fallbackDescri
 export function sqliteGetCatalogVersionHash(): string {
   return getSqliteReader().getCatalogMetadata().catalog_fingerprint
 }
+
+export function sqliteGetCatalogMetadata() {
+  return getSqliteReader().getCatalogMetadata()
+}

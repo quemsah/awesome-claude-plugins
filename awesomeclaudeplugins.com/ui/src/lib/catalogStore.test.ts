@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/style/useNamingConvention: test fixtures mirror catalog snake_case fields */
 
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
@@ -144,112 +144,40 @@ describe('catalogStore', () => {
     }
   })
 
-  it('does not return another repository when the supplied identity disagrees', () => {
-    const first = getCatalog()[0]
+  it('does not return another repository when the supplied identity disagrees', async () => {
+    const { getSqliteReader } = await import('./sqliteCatalogStore.ts')
+    const reader = getSqliteReader()
+    const first = reader.iteratePublishedRecords().next().value
+    expect(first).toBeDefined()
     expect(getRepoDetails(first.id, first.owner, first.repo_name)?.id).toBe(first.id)
     expect(getRepoDetails(first.id, 'definitely-not-the-owner', first.repo_name)).toBeNull()
   })
 
-  it('recovers original metadata when a cached shard has no entry', () => {
-    const first = getCatalog()[0]
-    const key = Symbol.for('awesome-claude-plugins.shard-cache')
-    const root = globalThis as unknown as Record<symbol, unknown>
-    const previous = root[key]
+  it('delegates repo details lookup directly to sqlite reader', async () => {
+    const { getSqliteReader } = await import('./sqliteCatalogStore.ts')
+    const reader = getSqliteReader()
+    const first = reader.iteratePublishedRecords().next().value
+    const details = getRepoDetails(first.id, first.owner, first.repo_name)
+    expect(details).not.toBeNull()
+    expect(details?.id).toBe(first.id)
+    expect(details?.owner).toBe(first.owner)
+    expect(details?.repo_name).toBe(first.repo_name)
+  })
+
+  it('rejects unbounded getCatalog() full materialization when fixture is not configured', () => {
+    const prev = process.env.CATALOG_DATA_PATH
+    delete process.env.CATALOG_DATA_PATH
     try {
-      root[key] = new Map([[Math.abs(first.id % 100), {}]])
-      const restored = getRepoDetails(first.id, first.owner, first.repo_name)
-      expect(restored).not.toBeNull()
-      expect(restored?.owner).toBe(first.owner)
-      expect(restored?.repo_name).toBe(first.repo_name)
-      expect(restored?.description).not.toBe('Description available.')
+      expect(() => getCatalog()).toThrow('Unbounded full catalog materialization is disabled')
     } finally {
-      if (previous === undefined) delete root[key]
-      else root[key] = previous
+      if (prev !== undefined) process.env.CATALOG_DATA_PATH = prev
     }
   })
 
-  it('reuses the canonical recovery lookup across multiple missing shard entries', () => {
-    const root = globalThis as unknown as Record<symbol, unknown>
-    const cacheKey = Symbol.for('awesome-claude-plugins.shard-cache')
-    const fallbackKey = Symbol.for('awesome-claude-plugins.canonical-fallback')
-    const previousCache = root[cacheKey]
-    const previousFallback = root[fallbackKey]
-    const records = new Map<number, ReturnType<typeof getCatalog>[number]>()
-    for (const repo of getCatalog()) {
-      const shardId = Math.abs(repo.id % 100)
-      if (!records.has(shardId)) records.set(shardId, repo)
-      if (records.size === 2) break
-    }
-    const [first, second] = [...records.values()]
-    const reposPath = join(process.cwd(), 'src/data/repos.json')
-    try {
-      root[cacheKey] = new Map([
-        [Math.abs(first.id % 100), {}],
-        [Math.abs(second.id % 100), {}],
-      ])
-      delete root[fallbackKey]
-      writeFileSync(reposPath, JSON.stringify([first, second]), 'utf8')
-      expect(getRepoDetails(first.id, first.owner, first.repo_name)?.id).toBe(first.id)
-      const recovered = root[fallbackKey]
-      expect(recovered).toBeInstanceOf(Map)
-      expect(getRepoDetails(second.id, second.owner, second.repo_name)?.id).toBe(second.id)
-      expect(root[fallbackKey]).toBe(recovered)
-    } finally {
-      rmSync(reposPath, { force: true })
-      if (previousCache === undefined) delete root[cacheKey]
-      else root[cacheKey] = previousCache
-      if (previousFallback === undefined) delete root[fallbackKey]
-      else root[fallbackKey] = previousFallback
-    }
-  })
-
-  it('keeps the most recently used shard in the bounded LRU', () => {
-    const cacheKey = Symbol.for('awesome-claude-plugins.shard-cache')
-    const holder = globalThis as unknown as Record<symbol, unknown>
-    const previous = holder[cacheKey]
-    const records = new Map<number, ReturnType<typeof getCatalog>[number]>()
-    for (const repo of getCatalog()) {
-      const shardId = Math.abs(repo.id % 100)
-      if (!records.has(shardId)) records.set(shardId, repo)
-      if (records.size === 12) break
-    }
-    const samples = [...records.values()]
-    expect(samples).toHaveLength(12)
-    const shardsDir = join(process.cwd(), 'src/data/repo-details')
-    mkdirSync(shardsDir, { recursive: true })
-    try {
-      for (const repo of samples) {
-        const shardId = Math.abs(repo.id % 100)
-        writeFileSync(join(shardsDir, `${shardId}.json`), JSON.stringify({ [repo.id]: repo }), 'utf8')
-      }
-      delete holder[cacheKey]
-      for (const repo of samples.slice(0, 10)) getRepoDetails(repo.id, repo.owner, repo.repo_name)
-      // Touch the first inserted shard; it should survive subsequent evictions.
-      getRepoDetails(samples[0].id, samples[0].owner, samples[0].repo_name)
-      for (const repo of samples.slice(10)) getRepoDetails(repo.id, repo.owner, repo.repo_name)
-      const cache = holder[cacheKey] as Map<number, unknown>
-      expect(cache.size).toBe(10)
-      expect(cache.has(Math.abs(samples[0].id % 100))).toBe(true)
-      expect(cache.has(Math.abs(samples[1].id % 100))).toBe(false)
-    } finally {
-      rmSync(shardsDir, { recursive: true, force: true })
-      if (previous === undefined) delete holder[cacheKey]
-      else holder[cacheKey] = previous
-    }
-  })
-
-  it('loads the catalog records from search index or fallback', () => {
-    const catalog = getCatalog()
-    expect(catalog.length).toBeGreaterThan(0)
-    const first = catalog[0]
-    expect(first.id).toBeDefined()
-    expect(first.owner).toBeDefined()
-    expect(first.repo_name).toBeDefined()
-  })
-
-  it('hydrates repo details on demand with full description and plugins', () => {
-    const catalog = getCatalog()
-    const first = catalog[0]
+  it('hydrates repo details on demand with full description and plugins from sqlite', async () => {
+    const { getSqliteReader } = await import('./sqliteCatalogStore.ts')
+    const reader = getSqliteReader()
+    const first = reader.iteratePublishedRecords().next().value
     const hydrated = hydrateCatalogRepo(first)
 
     expect(hydrated.id).toBe(first.id)

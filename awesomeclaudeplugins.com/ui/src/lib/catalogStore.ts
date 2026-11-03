@@ -8,15 +8,10 @@ import type { Repo } from '../schemas/repo.schema.ts'
 import { getSqliteReader } from './sqliteCatalogStore.ts'
 
 const CATALOG_KEY = Symbol.for('awesome-claude-plugins.catalog')
-const SHARD_CACHE_KEY = Symbol.for('awesome-claude-plugins.shard-cache')
-const FALLBACK_REPOS_KEY = Symbol.for('awesome-claude-plugins.canonical-fallback')
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/
 
-type ShardCache = Map<number, Record<string, Partial<Repo>>>
 type CatalogGlobal = typeof globalThis & {
   [CATALOG_KEY]?: readonly Repo[]
-  [SHARD_CACHE_KEY]?: ShardCache
-  [FALLBACK_REPOS_KEY]?: Map<number, Repo[]> | null
 }
 
 export type SearchIndexV1 = {
@@ -153,58 +148,7 @@ export function getCatalog(): readonly Repo[] {
     return catalog
   }
 
-  // Legacy fallback: if legacy JSON fixtures are explicitly created, prioritize them for tests
-  const searchIndexPath = join(process.cwd(), 'src/data/search-index.json')
-  const reposPath = join(process.cwd(), 'src/data/repos.json')
-  if (existsSync(searchIndexPath) || existsSync(reposPath)) {
-    const catalog = readCatalogFiles(searchIndexPath, reposPath)
-    root[CATALOG_KEY] = catalog
-    return catalog
-  }
-
-  // Authoritative SQLite path is preferred whenever present
-  const sqlitePath = process.env.CATALOG_SQLITE_PATH || join(process.cwd(), 'src/data/catalog.sqlite')
-  if (existsSync(sqlitePath)) {
-    const catalog = [...getSqliteReader().iteratePublishedRecords()] as Repo[]
-    root[CATALOG_KEY] = catalog
-    return catalog
-  }
-
-  throw new Error('Missing catalog data source')
-}
-
-function getShardCache(): ShardCache {
-  const root = globalThis as CatalogGlobal
-  if (!root[SHARD_CACHE_KEY]) {
-    root[SHARD_CACHE_KEY] = new Map()
-  }
-  return root[SHARD_CACHE_KEY]
-}
-
-// A broken or absent shard must not trigger a full 42 MB JSON parse per record.
-// Reuse the canonical snapshot only on the exceptional recovery path.
-function getCanonicalFallback(): Map<number, Repo[]> | null {
-  const root = globalThis as CatalogGlobal
-  if (root[FALLBACK_REPOS_KEY] !== undefined) return root[FALLBACK_REPOS_KEY]
-  const path = join(process.cwd(), 'src/data/repos.json')
-  if (!existsSync(path)) {
-    root[FALLBACK_REPOS_KEY] = null
-    return null
-  }
-  try {
-    const repos = JSON.parse(readFileSync(path, 'utf8')) as Repo[]
-    if (!Array.isArray(repos)) throw new Error('Invalid repository snapshot')
-    const lookup = new Map<number, Repo[]>()
-    for (const repo of repos) {
-      const matches = lookup.get(repo.id)
-      if (matches) matches.push(repo)
-      else lookup.set(repo.id, [repo])
-    }
-    root[FALLBACK_REPOS_KEY] = lookup
-  } catch {
-    root[FALLBACK_REPOS_KEY] = null
-  }
-  return root[FALLBACK_REPOS_KEY]
+  throw new Error('Unbounded full catalog materialization is disabled. Use sqliteCatalogStore streaming/paged queries.')
 }
 
 function matchesIdentity(repo: Partial<Repo>, id: number, owner?: string | null, repoName?: string | null): boolean {
@@ -223,52 +167,9 @@ function getRepoDetailsFromSqlite(id: number, owner?: string | null, repoName?: 
   return record && matchesIdentity(record, id, owner, repoName) ? (record as Repo) : null
 }
 
-function loadShard(shardId: number): Record<string, Partial<Repo>> | undefined {
-  const cache = getShardCache()
-  const cached = cache.get(shardId)
-  if (cached !== undefined) {
-    cache.delete(shardId)
-    cache.set(shardId, cached)
-    return cached
-  }
-  const shardPath = join(process.cwd(), `src/data/repo-details/${shardId}.json`)
-  if (!existsSync(shardPath)) return undefined
-  try {
-    const shard = JSON.parse(readFileSync(shardPath, 'utf8')) as Record<string, Partial<Repo>>
-    if (cache.size >= 10) {
-      const oldestKey = cache.keys().next().value
-      if (oldestKey !== undefined) cache.delete(oldestKey)
-    }
-    cache.set(shardId, shard)
-    return shard
-  } catch {
-    return undefined
-  }
-}
-
-function getFromCanonicalFallback(id: number, owner?: string | null, repoName?: string | null): Partial<Repo> | null {
-  const canonical = getCanonicalFallback()
-  if (!canonical) return null
-  return canonical.get(id)?.find((record) => matchesIdentity(record, id, owner, repoName)) ?? null
-}
-
-/** Bounded LRU: touch a hit so frequently used detail buckets are not evicted. */
+/** Detail lookup delegates directly to SQLite point query without legacy JSON shards. */
 export function getRepoDetails(id: number, owner?: string | null, repoName?: string | null): Partial<Repo> | null {
-  const shardsDir = join(process.cwd(), 'src/data/repo-details')
-  const reposPath = join(process.cwd(), 'src/data/repos.json')
-  const hasLegacyFiles = existsSync(shardsDir) || existsSync(reposPath)
-
-  if (!hasLegacyFiles) {
-    return getRepoDetailsFromSqlite(id, owner, repoName)
-  }
-
-  const shard = loadShard(Math.abs(id % 100))
-  const details = shard?.[id]
-  if (details && matchesIdentity(details, id, owner, repoName)) {
-    return details
-  }
-
-  return getFromCanonicalFallback(id, owner, repoName)
+  return getRepoDetailsFromSqlite(id, owner, repoName)
 }
 
 export function hydrateCatalogRepo<T extends Repo>(repo: T): T {

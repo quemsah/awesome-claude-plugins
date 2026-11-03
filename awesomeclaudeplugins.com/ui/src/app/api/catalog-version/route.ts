@@ -1,11 +1,16 @@
-import { sqliteGetCatalogVersionHash } from '../../../lib/sqliteCatalogStore.ts'
+import { sqliteGetCatalogMetadata } from '../../../lib/sqliteCatalogStore.ts'
 
 export const dynamic = 'force-static'
 
-const sha256 = sqliteGetCatalogVersionHash()
-
 export function GET() {
-  return new Response(JSON.stringify({ sha256 }), {
-    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
-  })
+  const metadata = sqliteGetCatalogMetadata()
+  return new Response(
+    JSON.stringify({
+      sha256: metadata.catalog_fingerprint,
+      snapshotId: metadata.snapshot_id,
+    }),
+    {
+      headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+    }
+  )
 }

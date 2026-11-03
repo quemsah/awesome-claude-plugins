@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildCatalogRecordsFromSqlite, diffCatalogRecords } from './indexnow-changes.mjs'
@@ -8,7 +9,7 @@ const SITE_URL = process.env.INDEXNOW_SITE_URL ?? 'https://awesomeclaudeplugins.
 const SITEMAP_URL = new URL('/sitemap.xml', SITE_URL)
 const INDEXNOW_KEY = '14273a4aad028282eac8537cb6ea0e5f'
 const KEY_LOCATION = new URL(`/${INDEXNOW_KEY}.txt`, SITE_URL).toString()
-const MAX_URLS_PER_REQUEST = 10_000
+const MAX_URLS_PER_REQUEST = Number(process.env.INDEXNOW_BATCH_SIZE) || 10_000
 const MODE = process.env.INDEXNOW_MODE ?? 'full'
 const BASELINE_PATH =
   process.env.INDEXNOW_BASELINE_PATH ?? fileURLToPath(new URL('../.indexnow-cache/indexnow-state.sqlite', import.meta.url))
@@ -53,6 +54,50 @@ function readCurrentCatalog() {
     throw new Error(`Catalog snapshot SQLite database not found at ${CATALOG_PATH}`)
   }
   return buildCatalogRecordsFromSqlite(CATALOG_PATH, SITE_URL)
+}
+
+async function resolveActiveCatalog(checkoutRecords, checkoutFingerprint) {
+  if (process.env.INDEXNOW_RESOLVE_DEPLOYED !== 'true') {
+    return { records: checkoutRecords, fingerprint: checkoutFingerprint }
+  }
+  const url = new URL('/api/catalog-version', SITE_URL)
+  try {
+    const response = await fetch(url, {
+      headers: { 'Cache-Control': 'no-cache' },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!response.ok) return { records: checkoutRecords, fingerprint: checkoutFingerprint }
+    const deployed = await response.json()
+    if (!deployed?.sha256 || deployed.sha256 === checkoutFingerprint) {
+      return { records: checkoutRecords, fingerprint: checkoutFingerprint }
+    }
+    if (deployed.snapshotId) {
+      const repo = process.env.GITHUB_REPOSITORY || 'quemsah/awesome-claude-plugins'
+      const downloadUrl =
+        process.env.CATALOG_SQLITE_URL || `https://github.com/${repo}/releases/download/catalog-${deployed.snapshotId}/catalog.sqlite`
+      const deployedPath = join(tmpdir(), `indexnow-deployed-${deployed.snapshotId}.sqlite`)
+      if (!existsSync(deployedPath)) {
+        const artifactRes = await fetch(downloadUrl, {
+          headers: process.env.GITHUB_TOKEN ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {},
+          signal: AbortSignal.timeout(60_000),
+        })
+        if (artifactRes.ok) {
+          const buffer = Buffer.from(await artifactRes.arrayBuffer())
+          writeFileSync(deployedPath, buffer)
+        }
+      }
+      if (existsSync(deployedPath)) {
+        const active = buildCatalogRecordsFromSqlite(deployedPath, SITE_URL)
+        if (active.fingerprint === deployed.sha256) {
+          console.log(`Resolved active production catalog release (${deployed.snapshotId}, fingerprint: ${deployed.sha256}).`)
+          return { records: active.records, fingerprint: active.fingerprint }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`Could not resolve deployed catalog release: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  return { records: checkoutRecords, fingerprint: checkoutFingerprint }
 }
 
 function getLegacyBaselinePath() {
@@ -184,8 +229,14 @@ async function waitForChangedPages(urls) {
   }
 }
 
-async function submitUrls(urls) {
+async function submitUrls(urls, expectedFingerprint) {
   for (let offset = 0; offset < urls.length; offset += MAX_URLS_PER_REQUEST) {
+    if (expectedFingerprint && offset > 0) {
+      const stillDeployed = await waitForCatalogDeployment(expectedFingerprint)
+      if (!stillDeployed) {
+        throw new Error('Catalog deployment changed between batch submissions. Aborting IndexNow without advancing baseline.')
+      }
+    }
     const urlList = urls.slice(offset, offset + MAX_URLS_PER_REQUEST)
     await sendIndexNowBatch(urlList, { siteUrl: SITE_URL, key: INDEXNOW_KEY, keyLocation: KEY_LOCATION })
     console.log(`Submitted ${urlList.length} URL${urlList.length === 1 ? '' : 's'} to IndexNow.`)
@@ -193,7 +244,11 @@ async function submitUrls(urls) {
 }
 
 async function runIndexNow() {
-  const { records: currentRecords, fingerprint: currentFingerprint } = readCurrentCatalog()
+  const checkoutCatalog = readCurrentCatalog()
+  const { records: currentRecords, fingerprint: currentFingerprint } = await resolveActiveCatalog(
+    checkoutCatalog.records,
+    checkoutCatalog.fingerprint
+  )
   // An HTTP 200 on a pre-existing page does not prove that new catalog data is live.
   // Never advance the baseline until the deployed build exposes the exact catalog snapshot.
   const isDeployed = await waitForCatalogDeployment(currentFingerprint)
@@ -203,7 +258,12 @@ async function runIndexNow() {
   if (MODE === 'full' || !hasBaseline()) {
     if (MODE === 'changed') console.log('IndexNow baseline missing; submitting the live sitemap to initialize it.')
     const urls = await sitemapUrls(SITEMAP_URL)
-    await submitUrls(urls)
+    await submitUrls(urls, currentFingerprint)
+    const stillDeployed = await waitForCatalogDeployment(currentFingerprint)
+    if (!stillDeployed) {
+      console.log('Catalog deployment changed before baseline update. Aborting IndexNow without advancing baseline.')
+      return
+    }
     writeBaseline(currentRecords, new Set(urls))
   } else {
     const previousRecords = readBaseline()
@@ -219,7 +279,12 @@ async function runIndexNow() {
           return
         }
       }
-      await submitUrls(urls)
+      await submitUrls(urls, currentFingerprint)
+      const stillDeployedFinal = await waitForCatalogDeployment(currentFingerprint)
+      if (!stillDeployedFinal) {
+        console.log('Catalog deployment changed before baseline update. Aborting IndexNow without advancing baseline.')
+        return
+      }
       writeBaseline(currentRecords)
     } else {
       console.log('No changed or retired indexable repository URLs.')
