@@ -1,3 +1,5 @@
+/** biome-ignore-all lint/style/useNamingConvention: test fixtures mirror catalog snake_case fields */
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Repo } from '../schemas/repo.schema.ts'
 import { type CatalogRepo, compareCatalogRepos, findCatalogRepo, searchCatalogRepos } from './catalog.ts'
@@ -91,17 +93,34 @@ describe('SQLite catalog migration regression and equivalence gate', () => {
       expect(sqliteFull.repos).toBeInstanceOf(Array)
       expect(sqliteFull.repos.length).toBeLessThanOrEqual(pageSize)
 
+      const ref = referenceSearch(allRecords, query, sort, page, pageSize)
+
       if (query === '') {
         const metadata = sqliteGetCatalogMetadata()
         expect(sqliteFull.total).toBe(metadata.canonical_count)
         expect(sqliteFull.pluginsCount).toBe(metadata.plugins_count)
         expect(sqliteFull.hasMore).toBe((page + 1) * pageSize < metadata.canonical_count)
+        expect(sqliteFull.total).toBe(ref.total)
+        expect(sqliteFull.pluginsCount).toBe(ref.pluginsCount)
+        expect(sqliteFull.hasMore).toBe(ref.hasMore)
+        expect(sqliteFull.repos.map((r) => r.id)).toEqual(ref.repos.map((r) => r.id))
       } else {
         // Search queries: verify total and pluginsCount are consistent and non-negative
         expect(sqliteFull.total).toBeGreaterThanOrEqual(0)
         expect(sqliteFull.pluginsCount).toBeGreaterThanOrEqual(0)
         if (sqliteFull.total > 0 && page === 0) {
           expect(sqliteFull.repos.length).toBeGreaterThan(0)
+        }
+        for (const repo of sqliteFull.repos) {
+          const matchText = [
+            repo.owner,
+            repo.repo_name,
+            repo.description ?? '',
+            ...(repo.plugins ?? []).flatMap((p) => [p.name ?? '', p.description ?? '']),
+          ]
+            .join(' ')
+            .toLowerCase()
+          expect(matchText).toContain(query.toLowerCase())
         }
       }
 
@@ -151,11 +170,66 @@ describe('SQLite catalog migration regression and equivalence gate', () => {
     }
   })
 
-  it('referenceSearchAlgorithm: validates in-memory baseline search behavior', () => {
-    const sample = allRecords.slice(0, 50)
-    const result = referenceSearch(sample, 'claude', 'stars-desc', 0, 10)
-    expect(result.total).toBeGreaterThanOrEqual(0)
-    expect(result.repos.length).toBeLessThanOrEqual(10)
-    expect(result.pluginsCount).toBeGreaterThanOrEqual(0)
+  it('referenceSearchAlgorithm: validates search and sort equivalence on fixture records', () => {
+    const fixtureRecords: CatalogRepo[] = [
+      {
+        id: 1,
+        owner: 'alpha',
+        repo_name: 'claude-assistant',
+        description: 'Claude tools and assistant utilities',
+        stargazers_count: 500,
+        forks_count: 50,
+        pushed_at: '2026-03-01T00:00:00Z',
+        catalog_added_at: '2026-01-01T00:00:00Z',
+        plugins: [{ name: 'assistant', description: 'Core assistant plugin' }],
+        plugins_count: 1,
+      },
+      {
+        id: 2,
+        owner: 'beta',
+        repo_name: 'super-claude',
+        description: 'Supercharged claude setup',
+        stargazers_count: 1000,
+        forks_count: 100,
+        pushed_at: '2026-04-01T00:00:00Z',
+        catalog_added_at: '2026-02-01T00:00:00Z',
+        plugins: [
+          { name: 'p1', description: 'Plugin 1' },
+          { name: 'p2', description: 'Plugin 2' },
+        ],
+        plugins_count: 2,
+      },
+      {
+        id: 3,
+        owner: 'gamma',
+        repo_name: 'unrelated-project',
+        description: 'Nothing to see here',
+        stargazers_count: 200,
+        forks_count: 10,
+        pushed_at: '2026-02-01T00:00:00Z',
+        catalog_added_at: '2026-01-15T00:00:00Z',
+        plugins: [],
+        plugins_count: 0,
+      },
+    ]
+
+    const result = referenceSearch(fixtureRecords, 'claude', 'stars-desc', 0, 10)
+    expect(result.total).toBe(2)
+    expect(result.pluginsCount).toBe(3)
+    expect(result.repos.map((r) => r.id)).toEqual([2, 1])
+
+    const forksResult = referenceSearch(fixtureRecords, 'claude', 'forks-desc', 0, 10)
+    expect(forksResult.repos.map((r) => r.id)).toEqual([2, 1])
+
+    const pagedResult = referenceSearch(fixtureRecords, 'claude', 'stars-desc', 0, 1)
+    expect(pagedResult.total).toBe(2)
+    expect(pagedResult.repos.length).toBe(1)
+    expect(pagedResult.repos[0].id).toBe(2)
+    expect(pagedResult.hasMore).toBe(true)
+
+    const pagedNext = referenceSearch(fixtureRecords, 'claude', 'stars-desc', 1, 1)
+    expect(pagedNext.repos.length).toBe(1)
+    expect(pagedNext.repos[0].id).toBe(1)
+    expect(pagedNext.hasMore).toBe(false)
   })
 })

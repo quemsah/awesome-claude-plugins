@@ -112,7 +112,7 @@ export interface SitemapRecord {
 
 export interface PublicCatalogReader {
   getRepoByPath(path: string): CatalogRecord | undefined
-  getRecordById(id: number): CatalogRecord | undefined
+  getRecordById(id: number, canonicalPath?: string): CatalogRecord | undefined
   getRecordBySourceOrder(sourceOrder: number): CatalogRecord | undefined
   getBrowsePage(options?: PageOptions): CatalogPage
   searchRepos(query: string, options?: PageOptions): SearchPage
@@ -125,6 +125,7 @@ export interface PublicCatalogReader {
   getSitemapPage(limit: number, offset: number): SitemapRecord[]
   getStatistics(): StatRecord[]
   getCatalogMetadata(): CatalogMetadata
+  verifyIntegrity(): boolean
   isOpen(): boolean
   close(): void
 }

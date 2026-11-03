@@ -2,9 +2,10 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { calculateCatalogFingerprint } from '@awesome-claude-plugins/catalog-snapshot'
 import type Database from 'better-sqlite3'
 import { afterEach, expect, it } from 'vitest'
-import { renderRepos } from '../output/catalogSnapshot.js'
+import { formatPublicCatalogRecord, renderRepos } from '../output/catalogSnapshot.js'
 import { renderReadme } from '../output/readme.js'
 import { openDatabase } from '../storage/db.js'
 import { listPublishable } from '../storage/repositories.js'
@@ -274,8 +275,12 @@ it('prepares and publishes in sqlite-native mode without rendering legacy json f
     releasePointerPath: join(tempDir, 'catalog-release.json'),
   }
   const draft = prepareDraft(db, 'r1', timestamp, paths)
+  const fingerprint = calculateCatalogFingerprint(listPublishable(db).map((r) => formatPublicCatalogRecord(r)))
   const expectedHash = createHash('sha256')
-    .update(JSON.stringify([renderReadme(listPublishable(db), draft), 'sqlite-catalog', draft.id, draft.date, draft.size]), 'utf8')
+    .update(
+      JSON.stringify([renderReadme(listPublishable(db), draft), 'sqlite-catalog', draft.id, draft.date, draft.size, fingerprint]),
+      'utf8',
+    )
     .digest('hex')
   expect(draft.hash).toBe(expectedHash)
 
@@ -1248,4 +1253,92 @@ it('recovers after restart and complete artifact loss on disk (deterministic reg
   }
   expect(finalPub.state).toBe('uploaded')
   expect(finalPub.artifact_sha256).toBe(initialSha)
+})
+
+it('rejects publication with snapshot_changed when a repository outside the top-100 README is modified after draft preparation', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-fingerprint-test-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, 'catalog.sqlite')
+  const releasePointerPath = join(directory, 'catalog-release.json')
+
+  // Insert 105 repositories so repos 101-105 are outside the README top-100
+  const insertStmt = db.prepare(`INSERT INTO repositories (
+    id, html_url, stargazers_count, forks_count, subscribers_count, description,
+    owner, owner_url, repo_name, plugins_count, createdAt, updatedAt
+  ) VALUES (?, ?, ?, 10, 5, ?, 'testowner', 'https://github.com/testowner', ?, 1, 'start', 'start')`)
+
+  for (let i = 1; i <= 105; i++) {
+    const id = 1000 + i
+    const stars = 200 - i // Repos 1-100 have stars 199..100; Repos 101-105 have stars 99..95
+    insertStmt.run(id, `https://github.com/testowner/repo-${i}`, stars, `Description ${i}`, `repo-${i}`)
+  }
+
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+
+  // Mutate repository 105 (strictly outside the README top 100)
+  db.prepare("UPDATE repositories SET description = 'Modified description after draft prepared' WHERE id = ?").run(1105)
+
+  // publishRun must detect that catalogFingerprint has changed and throw snapshot_changed
+  await expect(
+    publishRun(db, git, 'r1', {
+      writeEnabled: true,
+      artifactOutputPath,
+      releasePointerPath,
+    }),
+  ).rejects.toMatchObject({ category: 'snapshot_changed' })
+})
+
+it('handles two sequential publications with templated {runId} paths without collision', async () => {
+  const db = fixture()
+  const git = new Branch()
+  const directory = mkdtempSync(join(import.meta.dirname, '.artifact-sequential-runs-'))
+  directories.push(directory)
+  const artifactOutputPath = join(directory, '{runId}/catalog.sqlite')
+  const releasePointerPath = join(directory, '{runId}/catalog-release.json')
+
+  // Prepare and publish run 1
+  prepareDraft(db, 'r1', timestamp, {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+  const commit1 = await publishRun(db, git, 'r1', {
+    writeEnabled: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+  expect(commit1).toBe(git.head)
+
+  const paths1 = resolveArtifactPaths({ artifactOutputPath, releasePointerPath }, 'r1')
+  expect(paths1).not.toBeNull()
+  expect(existsSync(paths1?.outputPath ?? '')).toBe(true)
+  expect(existsSync(paths1?.pointerPath ?? '')).toBe(true)
+
+  // Setup second completed run
+  beginRun(db, 'r2', new Date(timestamp.getTime() + 1000).toISOString())
+  completeRun(db, 'r2', new Date(timestamp.getTime() + 1000).toISOString(), 0)
+
+  // Prepare and publish run 2
+  prepareDraft(db, 'r2', new Date(timestamp.getTime() + 2000), {
+    artifactOutputPath,
+    releasePointerPath,
+  })
+  const commit2 = await publishRun(db, git, 'r2', {
+    writeEnabled: true,
+    artifactOutputPath,
+    releasePointerPath,
+  })
+  expect(commit2).toBe(git.head)
+
+  const paths2 = resolveArtifactPaths({ artifactOutputPath, releasePointerPath }, 'r2')
+  expect(paths2).not.toBeNull()
+  expect(existsSync(paths2?.outputPath ?? '')).toBe(true)
+  expect(existsSync(paths2?.pointerPath ?? '')).toBe(true)
+
+  expect(paths1?.outputPath).not.toEqual(paths2?.outputPath)
+  expect(paths1?.pointerPath).not.toEqual(paths2?.pointerPath)
 })

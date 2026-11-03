@@ -167,12 +167,18 @@ function readAndValidateMetadata(db, expected = {}) {
 
 function verifyRequiredTables(db) {
   try {
+    const check = db.pragma('quick_check')
+    if (!Array.isArray(check) || check[0]?.quick_check !== 'ok') {
+      db.close()
+      throw new CorruptedSnapshotError('Database quick_check integrity verification failed')
+    }
     db.prepare('SELECT 1 FROM repositories LIMIT 1').get()
     db.prepare('SELECT 1 FROM statistics LIMIT 1').get()
     db.prepare('SELECT 1 FROM repo_fts LIMIT 1').get()
     db.prepare('SELECT 1 FROM markdown_repositories LIMIT 1').get()
     db.prepare('SELECT 1 FROM indexable_repositories LIMIT 1').get()
   } catch (error) {
+    if (error instanceof CorruptedSnapshotError) throw error
     db.close()
     throw new IncompatibleSchemaError('Required catalog tables or views are missing or corrupt', { cause: error })
   }
@@ -223,6 +229,12 @@ export function openPublicCatalog(path, expected = {}) {
   const lookupByIdStmt = db.prepare(`
     SELECT record_json FROM repositories
     WHERE id = ? AND is_canonical = 1
+    LIMIT 1
+  `)
+
+  const lookupByIdAndPathStmt = db.prepare(`
+    SELECT record_json FROM repositories
+    WHERE id = ? AND canonical_key = ? AND is_canonical = 1
     LIMIT 1
   `)
 
@@ -279,8 +291,12 @@ export function openPublicCatalog(path, expected = {}) {
       return row ? JSON.parse(row.record_json) : undefined
     },
 
-    getRecordById(id) {
+    getRecordById(id, canonicalPath) {
       if (typeof id !== 'number' || !Number.isSafeInteger(id)) return undefined
+      if (canonicalPath && typeof canonicalPath === 'string') {
+        const row = lookupByIdAndPathStmt.get(id, canonicalPath.toLowerCase())
+        if (row) return JSON.parse(row.record_json)
+      }
       const row = lookupByIdStmt.get(id)
       return row ? JSON.parse(row.record_json) : undefined
     },
@@ -501,6 +517,16 @@ export function openPublicCatalog(path, expected = {}) {
 
     getCatalogMetadata() {
       return { ...metadata }
+    },
+
+    verifyIntegrity() {
+      if (!db || !db.open) return false
+      try {
+        const check = db.pragma('quick_check')
+        return Array.isArray(check) && check[0]?.quick_check === 'ok'
+      } catch {
+        return false
+      }
     },
 
     isOpen() {

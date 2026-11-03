@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
-import type { SnapshotManifest } from '@awesome-claude-plugins/catalog-snapshot'
+import { basename, dirname, join, resolve } from 'node:path'
+import { calculateCatalogFingerprint, type SnapshotManifest } from '@awesome-claude-plugins/catalog-snapshot'
 import type Database from 'better-sqlite3'
-import { renderMarkdownPaths, renderRepos, renderStats } from '../output/catalogSnapshot.js'
+import { formatPublicCatalogRecord, renderMarkdownPaths, renderRepos, renderStats } from '../output/catalogSnapshot.js'
 import { getHistoricalStats } from '../output/publicCatalog.js'
 import { renderReadme } from '../output/readme.js'
 import { assertValidStatsDraft, createStatsDraft, type StatsRecord } from '../output/statsDraft.js'
@@ -118,10 +118,15 @@ function publishedCommit(db: Database.Database, runId: string): string {
   )
 }
 
-function snapshotHash(files: GitSnapshotFiles, includeMarkdownPaths: boolean, draft?: { id: number; date: string; size: number }): string {
+function snapshotHash(
+  files: GitSnapshotFiles,
+  includeMarkdownPaths: boolean,
+  draft?: { id: number; date: string; size: number },
+  catalogFingerprint?: string,
+): string {
   if (!files.reposJson && draft) {
     return createHash('sha256')
-      .update(JSON.stringify([files.readme, 'sqlite-catalog', draft.id, draft.date, draft.size]), 'utf8')
+      .update(JSON.stringify([files.readme, 'sqlite-catalog', draft.id, draft.date, draft.size, catalogFingerprint ?? '']), 'utf8')
       .digest('hex')
   }
   const contents = [files.readme, files.reposJson ?? '', files.statsJson ?? '']
@@ -159,7 +164,9 @@ function getHistoricalRecoverySnapshots(
   const preMetadataFiles = { ...baseFiles, reposJson: renderRepos(repositories, { includeNewCatalogMetadata: false }) }
   const previousReposFiles = { ...baseFiles, reposJson: renderRepos(repositories, { includeCatalogUpdatedAt: false }) }
   const legacyUrlFiles = { ...baseFiles, reposJson: renderRepos(repositories, { legacyUrls: true }) }
+  const legacySqliteWithoutFingerprint: GitSnapshotFiles = { readme }
   return [
+    { hash: snapshotHash(legacySqliteWithoutFingerprint, true, publicDraft), files: legacySqliteWithoutFingerprint },
     { hash: snapshotHash(preMetadataFiles, true), files: preMetadataFiles },
     { hash: snapshotHash(previousReposFiles, true), files: previousReposFiles },
     { hash: snapshotHash(legacyUrlFiles, true), files: legacyUrlFiles },
@@ -175,7 +182,11 @@ function renderFiles(
   db: Database.Database,
   draft: StatsRecord,
   repositories: readonly PublishableRepository[] = listPublishable(db),
-  options?: { allowLegacyJsonPublication?: boolean; paths?: { outputPath: string; pointerPath: string } | null },
+  options?: {
+    allowLegacyJsonPublication?: boolean
+    paths?: { outputPath: string; pointerPath: string } | null
+    catalogFingerprint?: string
+  },
 ): RenderedSnapshot {
   checkHistory(getHistoricalStats(db), draft)
   const publicDraft = { id: draft.id, date: draft.date, size: draft.size }
@@ -209,9 +220,12 @@ function renderFiles(
     throw new PublicationError('snapshot_invalid')
   }
 
+  const catalogFingerprint =
+    options?.catalogFingerprint ?? calculateCatalogFingerprint(repositories.map((r) => formatPublicCatalogRecord(r)))
+
   return {
     files,
-    hash: snapshotHash(files, true, publicDraft),
+    hash: snapshotHash(files, true, publicDraft, catalogFingerprint),
     getCompatibility: () => getHistoricalRecoverySnapshots(db, draft, repositories, files.readme),
   }
 }
@@ -256,10 +270,19 @@ export function resolveArtifactPaths(
 
   const defaultPaths = resolveDefaultPaths(runId)
   if (process.env.CATALOG_SQLITE_OUTPUT_PATH || process.env.CATALOG_RELEASE_PATH) {
+    const rawOutput = process.env.CATALOG_SQLITE_OUTPUT_PATH
+    let outputPath: string
+    if (rawOutput) {
+      if (runId && !rawOutput.includes('{runId}')) {
+        outputPath = join(dirname(rawOutput), runId, basename(rawOutput))
+      } else {
+        outputPath = formatTemplate(rawOutput, runId)
+      }
+    } else {
+      outputPath = defaultPaths.outputPath
+    }
     return {
-      outputPath: process.env.CATALOG_SQLITE_OUTPUT_PATH
-        ? formatTemplate(process.env.CATALOG_SQLITE_OUTPUT_PATH, runId)
-        : defaultPaths.outputPath,
+      outputPath,
       pointerPath: process.env.CATALOG_RELEASE_PATH ? formatTemplate(process.env.CATALOG_RELEASE_PATH, runId) : defaultPaths.pointerPath,
     }
   }
@@ -377,13 +400,17 @@ function resolveCheckedReleasePointer(
   db: Database.Database,
   runId: string,
   options?: { artifactOutputPath?: string; releasePointerPath?: string },
+  currentFingerprint?: string,
 ): string | null {
   if (!hasArtifactTable(db)) return null
   const publication = getArtifactPublication(db, runId)
-  const paths = resolveArtifactPaths(options)
+  const paths = resolveArtifactPaths(options, runId)
   if (!publication || (publication.state !== 'uploaded' && publication.state !== 'prepared')) {
     if (paths) throw new PublicationError('snapshot_invalid')
     return null
+  }
+  if (currentFingerprint && publication.catalog_fingerprint !== currentFingerprint) {
+    throw new PublicationError('snapshot_changed')
   }
   let pointerRaw: string | null = null
   if (paths) {
@@ -420,9 +447,11 @@ function checkedSnapshot(
       const run = getRun(db, runId)
       if (run?.status !== 'completed' || run.completed_at === null || run.last_error !== null) throw new PublicationError('invalid_run')
       const draft = savedDraft(run)
+      const publishable = listPublishable(db)
+      const currentFingerprint = calculateCatalogFingerprint(publishable.map((r) => formatPublicCatalogRecord(r)))
       const paths = resolveArtifactPaths(options, runId)
-      const snapshot = renderFiles(db, draft, listPublishable(db), { ...options, paths })
-      const releasePointer = resolveCheckedReleasePointer(db, runId, options)
+      const snapshot = renderFiles(db, draft, publishable, { ...options, paths, catalogFingerprint: currentFingerprint })
+      const releasePointer = resolveCheckedReleasePointer(db, runId, options, currentFingerprint)
       if (releasePointer) snapshot.files.catalogReleaseJson = releasePointer
       const files = filesForDraftHash(draft.hash, snapshot)
       if (!files) throw new PublicationError('snapshot_changed')

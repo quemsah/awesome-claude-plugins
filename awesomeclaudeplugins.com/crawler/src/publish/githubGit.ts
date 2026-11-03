@@ -339,13 +339,25 @@ export class GitHubGitClient implements GitHubGit {
       throw new GitHubGitHttpError(response.status)
     }
 
-    const remoteBytes = Buffer.from(await response.arrayBuffer())
-    const remoteSha = createHash('sha256').update(remoteBytes).digest('hex')
+    const hasher = createHash('sha256')
+    let totalBytes = 0
+    const body = response.body as unknown as AsyncIterable<Uint8Array> | null
+    if (body && typeof (body as unknown as Record<symbol, unknown>)[Symbol.asyncIterator] === 'function') {
+      for await (const chunk of body) {
+        hasher.update(chunk)
+        totalBytes += chunk.byteLength
+      }
+    } else {
+      const remoteBytes = Buffer.from(await response.arrayBuffer())
+      hasher.update(remoteBytes)
+      totalBytes = remoteBytes.length
+    }
+    const remoteSha = hasher.digest('hex')
     if (remoteSha !== expectedSha) {
       throw new GitHubGitError(`Existing release asset SHA-256 does not match local file: expected ${expectedSha}, remote has ${remoteSha}`)
     }
     const assetId = typeof asset.id === 'number' ? asset.id : undefined
-    const size = typeof asset.size === 'number' ? asset.size : remoteBytes.length
+    const size = typeof asset.size === 'number' ? asset.size : totalBytes
     return {
       downloadUrl,
       sha256: remoteSha,

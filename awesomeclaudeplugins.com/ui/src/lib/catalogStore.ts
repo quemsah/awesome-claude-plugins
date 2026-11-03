@@ -163,7 +163,8 @@ function getRepoDetailsFromSqlite(id: number, owner?: string | null, repoName?: 
   const sqlitePath = process.env.CATALOG_SQLITE_PATH || join(process.cwd(), 'src/data/catalog.sqlite')
   if (!existsSync(sqlitePath)) return null
   const reader = getSqliteReader()
-  const record = reader.getRecordById(id)
+  const canonicalPath = owner && repoName ? `${owner}/${repoName}` : undefined
+  const record = reader.getRecordById(id, canonicalPath) ?? (canonicalPath ? reader.getRepoByPath(canonicalPath) : undefined)
   return record && matchesIdentity(record, id, owner, repoName) ? (record as Repo) : null
 }
 

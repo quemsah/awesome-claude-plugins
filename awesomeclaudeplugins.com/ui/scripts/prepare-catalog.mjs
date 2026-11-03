@@ -14,7 +14,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { Readable } from 'node:stream'
+import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { buildPublicCatalog, GENERATOR_VERSION, SCHEMA_VERSION } from '@awesome-claude-plugins/catalog-snapshot/build'
@@ -223,8 +223,19 @@ async function downloadSqliteArtifact(pointer, outputPath) {
     if (Number.isFinite(contentLength) && contentLength > MAX_ARTIFACT_BYTE_SIZE) {
       throw new Error(`Artifact size ${contentLength} bytes exceeds limit of ${MAX_ARTIFACT_BYTE_SIZE} bytes`)
     }
+    let streamedBytes = 0
+    const sizeLimitTransform = new Transform({
+      transform(chunk, _encoding, callback) {
+        streamedBytes += chunk.length
+        if (streamedBytes > MAX_ARTIFACT_BYTE_SIZE) {
+          callback(new Error(`Downloaded artifact exceeds maximum allowed size of ${MAX_ARTIFACT_BYTE_SIZE} bytes during streaming`))
+        } else {
+          callback(null, chunk)
+        }
+      },
+    })
     const fileStream = createWriteStream(tmpPath)
-    await pipeline(Readable.fromWeb(response.body), fileStream)
+    await pipeline(Readable.fromWeb(response.body), sizeLimitTransform, fileStream)
 
     const stat = statSync(tmpPath)
     if (stat.size > MAX_ARTIFACT_BYTE_SIZE) {

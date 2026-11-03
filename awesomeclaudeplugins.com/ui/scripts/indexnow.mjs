@@ -1,5 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildCatalogRecordsFromSqlite, diffCatalogRecords } from './indexnow-changes.mjs'
@@ -54,50 +53,6 @@ function readCurrentCatalog() {
     throw new Error(`Catalog snapshot SQLite database not found at ${CATALOG_PATH}`)
   }
   return buildCatalogRecordsFromSqlite(CATALOG_PATH, SITE_URL)
-}
-
-async function resolveActiveCatalog(checkoutRecords, checkoutFingerprint) {
-  if (process.env.INDEXNOW_RESOLVE_DEPLOYED !== 'true') {
-    return { records: checkoutRecords, fingerprint: checkoutFingerprint }
-  }
-  const url = new URL('/api/catalog-version', SITE_URL)
-  try {
-    const response = await fetch(url, {
-      headers: { 'Cache-Control': 'no-cache' },
-      signal: AbortSignal.timeout(10_000),
-    })
-    if (!response.ok) return { records: checkoutRecords, fingerprint: checkoutFingerprint }
-    const deployed = await response.json()
-    if (!deployed?.sha256 || deployed.sha256 === checkoutFingerprint) {
-      return { records: checkoutRecords, fingerprint: checkoutFingerprint }
-    }
-    if (deployed.snapshotId) {
-      const repo = process.env.GITHUB_REPOSITORY || 'quemsah/awesome-claude-plugins'
-      const downloadUrl =
-        process.env.CATALOG_SQLITE_URL || `https://github.com/${repo}/releases/download/catalog-${deployed.snapshotId}/catalog.sqlite`
-      const deployedPath = join(tmpdir(), `indexnow-deployed-${deployed.snapshotId}.sqlite`)
-      if (!existsSync(deployedPath)) {
-        const artifactRes = await fetch(downloadUrl, {
-          headers: process.env.GITHUB_TOKEN ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {},
-          signal: AbortSignal.timeout(60_000),
-        })
-        if (artifactRes.ok) {
-          const buffer = Buffer.from(await artifactRes.arrayBuffer())
-          writeFileSync(deployedPath, buffer)
-        }
-      }
-      if (existsSync(deployedPath)) {
-        const active = buildCatalogRecordsFromSqlite(deployedPath, SITE_URL)
-        if (active.fingerprint === deployed.sha256) {
-          console.log(`Resolved active production catalog release (${deployed.snapshotId}, fingerprint: ${deployed.sha256}).`)
-          return { records: active.records, fingerprint: active.fingerprint }
-        }
-      }
-    }
-  } catch (err) {
-    console.warn(`Could not resolve deployed catalog release: ${err instanceof Error ? err.message : String(err)}`)
-  }
-  return { records: checkoutRecords, fingerprint: checkoutFingerprint }
 }
 
 function getLegacyBaselinePath() {
@@ -244,11 +199,7 @@ async function submitUrls(urls, expectedFingerprint) {
 }
 
 async function runIndexNow() {
-  const checkoutCatalog = readCurrentCatalog()
-  const { records: currentRecords, fingerprint: currentFingerprint } = await resolveActiveCatalog(
-    checkoutCatalog.records,
-    checkoutCatalog.fingerprint
-  )
+  const { records: currentRecords, fingerprint: currentFingerprint } = readCurrentCatalog()
   // An HTTP 200 on a pre-existing page does not prove that new catalog data is live.
   // Never advance the baseline until the deployed build exposes the exact catalog snapshot.
   const isDeployed = await waitForCatalogDeployment(currentFingerprint)
