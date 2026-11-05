@@ -916,6 +916,65 @@ describe('GitHubClient', () => {
     expect(test.requests).toHaveLength(1)
   })
 
+  it('identifies an administratively blocked repository on HTTP 403 even when Retry-After is present', async () => {
+    const blockedPayload = {
+      message: 'Repository access blocked',
+      block: {
+        reason: 'private_information',
+        created_at: '2026-11-03T19:00:04Z',
+        html_url: 'https://github.com/tos',
+      },
+    }
+    const test = harness([
+      Response.json(blockedPayload, {
+        status: 403,
+        headers: {
+          'retry-after': '60',
+          'x-ratelimit-remaining': '10',
+        },
+      }),
+    ])
+    const result = await test.client.getRepository('Prekzursil', 'agent-skills-toolchain')
+    expect(result).toEqual({
+      kind: 'repository-blocked',
+      status: 403,
+      reason: 'Repository access blocked',
+      blockReason: 'private_information',
+      blockedAt: '2026-11-03T19:00:04Z',
+      retryCount: 0,
+    })
+    expect(test.requests).toHaveLength(1)
+  })
+
+  it('identifies an administratively blocked repository on HTTP 403 even when rate limit remaining is 0', async () => {
+    const blockedPayload = {
+      message: 'Repository access blocked',
+      block: {
+        reason: 'private_information',
+        created_at: '2026-11-03T19:00:04Z',
+        html_url: 'https://github.com/tos',
+      },
+    }
+    const test = harness([
+      Response.json(blockedPayload, {
+        status: 403,
+        headers: {
+          'x-ratelimit-remaining': '0',
+        },
+      }),
+    ])
+    const result = await test.client.getRepository('Prekzursil', 'agent-skills-toolchain')
+    expect(result).toEqual({
+      kind: 'repository-blocked',
+      status: 403,
+      reason: 'Repository access blocked',
+      blockReason: 'private_information',
+      blockedAt: '2026-11-03T19:00:04Z',
+      retryCount: 0,
+    })
+    expect(test.requests).toHaveLength(1)
+  })
+
   it('identifies a legally restricted repository on HTTP 451 as repository-blocked', async () => {
     const test = harness([new Response('Unavailable For Legal Reasons', { status: 451 })])
     const result = await test.client.getRepository('restricted', 'repo')

@@ -1160,7 +1160,7 @@ export class GitHubClient implements GitHubReader {
     this.budget.observe(bucket, response.headers)
     const delay = retryAfter(response.headers, this.clock.now())
     const { status } = response
-    if (delay !== null && (status === 403 || status === 429 || response.ok)) this.budget.defer(bucket, delay)
+    if (delay !== null && (status === 429 || response.ok)) this.budget.defer(bucket, delay)
     if (status === 401 || status === 422) throw new GitHubFatalError(`GitHub request rejected (${status})`, status)
     if (status === 304) return this.handleNotModified(response.headers, attempt, conditional)
     if (status === 404) return { kind: 'result', result: { kind: 'not-found', retryCount: attempt } }
@@ -1183,6 +1183,40 @@ export class GitHubClient implements GitHubReader {
     return this.parseResponse(bucket, response, parse, attempt, secondaryCount, permanentContentErrors, finalAttempt)
   }
 
+  private async handleForbidden403<T>(
+    response: Response,
+    attempt: number,
+    delay: number | null,
+    remaining: string | null,
+  ): Promise<ResponseAction<T> | { secondary: boolean }> {
+    const body = await response.text().catch(() => {
+      throwIfShutdown(this.signal)
+      return ''
+    })
+    throwIfShutdown(this.signal)
+    const blocked = parseBlockedRepositoryResponse(body)
+    if (blocked) {
+      return {
+        kind: 'result',
+        result: {
+          kind: 'repository-blocked',
+          status: 403,
+          reason: 'Repository access blocked',
+          blockReason: blocked.reason,
+          blockedAt: blocked.createdAt,
+          retryCount: attempt,
+        },
+      }
+    }
+    if (/secondary rate limit|abuse detection/i.test(body) || (remaining !== '0' && delay !== null)) {
+      return { secondary: true }
+    }
+    if (remaining !== '0' && delay === null) {
+      throw new GitHubFatalError('GitHub access forbidden (403)', 403)
+    }
+    return { secondary: false }
+  }
+
   private async handleRateLimit<T>(
     bucket: RateResource,
     response: Response,
@@ -1192,33 +1226,12 @@ export class GitHubClient implements GitHubReader {
     finalAttempt: boolean,
   ): Promise<ResponseAction<T>> {
     const { status } = response
-    const remaining = response.headers.get('x-ratelimit-remaining')
-    let secondary = status === 429 || (remaining !== '0' && delay !== null)
-    if (status === 403 && remaining !== '0' && delay === null) {
-      const body = await response.text().catch(() => {
-        throwIfShutdown(this.signal)
-        return ''
-      })
-      throwIfShutdown(this.signal)
-      if (/secondary rate limit|abuse detection/i.test(body)) {
-        secondary = true
-      } else {
-        const blocked = parseBlockedRepositoryResponse(body)
-        if (blocked) {
-          return {
-            kind: 'result',
-            result: {
-              kind: 'repository-blocked',
-              status,
-              reason: 'Repository access blocked',
-              blockReason: blocked.reason,
-              blockedAt: blocked.createdAt,
-              retryCount: attempt,
-            },
-          }
-        }
-        throw new GitHubFatalError('GitHub access forbidden (403)', status)
-      }
+    let secondary = status === 429
+    if (status === 403) {
+      const remaining = response.headers.get('x-ratelimit-remaining')
+      const action = await this.handleForbidden403<T>(response, attempt, delay, remaining)
+      if ('kind' in action) return action
+      secondary = action.secondary
     }
     if (secondary) secondaryCount++
     this.budget.defer(bucket, Math.max(delay ?? 0, secondary ? 60_000 * 2 ** (secondaryCount - 1) + Math.floor(this.random() * 1_000) : 0))
