@@ -183,7 +183,11 @@ export function prepareEnrichedUpdate(db: Database.Database) {
   const update = db.prepare(enrichedUpdateSql)
   return (id: number, fields: EnrichmentFields, at = new Date().toISOString()): boolean => {
     assertValidEnrichmentCounts(fields)
-    return update.run(enrichmentUpdateBindings(id, fields, at)).changes !== 0
+    const success = update.run(enrichmentUpdateBindings(id, fields, at)).changes !== 0
+    if (success) {
+      clearRepositoryBlocked(db, id)
+    }
+    return success
   }
 }
 

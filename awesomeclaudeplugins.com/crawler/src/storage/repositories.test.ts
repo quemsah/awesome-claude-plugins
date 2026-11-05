@@ -335,3 +335,28 @@ it('propagates blocked state to aliases sharing html_url or github_node_id when 
   expect(row1).toEqual({ blocked_at: blockedAt, blocked_reason: 'dmca' })
   expect(row2).toEqual({ blocked_at: blockedAt, blocked_reason: 'dmca' })
 })
+
+it('clears blocked state for aliases sharing github_node_id or html_url when updateEnriched succeeds', () => {
+  const { updateEnriched, upsertDiscovery } = repositoryStorage
+  const db = database()
+  const nodeId = 'shared-node-id-clear'
+  const id1 = upsertDiscovery(db, 'https://github.com/primary/repo', null)
+  const id2 = upsertDiscovery(db, 'https://github.com/secondary/repo', null)
+  db.prepare('UPDATE repositories SET github_node_id = ? WHERE id IN (?, ?)').run(nodeId, id1, id2)
+
+  const blockedAt = '2026-11-05T12:00:00.000Z'
+  db.prepare('UPDATE repositories SET blocked_at = ?, blocked_reason = ? WHERE id IN (?, ?)').run(blockedAt, 'dmca', id1, id2)
+
+  updateEnriched(db, id1, {
+    ...enriched,
+    owner: 'primary',
+    repo_name: 'repo',
+    owner_url: 'https://github.com/primary',
+    github_node_id: nodeId,
+  })
+
+  const row1 = db.prepare('SELECT blocked_at, blocked_reason FROM repositories WHERE id = ?').get(id1)
+  const row2 = db.prepare('SELECT blocked_at, blocked_reason FROM repositories WHERE id = ?').get(id2)
+  expect(row1).toEqual({ blocked_at: null, blocked_reason: null })
+  expect(row2).toEqual({ blocked_at: null, blocked_reason: null })
+})
