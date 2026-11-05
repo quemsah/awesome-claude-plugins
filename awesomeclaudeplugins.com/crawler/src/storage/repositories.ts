@@ -321,15 +321,20 @@ export function hasCanonicalIdentity(row: PublishableRepository): boolean {
 export function listCoreComplete(db: Database.Database): PublishableRepository[] {
   return db
     .prepare(`
-    SELECT id, html_url, stargazers_count, forks_count, subscribers_count,
-           description, owner, owner_url, repo_name, plugins_count, plugins_json, catalog_updated_at,
-           repo_updated AS pushed_at, createdAt AS catalog_added_at, license, archived, manifest_kind
-    FROM repositories
-    WHERE html_url IS NOT NULL AND owner IS NOT NULL AND repo_name IS NOT NULL AND owner_url IS NOT NULL
-      AND stargazers_count IS NOT NULL AND forks_count IS NOT NULL
-      AND subscribers_count IS NOT NULL
-      AND blocked_at IS NULL
-    ORDER BY id
+    SELECT r.id, r.html_url, r.stargazers_count, r.forks_count, r.subscribers_count,
+           r.description, r.owner, r.owner_url, r.repo_name, r.plugins_count, r.plugins_json, r.catalog_updated_at,
+           r.repo_updated AS pushed_at, r.createdAt AS catalog_added_at, r.license, r.archived, r.manifest_kind
+    FROM repositories r
+    WHERE r.html_url IS NOT NULL AND r.owner IS NOT NULL AND r.repo_name IS NOT NULL AND r.owner_url IS NOT NULL
+      AND r.stargazers_count IS NOT NULL AND r.forks_count IS NOT NULL
+      AND r.subscribers_count IS NOT NULL
+      AND r.blocked_at IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM repositories b
+        WHERE (b.html_url = r.html_url COLLATE NOCASE OR (r.github_node_id IS NOT NULL AND b.github_node_id = r.github_node_id))
+          AND b.blocked_at IS NOT NULL
+      )
+    ORDER BY r.id
     `)
     .all() as PublishableRepository[]
 }
@@ -357,6 +362,8 @@ export function markRepositoryBlocked(
   blockedAt = new Date().toISOString(),
   updatedAt = blockedAt,
 ): boolean {
+  const row = getRepositoryById(db, id)
+  if (!row) return false
   return (
     db
       .prepare(`
@@ -368,9 +375,9 @@ export function markRepositoryBlocked(
           plugin_manifest_etag = NULL,
           last_health_check_at = COALESCE(last_health_check_at, ?),
           updatedAt = ?
-        WHERE id = ?
+        WHERE id = ? OR (html_url = ? COLLATE NOCASE OR (github_node_id IS NOT NULL AND github_node_id = ?))
       `)
-      .run(blockedAt, reason, blockedAt, updatedAt, id).changes !== 0
+      .run(blockedAt, reason, blockedAt, updatedAt, id, row.html_url ?? '', row.github_node_id ?? null).changes !== 0
   )
 }
 

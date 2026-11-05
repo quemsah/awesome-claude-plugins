@@ -532,10 +532,14 @@ export class GitHubClient implements GitHubReader {
         }
         if (response.status === 451) {
           // Legally restricted repository: confirm via API for structured block details,
-          // falling back to repository-blocked if API confirmation is unavailable.
-          const confirmed = await this.confirmRepositoryRemoval(owner, repo, signal)
-          if (confirmed.kind === 'repository-blocked' || confirmed.kind === 'not-found') {
-            return confirmed
+          // falling back to repository-blocked if API confirmation is unavailable or non-blocked.
+          try {
+            const confirmed = await this.confirmRepositoryRemoval(owner, repo, signal)
+            if (confirmed.kind === 'repository-blocked') {
+              return confirmed
+            }
+          } catch {
+            throwIfShutdown(this.signal)
           }
           return {
             kind: 'repository-blocked',
