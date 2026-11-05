@@ -2749,13 +2749,12 @@ it('skips enrichment of an alias repository sharing a GitHub node ID with an act
   expect(counts).toMatchObject({ unchangedOnError: 2, updated: 0 })
 })
 
-it('clears blocked state on both primary and alias sharing GitHub node ID when recovered repository is successfully enriched', async () => {
+it('clears blocked state on an unvisited sibling alias and allows publication when primary is enriched', async () => {
   const db = database()
-  const nodeId = 'shared-node-id-recovered'
+  const nodeId = 'shared-node-id-single-enrich'
   const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString()
 
-  const primaryId = upsertDiscovery(db, 'https://github.com/primary/repo', null)
-  ready(db, primaryId, 'primary', 'repo')
+  const primaryId = upsertDiscovery(db, 'https://github.com/primary/repo', 'crawl-1')
   db.prepare('UPDATE repositories SET github_node_id = ?, blocked_at = ?, blocked_reason = ? WHERE id = ?').run(
     nodeId,
     eightDaysAgo,
@@ -2763,24 +2762,32 @@ it('clears blocked state on both primary and alias sharing GitHub node ID when r
     primaryId,
   )
 
-  const aliasId = upsertDiscovery(db, 'https://github.com/alias/repo', null)
-  ready(db, aliasId, 'alias', 'repo')
-  db.prepare('UPDATE repositories SET github_node_id = ?, blocked_at = ?, blocked_reason = ? WHERE id = ?').run(
-    nodeId,
-    eightDaysAgo,
-    'dmca',
-    aliasId,
-  )
+  const aliasId = db
+    .prepare(`
+    INSERT INTO repositories (
+      html_url, owner, owner_url, repo_name, github_node_id,
+      plugins_count, blocked_at, blocked_reason, createdAt, updatedAt
+    ) VALUES (
+      'https://github.com/alias/repo', 'alias', 'https://github.com/alias', 'repo', ?,
+      NULL, ?, 'dmca', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z'
+    )
+  `)
+    .run(nodeId, eightDaysAgo).lastInsertRowid as number
 
-  const getRepository = vi.fn(async (owner: string, name: string) => ({
-    kind: 'found' as const,
-    data: { ...githubRepo(owner, name), node_id: nodeId },
-  }))
+  const getRepository = vi.fn(async (owner: string, name: string) => {
+    if (owner === 'primary') {
+      return { kind: 'found' as const, data: { ...githubRepo(owner, name), node_id: nodeId } }
+    }
+    throw new Error(`Unexpected call for ${owner}/${name}`)
+  })
   const getMarketplace = vi.fn(async () => ({ kind: 'found' as const, data: { plugins: [{ name: 'primary' }] } }))
 
-  const counts = await enrichRepositories(db, reader(getRepository, getMarketplace), 'crawl-1')
+  const counts = await enrichRepositories(db, reader(getRepository, getMarketplace), 'crawl-1', undefined, undefined, undefined, 1)
 
-  expect(counts.updated).toBeGreaterThanOrEqual(1)
+  expect(getRepository).toHaveBeenCalledTimes(1)
+  expect(getRepository).toHaveBeenCalledWith('primary', 'repo', undefined, { maxAttempts: 1 })
+  expect(counts.newReady).toBe(1)
+  expect(counts.deferredCandidates).toBe(1)
 
   const primaryRow = db.prepare('SELECT blocked_at, blocked_reason FROM repositories WHERE id = ?').get(primaryId) as {
     blocked_at: string | null
@@ -2794,4 +2801,5 @@ it('clears blocked state on both primary and alias sharing GitHub node ID when r
   expect(primaryRow.blocked_reason).toBeNull()
   expect(aliasRow.blocked_at).toBeNull()
   expect(aliasRow.blocked_reason).toBeNull()
+  expect(listPublishable(db).map((r) => r.id)).toContain(primaryId)
 })

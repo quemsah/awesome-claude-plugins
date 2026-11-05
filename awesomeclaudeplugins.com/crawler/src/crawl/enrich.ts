@@ -15,6 +15,7 @@ import { STANDALONE_PLUGIN_PARSER_VERSION } from '../github/standalonePlugin.js'
 import type { Log } from '../logging.js'
 import { recordRejectedCandidate } from '../storage/rejectedCandidates.js'
 import {
+  clearRepositoryBlocked,
   deleteById,
   deleteCanonicalRows,
   getRepositoryById,
@@ -383,6 +384,7 @@ function persistEnrichment(
     }
     if (writes) writes.updateEnriched(rebound.id, fields, at)
     else updateEnriched(db, rebound.id, fields, at)
+    clearRepositoryBlocked(db, rebound.id)
     if (writes) writes.clearMarketplaceFailure.run(rebound.id)
     else
       db.prepare('UPDATE repositories SET marketplace_failed_oid = NULL, marketplace_failed_parser_version = NULL WHERE id = ?').run(
