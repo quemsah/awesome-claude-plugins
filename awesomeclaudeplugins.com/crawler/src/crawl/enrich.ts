@@ -867,6 +867,80 @@ function standalonePluginFailureCategory(failure: 'invalid-json' | 'invalid-mani
   return failure === 'invalid-json' ? 'plugin_manifest_invalid_json' : 'plugin_manifest_invalid_manifest'
 }
 
+async function fetchPluginManifest(
+  reader: GitHubReader,
+  owner: string,
+  repo: string,
+  row: RepositoryRow,
+  usable: boolean,
+  policy: RestAttemptPolicy,
+) {
+  const cachedEtag = usable ? (row.plugin_manifest_etag ?? undefined) : undefined
+  let result = await reader.getPluginManifest(owner, repo, cachedEtag, {
+    maxAttempts: policy.maxAttempts,
+  })
+  if (result.kind === 'not-modified' && !usable) {
+    result = await reader.getPluginManifest(owner, repo, undefined, { maxAttempts: policy.maxAttempts })
+  }
+  return result
+}
+
+function toStandalonePluginState(
+  result: Extract<Awaited<ReturnType<GitHubReader['getPluginManifest']>>, { kind: 'found' | 'not-modified' }>,
+  row: RepositoryRow,
+): MarketplaceState {
+  if (result.kind === 'found') {
+    return {
+      manifestKind: 'standalone-plugin',
+      pluginEtag: result.etag ?? null,
+      pluginsCount: 1,
+      pluginsJson: serializePluginSummaries([result.data]),
+      marketplaceOid: null,
+      marketplaceEtag: null,
+    }
+  }
+  return {
+    manifestKind: 'standalone-plugin',
+    pluginEtag: result.etag ?? row.plugin_manifest_etag,
+    pluginsCount: 1,
+    pluginsJson: row.plugins_json,
+    marketplaceOid: null,
+    marketplaceEtag: null,
+  }
+}
+
+function recordPluginManifestProblem(
+  db: Database.Database,
+  runId: string,
+  row: RepositoryRow,
+  loaded: LoadedRepository,
+  result: Exclude<Awaited<ReturnType<GitHubReader['getPluginManifest']>>, { kind: 'found' }>,
+  counts: EnrichmentCounts,
+  now: () => string,
+  log?: Log,
+  writes?: EnrichmentWriteBatch,
+) {
+  const category = result.kind === 'invalid-content' ? standalonePluginFailureCategory(result.failure) : 'plugin_manifest_temporary_error'
+  const reason = result.kind === 'not-modified' ? 'Unexpected plugin 304 without usable cache' : (result as { reason?: string }).reason
+  recordProblem(
+    db,
+    runId,
+    counts,
+    row,
+    category,
+    loaded.ready,
+    true,
+    now,
+    ('retryCount' in result ? result.retryCount : 0) ?? 0,
+    log,
+    {
+      request: `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/plugin.json`,
+      reason,
+    },
+    writes,
+  )
+}
+
 async function loadStandalonePlugin(
   db: Database.Database,
   reader: GitHubReader,
@@ -881,11 +955,7 @@ async function loadStandalonePlugin(
   writes?: EnrichmentWriteBatch,
 ): Promise<MarketplaceState | null | RetryLater> {
   const usable = hasUsableStandaloneCache(row)
-  let result = await reader.getPluginManifest(loaded.owner, loaded.repo, usable ? (row.plugin_manifest_etag ?? undefined) : undefined, {
-    maxAttempts: policy.maxAttempts,
-  })
-  if (result.kind === 'not-modified' && !usable)
-    result = await reader.getPluginManifest(loaded.owner, loaded.repo, undefined, { maxAttempts: policy.maxAttempts })
+  const result = await fetchPluginManifest(reader, loaded.owner, loaded.repo, row, usable, policy)
   if (result.kind === 'not-found') {
     removeLoadedRepository(db, runId, row, loaded, counts, removedIds, now, log, writes)
     return null
@@ -894,46 +964,14 @@ async function loadStandalonePlugin(
     handleBlockedRepository(db, runId, row, loaded.canonical, result, counts, loaded.ready, now, log, writes)
     return null
   }
-  if (result.kind === 'found')
-    return {
-      manifestKind: 'standalone-plugin',
-      pluginEtag: result.etag ?? null,
-      pluginsCount: 1,
-      pluginsJson: serializePluginSummaries([result.data]),
-      marketplaceOid: null,
-      marketplaceEtag: null,
-    }
-  if (result.kind === 'not-modified' && usable)
-    return {
-      manifestKind: 'standalone-plugin',
-      pluginEtag: result.etag ?? row.plugin_manifest_etag,
-      pluginsCount: 1,
-      pluginsJson: row.plugins_json,
-      marketplaceOid: null,
-      marketplaceEtag: null,
-    }
+  if (result.kind === 'found' || (result.kind === 'not-modified' && usable)) {
+    return toStandalonePluginState(result, row)
+  }
   if (result.kind === 'temporary-error') {
     const deferred = deferTransient(result, policy)
     if (deferred) return deferred
   }
-  const category = result.kind === 'invalid-content' ? standalonePluginFailureCategory(result.failure) : 'plugin_manifest_temporary_error'
-  recordProblem(
-    db,
-    runId,
-    counts,
-    row,
-    category,
-    loaded.ready,
-    true,
-    now,
-    result.retryCount ?? 0,
-    log,
-    {
-      request: `GET /repos/${loaded.owner}/${loaded.repo}/contents/.claude-plugin/plugin.json`,
-      reason: result.kind === 'not-modified' ? 'Unexpected plugin 304 without usable cache' : result.reason,
-    },
-    writes,
-  )
+  recordPluginManifestProblem(db, runId, row, loaded, result, counts, now, log, writes)
   return null
 }
 
