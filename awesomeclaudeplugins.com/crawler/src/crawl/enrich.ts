@@ -126,7 +126,7 @@ function createEnrichmentWriteBatch(db: Database.Database): EnrichmentWriteBatch
         plugin_manifest_etag = NULL,
         last_health_check_at = COALESCE(last_health_check_at, ?),
         updatedAt = ?
-      WHERE id = ?
+      WHERE id = ? OR (html_url = ? COLLATE NOCASE OR (github_node_id IS NOT NULL AND github_node_id = ?))
     `),
   }
 }
@@ -313,7 +313,7 @@ function handleBlockedRepository(
     writes,
   )
   persistEnrichmentWrite(db, runId, writes, () => {
-    if (writes) writes.markBlocked.run(at, reason, at, at, row.id)
+    if (writes) writes.markBlocked.run(at, reason, at, at, row.id, row.html_url ?? '', row.github_node_id ?? null)
     else markRepositoryBlocked(db, row.id, reason, at, at)
   })
   counts.conclusive++

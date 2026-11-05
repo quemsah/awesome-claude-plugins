@@ -302,17 +302,17 @@ it('excludes unmarked aliases from listPublishable when a sibling sharing github
   const db = database()
   const nodeId = 'shared-node-id-pub'
   const blockedId = upsertDiscovery(db, 'https://github.com/blocked/repo', null)
-  updateEnriched(db, blockedId, enriched)
-  db.prepare('UPDATE repositories SET github_node_id = ?, blocked_at = ?, blocked_reason = ? WHERE id = ?').run(
-    nodeId,
-    '2026-11-04T12:00:00.000Z',
-    'dmca',
-    blockedId,
-  )
+  updateEnriched(db, blockedId, { ...enriched, owner: 'blocked', repo_name: 'repo', owner_url: 'https://github.com/blocked' })
 
   const aliasId = upsertDiscovery(db, 'https://github.com/alias/repo', null)
-  updateEnriched(db, aliasId, { ...enriched, owner: 'alias', repo_name: 'repo' })
-  db.prepare('UPDATE repositories SET github_node_id = ?, blocked_at = NULL WHERE id = ?').run(nodeId, aliasId)
+  updateEnriched(db, aliasId, { ...enriched, owner: 'alias', repo_name: 'repo', owner_url: 'https://github.com/alias' })
+  db.prepare('UPDATE repositories SET github_node_id = ? WHERE id IN (?, ?)').run(nodeId, blockedId, aliasId)
+
+  // Verify that the alias is initially publishable
+  expect(listPublishable(db).map((r) => r.id)).toContain(aliasId)
+
+  // Now block the primary repository
+  db.prepare('UPDATE repositories SET blocked_at = ?, blocked_reason = ? WHERE id = ?').run('2026-11-04T12:00:00.000Z', 'dmca', blockedId)
 
   const publishable = listPublishable(db)
   expect(publishable.map((r) => r.id)).not.toContain(blockedId)
