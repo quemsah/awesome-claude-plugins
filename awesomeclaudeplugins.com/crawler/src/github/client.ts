@@ -569,7 +569,20 @@ export class GitHubClient implements GitHubReader {
       await confirmation.body?.cancel()
       return { kind: 'not-found' }
     }
-    if (confirmation.status === 403 || confirmation.status === 451) {
+    if (confirmation.status === 451) {
+      const body = await confirmation.text().catch(() => '')
+      signal.throwIfAborted()
+      const blocked = parseBlockedRepositoryResponse(body)
+      return {
+        kind: 'repository-blocked',
+        status: confirmation.status,
+        reason: 'Repository access blocked',
+        blockReason: blocked?.reason ?? 'Unavailable for legal reasons',
+        blockedAt: blocked?.createdAt,
+        retryCount: 0,
+      }
+    }
+    if (confirmation.status === 403) {
       const body = await confirmation.text().catch(() => '')
       signal.throwIfAborted()
       const blocked = parseBlockedRepositoryResponse(body)

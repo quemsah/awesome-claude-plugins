@@ -2,7 +2,7 @@ import { createServer } from 'node:http'
 import Database from 'better-sqlite3'
 import { afterEach, expect, it, vi } from 'vitest'
 import { GitHubClient } from '../github/client.js'
-import { getRepositoryById, listPublishable, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
+import { getRepositoryById, listForHealthCheck, listPublishable, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
 import { beginRun, failRun, listRunErrors } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
 import { healthCheck } from './healthCheck.js'
@@ -420,4 +420,43 @@ it('keeps a failed network request in the catalog and rotates it behind unchecke
   )
   expect(getRepositoryById(db, id)).toMatchObject({ last_health_check_at: at, html_url: 'https://github.com/old/project' })
   expect(listRunErrors(db, 'health')).toMatchObject([{ error_type: 'health_check_network' }])
+})
+
+it('isolates a blocked repository, updates last_health_check_at, and excludes it from subsequent health check selection within 7-day TTL', async () => {
+  const db = database()
+  const id = seed(db, 'https://github.com/team/blocked-repo')
+  const checkTime = '2026-11-05T10:00:00.000Z'
+  const reader = client(() => new Response(null, { status: 200 }))
+  reader.checkRepository = async () => ({
+    kind: 'repository-blocked' as const,
+    status: 403,
+    reason: 'Repository access blocked',
+    blockReason: 'private_information',
+    blockedAt: '2020-01-01T00:00:00Z',
+    retryCount: 0,
+  })
+
+  const summary = await healthCheck(
+    db,
+    reader,
+    'health',
+    () => {},
+    () => checkTime,
+  )
+
+  expect(summary).toMatchObject({ checked: 1, deleted: 0, warnings: 1 })
+  const row = getRepositoryById(db, id)
+  expect(row).toMatchObject({
+    blocked_at: checkTime,
+    blocked_reason: 'private_information',
+    last_health_check_at: checkTime,
+  })
+
+  // Within 7 days, it is excluded from listForHealthCheck
+  const nextDay = '2026-11-06T10:00:00.000Z'
+  expect(listForHealthCheck(db, nextDay).map((r) => r.id)).not.toContain(id)
+
+  // After 8 days (TTL expired), it is included again for re-check
+  const eightDaysLater = '2026-11-13T10:00:00.000Z'
+  expect(listForHealthCheck(db, eightDaysLater).map((r) => r.id)).toContain(id)
 })

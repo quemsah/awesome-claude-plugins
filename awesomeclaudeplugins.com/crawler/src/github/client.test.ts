@@ -928,6 +928,23 @@ describe('GitHubClient', () => {
     expect(test.requests).toHaveLength(1)
   })
 
+  it('recognizes plain-text HTTP 451 in confirmRepositoryRemoval as repository-blocked', async () => {
+    const test = harness([
+      new Response(null, { status: 404 }),
+      new Response('Unavailable For Legal Reasons', { status: 451, headers: { 'content-type': 'text/plain' } }),
+    ])
+    const result = await test.client.checkRepository('restricted', 'repo')
+    expect(result).toEqual({
+      kind: 'repository-blocked',
+      status: 451,
+      reason: 'Repository access blocked',
+      blockReason: 'Unavailable for legal reasons',
+      blockedAt: undefined,
+      retryCount: 0,
+    })
+    expect(test.requests).toHaveLength(2)
+  })
+
   it('accepts FORBIDDEN repository blocked errors in GraphQL batches without failing other nodes', async () => {
     const firstId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
     const blockedId = 'MDEwOlJlcG9zaXRvcnkxMjk2Mjcw'

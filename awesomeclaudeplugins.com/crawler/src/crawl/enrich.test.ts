@@ -2612,7 +2612,8 @@ it('isolates an administratively blocked repository during enrichment, records w
   const getMarketplace = vi.fn(async () => ({ kind: 'found' as const, data: { plugins: [{ name: 'healthy' }] } }))
   const log = vi.fn()
 
-  const counts = await enrichRepositories(db, reader(getRepository, getMarketplace), 'crawl-1', undefined, undefined, log)
+  const now = () => '2026-11-05T08:00:00.000Z'
+  const counts = await enrichRepositories(db, reader(getRepository, getMarketplace), 'crawl-1', undefined, now, log)
 
   expect(counts).toMatchObject({ updated: 1, warnings: 1, conclusive: 2 })
   expect(log).toHaveBeenCalledWith(
@@ -2630,7 +2631,7 @@ it('isolates an administratively blocked repository during enrichment, records w
     blocked_reason: string | null
     plugins_count: number | null
   }
-  expect(blockedRow.blocked_at).toBe('2026-11-03T19:00:04Z')
+  expect(blockedRow.blocked_at).toBe('2026-11-05T08:00:00.000Z')
   expect(blockedRow.blocked_reason).toBe('private_information')
 
   expect(listCoreComplete(db).map((r) => r.id)).toEqual([healthyId])
@@ -2641,6 +2642,42 @@ it('isolates an administratively blocked repository during enrichment, records w
       error_type: 'repository_blocked',
     }),
   ])
+})
+
+it('records discovery timestamp in blocked_at for older GitHub blocks so they are not re-crawled the next day', async () => {
+  const db = database()
+  const blockedId = upsertDiscovery(db, 'https://github.com/Prekzursil/agent-skills-toolchain', null)
+  ready(db, blockedId, 'Prekzursil', 'agent-skills-toolchain')
+
+  const discoveryTime = '2026-11-05T12:00:00.000Z'
+  const nextDay = '2026-11-06T12:00:00.000Z'
+
+  const getRepository = vi.fn(async () => ({
+    kind: 'repository-blocked' as const,
+    status: 403,
+    reason: 'Repository access blocked',
+    blockReason: 'private_information',
+    blockedAt: '2020-01-01T00:00:00Z',
+    retryCount: 0,
+  }))
+  const getMarketplace = vi.fn()
+
+  await enrichRepositories(db, reader(getRepository, getMarketplace), 'crawl-1', undefined, () => discoveryTime)
+
+  const blockedRow = db.prepare('SELECT blocked_at, blocked_reason FROM repositories WHERE id = ?').get(blockedId) as {
+    blocked_at: string | null
+    blocked_reason: string | null
+  }
+  expect(blockedRow.blocked_at).toBe(discoveryTime)
+  expect(blockedRow.blocked_reason).toBe('private_information')
+
+  completeRun(db, 'crawl-1', discoveryTime, 1)
+  beginRun(db, 'crawl-2', nextDay)
+  getRepository.mockClear()
+  const secondRunCounts = await enrichRepositories(db, reader(getRepository, getMarketplace), 'crawl-2', undefined, () => nextDay)
+
+  expect(getRepository).not.toHaveBeenCalled()
+  expect(secondRunCounts).toMatchObject({ unchangedOnError: 1, updated: 0 })
 })
 
 it('skips enrichment of a blocked repository within the 7-day TTL without querying GitHub', async () => {

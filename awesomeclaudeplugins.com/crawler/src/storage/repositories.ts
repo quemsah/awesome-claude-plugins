@@ -277,13 +277,15 @@ export function listForEnrichment(db: Database.Database, cursor: number, limit: 
   return db.prepare('SELECT * FROM repositories WHERE id > ? ORDER BY id LIMIT ?').all(cursor, limit) as RepositoryRow[]
 }
 
-export function listForHealthCheck(db: Database.Database): RepositoryRow[] {
+export function listForHealthCheck(db: Database.Database, at = new Date().toISOString()): RepositoryRow[] {
+  const cutoff = new Date(Date.parse(at) - BLOCKED_REPOSITORY_RECHECK_INTERVAL_MS).toISOString()
   return db
     .prepare(`
     SELECT * FROM repositories WHERE html_url IS NOT NULL
+      AND (blocked_at IS NULL OR blocked_at <= ?)
     ORDER BY last_health_check_at, id LIMIT 200
   `)
-    .all() as RepositoryRow[]
+    .all(cutoff) as RepositoryRow[]
 }
 
 export function recordHealthCheck(db: Database.Database, id: number, at: string, canonicalUrl?: string): number {
@@ -359,10 +361,11 @@ export function markRepositoryBlocked(
           repository_etag = NULL,
           marketplace_etag = NULL,
           plugin_manifest_etag = NULL,
+          last_health_check_at = COALESCE(last_health_check_at, ?),
           updatedAt = ?
         WHERE id = ?
       `)
-      .run(blockedAt, reason, updatedAt, id).changes !== 0
+      .run(blockedAt, reason, updatedAt, updatedAt, id).changes !== 0
   )
 }
 
@@ -381,15 +384,13 @@ export function isBlockedRepositoryCandidate(
   githubNodeId?: string | null,
   at = new Date().toISOString(),
 ): boolean {
-  const row = db
+  const rows = db
     .prepare(`
       SELECT blocked_at FROM repositories
       WHERE (html_url = ? COLLATE NOCASE OR (github_node_id IS NOT NULL AND github_node_id = ?))
         AND blocked_at IS NOT NULL
-      ORDER BY id LIMIT 1
     `)
-    .get(htmlUrl, githubNodeId ?? null) as { blocked_at: string } | undefined
+    .all(htmlUrl, githubNodeId ?? null) as Array<{ blocked_at: string }>
 
-  if (!row) return false
-  return isRepositoryBlockedWithinTTL(row, at)
+  return rows.some((row) => isRepositoryBlockedWithinTTL(row, at))
 }

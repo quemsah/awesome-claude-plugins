@@ -272,3 +272,27 @@ it('stores nullable GitHub metadata without changing the first discovery date', 
     createdAt: '2024-01-02T00:00:00.000Z',
   })
 })
+
+it('isBlockedRepositoryCandidate finds an active block among duplicate records sharing a GitHub node ID', () => {
+  const { isBlockedRepositoryCandidate } = repositoryStorage
+  const db = database()
+  const nodeId = 'shared-node-id-123'
+  const now = '2026-11-05T12:00:00.000Z'
+  const tenDaysAgo = '2026-10-26T12:00:00.000Z'
+  const oneDayAgo = '2026-11-04T12:00:00.000Z'
+
+  db.prepare(`
+    INSERT INTO repositories (id, html_url, github_node_id, blocked_at, blocked_reason, createdAt, updatedAt)
+    VALUES (101, 'https://github.com/old/duplicate', ?, ?, 'private_information', 'created', 'updated')
+  `).run(nodeId, tenDaysAgo)
+
+  db.prepare(`
+    INSERT INTO repositories (id, html_url, github_node_id, blocked_at, blocked_reason, createdAt, updatedAt)
+    VALUES (102, 'https://github.com/new/duplicate', ?, ?, 'private_information', 'created', 'updated')
+  `).run(nodeId, oneDayAgo)
+
+  expect(isBlockedRepositoryCandidate(db, 'https://github.com/other/url', nodeId, now)).toBe(true)
+
+  db.prepare('UPDATE repositories SET blocked_at = ? WHERE id = 102').run(tenDaysAgo)
+  expect(isBlockedRepositoryCandidate(db, 'https://github.com/other/url', nodeId, now)).toBe(false)
+})

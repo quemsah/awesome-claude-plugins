@@ -28,7 +28,7 @@ export async function healthCheck(
     runId,
     message: 'Checking up to 200 oldest repository links',
   })
-  const rows = listForHealthCheck(db)
+  const rows = listForHealthCheck(db, now())
   const controller = new AbortController()
   const signal = options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal
   let timedOut = false
@@ -60,7 +60,8 @@ export async function healthCheck(
             return
           }
           if (result?.kind === 'repository-blocked') {
-            markRepositoryBlocked(db, row.id, result.blockReason ?? result.reason, result.blockedAt ?? at, at)
+            markRepositoryBlocked(db, row.id, result.blockReason ?? result.reason, at, at)
+            recordHealthCheck(db, row.id, at)
             counts.warnings++
             recordRunError(db, {
               run_id: runId,
