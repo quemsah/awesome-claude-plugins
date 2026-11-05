@@ -11,7 +11,7 @@ import {
 } from '../github/client.js'
 import { MARKETPLACE_INVALID_CONTENT_CACHE_VERSION, MARKETPLACE_PARSER_VERSION } from '../github/marketplace.js'
 import { renderRepos } from '../output/catalogSnapshot.js'
-import { listPublishable, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
+import { listCoreComplete, listPublishable, markRepositoryBlocked, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
 import { beginRun, completeRun, getRun, listRunErrors } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
 import { enrichRepositories } from './enrich.js'
@@ -2588,4 +2588,98 @@ it('backfills archived metadata without reusing a legacy REST ETag', async () =>
     archived: 0,
     license: null,
   })
+})
+
+it('isolates an administratively blocked repository during enrichment, records warning, and excludes it from catalog', async () => {
+  const db = database()
+  const blockedId = upsertDiscovery(db, 'https://github.com/Prekzursil/agent-skills-toolchain', null)
+  const healthyId = upsertDiscovery(db, 'https://github.com/team/healthy', null)
+  ready(db, healthyId, 'team', 'healthy')
+
+  const getRepository = vi.fn(async (owner: string, repoName: string) => {
+    if (owner === 'Prekzursil') {
+      return {
+        kind: 'repository-blocked' as const,
+        status: 403,
+        reason: 'Repository access blocked',
+        blockReason: 'private_information',
+        blockedAt: '2026-11-03T19:00:04Z',
+        retryCount: 0,
+      }
+    }
+    return { kind: 'found' as const, data: githubRepo(owner, repoName) }
+  })
+  const getMarketplace = vi.fn(async () => ({ kind: 'found' as const, data: { plugins: [{ name: 'healthy' }] } }))
+  const log = vi.fn()
+
+  const counts = await enrichRepositories(db, reader(getRepository, getMarketplace), 'crawl-1', undefined, undefined, log)
+
+  expect(counts).toMatchObject({ updated: 1, warnings: 1, conclusive: 2 })
+  expect(log).toHaveBeenCalledWith(
+    expect.objectContaining({
+      event: 'crawl.repository_blocked',
+      category: 'repository_blocked',
+      repository: 'Prekzursil/agent-skills-toolchain',
+      status: 403,
+      reason: 'private_information',
+    }),
+  )
+
+  const blockedRow = db.prepare('SELECT blocked_at, blocked_reason, plugins_count FROM repositories WHERE id = ?').get(blockedId) as {
+    blocked_at: string | null
+    blocked_reason: string | null
+    plugins_count: number | null
+  }
+  expect(blockedRow.blocked_at).toBe('2026-11-03T19:00:04Z')
+  expect(blockedRow.blocked_reason).toBe('private_information')
+
+  expect(listCoreComplete(db).map((r) => r.id)).toEqual([healthyId])
+  expect(listPublishable(db).map((r) => r.id)).toEqual([healthyId])
+  expect(listRunErrors(db, 'crawl-1')).toEqual([
+    expect.objectContaining({
+      repository_id: blockedId,
+      error_type: 'repository_blocked',
+    }),
+  ])
+})
+
+it('skips enrichment of a blocked repository within the 7-day TTL without querying GitHub', async () => {
+  const db = database()
+  const blockedId = upsertDiscovery(db, 'https://github.com/Prekzursil/agent-skills-toolchain', null)
+  markRepositoryBlocked(db, blockedId, 'private_information', new Date().toISOString())
+
+  const getRepository = vi.fn()
+  const getMarketplace = vi.fn()
+
+  const counts = await enrichRepositories(db, reader(getRepository, getMarketplace), 'crawl-1')
+
+  expect(getRepository).not.toHaveBeenCalled()
+  expect(getMarketplace).not.toHaveBeenCalled()
+  expect(counts).toMatchObject({ unchangedOnError: 1, updated: 0, warnings: 0 })
+})
+
+it('re-enriches a blocked repository after the 7-day TTL and clears blocked state on success', async () => {
+  const db = database()
+  const id = upsertDiscovery(db, 'https://github.com/recovered/repo', null)
+  ready(db, id, 'recovered', 'repo')
+  const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString()
+  markRepositoryBlocked(db, id, 'private_information', eightDaysAgo)
+
+  const getRepository = vi.fn(async (owner: string, name: string) => ({
+    kind: 'found' as const,
+    data: githubRepo(owner, name),
+  }))
+  const getMarketplace = vi.fn(async () => ({ kind: 'found' as const, data: { plugins: [{ name: 'recovered' }] } }))
+
+  const counts = await enrichRepositories(db, reader(getRepository, getMarketplace), 'crawl-1')
+
+  expect(getRepository).toHaveBeenCalledWith('recovered', 'repo', undefined, { maxAttempts: 1 })
+  expect(counts).toMatchObject({ updated: 1, conclusive: 1, warnings: 0 })
+
+  const row = db.prepare('SELECT blocked_at, blocked_reason FROM repositories WHERE id = ?').get(id) as {
+    blocked_at: string | null
+    blocked_reason: string | null
+  }
+  expect(row.blocked_at).toBeNull()
+  expect(row.blocked_reason).toBeNull()
 })

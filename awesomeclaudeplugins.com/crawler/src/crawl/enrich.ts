@@ -18,7 +18,9 @@ import {
   deleteById,
   deleteCanonicalRows,
   getRepositoryById,
+  isRepositoryBlockedWithinTTL,
   listForEnrichment,
+  markRepositoryBlocked,
   prepareEnrichedUpdate,
   type RepositoryRow,
   rebindCanonicalUrl,
@@ -89,6 +91,7 @@ type EnrichmentWriteBatch = {
   clearMarketplaceEtag: Database.Statement
   setMarketplaceFailure: Database.Statement
   clearRepositoryIdentity: Database.Statement
+  markBlocked: Database.Statement
 }
 
 function createEnrichmentWriteBatch(db: Database.Database): EnrichmentWriteBatch {
@@ -111,6 +114,16 @@ function createEnrichmentWriteBatch(db: Database.Database): EnrichmentWriteBatch
         repo_name = NULL,
         github_node_id = COALESCE(?, github_node_id),
         repository_etag = COALESCE(?, repository_etag),
+        updatedAt = ?
+      WHERE id = ?
+    `),
+    markBlocked: db.prepare(`
+      UPDATE repositories SET
+        blocked_at = ?,
+        blocked_reason = ?,
+        repository_etag = NULL,
+        marketplace_etag = NULL,
+        plugin_manifest_etag = NULL,
         updatedAt = ?
       WHERE id = ?
     `),
@@ -244,6 +257,65 @@ function recordProblem(
     outcome: previouslyReady ? 'kept_previous_data' : 'left_incomplete',
     ...details,
   })
+}
+
+function handleBlockedRepository(
+  db: Database.Database,
+  runId: string,
+  row: RepositoryRow,
+  identity: { owner?: string; repo?: string; htmlUrl?: string },
+  result: Extract<RepoResult<unknown>, { kind: 'repository-blocked' }>,
+  counts: EnrichmentCounts,
+  previouslyReady: boolean,
+  now: () => string,
+  log?: Log,
+  writes?: EnrichmentWriteBatch,
+): null {
+  const at = now()
+  const reason = result.blockReason ?? result.reason
+  const parsedIdentity = identity.owner && identity.repo ? identity : parseRepositoryUrl(row.html_url ?? '')
+  const repoName = parsedIdentity ? `${parsedIdentity.owner}/${parsedIdentity.repo}` : `repository id ${row.id}`
+  log?.({
+    level: 'warn',
+    event: 'crawl.repository_blocked',
+    phase: 'enrichment',
+    category: 'repository_blocked',
+    runId,
+    message: `GitHub repository access blocked: ${repoName} (${reason}); isolating repository`,
+    repository: repoName,
+    repositoryId: row.id,
+    repositoryUrl: row.html_url,
+    request: `GET /repos/${repoName}`,
+    status: result.status,
+    reason,
+    blockedAt: result.blockedAt ?? at,
+    outcome: 'repository_blocked',
+  })
+  recordProblem(
+    db,
+    runId,
+    counts,
+    row,
+    'repository_blocked',
+    previouslyReady,
+    true,
+    now,
+    result.retryCount ?? 0,
+    log,
+    {
+      request: `GET /repos/${repoName}`,
+      status: result.status,
+      reason,
+      blockReason: result.blockReason,
+    },
+    writes,
+  )
+  persistEnrichmentWrite(db, runId, writes, () => {
+    if (writes) writes.markBlocked.run(result.blockedAt ?? at, reason, at, row.id)
+    else markRepositoryBlocked(db, row.id, reason, result.blockedAt ?? at, at)
+  })
+  counts.conclusive++
+  return null
 }
 
 /** Only publish GitHub-declared SPDX identifiers, not an inferred license. */
@@ -816,6 +888,10 @@ async function loadStandalonePlugin(
     removeLoadedRepository(db, runId, row, loaded, counts, removedIds, now, log, writes)
     return null
   }
+  if (result.kind === 'repository-blocked') {
+    handleBlockedRepository(db, runId, row, loaded.canonical, result, counts, loaded.ready, now, log, writes)
+    return null
+  }
   if (result.kind === 'found')
     return {
       manifestKind: 'standalone-plugin',
@@ -901,6 +977,10 @@ async function loadLegacyMarketplace(
   }
   if (result.kind === 'not-found') {
     return loadStandalonePlugin(db, reader, runId, row, loaded, counts, removedIds, now, policy, log, writes)
+  }
+  if (result.kind === 'repository-blocked') {
+    handleBlockedRepository(db, runId, row, loaded.canonical, result, counts, loaded.ready, now, log, writes)
+    return null
   }
   if (result.kind === 'temporary-error') {
     const deferred = deferTransient(result, policy)
@@ -1158,6 +1238,10 @@ async function loadGraphQLMarketplaceViaRest(
   }
   if (result.kind === 'not-found') {
     return loadStandalonePlugin(db, reader, runId, row, loaded, counts, removedIds, now, policy, log, writes)
+  }
+  if (result.kind === 'repository-blocked') {
+    handleBlockedRepository(db, runId, row, loaded.canonical, result, counts, loaded.ready, now, log, writes)
+    return null
   }
   if (result.kind === 'temporary-error') {
     const deferred = deferTransient(result, policy)
@@ -1460,6 +1544,9 @@ async function loadRepository(
     throw error
   }
   if (result.kind === 'not-found') return removeMissingRepository(db, runId, row, identity, counts, log, writes)
+  if (result.kind === 'repository-blocked') {
+    return handleBlockedRepository(db, runId, row, identity, result, counts, previouslyReady, now, log, writes)
+  }
   if (result.kind === 'temporary-error') {
     const deferred = deferTransient(result, policy)
     if (deferred) return deferred
@@ -2152,6 +2239,12 @@ async function enrichPage(
 ): Promise<void> {
   const eligibleRows: RepositoryRow[] = []
   for (const row of rows) {
+    if (isRepositoryBlockedWithinTTL(row, now())) {
+      counts.conclusive++
+      counts.unchangedOnError++
+      markRepositoryProcessed(row)
+      continue
+    }
     const knownInvalidMarketplace =
       row.marketplace_failed_oid !== null && row.marketplace_failed_parser_version === MARKETPLACE_INVALID_CONTENT_CACHE_VERSION
     if (row.plugins_count !== null || knownInvalidMarketplace) {

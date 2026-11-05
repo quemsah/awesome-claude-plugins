@@ -74,6 +74,14 @@ export type RepoResult<T> =
   | { kind: 'not-found'; retryCount?: number }
   | { kind: 'not-modified'; etag?: string; retryCount?: number }
   | {
+      kind: 'repository-blocked'
+      status: number
+      reason: string
+      blockReason?: string
+      blockedAt?: string
+      retryCount: number
+    }
+  | {
       kind: 'invalid-content'
       failure: 'invalid-json' | 'invalid-manifest'
       status: number
@@ -175,6 +183,28 @@ function description(value: unknown): value is string | null {
 
 function count(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+}
+
+export function parseBlockedRepositoryResponse(body: string): { reason?: string; createdAt?: string } | null {
+  try {
+    const data: unknown = JSON.parse(body)
+    if (record(data)) {
+      const message = typeof data.message === 'string' ? data.message : ''
+      const hasBlockedMessage = /repository access blocked/i.test(message)
+      const hasBlock = record(data.block)
+      if (hasBlockedMessage || hasBlock) {
+        const block = hasBlock ? (data.block as Record<string, unknown>) : undefined
+        const reason = block && typeof block.reason === 'string' ? block.reason : message || 'Repository access blocked'
+        const createdAt = block && typeof block.created_at === 'string' ? block.created_at : undefined
+        return { reason, createdAt }
+      }
+    }
+  } catch {
+    if (/repository access blocked/i.test(body)) {
+      return { reason: 'Repository access blocked' }
+    }
+  }
+  return null
 }
 
 function parseSearch(value: unknown): SearchPage {
@@ -430,6 +460,7 @@ export class GitHubClient implements GitHubReader {
     if (result.kind === 'temporary-error') throw new GitHubTemporaryError(result.reason, result.status, result.retryCount)
     if (result.kind === 'invalid-content') throw new GitHubTemporaryError(result.reason, result.status, result.retryCount)
     if (result.kind === 'not-modified') throw new GitHubTemporaryError('Unexpected code search 304', 304)
+    if (result.kind === 'repository-blocked') throw new GitHubFatalError('Unexpected code search repository-blocked', result.status)
     return result.data
   }
 
@@ -453,6 +484,7 @@ export class GitHubClient implements GitHubReader {
     if (result.kind === 'temporary-error') throw new GitHubTemporaryError(result.reason, result.status, result.retryCount)
     if (result.kind === 'invalid-content') throw new GitHubTemporaryError(result.reason, result.status, result.retryCount)
     if (result.kind === 'not-modified') throw new GitHubTemporaryError('Unexpected repository search 304', 304)
+    if (result.kind === 'repository-blocked') throw new GitHubFatalError('Unexpected repository search repository-blocked', result.status)
     return result.data
   }
 
@@ -536,6 +568,21 @@ export class GitHubClient implements GitHubReader {
     if (confirmation.status === 404 || confirmation.status === 410) {
       await confirmation.body?.cancel()
       return { kind: 'not-found' }
+    }
+    if (confirmation.status === 403 || confirmation.status === 451) {
+      const body = await confirmation.text().catch(() => '')
+      signal.throwIfAborted()
+      const blocked = parseBlockedRepositoryResponse(body)
+      if (blocked) {
+        return {
+          kind: 'repository-blocked',
+          status: confirmation.status,
+          reason: 'Repository access blocked',
+          blockReason: blocked.reason,
+          blockedAt: blocked.createdAt,
+          retryCount: 0,
+        }
+      }
     }
     if (confirmation.status === 200) {
       const data: unknown = await confirmation.json()
@@ -763,7 +810,11 @@ export class GitHubClient implements GitHubReader {
     if (!Array.isArray(nodes) || nodes.length !== idsLength) return false
     if (!Array.isArray(payload.errors) || payload.errors.length === 0) return false
     return payload.errors.every((error: unknown) => {
-      if (!record(error) || error.type !== 'NOT_FOUND' || !Array.isArray(error.path) || error.path.length !== 2) return false
+      if (!record(error) || !Array.isArray(error.path) || error.path.length !== 2) return false
+      const isExpectedType =
+        error.type === 'NOT_FOUND' ||
+        (error.type === 'FORBIDDEN' && typeof error.message === 'string' && /access blocked|blocked/i.test(error.message))
+      if (!isExpectedType) return false
       const [root, index] = error.path
       return (
         root === 'nodes' &&
@@ -1059,6 +1110,25 @@ export class GitHubClient implements GitHubReader {
       return { kind: 'result', result: { kind: 'not-modified', ...(etag ? { etag } : {}), retryCount: attempt } }
     }
     if (status === 404) return { kind: 'result', result: { kind: 'not-found', retryCount: attempt } }
+    if (status === 451) {
+      const body = await response.text().catch(() => {
+        throwIfShutdown(this.signal)
+        return ''
+      })
+      throwIfShutdown(this.signal)
+      const blocked = parseBlockedRepositoryResponse(body)
+      return {
+        kind: 'result',
+        result: {
+          kind: 'repository-blocked',
+          status,
+          reason: 'Repository access blocked',
+          blockReason: blocked?.reason ?? 'Unavailable for legal reasons',
+          blockedAt: blocked?.createdAt,
+          retryCount: attempt,
+        },
+      }
+    }
     if (status === 403 || status === 429) return this.handleRateLimit(bucket, response, attempt, delay, secondaryCount, finalAttempt)
     if (status >= 500 && status <= 599) return this.handleServerError(bucket, status, attempt, delay, secondaryCount, finalAttempt)
     if (!response.ok) {
@@ -1094,8 +1164,25 @@ export class GitHubClient implements GitHubReader {
         return ''
       })
       throwIfShutdown(this.signal)
-      if (/secondary rate limit|abuse detection/i.test(body)) secondary = true
-      else throw new GitHubFatalError('GitHub access forbidden (403)', status)
+      if (/secondary rate limit|abuse detection/i.test(body)) {
+        secondary = true
+      } else {
+        const blocked = parseBlockedRepositoryResponse(body)
+        if (blocked) {
+          return {
+            kind: 'result',
+            result: {
+              kind: 'repository-blocked',
+              status,
+              reason: 'Repository access blocked',
+              blockReason: blocked.reason,
+              blockedAt: blocked.createdAt,
+              retryCount: attempt,
+            },
+          }
+        }
+        throw new GitHubFatalError('GitHub access forbidden (403)', status)
+      }
     }
     if (secondary) secondaryCount++
     this.budget.defer(bucket, Math.max(delay ?? 0, secondary ? 60_000 * 2 ** (secondaryCount - 1) + Math.floor(this.random() * 1_000) : 0))
