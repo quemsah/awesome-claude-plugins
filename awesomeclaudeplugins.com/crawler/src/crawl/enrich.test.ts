@@ -2720,3 +2720,31 @@ it('re-enriches a blocked repository after the 7-day TTL and clears blocked stat
   expect(row.blocked_at).toBeNull()
   expect(row.blocked_reason).toBeNull()
 })
+
+it('skips enrichment of an alias repository sharing a GitHub node ID with an actively blocked repository', async () => {
+  const db = database()
+  const nodeId = 'shared-node-id-enrich'
+  const now = '2026-11-05T12:00:00.000Z'
+  const oneDayAgo = '2026-11-04T12:00:00.000Z'
+
+  const blockedId = upsertDiscovery(db, 'https://github.com/primary/repo', null)
+  ready(db, blockedId, 'primary', 'repo')
+  db.prepare('UPDATE repositories SET github_node_id = ?, blocked_at = ?, blocked_reason = ? WHERE id = ?').run(
+    nodeId,
+    oneDayAgo,
+    'dmca',
+    blockedId,
+  )
+
+  const aliasId = upsertDiscovery(db, 'https://github.com/alias/repo', null)
+  ready(db, aliasId, 'alias', 'repo')
+  db.prepare('UPDATE repositories SET github_node_id = ?, blocked_at = NULL WHERE id = ?').run(nodeId, aliasId)
+
+  const getRepository = vi.fn()
+  const getMarketplace = vi.fn()
+
+  const counts = await enrichRepositories(db, reader(getRepository, getMarketplace), 'crawl-1', undefined, () => now)
+
+  expect(getRepository).not.toHaveBeenCalled()
+  expect(counts).toMatchObject({ unchangedOnError: 2, updated: 0 })
+})

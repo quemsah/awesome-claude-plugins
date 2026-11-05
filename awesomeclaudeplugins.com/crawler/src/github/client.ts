@@ -530,6 +530,21 @@ export class GitHubClient implements GitHubReader {
           // A second, authenticated source must agree before the catalog can delete a link.
           return await this.confirmRepositoryRemoval(owner, repo, signal)
         }
+        if (response.status === 451) {
+          // Legally restricted repository: confirm via API for structured block details,
+          // falling back to repository-blocked if API confirmation is unavailable.
+          const confirmed = await this.confirmRepositoryRemoval(owner, repo, signal)
+          if (confirmed.kind === 'repository-blocked' || confirmed.kind === 'not-found') {
+            return confirmed
+          }
+          return {
+            kind: 'repository-blocked',
+            status: 451,
+            reason: 'Repository access blocked',
+            blockReason: 'Unavailable for legal reasons',
+            retryCount: 0,
+          }
+        }
         if (response.status === 200) return { kind: 'found', data: { html_url: url } }
         if (response.status !== 301 && response.status !== 302) return temporary(response.status, 'GitHub health check HTTP error')
         const location = response.headers.get('location')

@@ -945,6 +945,39 @@ describe('GitHubClient', () => {
     expect(test.requests).toHaveLength(2)
   })
 
+  it('recognizes direct public HEAD HTTP 451 in checkRepository and confirms it through API', async () => {
+    const test = harness([
+      new Response(null, { status: 451 }),
+      Response.json(
+        { message: 'Repository access blocked', block: { reason: 'dmca', created_at: '2026-11-01T00:00:00Z' } },
+        { status: 451 },
+      ),
+    ])
+    const result = await test.client.checkRepository('restricted', 'repo')
+    expect(result).toEqual({
+      kind: 'repository-blocked',
+      status: 451,
+      reason: 'Repository access blocked',
+      blockReason: 'dmca',
+      blockedAt: '2026-11-01T00:00:00Z',
+      retryCount: 0,
+    })
+    expect(test.requests).toHaveLength(2)
+  })
+
+  it('falls back to repository-blocked when direct public HEAD HTTP 451 API confirmation returns an error', async () => {
+    const test = harness([new Response(null, { status: 451 }), new Response(null, { status: 500 })])
+    const result = await test.client.checkRepository('restricted', 'repo')
+    expect(result).toEqual({
+      kind: 'repository-blocked',
+      status: 451,
+      reason: 'Repository access blocked',
+      blockReason: 'Unavailable for legal reasons',
+      retryCount: 0,
+    })
+    expect(test.requests).toHaveLength(2)
+  })
+
   it('accepts FORBIDDEN repository blocked errors in GraphQL batches without failing other nodes', async () => {
     const firstId = 'MDEwOlJlcG9zaXRvcnkxMjk2MjY5'
     const blockedId = 'MDEwOlJlcG9zaXRvcnkxMjk2Mjcw'

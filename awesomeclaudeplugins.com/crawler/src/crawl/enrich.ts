@@ -18,7 +18,7 @@ import {
   deleteById,
   deleteCanonicalRows,
   getRepositoryById,
-  isRepositoryBlockedWithinTTL,
+  isBlockedRepositoryCandidate,
   listForEnrichment,
   markRepositoryBlocked,
   prepareEnrichedUpdate,
@@ -2241,7 +2241,7 @@ async function enrichPage(
 ): Promise<void> {
   const eligibleRows: RepositoryRow[] = []
   for (const row of rows) {
-    if (isRepositoryBlockedWithinTTL(row, now())) {
+    if (isBlockedRepositoryCandidate(db, row.html_url ?? '', row.github_node_id, now())) {
       counts.conclusive++
       counts.unchangedOnError++
       markRepositoryProcessed(row)

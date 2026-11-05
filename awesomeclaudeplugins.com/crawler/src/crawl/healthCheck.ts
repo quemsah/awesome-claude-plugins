@@ -3,7 +3,14 @@ import type { GitHubReader } from '../github/client.js'
 import { parseRepositoryUrl } from '../github/repositoryUrl.js'
 import type { Log } from '../logging.js'
 import { throwIfShutdown } from '../shutdown.js'
-import { deleteById, getRepositoryById, listForHealthCheck, markRepositoryBlocked, recordHealthCheck } from '../storage/repositories.js'
+import {
+  clearRepositoryBlocked,
+  deleteById,
+  getRepositoryById,
+  listForHealthCheck,
+  markRepositoryBlocked,
+  recordHealthCheck,
+} from '../storage/repositories.js'
 import { recordRunError, runWhileActive } from '../storage/runs.js'
 
 export type HealthCheckSummary = { checked: number; deleted: number; renamed: number; warnings: number }
@@ -61,7 +68,7 @@ export async function healthCheck(
           }
           if (result?.kind === 'repository-blocked') {
             markRepositoryBlocked(db, row.id, result.blockReason ?? result.reason, at, at)
-            recordHealthCheck(db, row.id, at)
+            db.prepare('UPDATE repositories SET last_health_check_at = ? WHERE id = ?').run(at, row.id)
             counts.warnings++
             recordRunError(db, {
               run_id: runId,
@@ -72,6 +79,9 @@ export async function healthCheck(
               occurred_at: at,
             })
             return
+          }
+          if (result?.kind === 'found') {
+            clearRepositoryBlocked(db, row.id)
           }
           const canonicalUrl = result?.kind === 'found' ? result.data.html_url : undefined
           recordHealthCheck(db, row.id, at, canonicalUrl)

@@ -281,11 +281,16 @@ export function listForHealthCheck(db: Database.Database, at = new Date().toISOS
   const cutoff = new Date(Date.parse(at) - BLOCKED_REPOSITORY_RECHECK_INTERVAL_MS).toISOString()
   return db
     .prepare(`
-    SELECT * FROM repositories WHERE html_url IS NOT NULL
-      AND (blocked_at IS NULL OR blocked_at <= ?)
-    ORDER BY last_health_check_at, id LIMIT 200
+    SELECT r.* FROM repositories r WHERE r.html_url IS NOT NULL
+      AND (r.blocked_at IS NULL OR r.blocked_at <= ?)
+      AND NOT EXISTS (
+        SELECT 1 FROM repositories b
+        WHERE (b.html_url = r.html_url COLLATE NOCASE OR (r.github_node_id IS NOT NULL AND b.github_node_id = r.github_node_id))
+          AND b.blocked_at > ?
+      )
+    ORDER BY r.last_health_check_at, r.id LIMIT 200
   `)
-    .all(cutoff) as RepositoryRow[]
+    .all(cutoff, cutoff) as RepositoryRow[]
 }
 
 export function recordHealthCheck(db: Database.Database, id: number, at: string, canonicalUrl?: string): number {
@@ -365,8 +370,18 @@ export function markRepositoryBlocked(
           updatedAt = ?
         WHERE id = ?
       `)
-      .run(blockedAt, reason, updatedAt, updatedAt, id).changes !== 0
+      .run(blockedAt, reason, blockedAt, updatedAt, id).changes !== 0
   )
+}
+
+export function clearRepositoryBlocked(db: Database.Database, id: number): void {
+  const row = getRepositoryById(db, id)
+  if (!row) return
+  db.prepare(`
+    UPDATE repositories
+    SET blocked_at = NULL, blocked_reason = NULL
+    WHERE id = ? OR (html_url = ? COLLATE NOCASE OR (github_node_id IS NOT NULL AND github_node_id = ?))
+  `).run(id, row.html_url ?? '', row.github_node_id ?? null)
 }
 
 export function isRepositoryBlockedWithinTTL(row: Pick<RepositoryRow, 'blocked_at'>, at = new Date().toISOString()): boolean {
