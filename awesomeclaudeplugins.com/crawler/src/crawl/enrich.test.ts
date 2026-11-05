@@ -2748,3 +2748,50 @@ it('skips enrichment of an alias repository sharing a GitHub node ID with an act
   expect(getRepository).not.toHaveBeenCalled()
   expect(counts).toMatchObject({ unchangedOnError: 2, updated: 0 })
 })
+
+it('clears blocked state on both primary and alias sharing GitHub node ID when recovered repository is successfully enriched', async () => {
+  const db = database()
+  const nodeId = 'shared-node-id-recovered'
+  const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString()
+
+  const primaryId = upsertDiscovery(db, 'https://github.com/primary/repo', null)
+  ready(db, primaryId, 'primary', 'repo')
+  db.prepare('UPDATE repositories SET github_node_id = ?, blocked_at = ?, blocked_reason = ? WHERE id = ?').run(
+    nodeId,
+    eightDaysAgo,
+    'dmca',
+    primaryId,
+  )
+
+  const aliasId = upsertDiscovery(db, 'https://github.com/alias/repo', null)
+  ready(db, aliasId, 'alias', 'repo')
+  db.prepare('UPDATE repositories SET github_node_id = ?, blocked_at = ?, blocked_reason = ? WHERE id = ?').run(
+    nodeId,
+    eightDaysAgo,
+    'dmca',
+    aliasId,
+  )
+
+  const getRepository = vi.fn(async (owner: string, name: string) => ({
+    kind: 'found' as const,
+    data: { ...githubRepo(owner, name), node_id: nodeId },
+  }))
+  const getMarketplace = vi.fn(async () => ({ kind: 'found' as const, data: { plugins: [{ name: 'primary' }] } }))
+
+  const counts = await enrichRepositories(db, reader(getRepository, getMarketplace), 'crawl-1')
+
+  expect(counts.updated).toBeGreaterThanOrEqual(1)
+
+  const primaryRow = db.prepare('SELECT blocked_at, blocked_reason FROM repositories WHERE id = ?').get(primaryId) as {
+    blocked_at: string | null
+    blocked_reason: string | null
+  }
+  const aliasRow = db.prepare('SELECT blocked_at, blocked_reason FROM repositories WHERE id = ?').get(aliasId) as {
+    blocked_at: string | null
+    blocked_reason: string | null
+  }
+  expect(primaryRow.blocked_at).toBeNull()
+  expect(primaryRow.blocked_reason).toBeNull()
+  expect(aliasRow.blocked_at).toBeNull()
+  expect(aliasRow.blocked_reason).toBeNull()
+})

@@ -465,7 +465,7 @@ it('isolates a blocked repository, updates last_health_check_at, and excludes it
   expect(listForHealthCheck(db, eightDaysLater).map((r) => r.id)).toContain(id)
 })
 
-it('unblocks a previously blocked repository when health check finds it accessible', async () => {
+it('retains blocked state during health check even when page is accessible until authenticated enrichment succeeds', async () => {
   const db = database()
   const id = seed(db, 'https://github.com/restored/repo')
   const expiredTime = '2026-10-26T10:00:00.000Z'
@@ -485,11 +485,10 @@ it('unblocks a previously blocked repository when health check finds it accessib
   expect(summary).toMatchObject({ checked: 1, deleted: 0, warnings: 0 })
   const row = getRepositoryById(db, id)
   expect(row).toMatchObject({
-    blocked_at: null,
-    blocked_reason: null,
+    blocked_at: expiredTime,
+    blocked_reason: 'private_information',
     last_health_check_at: checkTime,
   })
-  expect(listPublishable(db).map((r) => r.id)).toContain(id)
 })
 
 it('excludes an unblocked duplicate record when a sibling sharing github_node_id has an active block', () => {
