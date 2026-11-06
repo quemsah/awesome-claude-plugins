@@ -272,3 +272,91 @@ it('stores nullable GitHub metadata without changing the first discovery date', 
     createdAt: '2024-01-02T00:00:00.000Z',
   })
 })
+
+it('isBlockedRepositoryCandidate finds an active block among duplicate records sharing a GitHub node ID', () => {
+  const { isBlockedRepositoryCandidate } = repositoryStorage
+  const db = database()
+  const nodeId = 'shared-node-id-123'
+  const now = '2026-11-05T12:00:00.000Z'
+  const tenDaysAgo = '2026-10-26T12:00:00.000Z'
+  const oneDayAgo = '2026-11-04T12:00:00.000Z'
+
+  db.prepare(`
+    INSERT INTO repositories (id, html_url, github_node_id, blocked_at, blocked_reason, createdAt, updatedAt)
+    VALUES (101, 'https://github.com/old/duplicate', ?, ?, 'private_information', 'created', 'updated')
+  `).run(nodeId, tenDaysAgo)
+
+  db.prepare(`
+    INSERT INTO repositories (id, html_url, github_node_id, blocked_at, blocked_reason, createdAt, updatedAt)
+    VALUES (102, 'https://github.com/new/duplicate', ?, ?, 'private_information', 'created', 'updated')
+  `).run(nodeId, oneDayAgo)
+
+  expect(isBlockedRepositoryCandidate(db, 'https://github.com/other/url', nodeId, now)).toBe(true)
+
+  db.prepare('UPDATE repositories SET blocked_at = ? WHERE id = 102').run(tenDaysAgo)
+  expect(isBlockedRepositoryCandidate(db, 'https://github.com/other/url', nodeId, now)).toBe(false)
+})
+
+it('excludes unmarked aliases from listPublishable when a sibling sharing github_node_id is blocked', () => {
+  const { listPublishable, upsertDiscovery, updateEnriched } = repositoryStorage
+  const db = database()
+  const nodeId = 'shared-node-id-pub'
+  const blockedId = upsertDiscovery(db, 'https://github.com/blocked/repo', null)
+  updateEnriched(db, blockedId, { ...enriched, owner: 'blocked', repo_name: 'repo', owner_url: 'https://github.com/blocked' })
+
+  const aliasId = upsertDiscovery(db, 'https://github.com/alias/repo', null)
+  updateEnriched(db, aliasId, { ...enriched, owner: 'alias', repo_name: 'repo', owner_url: 'https://github.com/alias' })
+  db.prepare('UPDATE repositories SET github_node_id = ? WHERE id IN (?, ?)').run(nodeId, blockedId, aliasId)
+
+  // Verify that the alias is initially publishable
+  expect(listPublishable(db).map((r) => r.id)).toContain(aliasId)
+
+  // Now block the primary repository
+  db.prepare('UPDATE repositories SET blocked_at = ?, blocked_reason = ? WHERE id = ?').run('2026-11-04T12:00:00.000Z', 'dmca', blockedId)
+
+  const publishable = listPublishable(db)
+  expect(publishable.map((r) => r.id)).not.toContain(blockedId)
+  expect(publishable.map((r) => r.id)).not.toContain(aliasId)
+})
+
+it('propagates blocked state to aliases sharing html_url or github_node_id when markRepositoryBlocked is called', () => {
+  const { markRepositoryBlocked, upsertDiscovery } = repositoryStorage
+  const db = database()
+  const nodeId = 'shared-node-id-propagate'
+  const id1 = upsertDiscovery(db, 'https://github.com/primary/repo', null)
+  const id2 = upsertDiscovery(db, 'https://github.com/secondary/repo', null)
+  db.prepare('UPDATE repositories SET github_node_id = ? WHERE id IN (?, ?)').run(nodeId, id1, id2)
+
+  const blockedAt = '2026-11-05T12:00:00.000Z'
+  markRepositoryBlocked(db, id1, 'dmca', blockedAt)
+
+  const row1 = db.prepare('SELECT blocked_at, blocked_reason FROM repositories WHERE id = ?').get(id1)
+  const row2 = db.prepare('SELECT blocked_at, blocked_reason FROM repositories WHERE id = ?').get(id2)
+  expect(row1).toEqual({ blocked_at: blockedAt, blocked_reason: 'dmca' })
+  expect(row2).toEqual({ blocked_at: blockedAt, blocked_reason: 'dmca' })
+})
+
+it('clears blocked state for aliases sharing github_node_id or html_url when updateEnriched succeeds', () => {
+  const { updateEnriched, upsertDiscovery } = repositoryStorage
+  const db = database()
+  const nodeId = 'shared-node-id-clear'
+  const id1 = upsertDiscovery(db, 'https://github.com/primary/repo', null)
+  const id2 = upsertDiscovery(db, 'https://github.com/secondary/repo', null)
+  db.prepare('UPDATE repositories SET github_node_id = ? WHERE id IN (?, ?)').run(nodeId, id1, id2)
+
+  const blockedAt = '2026-11-05T12:00:00.000Z'
+  db.prepare('UPDATE repositories SET blocked_at = ?, blocked_reason = ? WHERE id IN (?, ?)').run(blockedAt, 'dmca', id1, id2)
+
+  updateEnriched(db, id1, {
+    ...enriched,
+    owner: 'primary',
+    repo_name: 'repo',
+    owner_url: 'https://github.com/primary',
+    github_node_id: nodeId,
+  })
+
+  const row1 = db.prepare('SELECT blocked_at, blocked_reason FROM repositories WHERE id = ?').get(id1)
+  const row2 = db.prepare('SELECT blocked_at, blocked_reason FROM repositories WHERE id = ?').get(id2)
+  expect(row1).toEqual({ blocked_at: null, blocked_reason: null })
+  expect(row2).toEqual({ blocked_at: null, blocked_reason: null })
+})

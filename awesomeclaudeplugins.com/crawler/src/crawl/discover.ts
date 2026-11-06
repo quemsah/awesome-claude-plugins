@@ -8,7 +8,7 @@ import { recordDiscoveryCandidate } from '../storage/discoveryCandidates.js'
 import { listCachedDiscoveryRanges, replaceCachedDiscoveryRanges } from '../storage/discoveryRanges.js'
 import { recordDiscoverySourceOutcome } from '../storage/discoverySources.js'
 import { isUnchangedRejectedCandidate } from '../storage/rejectedCandidates.js'
-import { createDiscoveryWriter } from '../storage/repositories.js'
+import { createDiscoveryWriter, isBlockedRepositoryCandidate } from '../storage/repositories.js'
 import { recordRunError, runWhileActive } from '../storage/runs.js'
 
 export type { SizeRange } from '../github/sizeRanges.js'
@@ -168,6 +168,7 @@ function processItems(
         warn(db, state, 'invalid-url', 0, { repositoryUrl: url })
         continue
       }
+      if (isBlockedRepositoryCandidate(db, url, repository.node_id, state.now())) continue
       // Code Search omits pushed_at: retry rejected repositories on an age-based TTL.
       if (isUnchangedRejectedCandidate(db, url, repository.node_id, undefined, state.now())) continue
       const countKey = url.toLowerCase()

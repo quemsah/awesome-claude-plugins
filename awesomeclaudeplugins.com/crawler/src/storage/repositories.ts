@@ -30,6 +30,8 @@ export interface RepositoryRow {
   manifest_kind?: 'marketplace' | 'standalone-plugin' | null
   plugin_manifest_etag?: string | null
   plugin_manifest_parser_version?: number | null
+  blocked_at?: string | null
+  blocked_reason?: string | null
 }
 
 export type EnrichmentFields = Pick<
@@ -141,6 +143,8 @@ const enrichedUpdateSql = `
     repository_etag = COALESCE(@repository_etag, repository_etag),
     marketplace_etag = CASE WHEN @manifest_kind = 'standalone-plugin' THEN NULL ELSE COALESCE(@marketplace_etag, marketplace_etag) END,
     marketplace_parser_version = CASE WHEN @manifest_kind = 'standalone-plugin' THEN NULL ELSE COALESCE(@marketplace_parser_version, marketplace_parser_version) END,
+    blocked_at = NULL,
+    blocked_reason = NULL,
     updatedAt = @updatedAt
   WHERE id = @id
 `
@@ -179,7 +183,11 @@ export function prepareEnrichedUpdate(db: Database.Database) {
   const update = db.prepare(enrichedUpdateSql)
   return (id: number, fields: EnrichmentFields, at = new Date().toISOString()): boolean => {
     assertValidEnrichmentCounts(fields)
-    return update.run(enrichmentUpdateBindings(id, fields, at)).changes !== 0
+    const success = update.run(enrichmentUpdateBindings(id, fields, at)).changes !== 0
+    if (success) {
+      clearRepositoryBlocked(db, id)
+    }
+    return success
   }
 }
 
@@ -273,13 +281,20 @@ export function listForEnrichment(db: Database.Database, cursor: number, limit: 
   return db.prepare('SELECT * FROM repositories WHERE id > ? ORDER BY id LIMIT ?').all(cursor, limit) as RepositoryRow[]
 }
 
-export function listForHealthCheck(db: Database.Database): RepositoryRow[] {
+export function listForHealthCheck(db: Database.Database, at = new Date().toISOString()): RepositoryRow[] {
+  const cutoff = new Date(Date.parse(at) - BLOCKED_REPOSITORY_RECHECK_INTERVAL_MS).toISOString()
   return db
     .prepare(`
-    SELECT * FROM repositories WHERE html_url IS NOT NULL
-    ORDER BY last_health_check_at, id LIMIT 200
+    SELECT r.* FROM repositories r WHERE r.html_url IS NOT NULL
+      AND (r.blocked_at IS NULL OR r.blocked_at <= ?)
+      AND NOT EXISTS (
+        SELECT 1 FROM repositories b
+        WHERE (b.html_url = r.html_url COLLATE NOCASE OR (r.github_node_id IS NOT NULL AND b.github_node_id = r.github_node_id))
+          AND b.blocked_at > ?
+      )
+    ORDER BY r.last_health_check_at, r.id LIMIT 200
   `)
-    .all() as RepositoryRow[]
+    .all(cutoff, cutoff) as RepositoryRow[]
 }
 
 export function recordHealthCheck(db: Database.Database, id: number, at: string, canonicalUrl?: string): number {
@@ -310,14 +325,20 @@ export function hasCanonicalIdentity(row: PublishableRepository): boolean {
 export function listCoreComplete(db: Database.Database): PublishableRepository[] {
   return db
     .prepare(`
-    SELECT id, html_url, stargazers_count, forks_count, subscribers_count,
-           description, owner, owner_url, repo_name, plugins_count, plugins_json, catalog_updated_at,
-           repo_updated AS pushed_at, createdAt AS catalog_added_at, license, archived, manifest_kind
-    FROM repositories
-    WHERE html_url IS NOT NULL AND owner IS NOT NULL AND repo_name IS NOT NULL AND owner_url IS NOT NULL
-      AND stargazers_count IS NOT NULL AND forks_count IS NOT NULL
-      AND subscribers_count IS NOT NULL
-    ORDER BY id
+    SELECT r.id, r.html_url, r.stargazers_count, r.forks_count, r.subscribers_count,
+           r.description, r.owner, r.owner_url, r.repo_name, r.plugins_count, r.plugins_json, r.catalog_updated_at,
+           r.repo_updated AS pushed_at, r.createdAt AS catalog_added_at, r.license, r.archived, r.manifest_kind
+    FROM repositories r
+    WHERE r.html_url IS NOT NULL AND r.owner IS NOT NULL AND r.repo_name IS NOT NULL AND r.owner_url IS NOT NULL
+      AND r.stargazers_count IS NOT NULL AND r.forks_count IS NOT NULL
+      AND r.subscribers_count IS NOT NULL
+      AND r.blocked_at IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM repositories b
+        WHERE (b.html_url = r.html_url COLLATE NOCASE OR (r.github_node_id IS NOT NULL AND b.github_node_id = r.github_node_id))
+          AND b.blocked_at IS NOT NULL
+      )
+    ORDER BY r.id
     `)
     .all() as PublishableRepository[]
 }
@@ -334,4 +355,68 @@ export function isPublishableRepository(row: PublishableRepository): boolean {
 
 export function listPublishable(db: Database.Database): PublishableRepository[] {
   return listCoreComplete(db).filter(isPublishableRepository)
+}
+
+export const BLOCKED_REPOSITORY_RECHECK_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000
+
+export function markRepositoryBlocked(
+  db: Database.Database,
+  id: number,
+  reason: string,
+  blockedAt = new Date().toISOString(),
+  updatedAt = blockedAt,
+): boolean {
+  const row = getRepositoryById(db, id)
+  if (!row) return false
+  return (
+    db
+      .prepare(`
+        UPDATE repositories SET
+          blocked_at = ?,
+          blocked_reason = ?,
+          repository_etag = NULL,
+          marketplace_etag = NULL,
+          plugin_manifest_etag = NULL,
+          last_health_check_at = COALESCE(last_health_check_at, ?),
+          updatedAt = ?
+        WHERE id = ? OR (html_url = ? COLLATE NOCASE OR (github_node_id IS NOT NULL AND github_node_id = ?))
+      `)
+      .run(blockedAt, reason, blockedAt, updatedAt, id, row.html_url ?? '', row.github_node_id ?? null).changes !== 0
+  )
+}
+
+export function clearRepositoryBlocked(db: Database.Database, id: number): void {
+  const row = getRepositoryById(db, id)
+  if (!row) return
+  db.prepare(`
+    UPDATE repositories
+    SET blocked_at = NULL, blocked_reason = NULL
+    WHERE id = ? OR (html_url = ? COLLATE NOCASE OR (github_node_id IS NOT NULL AND github_node_id = ?))
+  `).run(id, row.html_url ?? '', row.github_node_id ?? null)
+}
+
+export function isRepositoryBlockedWithinTTL(row: Pick<RepositoryRow, 'blocked_at'>, at = new Date().toISOString()): boolean {
+  if (!row.blocked_at) return false
+  const blockedTime = Date.parse(row.blocked_at)
+  if (!Number.isFinite(blockedTime)) return false
+  const currentTime = Date.parse(at)
+  if (!Number.isFinite(currentTime)) return false
+  return currentTime - blockedTime < BLOCKED_REPOSITORY_RECHECK_INTERVAL_MS
+}
+
+export function isBlockedRepositoryCandidate(
+  db: Database.Database,
+  htmlUrl: string,
+  githubNodeId?: string | null,
+  at = new Date().toISOString(),
+): boolean {
+  const rows = db
+    .prepare(`
+      SELECT blocked_at FROM repositories
+      WHERE (html_url = ? COLLATE NOCASE OR (github_node_id IS NOT NULL AND github_node_id = ?))
+        AND blocked_at IS NOT NULL
+    `)
+    .all(htmlUrl, githubNodeId ?? null) as Array<{ blocked_at: string }>
+
+  return rows.some((row) => isRepositoryBlockedWithinTTL(row, at))
 }

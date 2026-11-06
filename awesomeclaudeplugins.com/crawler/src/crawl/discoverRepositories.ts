@@ -15,7 +15,7 @@ import type { Log } from '../logging.js'
 import { recordDiscoveryCandidate } from '../storage/discoveryCandidates.js'
 import { recordDiscoverySourceOutcome } from '../storage/discoverySources.js'
 import { isUnchangedRejectedCandidate } from '../storage/rejectedCandidates.js'
-import { createDiscoveryWriter } from '../storage/repositories.js'
+import { createDiscoveryWriter, isBlockedRepositoryCandidate } from '../storage/repositories.js'
 import {
   clearVerifiedExpiredGap,
   ensureRepositorySearchPartition,
@@ -320,6 +320,7 @@ function recordFetchedCandidates(
 ): void {
   for (const item of result.items) {
     if (item.private || !parseRepositoryUrl(item.html_url)) continue
+    if (isBlockedRepositoryCandidate(db, item.html_url, item.node_id, now())) continue
     if (isUnchangedRejectedCandidate(db, item.html_url, item.node_id, item.pushed_at)) continue
     const key = item.html_url.toLowerCase()
     let id = countedUrls.get(key)

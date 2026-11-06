@@ -2,7 +2,7 @@ import { createServer } from 'node:http'
 import Database from 'better-sqlite3'
 import { afterEach, expect, it, vi } from 'vitest'
 import { GitHubClient } from '../github/client.js'
-import { getRepositoryById, listPublishable, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
+import { getRepositoryById, listForHealthCheck, listPublishable, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
 import { beginRun, failRun, listRunErrors } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
 import { healthCheck } from './healthCheck.js'
@@ -101,7 +101,7 @@ it.each([200, 403, 451, 503])('retains a HEAD 404 when the confirmation API retu
   expect(getRepositoryById(db, id)).not.toBeNull()
 })
 
-it('retains legally restricted repositories without attempting deletion confirmation', async () => {
+it('isolates legally restricted repositories on direct public HEAD HTTP 451 without deleting', async () => {
   const db = database()
   const id = seed(db)
   const requests: string[] = []
@@ -115,9 +115,14 @@ it('retains legally restricted repositories without attempting deletion confirma
     () => {},
     () => at,
   )
-  expect(getRepositoryById(db, id)).toMatchObject({ last_health_check_at: at })
-  expect(requests).toEqual(['https://github.com/old/project'])
-  expect(listRunErrors(db, 'health')).toMatchObject([{ error_type: 'health_check_http_451' }])
+  expect(getRepositoryById(db, id)).toMatchObject({
+    last_health_check_at: at,
+    blocked_at: at,
+    blocked_reason: 'Unavailable for legal reasons',
+  })
+  expect(requests).toEqual(['https://github.com/old/project', 'https://api.github.com/repos/old/project'])
+  expect(listRunErrors(db, 'health')).toMatchObject([{ error_type: 'health_check_repository_blocked' }])
+  expect(listPublishable(db)).toEqual([])
 })
 
 it.each([301, 302])('updates all canonical identity fields after HEAD %s and merges duplicate URLs', async (status) => {
@@ -311,9 +316,8 @@ it('keeps a catalog publishable through real HTTP HEAD responses and a rename ch
       warnings: 2,
     })
     expect(methods.filter((method) => method === 'HEAD')).toHaveLength(8)
-    expect(methods.filter((method) => method === 'GET')).toHaveLength(2)
+    expect(methods.filter((method) => method === 'GET')).toHaveLength(3)
     expect(listPublishable(db).map(({ html_url }) => html_url)).toEqual([
-      'https://github.com/old/legal',
       'https://github.com/new/canonical',
       'https://github.com/old/healthy',
       'https://github.com/old/unavailable',
@@ -420,4 +424,91 @@ it('keeps a failed network request in the catalog and rotates it behind unchecke
   )
   expect(getRepositoryById(db, id)).toMatchObject({ last_health_check_at: at, html_url: 'https://github.com/old/project' })
   expect(listRunErrors(db, 'health')).toMatchObject([{ error_type: 'health_check_network' }])
+})
+
+it('isolates a blocked repository, updates last_health_check_at, and excludes it from subsequent health check selection within 7-day TTL', async () => {
+  const db = database()
+  const id = seed(db, 'https://github.com/team/blocked-repo')
+  const checkTime = '2026-11-05T10:00:00.000Z'
+  const reader = client(() => new Response(null, { status: 200 }))
+  reader.checkRepository = async () => ({
+    kind: 'repository-blocked' as const,
+    status: 403,
+    reason: 'Repository access blocked',
+    blockReason: 'private_information',
+    blockedAt: '2020-01-01T00:00:00Z',
+    retryCount: 0,
+  })
+
+  const summary = await healthCheck(
+    db,
+    reader,
+    'health',
+    () => {},
+    () => checkTime,
+  )
+
+  expect(summary).toMatchObject({ checked: 1, deleted: 0, warnings: 1 })
+  const row = getRepositoryById(db, id)
+  expect(row).toMatchObject({
+    blocked_at: checkTime,
+    blocked_reason: 'private_information',
+    last_health_check_at: checkTime,
+  })
+
+  // Within 7 days, it is excluded from listForHealthCheck
+  const nextDay = '2026-11-06T10:00:00.000Z'
+  expect(listForHealthCheck(db, nextDay).map((r) => r.id)).not.toContain(id)
+
+  // After 8 days (TTL expired), it is included again for re-check
+  const eightDaysLater = '2026-11-13T10:00:00.000Z'
+  expect(listForHealthCheck(db, eightDaysLater).map((r) => r.id)).toContain(id)
+})
+
+it('retains blocked state during health check even when page is accessible until authenticated enrichment succeeds', async () => {
+  const db = database()
+  const id = seed(db, 'https://github.com/restored/repo')
+  const expiredTime = '2026-10-26T10:00:00.000Z'
+  const checkTime = '2026-11-05T10:00:00.000Z'
+
+  db.prepare('UPDATE repositories SET blocked_at = ?, blocked_reason = ? WHERE id = ?').run(expiredTime, 'private_information', id)
+
+  const reader = client(() => new Response(null, { status: 200 }))
+  const summary = await healthCheck(
+    db,
+    reader,
+    'health',
+    () => {},
+    () => checkTime,
+  )
+
+  expect(summary).toMatchObject({ checked: 1, deleted: 0, warnings: 0 })
+  const row = getRepositoryById(db, id)
+  expect(row).toMatchObject({
+    blocked_at: expiredTime,
+    blocked_reason: 'private_information',
+    last_health_check_at: checkTime,
+  })
+})
+
+it('excludes an unblocked duplicate record when a sibling sharing github_node_id has an active block', () => {
+  const db = database()
+  const nodeId = 'shared-node-id-health'
+  const checkTime = '2026-11-05T10:00:00.000Z'
+  const activeBlockTime = '2026-11-04T10:00:00.000Z'
+
+  const id1 = seed(db, 'https://github.com/alias/active-block')
+  const id2 = seed(db, 'https://github.com/alias/unblocked-sibling')
+
+  db.prepare('UPDATE repositories SET github_node_id = ?, blocked_at = ?, blocked_reason = ? WHERE id = ?').run(
+    nodeId,
+    activeBlockTime,
+    'dmca',
+    id1,
+  )
+  db.prepare('UPDATE repositories SET github_node_id = ?, blocked_at = NULL WHERE id = ?').run(nodeId, id2)
+
+  const candidateIds = listForHealthCheck(db, checkTime).map((r) => r.id)
+  expect(candidateIds).not.toContain(id1)
+  expect(candidateIds).not.toContain(id2)
 })
