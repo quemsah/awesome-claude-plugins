@@ -68,8 +68,9 @@ if (values.baseline || values.candidate) {
   process.stdout.write(`${output}\n`)
   // Regular changes may not regress any measured RSS by more than 10%. The
   // dedicated migration A/B can additionally require the original import win.
-  const baselineImport = median(base.map(snapshotValue('afterImport')))
-  const candidateImport = median(pr.map(snapshotValue('afterImport')))
+  // Compare the incremental catalog footprint, not process RSS accumulated before import.
+  const baselineImport = median(base.map(stageDelta('afterImport', 'beforeImport')))
+  const candidateImport = median(pr.map(stageDelta('afterImport', 'beforeImport')))
   const baselineWarm = median(base.map(snapshotValue('afterQueries')))
   const candidateWarm = median(pr.map(snapshotValue('afterQueries')))
   const baselinePeak = median(base.map((run) => run.phases.afterQueries.peakRssMiB))
