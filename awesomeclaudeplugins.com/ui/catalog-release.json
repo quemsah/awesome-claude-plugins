@@ -1,12 +1,17 @@
 {
+  "snapshotId": "crawl-2736f94c-f4a1-4e4f-9ac4-47ebabe28469",
+  "catalogFingerprint": "13faa90a918ae6c7e6e28cc3655aba4cbbd7fb9a25316c6e1f6c8819db3f0478",
+  "artifactSha256": "9e28f687af67ac68de347c7bd67cf96ebe343c63d57065aa5bbb0dfc5f8fa30a",
+  "canonicalCount": 54236,
+  "pluginsCount": 142892,
+  "statsCount": 300,
+  "recordCount": 54236,
   "schemaVersion": 1,
   "generatorVersion": "1.1.0",
-  "snapshotId": "snapshot-12052080ff33e399",
-  "catalogFingerprint": "d41318aece459b826b8f93c07db16ce798f81e03358f6fa154d8c4262cecd331",
-  "artifactSha256": "6e635c35b065636acf4f7d0ec98dfef7c17a0432a55d0084afe2e0be35540d82",
-  "recordCount": 54226,
-  "canonicalCount": 54226,
-  "pluginsCount": 141492,
-  "statsCount": 299,
-  "createdAt": "2026-11-02T18:33:27.372Z"
+  "createdAt": "2026-11-07T04:44:48.269Z",
+  "artifactUrl": "https://github.com/quemsah/awesome-claude-plugins/releases/download/catalog-crawl-2736f94c-f4a1-4e4f-9ac4-47ebabe28469/catalog.sqlite",
+  "releaseId": 437339336,
+  "assetId": 719633956,
+  "byteSize": 153460736,
+  "sourceProvenance": "github-release:catalog-crawl-2736f94c-f4a1-4e4f-9ac4-47ebabe28469/catalog.sqlite"
 }
