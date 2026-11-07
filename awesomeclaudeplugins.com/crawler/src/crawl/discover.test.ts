@@ -177,6 +177,38 @@ it('discovers the original repository after a transient Code Search secondary li
   expect(marketplaceRequests.map(({ time }) => time)).toEqual([0, 60_000])
 })
 
+it('stops unvisited Code Search ranges after a shared circuit opens without claiming coverage', async () => {
+  const db = database()
+  let time = 0
+  const requests: string[] = []
+  const github = new GitHubClient({
+    token: 'test-secret',
+    random: () => 0,
+    clock: {
+      now: () => time,
+      sleep: async (ms) => {
+        time += ms
+      },
+    },
+    fetch: (async (input: RequestInfo | URL) => {
+      requests.push(String(input))
+      return Response.json({ message: 'You have exceeded a secondary rate limit' }, { status: 403 })
+    }) as typeof fetch,
+  })
+  const metrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0 }
+  const result = await discover(db, github, 'run-1', [firstRange, secondRange], undefined, undefined, undefined, metrics)
+
+  expect(github.isCodeSearchCircuitOpen()).toBe(true)
+  expect(requests).toHaveLength(4)
+  expect(metrics.incompletePartitions).toBe(2)
+  expect(result.warningCount).toBe(2)
+  expect(result.warnings).toEqual([
+    { range: firstRange, category: 'temporary-error', query_family: 'marketplace_filename_path' },
+    { range: secondRange, category: 'temporary-error', query_family: 'marketplace_filename_path' },
+  ])
+  expect(db.prepare('SELECT COUNT(*) AS count FROM discovery_ranges').get()).toEqual({ count: 0 })
+})
+
 it('keeps repeated secondary-limited search ranges incomplete and reports each failure', async () => {
   const db = database()
   const warnings: string[] = []
