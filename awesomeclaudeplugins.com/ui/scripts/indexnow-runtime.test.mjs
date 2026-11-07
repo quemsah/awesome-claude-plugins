@@ -461,7 +461,11 @@ test('IndexNow resolves and submits the deployed SQLite snapshot when production
           }
         }
         if (endpoint === artifactUrl) {
-          return { ok: true, arrayBuffer: async () => artifactBytes.buffer.slice(artifactBytes.byteOffset, artifactBytes.byteOffset + artifactBytes.byteLength) }
+          return {
+            ok: true,
+            arrayBuffer: async () =>
+              artifactBytes.buffer.slice(artifactBytes.byteOffset, artifactBytes.byteOffset + artifactBytes.byteLength),
+          }
         }
         if (endpoint === `${site}/sitemap.xml`) {
           return { ok: true, text: async () => `<urlset><loc>${firstUrl}</loc></urlset>` }
@@ -532,19 +536,25 @@ test('scheduled IndexNow keeps its baseline on invalid rollback release artifact
               json: async () => ({
                 // biome-ignore lint/style/useNamingConvention: GitHub release API uses snake_case keys
                 tag_name: tag,
-                assets: [{
-                  name: 'catalog.sqlite',
-                  state: 'uploaded',
-                  // biome-ignore lint/style/useNamingConvention: GitHub release API uses snake_case keys
-                  browser_download_url: artifactUrl,
-                  size: artifactBytes.byteLength,
-                  digest: scenario === 'missing-digest' ? null : `sha256:${scenario === 'digest-mismatch' ? '0'.repeat(64) : digest}`,
-                }],
+                assets: [
+                  {
+                    name: 'catalog.sqlite',
+                    state: 'uploaded',
+                    // biome-ignore lint/style/useNamingConvention: GitHub release API uses snake_case keys
+                    browser_download_url: artifactUrl,
+                    size: artifactBytes.byteLength,
+                    digest: scenario === 'missing-digest' ? null : `sha256:${scenario === 'digest-mismatch' ? '0'.repeat(64) : digest}`,
+                  },
+                ],
               }),
             }
           }
           if (endpoint === artifactUrl) {
-            return { ok: true, arrayBuffer: async () => artifactBytes.buffer.slice(artifactBytes.byteOffset, artifactBytes.byteOffset + artifactBytes.byteLength) }
+            return {
+            ok: true,
+            arrayBuffer: async () =>
+              artifactBytes.buffer.slice(artifactBytes.byteOffset, artifactBytes.byteOffset + artifactBytes.byteLength),
+          }
           }
           if (endpoint === 'https://api.indexnow.org/indexnow') {
             submitted.push(endpoint)
@@ -554,9 +564,7 @@ test('scheduled IndexNow keeps its baseline on invalid rollback release artifact
         },
       })
       assert.deepEqual(submitted, [], `No IndexNow submission expected for ${scenario}`)
-      assert.deepEqual([...loadBaseline(baselinePath)], [
-        ['retained/repo', { url: `${site}/retained/repo`, fingerprint: 'baseline' }],
-      ])
+      assert.deepEqual([...loadBaseline(baselinePath)], [['retained/repo', { url: `${site}/retained/repo`, fingerprint: 'baseline' }]])
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
