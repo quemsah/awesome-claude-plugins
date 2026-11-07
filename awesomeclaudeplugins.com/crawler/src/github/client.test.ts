@@ -194,7 +194,7 @@ describe('GitHubClient', () => {
 
   it('opens a shared Code Search circuit after two rate-limited pages, without a third delay', async () => {
     const limited = () => Response.json({ message: 'You have exceeded a secondary rate limit' }, { status: 403 })
-    const test = harness([...Array.from({ length: 4 }, limited)])
+    const test = harness(Array.from({ length: 4 }, limited))
 
     for (let pageNumber = 1; pageNumber <= 2; pageNumber++) {
       await expect(test.client.searchCode('marketplace.json', pageNumber)).rejects.toMatchObject({
