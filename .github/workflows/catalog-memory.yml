@@ -13,8 +13,18 @@ on:
       - 'awesomeclaudeplugins.com/crawler/src/output/splitCatalog.ts'
       - 'awesomeclaudeplugins.com/crawler/src/publish/githubGit.ts'
       - 'awesomeclaudeplugins.com/ui/scripts/prepare-catalog.mjs'
+      - 'awesomeclaudeplugins.com/ui/scripts/benchmark-catalog-memory.test.mjs'
       - 'awesomeclaudeplugins.com/ui/package.json'
   workflow_dispatch:
+    inputs:
+      comparison:
+        description: 'Use the migration improvement gate only for the dedicated migration A/B test'
+        required: true
+        default: regression
+        type: choice
+        options:
+          - regression
+          - migration
 
 permissions:
   contents: read
@@ -94,6 +104,9 @@ jobs:
             }
             console.log("Catalog inputs verified identical (" + res1.count + " canonical records, digest: " + res1.digest + ")");
           '
+      - name: Test RSS comparison gates
+        working-directory: candidate/awesomeclaudeplugins.com/ui
+        run: node --test scripts/benchmark-catalog-memory.test.mjs
       - name: Measure RAM (three independent processes per revision)
         shell: bash
         run: |
@@ -112,10 +125,17 @@ jobs:
             )
           done
       - name: Publish RSS comparison
+        env:
+          MIGRATION_COMPARISON: ${{ github.event_name == 'workflow_dispatch' && inputs.comparison == 'migration' }}
         run: |
-          node candidate/awesomeclaudeplugins.com/ui/scripts/benchmark-catalog-memory.mjs \
-            --baseline memory-results/main-1.json,memory-results/main-2.json,memory-results/main-3.json \
+          args=(
+            --baseline memory-results/main-1.json,memory-results/main-2.json,memory-results/main-3.json
             --candidate memory-results/pr-1.json,memory-results/pr-2.json,memory-results/pr-3.json
+          )
+          if [[ "$MIGRATION_COMPARISON" == "true" ]]; then
+            args+=(--require-import-improvement)
+          fi
+          node candidate/awesomeclaudeplugins.com/ui/scripts/benchmark-catalog-memory.mjs "${args[@]}"
       - name: Upload raw measurements
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
