@@ -121,6 +121,7 @@ export interface GitHubReader {
   checkRepository?(owner: string, repo: string, options?: { signal?: AbortSignal }): Promise<RepoResult<{ html_url: string }>>
   searchRepositories(query: string, page: number, options?: GitHubRequestOptions): Promise<RepositorySearchPage>
   searchCode(query: string, page: number): Promise<SearchPage>
+  isCodeSearchCircuitOpen?(): boolean
   getRepository(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<GitHubRepo>>
   getMarketplace(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<Marketplace>>
   noteRetry?(bucket: RateResource, reason: GitHubRetryReason, waitMs?: number): void
@@ -160,6 +161,7 @@ type Options = {
 }
 
 const MAX_REQUEST_ATTEMPTS = 3
+const MAX_CONSECUTIVE_CODE_SEARCH_LIMITED_PAGES = 2
 
 function requestAttempts(value: number | undefined): number {
   if (value === undefined) return MAX_REQUEST_ATTEMPTS
@@ -429,6 +431,8 @@ export class GitHubClient implements GitHubReader {
   private readonly random: () => number
   private readonly token: string
   private readonly signal?: AbortSignal
+  private consecutiveCodeSearchLimitedPages = 0
+  private codeSearchCircuitOpen = false
 
   constructor(options: Options) {
     if (!options.token.trim()) throw new GitHubFatalError('GitHub token is required', null)
@@ -452,8 +456,15 @@ export class GitHubClient implements GitHubReader {
     return waitMs
   }
 
+  isCodeSearchCircuitOpen(): boolean {
+    return this.codeSearchCircuitOpen
+  }
+
   async searchCode(query: string, page: number): Promise<SearchPage> {
     if (!Number.isInteger(page) || page < 1 || page > 10) throw new GitHubFatalError('Code search page must be 1..10', null)
+    if (this.codeSearchCircuitOpen) {
+      throw new GitHubTemporaryError('Code Search suspended after repeated secondary rate limits', 403)
+    }
     const params = new URLSearchParams({ q: query, per_page: '100', page: String(page) })
     const result = await this.request('code_search', `/search/code?${params}`, parseSearch)
     if (result.kind === 'not-found') throw new GitHubTemporaryError('Code search not found', 404, result.retryCount ?? 0)
@@ -461,6 +472,7 @@ export class GitHubClient implements GitHubReader {
     if (result.kind === 'invalid-content') throw new GitHubTemporaryError(result.reason, result.status, result.retryCount)
     if (result.kind === 'not-modified') throw new GitHubTemporaryError('Unexpected code search 304', 304)
     if (result.kind === 'repository-blocked') throw new GitHubFatalError('Unexpected code search repository-blocked', result.status)
+    this.consecutiveCodeSearchLimitedPages = 0
     return result.data
   }
 
@@ -1242,6 +1254,12 @@ export class GitHubClient implements GitHubReader {
     this.budget.defer(bucket, Math.max(delay ?? 0, secondary ? secondaryDelay + Math.floor(this.random() * 1_000) : 0))
     const failureReason: GitHubRetryReason = secondary ? 'secondary_rate_limit' : 'primary_rate_limit'
     if (finalAttempt || (codeSearchSecondary && secondaryCount >= 2)) {
+      if (codeSearchSecondary && secondaryCount >= 2) {
+        this.consecutiveCodeSearchLimitedPages++
+        if (this.consecutiveCodeSearchLimitedPages >= MAX_CONSECUTIVE_CODE_SEARCH_LIMITED_PAGES) {
+          this.codeSearchCircuitOpen = true
+        }
+      }
       return {
         kind: 'result',
         result: {
