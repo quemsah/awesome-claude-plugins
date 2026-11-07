@@ -377,7 +377,7 @@ it('checks links concurrently with at most four requests in flight', async () =>
   expect(active).toBe(0)
 })
 
-it('ends the phase after 30 seconds and cancels in-flight requests before returning', async () => {
+it('ends the phase after 45 seconds and cancels in-flight requests before returning', async () => {
   vi.useFakeTimers()
   const db = database()
   for (let index = 0; index < 12; index++) seed(db, `https://github.com/team/project-${index}`)
@@ -402,12 +402,33 @@ it('ends the phase after 30 seconds and cancels in-flight requests before return
     () => {},
     () => at,
   )
-  await vi.advanceTimersByTimeAsync(30_000)
+  await vi.advanceTimersByTimeAsync(45_000)
   const result = await pending
   expect(active).toBe(0)
   expect(result).toMatchObject({ checked: 0, warnings: 1 })
   expect(listPublishable(db)).toHaveLength(12)
   expect(listRunErrors(db, 'health')).toMatchObject([{ error_type: 'health_check_timeout' }])
+})
+
+it('allows a full 200-repository health-check batch to finish within its time budget', async () => {
+  vi.useFakeTimers()
+  const db = database()
+  for (let index = 0; index < 200; index++) seed(db, `https://github.com/team/batch-${index}`)
+  const reader = client(() => new Response(null, { status: 200 }))
+  reader.checkRepository = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    return { kind: 'found' as const, data: { html_url: 'https://github.com/team/batch' } as never }
+  }
+
+  const pending = healthCheck(
+    db,
+    reader,
+    'health',
+    () => {},
+    () => at,
+  )
+  await vi.advanceTimersByTimeAsync(30_000)
+  await expect(pending).resolves.toMatchObject({ checked: 200, warnings: 0 })
 })
 
 it('keeps a failed network request in the catalog and rotates it behind unchecked rows', async () => {
