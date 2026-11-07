@@ -169,9 +169,9 @@ it('keeps repeated secondary-limited search ranges incomplete and reports each f
     { range: firstRange, category: 'temporary-error', query_family: 'marketplace_filename_path' },
     { range: secondRange, category: 'temporary-error', query_family: 'marketplace_filename_path' },
   ])
-  expect(
-    db.prepare("SELECT COUNT(*) AS count FROM discovery_ranges WHERE query_family = 'marketplace_filename_path'").get(),
-  ).toEqual({ count: 0 })
+  expect(db.prepare("SELECT COUNT(*) AS count FROM discovery_ranges WHERE query_family = 'marketplace_filename_path'").get()).toEqual({
+    count: 0,
+  })
 })
 
 it('runs both marketplace queries and counts an empty first page as successful coverage', async () => {
