@@ -25,6 +25,8 @@ describe('POST /api/vitals', () => {
       path: '/[owner]/[repo]',
       rating: 'good',
       release: 'abc123',
+      lcpElementType: null,
+      lcpResourceOrigin: null,
       value: 2_400,
     })
     expect(String(info.mock.calls[0]?.[0])).not.toContain('superpowers')
@@ -35,6 +37,37 @@ describe('POST /api/vitals', () => {
     await post({ ...BASE_METRIC, rating: 'poor', path: '/stats' }, '198.51.100.7')
 
     expect(parseEvent(info)).toMatchObject({ level: 'warn', path: '/stats', rating: 'poor' })
+  })
+
+  it('logs only the LCP element type and resource origin', async () => {
+    const info = mockInfo()
+    await post(
+      {
+        ...BASE_METRIC,
+        rating: 'poor',
+        lcpElementType: 'img',
+        lcpResourceOrigin: 'https://avatars.githubusercontent.com',
+      },
+      '198.51.100.11'
+    )
+
+    expect(parseEvent(info)).toMatchObject({
+      metric: 'LCP',
+      lcpElementType: 'IMG',
+      lcpResourceOrigin: 'https://avatars.githubusercontent.com',
+    })
+    expect(String(info.mock.calls[0]?.[0])).not.toContain('token=private')
+  })
+
+  it('rejects LCP resource values that are not origins', async () => {
+    const info = mockInfo()
+    const response = await post(
+      { ...BASE_METRIC, lcpResourceOrigin: 'https://avatars.githubusercontent.com/u/123?token=private' },
+      '198.51.100.12'
+    )
+
+    expect(response.status).toBe(400)
+    expect(info).not.toHaveBeenCalled()
   })
 
   it('collapses a forged path onto a known template', async () => {
