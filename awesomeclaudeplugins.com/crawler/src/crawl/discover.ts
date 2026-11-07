@@ -552,6 +552,9 @@ export async function discover(
   log?: Log,
   metrics: CodeDiscoveryMetrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0 },
 ): Promise<DiscoverySummary> {
+  // A GitHubReader may be reused for independent crawls. Keep the circuit
+  // bounded to the current discovery pass, not the lifetime of the client.
+  reader.resetCodeSearchCircuit?.()
   const summary: DiscoverySummary = {
     newUrls: 0,
     existingUrls: 0,

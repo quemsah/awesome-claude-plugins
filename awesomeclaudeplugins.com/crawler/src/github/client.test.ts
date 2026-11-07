@@ -224,6 +224,42 @@ describe('GitHubClient', () => {
     expect(test.requests).toHaveLength(5)
   })
 
+  it.each([
+    ['HTTP 404', [new Response(null, { status: 404 })], 404],
+    ['HTTP 503', Array.from({ length: 3 }, () => new Response(null, { status: 503 })), 503],
+    ['network failure', Array.from({ length: 3 }, () => new Error('network unavailable')), null],
+  ])('breaks the consecutive limited-page streak after %s', async (_name, interruption, status) => {
+    const limited = () => Response.json({ message: 'You have exceeded a secondary rate limit' }, { status: 403 })
+    const test = harness([limited(), limited(), ...interruption, limited(), limited(), limited(), limited()])
+
+    await expect(test.client.searchCode('marketplace.json', 1)).rejects.toMatchObject({
+      name: 'GitHubTemporaryError',
+      status: 403,
+    })
+    await expect(test.client.searchCode('marketplace.json', 2)).rejects.toMatchObject({
+      name: 'GitHubTemporaryError',
+      status,
+    })
+    await expect(test.client.searchCode('marketplace.json', 3)).rejects.toBeInstanceOf(GitHubTemporaryError)
+    expect(test.client.isCodeSearchCircuitOpen()).toBe(false)
+    await expect(test.client.searchCode('marketplace.json', 4)).rejects.toBeInstanceOf(GitHubTemporaryError)
+    expect(test.client.isCodeSearchCircuitOpen()).toBe(true)
+    expect(test.requests).toHaveLength(2 + interruption.length + 4)
+  })
+
+  it('allows a reused client to start a fresh crawl after its circuit opens', async () => {
+    const limited = () => Response.json({ message: 'You have exceeded a secondary rate limit' }, { status: 403 })
+    const test = harness([limited(), limited(), limited(), limited(), Response.json(page)])
+    await expect(test.client.searchCode('marketplace.json', 1)).rejects.toBeInstanceOf(GitHubTemporaryError)
+    await expect(test.client.searchCode('marketplace.json', 2)).rejects.toBeInstanceOf(GitHubTemporaryError)
+    expect(test.client.isCodeSearchCircuitOpen()).toBe(true)
+
+    test.client.resetCodeSearchCircuit()
+    expect(test.client.isCodeSearchCircuitOpen()).toBe(false)
+    await expect(test.client.searchCode('marketplace.json', 3)).resolves.toEqual(page)
+    expect(test.requests).toHaveLength(5)
+  })
+
   it('honors GitHub Retry-After when longer than the Code Search recovery cooldown', async () => {
     const limited = Response.json(
       { message: 'You have exceeded a secondary rate limit' },
