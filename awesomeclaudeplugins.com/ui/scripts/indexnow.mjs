@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildCatalogRecordsFromSqlite, diffCatalogRecords } from './indexnow-changes.mjs'
@@ -10,6 +11,8 @@ const INDEXNOW_KEY = '14273a4aad028282eac8537cb6ea0e5f'
 const KEY_LOCATION = new URL(`/${INDEXNOW_KEY}.txt`, SITE_URL).toString()
 const MAX_URLS_PER_REQUEST = Number(process.env.INDEXNOW_BATCH_SIZE) || 10_000
 const MODE = process.env.INDEXNOW_MODE ?? 'full'
+const RESOLVE_DEPLOYED = process.env.INDEXNOW_RESOLVE_DEPLOYED === 'true'
+const SNAPSHOT_ID_PATTERN = /^[a-zA-Z0-9._-]+$/
 const BASELINE_PATH =
   process.env.INDEXNOW_BASELINE_PATH ?? fileURLToPath(new URL('../.indexnow-cache/indexnow-state.sqlite', import.meta.url))
 const CATALOG_PATH = process.env.CATALOG_SQLITE_PATH ?? fileURLToPath(new URL('../src/data/catalog.sqlite', import.meta.url))
@@ -140,6 +143,55 @@ async function waitForCatalogDeployment(fingerprint) {
   throw new Error(`Catalog deployment was not ready: ${lastReason}. IndexNow baseline was not advanced.`)
 }
 
+async function resolveDeployedCatalog(localCatalog) {
+  if (!RESOLVE_DEPLOYED) return localCatalog
+
+  let versionResponse
+  try {
+    versionResponse = await fetch(new URL('/api/catalog-version', SITE_URL), {
+      headers: { 'Cache-Control': 'no-cache' },
+      signal: AbortSignal.timeout(10_000),
+    })
+  } catch (error) {
+    if (!DEFER_UNTIL_DEPLOYED) throw error
+    console.log(`IndexNow deferred until the next scheduled run: ${error instanceof Error ? error.message : String(error)}`)
+    return null
+  }
+  if (!versionResponse.ok) {
+    if (DEFER_UNTIL_DEPLOYED) {
+      console.log(`IndexNow deferred until the next scheduled run: catalog version returned HTTP ${versionResponse.status}.`)
+      return null
+    }
+    throw new Error(`Failed to resolve deployed catalog: HTTP ${versionResponse.status}`)
+  }
+  const deployed = await versionResponse.json()
+  if (deployed?.sha256 === localCatalog.fingerprint) return localCatalog
+  if (typeof deployed?.snapshotId !== 'string' || !SNAPSHOT_ID_PATTERN.test(deployed.snapshotId)) {
+    throw new Error('Cannot resolve deployed catalog: production returned an invalid snapshotId')
+  }
+
+  const repository = process.env.GITHUB_REPOSITORY ?? 'quemsah/awesome-claude-plugins'
+  const artifactUrl = `https://github.com/${repository}/releases/download/catalog-${encodeURIComponent(deployed.snapshotId)}/catalog.sqlite`
+  const response = await fetch(artifactUrl, { signal: AbortSignal.timeout(300_000) })
+  if (!response.ok) {
+    throw new Error(`Failed to download deployed catalog ${deployed.snapshotId}: HTTP ${response.status}`)
+  }
+  const bytes = Buffer.from(await response.arrayBuffer())
+  const tempDir = mkdtempSync(join(tmpdir(), 'indexnow-catalog-'))
+  const tempPath = join(tempDir, 'catalog.sqlite')
+  try {
+    writeFileSync(tempPath, bytes)
+    const resolved = buildCatalogRecordsFromSqlite(tempPath, SITE_URL)
+    if (resolved.fingerprint !== deployed.sha256) {
+      throw new Error(`Downloaded catalog fingerprint mismatch: expected ${deployed.sha256}, got ${resolved.fingerprint}`)
+    }
+    console.log(`Resolved deployed catalog snapshot ${deployed.snapshotId}.`)
+    return resolved
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true })
+  }
+}
+
 async function waitForChangedPages(urls) {
   let pending = urls.map((url) => ({ url, reason: 'not checked' }))
   for (let attempt = 1; attempt <= MAX_READY_ATTEMPTS && pending.length > 0; attempt += 1) {
@@ -199,7 +251,9 @@ async function submitUrls(urls, expectedFingerprint) {
 }
 
 async function runIndexNow() {
-  const { records: currentRecords, fingerprint: currentFingerprint } = readCurrentCatalog()
+  const currentCatalog = await resolveDeployedCatalog(readCurrentCatalog())
+  if (!currentCatalog) return
+  const { records: currentRecords, fingerprint: currentFingerprint } = currentCatalog
   // An HTTP 200 on a pre-existing page does not prove that new catalog data is live.
   // Never advance the baseline until the deployed build exposes the exact catalog snapshot.
   const isDeployed = await waitForCatalogDeployment(currentFingerprint)

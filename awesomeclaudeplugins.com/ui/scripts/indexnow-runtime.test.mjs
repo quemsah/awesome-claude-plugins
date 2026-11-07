@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { buildPublicCatalog } from '@awesome-claude-plugins/catalog-snapshot/build'
+import fixtureRepos from '../src/test/fixtures/repos.json' with { type: 'json' }
 import { buildCatalogRecordsFromSqlite } from './indexnow-changes.mjs'
 import { loadBaseline, saveBaseline } from './indexnow-state.mjs'
 
@@ -14,15 +16,23 @@ const API_FAILURE_PATTERN = /IndexNow rejected the request: 503/
 const BATCH_ABORT_REGEX = /Catalog deployment changed between batch submissions/
 let importCounter = 0
 
-async function runWithMockedFetch({ baselinePath, fetcher, defer = true, batchSize, mode = 'changed' }) {
+async function runWithMockedFetch({ baselinePath, fetcher, defer = true, batchSize, mode = 'changed', resolveDeployed = false }) {
   const previousFetch = globalThis.fetch
-  const keys = ['INDEXNOW_MODE', 'INDEXNOW_SITE_URL', 'INDEXNOW_BASELINE_PATH', 'INDEXNOW_DEFER_UNTIL_DEPLOYED', 'INDEXNOW_BATCH_SIZE']
+  const keys = [
+    'INDEXNOW_MODE',
+    'INDEXNOW_SITE_URL',
+    'INDEXNOW_BASELINE_PATH',
+    'INDEXNOW_DEFER_UNTIL_DEPLOYED',
+    'INDEXNOW_RESOLVE_DEPLOYED',
+    'INDEXNOW_BATCH_SIZE',
+  ]
   const previousEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
   try {
     process.env.INDEXNOW_MODE = mode
     process.env.INDEXNOW_SITE_URL = site
     process.env.INDEXNOW_BASELINE_PATH = baselinePath
     process.env.INDEXNOW_DEFER_UNTIL_DEPLOYED = String(defer)
+    process.env.INDEXNOW_RESOLVE_DEPLOYED = String(resolveDeployed)
     if (batchSize !== undefined) process.env.INDEXNOW_BATCH_SIZE = String(batchSize)
     globalThis.fetch = fetcher
     importCounter += 1
@@ -389,6 +399,63 @@ test('IndexNow full mode establishes baseline and submits URLs when mock site an
     const loaded = loadBaseline(baselinePath)
     assert.ok(loaded.size > 0, 'Baseline should be established from resolved deployed release')
     assert.ok(submittedUrls.length > 0, 'Submitted URLs should be recorded')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('IndexNow resolves and submits the deployed SQLite snapshot when production rolled back', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'indexnow-resolve-rollback-'))
+  const baselinePath = join(dir, 'indexnow-state.sqlite')
+  const deployedCatalogPath = join(dir, 'deployed-catalog.sqlite')
+  saveBaseline(baselinePath, new Map())
+  const deployedSnapshotId = 'rollback-snapshot'
+  buildPublicCatalog(
+    {
+      records: fixtureRepos,
+      stats: [{ id: 1, date: '2026-11-01T00:00:00.000Z', size: fixtureRepos.length }],
+      snapshotId: deployedSnapshotId,
+    },
+    deployedCatalogPath
+  )
+  const deployedCatalog = buildCatalogRecordsFromSqlite(deployedCatalogPath, site)
+  const firstUrl = [...deployedCatalog.records.values()][0]?.url
+  assert.ok(firstUrl, 'Deployed fixture must have an indexable repository')
+  const artifactUrl = `https://github.com/quemsah/awesome-claude-plugins/releases/download/catalog-${deployedSnapshotId}/catalog.sqlite`
+  const submitted = []
+
+  try {
+    await runWithMockedFetch({
+      baselinePath,
+      mode: 'full',
+      resolveDeployed: true,
+      fetcher: async (url, options) => {
+        const endpoint = String(url)
+        if (endpoint === `${site}/api/catalog-version`) {
+          return {
+            ok: true,
+            json: async () => ({ sha256: deployedCatalog.fingerprint, snapshotId: deployedSnapshotId }),
+          }
+        }
+        if (endpoint === artifactUrl) {
+          const bytes = readFileSync(deployedCatalogPath)
+          return { ok: true, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) }
+        }
+        if (endpoint === `${site}/sitemap.xml`) {
+          return { ok: true, text: async () => `<urlset><loc>${firstUrl}</loc></urlset>` }
+        }
+        if (endpoint === 'https://api.indexnow.org/indexnow') {
+          submitted.push(...JSON.parse(options?.body ?? '{}').urlList)
+          return { ok: true }
+        }
+        throw new Error(`Unexpected request: ${endpoint}`)
+      },
+    })
+    assert.deepEqual(submitted, [firstUrl])
+    const baseline = loadBaseline(baselinePath)
+    const [key, record] = [...deployedCatalog.records].find(([, value]) => value.url === firstUrl)
+    assert.equal(baseline.size, 1)
+    assert.deepEqual(baseline.get(key), record)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
