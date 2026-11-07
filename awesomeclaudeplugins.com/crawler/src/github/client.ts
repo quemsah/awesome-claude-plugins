@@ -1234,11 +1234,14 @@ export class GitHubClient implements GitHubReader {
       secondary = action.secondary
     }
     if (secondary) secondaryCount++
-    this.budget.defer(bucket, Math.max(delay ?? 0, secondary ? 60_000 * 2 ** (secondaryCount - 1) + Math.floor(this.random() * 1_000) : 0))
+    // One Code Search retry after the shared cooldown recovers brief secondary
+    // limits without the exponential wait of the generic retry policy.
+    // A second secondary limit marks the page incomplete for a future crawl.
+    const codeSearchSecondary = bucket === 'code_search' && secondary
+    const secondaryDelay = codeSearchSecondary ? 60_000 : 60_000 * 2 ** (secondaryCount - 1)
+    this.budget.defer(bucket, Math.max(delay ?? 0, secondary ? secondaryDelay + Math.floor(this.random() * 1_000) : 0))
     const failureReason: GitHubRetryReason = secondary ? 'secondary_rate_limit' : 'primary_rate_limit'
-    // Code Search can fan out into many independent pages and partitions. Retrying
-    // each secondary limit here compounds the crawler's own recovery attempts.
-    if (finalAttempt || (bucket === 'code_search' && secondary)) {
+    if (finalAttempt || (codeSearchSecondary && secondaryCount >= 2)) {
       return {
         kind: 'result',
         result: {
