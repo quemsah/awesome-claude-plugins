@@ -8,6 +8,8 @@ import { recordRunError, runWhileActive } from '../storage/runs.js'
 
 export type HealthCheckSummary = { checked: number; deleted: number; renamed: number; warnings: number }
 
+const HEALTH_CHECK_TIMEOUT_MS = 45_000
+
 export async function healthCheck(
   db: Database.Database,
   reader: GitHubReader,
@@ -35,7 +37,7 @@ export async function healthCheck(
   const timer = setTimeout(() => {
     timedOut = true
     controller.abort()
-  }, 30_000)
+  }, HEALTH_CHECK_TIMEOUT_MS)
   let cursor = 0
   const check = reader.checkRepository.bind(reader)
   const worker = async () => {
