@@ -59,15 +59,25 @@ describe('POST /api/vitals', () => {
     expect(String(info.mock.calls[0]?.[0])).not.toContain('token=private')
   })
 
-  it('rejects LCP resource values that are not origins', async () => {
+  it('drops invalid optional LCP diagnostics without losing the metric', async () => {
     const info = mockInfo()
     const response = await post(
-      { ...BASE_METRIC, lcpResourceOrigin: 'https://avatars.githubusercontent.com/u/123?token=private' },
+      {
+        ...BASE_METRIC,
+        lcpElementType: 'INVALID TAG',
+        lcpResourceOrigin: 'https://avatars.githubusercontent.com/u/123?token=private',
+      },
       '198.51.100.12'
     )
 
-    expect(response.status).toBe(400)
-    expect(info).not.toHaveBeenCalled()
+    expect(response.status).toBe(204)
+    expect(info).toHaveBeenCalledTimes(1)
+    expect(parseEvent(info)).toMatchObject({
+      metric: 'LCP',
+      lcpElementType: null,
+      lcpResourceOrigin: null,
+    })
+    expect(String(info.mock.calls[0]?.[0])).not.toContain('token=private')
   })
 
   it('collapses a forged path onto a known template', async () => {
