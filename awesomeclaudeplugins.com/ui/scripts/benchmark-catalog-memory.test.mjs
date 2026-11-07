@@ -12,6 +12,8 @@ const script = fileURLToPath(new URL('./benchmark-catalog-memory.mjs', import.me
 function compare({
   baselineImport = 100,
   candidateImport = 100,
+  baselineBefore = 50,
+  candidateBefore = 50,
   baselineWarm = 100,
   candidateWarm = 100,
   baselinePeak = 100,
@@ -19,10 +21,10 @@ function compare({
   extraArgs = [],
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'catalog-memory-gate-'))
-  const report = (afterImport, afterQueries, peakRssMiB) => ({
+  const report = (beforeImport, afterImport, afterQueries, peakRssMiB) => ({
     catalogSize: 1,
     phases: {
-      beforeImport: { rssMiB: 50 },
+      beforeImport: { rssMiB: beforeImport },
       afterImport: { rssMiB: afterImport },
       afterFirstSearch: { rssMiB: afterQueries },
       afterQueries: { rssMiB: afterQueries, peakRssMiB },
@@ -30,8 +32,8 @@ function compare({
   })
   const basePath = join(dir, 'baseline.json')
   const candidatePath = join(dir, 'candidate.json')
-  writeFileSync(basePath, JSON.stringify(report(baselineImport, baselineWarm, baselinePeak)))
-  writeFileSync(candidatePath, JSON.stringify(report(candidateImport, candidateWarm, candidatePeak)))
+  writeFileSync(basePath, JSON.stringify(report(baselineBefore, baselineImport, baselineWarm, baselinePeak)))
+  writeFileSync(candidatePath, JSON.stringify(report(candidateBefore, candidateImport, candidateWarm, candidatePeak)))
   const childEnv = { ...process.env }
   delete childEnv.GITHUB_STEP_SUMMARY
   const result = spawnSync(process.execPath, [script, '--baseline', basePath, '--candidate', candidatePath, ...extraArgs], {
@@ -54,6 +56,36 @@ test('regular comparisons accept an import increase within the 10% regression bu
   assert.equal(result.status, 0, result.stderr)
 })
 
+test('import gate measures the catalog delta instead of absolute process RSS', () => {
+  const result = compare({
+    baselineBefore: 100,
+    baselineImport: 150,
+    candidateBefore: 120,
+    candidateImport: 160,
+    baselineWarm: 170,
+    candidateWarm: 170,
+    baselinePeak: 180,
+    candidatePeak: 180,
+  })
+  // Absolute import RSS is 6.7% higher, but the catalog allocation is 20% lower.
+  assert.equal(result.status, 0, result.stderr)
+})
+
+test('import gate rejects an increased catalog delta even when absolute RSS hardly changes', () => {
+  const result = compare({
+    baselineBefore: 100,
+    baselineImport: 150,
+    candidateBefore: 100,
+    candidateImport: 158,
+    baselineWarm: 170,
+    candidateWarm: 170,
+    baselinePeak: 180,
+    candidatePeak: 180,
+  })
+  assert.notEqual(result.status, 0)
+  assert.ok(result.stderr.includes('Catalog initialization RSS regression exceeds 10%'))
+})
+
 test('regular comparisons reject RSS growth above 10%', () => {
   const result = compare({ baselineImport: 100, candidateImport: 100, baselineWarm: 100, candidateWarm: 111 })
   assert.notEqual(result.status, 0)
@@ -73,7 +105,7 @@ test('regular comparisons also cap initialization and peak RSS growth at 10%', (
 test('migration comparisons still require at least 10% lower import RSS', () => {
   const result = compare({
     baselineImport: 100,
-    candidateImport: 95,
+    candidateImport: 96,
     extraArgs: ['--require-import-improvement'],
   })
   assert.notEqual(result.status, 0)
