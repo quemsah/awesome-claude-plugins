@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -422,6 +423,9 @@ test('IndexNow resolves and submits the deployed SQLite snapshot when production
   const firstUrl = [...deployedCatalog.records.values()][0]?.url
   assert.ok(firstUrl, 'Deployed fixture must have an indexable repository')
   const artifactUrl = `https://github.com/quemsah/awesome-claude-plugins/releases/download/catalog-${deployedSnapshotId}/catalog.sqlite`
+  const releaseUrl = `https://api.github.com/repos/quemsah/awesome-claude-plugins/releases/tags/catalog-${deployedSnapshotId}`
+  const artifactBytes = readFileSync(deployedCatalogPath)
+  const artifactDigest = createHash('sha256').update(artifactBytes).digest('hex')
   const submitted = []
 
   try {
@@ -437,9 +441,17 @@ test('IndexNow resolves and submits the deployed SQLite snapshot when production
             json: async () => ({ sha256: deployedCatalog.fingerprint, snapshotId: deployedSnapshotId }),
           }
         }
+        if (endpoint === releaseUrl) {
+          return {
+            ok: true,
+            json: async () => ({
+              tag_name: `catalog-${deployedSnapshotId}`,
+              assets: [{ name: 'catalog.sqlite', state: 'uploaded', browser_download_url: artifactUrl, size: artifactBytes.byteLength, digest: `sha256:${artifactDigest}` }],
+            }),
+          }
+        }
         if (endpoint === artifactUrl) {
-          const bytes = readFileSync(deployedCatalogPath)
-          return { ok: true, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) }
+          return { ok: true, arrayBuffer: async () => artifactBytes.buffer.slice(artifactBytes.byteOffset, artifactBytes.byteOffset + artifactBytes.byteLength) }
         }
         if (endpoint === `${site}/sitemap.xml`) {
           return { ok: true, text: async () => `<urlset><loc>${firstUrl}</loc></urlset>` }
@@ -458,5 +470,83 @@ test('IndexNow resolves and submits the deployed SQLite snapshot when production
     assert.deepEqual(baseline.get(key), record)
   } finally {
     rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('scheduled IndexNow keeps its baseline on invalid rollback release artifacts or a changing deployment', async () => {
+  for (const scenario of ['digest-mismatch', 'missing-digest', 'snapshot-mismatch', 'deployment-changed']) {
+    const dir = mkdtempSync(join(tmpdir(), `indexnow-integrity-${scenario}-`))
+    const baselinePath = join(dir, 'baseline.sqlite')
+    const snapshotPath = join(dir, 'snapshot.sqlite')
+    const deployedSnapshotId = 'expected-rollback'
+    const actualSnapshotId = scenario === 'snapshot-mismatch' ? 'unexpected-rollback' : deployedSnapshotId
+    buildPublicCatalog(
+      {
+        records: fixtureRepos,
+        stats: [{ id: 1, date: '2026-11-01T00:00:00.000Z', size: fixtureRepos.length }],
+        snapshotId: actualSnapshotId,
+      },
+      snapshotPath
+    )
+    const catalog = buildCatalogRecordsFromSqlite(snapshotPath, site)
+    const artifactBytes = readFileSync(snapshotPath)
+    const digest = createHash('sha256').update(artifactBytes).digest('hex')
+    const tag = `catalog-${deployedSnapshotId}`
+    const releaseUrl = `https://api.github.com/repos/quemsah/awesome-claude-plugins/releases/tags/${tag}`
+    const artifactUrl = `https://github.com/quemsah/awesome-claude-plugins/releases/download/${tag}/catalog.sqlite`
+    const submitted = []
+    let versionChecks = 0
+    saveBaseline(baselinePath, new Map([['retained/repo', { url: `${site}/retained/repo`, fingerprint: 'baseline' }]]))
+
+    try {
+      await runWithMockedFetch({
+        baselinePath,
+        mode: 'full',
+        defer: true,
+        resolveDeployed: true,
+        fetcher: async (url) => {
+          const endpoint = String(url)
+          if (endpoint === `${site}/api/catalog-version`) {
+            versionChecks++
+            return {
+              ok: true,
+              json: async () => ({
+                sha256: scenario === 'deployment-changed' && versionChecks > 1 ? '0'.repeat(64) : catalog.fingerprint,
+                snapshotId: deployedSnapshotId,
+              }),
+            }
+          }
+          if (endpoint === releaseUrl) {
+            return {
+              ok: true,
+              json: async () => ({
+                tag_name: tag,
+                assets: [{
+                  name: 'catalog.sqlite',
+                  state: 'uploaded',
+                  browser_download_url: artifactUrl,
+                  size: artifactBytes.byteLength,
+                  digest: scenario === 'missing-digest' ? null : `sha256:${scenario === 'digest-mismatch' ? '0'.repeat(64) : digest}`,
+                }],
+              }),
+            }
+          }
+          if (endpoint === artifactUrl) {
+            return { ok: true, arrayBuffer: async () => artifactBytes.buffer.slice(artifactBytes.byteOffset, artifactBytes.byteOffset + artifactBytes.byteLength) }
+          }
+          if (endpoint === 'https://api.indexnow.org/indexnow') {
+            submitted.push(endpoint)
+            return { ok: true }
+          }
+          throw new Error(`Unexpected request: ${endpoint}`)
+        },
+      })
+      assert.deepEqual(submitted, [], `No IndexNow submission expected for ${scenario}`)
+      assert.deepEqual([...loadBaseline(baselinePath)], [
+        ['retained/repo', { url: `${site}/retained/repo`, fingerprint: 'baseline' }],
+      ])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   }
 })
