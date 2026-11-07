@@ -140,6 +140,40 @@ it('honors rejection caching in Code Search but retries after the 90-day TTL', a
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 1 })
 })
 
+it('keeps repeated secondary-limited search ranges incomplete and reports each failure', async () => {
+  const db = database()
+  const warnings: string[] = []
+  const metrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0 }
+  const result = await discover(
+    db,
+    reader(async (query) => {
+      if (query.startsWith('filename:marketplace.json')) {
+        throw new GitHubTemporaryError('GitHub rate limited', 403, 0)
+      }
+      return page([])
+    }),
+    'run-1',
+    [firstRange, secondRange],
+    undefined,
+    undefined,
+    (event) => {
+      if (event.event === 'crawl.warning') warnings.push(event.category)
+    },
+    metrics,
+  )
+
+  expect(result.warningCount).toBe(2)
+  expect(metrics.incompletePartitions).toBe(2)
+  expect(warnings).toEqual(['temporary-error', 'temporary-error'])
+  expect(result.warnings).toEqual([
+    { range: firstRange, category: 'temporary-error', query_family: 'marketplace_filename_path' },
+    { range: secondRange, category: 'temporary-error', query_family: 'marketplace_filename_path' },
+  ])
+  expect(
+    db.prepare("SELECT COUNT(*) AS count FROM discovery_ranges WHERE query_family = 'marketplace_filename_path'").get(),
+  ).toEqual({ count: 0 })
+})
+
 it('runs both marketplace queries and counts an empty first page as successful coverage', async () => {
   const db = database()
   const calls: Array<[string, number]> = []
