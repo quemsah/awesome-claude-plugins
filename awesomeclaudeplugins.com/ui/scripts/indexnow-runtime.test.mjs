@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { buildPublicCatalog } from '@awesome-claude-plugins/catalog-snapshot/build'
+import fixtureRepos from '../src/test/fixtures/repos.json' with { type: 'json' }
 import { buildCatalogRecordsFromSqlite } from './indexnow-changes.mjs'
 import { loadBaseline, saveBaseline } from './indexnow-state.mjs'
 
@@ -14,15 +17,23 @@ const API_FAILURE_PATTERN = /IndexNow rejected the request: 503/
 const BATCH_ABORT_REGEX = /Catalog deployment changed between batch submissions/
 let importCounter = 0
 
-async function runWithMockedFetch({ baselinePath, fetcher, defer = true, batchSize, mode = 'changed' }) {
+async function runWithMockedFetch({ baselinePath, fetcher, defer = true, batchSize, mode = 'changed', resolveDeployed = false }) {
   const previousFetch = globalThis.fetch
-  const keys = ['INDEXNOW_MODE', 'INDEXNOW_SITE_URL', 'INDEXNOW_BASELINE_PATH', 'INDEXNOW_DEFER_UNTIL_DEPLOYED', 'INDEXNOW_BATCH_SIZE']
+  const keys = [
+    'INDEXNOW_MODE',
+    'INDEXNOW_SITE_URL',
+    'INDEXNOW_BASELINE_PATH',
+    'INDEXNOW_DEFER_UNTIL_DEPLOYED',
+    'INDEXNOW_RESOLVE_DEPLOYED',
+    'INDEXNOW_BATCH_SIZE',
+  ]
   const previousEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
   try {
     process.env.INDEXNOW_MODE = mode
     process.env.INDEXNOW_SITE_URL = site
     process.env.INDEXNOW_BASELINE_PATH = baselinePath
     process.env.INDEXNOW_DEFER_UNTIL_DEPLOYED = String(defer)
+    process.env.INDEXNOW_RESOLVE_DEPLOYED = String(resolveDeployed)
     if (batchSize !== undefined) process.env.INDEXNOW_BATCH_SIZE = String(batchSize)
     globalThis.fetch = fetcher
     importCounter += 1
@@ -391,5 +402,192 @@ test('IndexNow full mode establishes baseline and submits URLs when mock site an
     assert.ok(submittedUrls.length > 0, 'Submitted URLs should be recorded')
   } finally {
     rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('IndexNow resolves and submits the deployed SQLite snapshot when production rolled back', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'indexnow-resolve-rollback-'))
+  const baselinePath = join(dir, 'indexnow-state.sqlite')
+  const deployedCatalogPath = join(dir, 'deployed-catalog.sqlite')
+  saveBaseline(baselinePath, new Map())
+  const deployedSnapshotId = 'rollback-snapshot'
+  buildPublicCatalog(
+    {
+      records: fixtureRepos,
+      stats: [{ id: 1, date: '2026-11-01T00:00:00.000Z', size: fixtureRepos.length }],
+      snapshotId: deployedSnapshotId,
+    },
+    deployedCatalogPath
+  )
+  const deployedCatalog = buildCatalogRecordsFromSqlite(deployedCatalogPath, site)
+  const firstUrl = [...deployedCatalog.records.values()][0]?.url
+  assert.ok(firstUrl, 'Deployed fixture must have an indexable repository')
+  const artifactUrl = `https://github.com/quemsah/awesome-claude-plugins/releases/download/catalog-${deployedSnapshotId}/catalog.sqlite`
+  const releaseUrl = `https://api.github.com/repos/quemsah/awesome-claude-plugins/releases/tags/catalog-${deployedSnapshotId}`
+  const artifactBytes = readFileSync(deployedCatalogPath)
+  const artifactDigest = createHash('sha256').update(artifactBytes).digest('hex')
+  const submitted = []
+
+  try {
+    await runWithMockedFetch({
+      baselinePath,
+      mode: 'full',
+      resolveDeployed: true,
+      fetcher: async (url, options) => {
+        const endpoint = String(url)
+        if (endpoint === `${site}/api/catalog-version`) {
+          return {
+            ok: true,
+            json: async () => ({ sha256: deployedCatalog.fingerprint, snapshotId: deployedSnapshotId }),
+          }
+        }
+        if (endpoint === releaseUrl) {
+          return {
+            ok: true,
+            json: async () => ({
+              // biome-ignore lint/style/useNamingConvention: GitHub release API uses snake_case keys
+              tag_name: `catalog-${deployedSnapshotId}`,
+              assets: [
+                {
+                  name: 'catalog.sqlite',
+                  state: 'uploaded',
+                  // biome-ignore lint/style/useNamingConvention: GitHub release API uses snake_case keys
+                  browser_download_url: artifactUrl,
+                  size: artifactBytes.byteLength,
+                  digest: `sha256:${artifactDigest}`,
+                },
+              ],
+            }),
+          }
+        }
+        if (endpoint === artifactUrl) {
+          return new Response(artifactBytes)
+        }
+        if (endpoint === `${site}/sitemap.xml`) {
+          return { ok: true, text: async () => `<urlset><loc>${firstUrl}</loc></urlset>` }
+        }
+        if (endpoint === 'https://api.indexnow.org/indexnow') {
+          submitted.push(...JSON.parse(options?.body ?? '{}').urlList)
+          return { ok: true }
+        }
+        throw new Error(`Unexpected request: ${endpoint}`)
+      },
+    })
+    assert.deepEqual(submitted, [firstUrl])
+    const baseline = loadBaseline(baselinePath)
+    const [key, record] = [...deployedCatalog.records].find(([, value]) => value.url === firstUrl)
+    assert.equal(baseline.size, 1)
+    assert.deepEqual(baseline.get(key), record)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('scheduled IndexNow keeps its baseline on invalid rollback release artifacts or a changing deployment', async () => {
+  for (const scenario of [
+    'digest-mismatch',
+    'missing-digest',
+    'snapshot-mismatch',
+    'deployment-changed',
+    'oversized-release',
+    'stream-overflow',
+    'truncated-stream',
+    'missing-body',
+  ]) {
+    const dir = mkdtempSync(join(tmpdir(), `indexnow-integrity-${scenario}-`))
+    const baselinePath = join(dir, 'baseline.sqlite')
+    const snapshotPath = join(dir, 'snapshot.sqlite')
+    const deployedSnapshotId = 'expected-rollback'
+    const actualSnapshotId = scenario === 'snapshot-mismatch' ? 'unexpected-rollback' : deployedSnapshotId
+    buildPublicCatalog(
+      {
+        records: fixtureRepos,
+        stats: [{ id: 1, date: '2026-11-01T00:00:00.000Z', size: fixtureRepos.length }],
+        snapshotId: actualSnapshotId,
+      },
+      snapshotPath
+    )
+    const catalog = buildCatalogRecordsFromSqlite(snapshotPath, site)
+    const artifactBytes = readFileSync(snapshotPath)
+    const digest = createHash('sha256').update(artifactBytes).digest('hex')
+    const tag = `catalog-${deployedSnapshotId}`
+    const releaseUrl = `https://api.github.com/repos/quemsah/awesome-claude-plugins/releases/tags/${tag}`
+    const artifactUrl = `https://github.com/quemsah/awesome-claude-plugins/releases/download/${tag}/catalog.sqlite`
+    const submitted = []
+    let versionChecks = 0
+    let downloadRequests = 0
+    let cancelledDownloads = 0
+    saveBaseline(baselinePath, new Map([['retained/repo', { url: `${site}/retained/repo`, fingerprint: 'baseline' }]]))
+
+    try {
+      await runWithMockedFetch({
+        baselinePath,
+        mode: 'full',
+        defer: true,
+        resolveDeployed: true,
+        fetcher: async (url) => {
+          const endpoint = String(url)
+          if (endpoint === `${site}/api/catalog-version`) {
+            versionChecks++
+            return {
+              ok: true,
+              json: async () => ({
+                sha256: scenario === 'deployment-changed' && versionChecks > 1 ? '0'.repeat(64) : catalog.fingerprint,
+                snapshotId: deployedSnapshotId,
+              }),
+            }
+          }
+          if (endpoint === releaseUrl) {
+            return {
+              ok: true,
+              json: async () => ({
+                // biome-ignore lint/style/useNamingConvention: GitHub release API uses snake_case keys
+                tag_name: tag,
+                assets: [
+                  {
+                    name: 'catalog.sqlite',
+                    state: 'uploaded',
+                    // biome-ignore lint/style/useNamingConvention: GitHub release API uses snake_case keys
+                    browser_download_url: artifactUrl,
+                    size: scenario === 'oversized-release' ? 512 * 1024 * 1024 + 1 : artifactBytes.byteLength,
+                    digest: scenario === 'missing-digest' ? null : `sha256:${scenario === 'digest-mismatch' ? '0'.repeat(64) : digest}`,
+                  },
+                ],
+              }),
+            }
+          }
+          if (endpoint === artifactUrl) {
+            downloadRequests++
+            if (scenario === 'missing-body') return { ok: true, body: null }
+            if (scenario === 'stream-overflow') {
+              // Keep the stream open after its oversized first chunk. It must be
+              // explicitly canceled rather than merely unlocked by the consumer.
+              const body = new ReadableStream({
+                start(controller) {
+                  controller.enqueue(Buffer.concat([artifactBytes, Buffer.from('extra')]))
+                },
+                cancel() {
+                  cancelledDownloads++
+                },
+              })
+              return new Response(body)
+            }
+            if (scenario === 'truncated-stream') return new Response(artifactBytes.subarray(0, -1))
+            return new Response(artifactBytes)
+          }
+          if (endpoint === 'https://api.indexnow.org/indexnow') {
+            submitted.push(endpoint)
+            return { ok: true }
+          }
+          throw new Error(`Unexpected request: ${endpoint}`)
+        },
+      })
+      assert.deepEqual(submitted, [], `No IndexNow submission expected for ${scenario}`)
+      if (scenario === 'oversized-release' || scenario === 'missing-digest') assert.equal(downloadRequests, 0)
+      if (scenario === 'stream-overflow') assert.equal(cancelledDownloads, 1, 'An incomplete artifact stream must be canceled')
+      assert.deepEqual([...loadBaseline(baselinePath)], [['retained/repo', { url: `${site}/retained/repo`, fingerprint: 'baseline' }]])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   }
 })

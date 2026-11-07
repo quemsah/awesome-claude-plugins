@@ -38,8 +38,8 @@ export function buildCatalogRecordsFromReader(reader, siteUrl) {
   return records
 }
 
-export function buildCatalogRecordsFromSqlite(catalogPath, siteUrl) {
-  const reader = openPublicCatalog(catalogPath)
+export function buildCatalogRecordsFromSqlite(catalogPath, siteUrl, expected = {}) {
+  const reader = openPublicCatalog(catalogPath, expected)
   try {
     const records = buildCatalogRecordsFromReader(reader, siteUrl)
     const metadata = reader.getCatalogMetadata()

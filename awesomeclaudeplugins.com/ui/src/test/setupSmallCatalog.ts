@@ -26,7 +26,6 @@ if (!(existsSync(fixtureDbPath) && existsSync(fixtureManifestPath))) {
 process.env.CATALOG_SQLITE_PATH = fixtureDbPath
 process.env.CATALOG_MANIFEST_PATH = fixtureManifestPath
 
-// Backward compatibility for any remaining tests importing catalogStore.ts
 vi.mock('../lib/catalogStore.ts', async () => {
   const repos = fixtureRepos as unknown as Repo[]
   return {
@@ -36,7 +35,5 @@ vi.mock('../lib/catalogStore.ts', async () => {
       const found = repos.find((r) => r.id === repo.id)
       return (found ? { ...repo, ...found } : repo) as T
     },
-    isSearchCatalogRepo: (_repo: unknown): boolean => false,
-    readCatalogSearchFields: () => [],
   }
 })

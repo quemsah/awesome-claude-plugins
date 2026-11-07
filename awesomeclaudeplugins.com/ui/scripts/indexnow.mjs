@@ -1,4 +1,6 @@
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildCatalogRecordsFromSqlite, diffCatalogRecords } from './indexnow-changes.mjs'
@@ -10,6 +12,12 @@ const INDEXNOW_KEY = '14273a4aad028282eac8537cb6ea0e5f'
 const KEY_LOCATION = new URL(`/${INDEXNOW_KEY}.txt`, SITE_URL).toString()
 const MAX_URLS_PER_REQUEST = Number(process.env.INDEXNOW_BATCH_SIZE) || 10_000
 const MODE = process.env.INDEXNOW_MODE ?? 'full'
+const RESOLVE_DEPLOYED = process.env.INDEXNOW_RESOLVE_DEPLOYED === 'true'
+const SNAPSHOT_ID_PATTERN = /^[a-zA-Z0-9._-]+$/
+const REPOSITORY_PATTERN = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/
+const RELEASE_SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/i
+const MAX_CATALOG_ARTIFACT_BYTES = 512 * 1024 * 1024
+const CATALOG_FINGERPRINT_PATTERN = /^[a-f0-9]{64}$/i
 const BASELINE_PATH =
   process.env.INDEXNOW_BASELINE_PATH ?? fileURLToPath(new URL('../.indexnow-cache/indexnow-state.sqlite', import.meta.url))
 const CATALOG_PATH = process.env.CATALOG_SQLITE_PATH ?? fileURLToPath(new URL('../src/data/catalog.sqlite', import.meta.url))
@@ -140,6 +148,134 @@ async function waitForCatalogDeployment(fingerprint) {
   throw new Error(`Catalog deployment was not ready: ${lastReason}. IndexNow baseline was not advanced.`)
 }
 
+async function resolveReleaseArtifact(snapshotId) {
+  const repository = process.env.GITHUB_REPOSITORY ?? 'quemsah/awesome-claude-plugins'
+  if (!REPOSITORY_PATTERN.test(repository)) {
+    throw new Error('Cannot resolve deployed catalog: invalid GitHub repository')
+  }
+
+  const releaseTag = `catalog-${snapshotId}`
+  const assetUrl = `https://github.com/${repository}/releases/download/${releaseTag}/catalog.sqlite`
+  const releaseApiUrl = `https://api.github.com/repos/${repository}/releases/tags/${releaseTag}`
+  const headers = new Headers({ accept: 'application/vnd.github+json' })
+  if (process.env.GITHUB_TOKEN) headers.set('authorization', `Bearer ${process.env.GITHUB_TOKEN}`)
+  const response = await fetch(releaseApiUrl, {
+    headers,
+    signal: AbortSignal.timeout(20_000),
+  })
+  if (!response.ok) throw new Error(`Failed to read catalog release ${releaseTag}: HTTP ${response.status}`)
+
+  const release = await response.json()
+  if (release?.tag_name !== releaseTag) {
+    throw new Error(`Catalog release tag mismatch: expected ${releaseTag}`)
+  }
+  const assets = Array.isArray(release.assets) ? release.assets.filter((asset) => asset?.name === 'catalog.sqlite') : []
+  if (assets.length !== 1 || assets[0].state !== 'uploaded' || assets[0].browser_download_url !== assetUrl) {
+    throw new Error(`Expected exactly one uploaded catalog.sqlite for release ${releaseTag}`)
+  }
+  const asset = assets[0]
+  if (typeof asset.digest !== 'string' || !RELEASE_SHA256_PATTERN.test(asset.digest)) {
+    throw new Error(`Catalog release ${releaseTag} lacks a verifiable SHA-256 asset digest`)
+  }
+  if (!Number.isSafeInteger(asset.size) || asset.size <= 0) {
+    throw new Error(`Catalog release ${releaseTag} has an invalid artifact size`)
+  }
+  if (asset.size > MAX_CATALOG_ARTIFACT_BYTES) {
+    throw new Error(`Catalog release ${releaseTag} exceeds the maximum permitted artifact size`)
+  }
+  return { artifactUrl: assetUrl, expectedSha256: asset.digest.slice('sha256:'.length).toLowerCase(), expectedSize: asset.size }
+}
+
+/** Download a release asset with bounded memory, streaming hash verification and clean cancellation. */
+async function downloadVerifiedArtifact({ artifactUrl, tempPath, expectedSize, expectedSha256, snapshotId }) {
+  const response = await fetch(artifactUrl, { signal: AbortSignal.timeout(300_000) })
+  if (!response.ok) throw new Error(`Failed to download deployed catalog ${snapshotId}: HTTP ${response.status}`)
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('Deployed catalog download has no readable body')
+
+  const digest = createHash('sha256')
+  let fd
+  let downloaded = 0
+  let completed = false
+  try {
+    fd = openSync(tempPath, 'wx')
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      downloaded += value.byteLength
+      if (downloaded > expectedSize || downloaded > MAX_CATALOG_ARTIFACT_BYTES) {
+        throw new Error('Downloaded catalog artifact exceeds its declared or maximum permitted size')
+      }
+      digest.update(value)
+      let offset = 0
+      while (offset < value.byteLength) {
+        const written = writeSync(fd, value, offset, value.byteLength - offset)
+        if (written <= 0) throw new Error('Unable to write downloaded catalog artifact')
+        offset += written
+      }
+    }
+    completed = true
+  } finally {
+    try {
+      if (fd !== undefined) closeSync(fd)
+    } finally {
+      // releaseLock() alone does not stop an unfinished HTTP response body.
+      if (!completed) await reader.cancel().catch(() => {})
+      reader.releaseLock()
+    }
+  }
+
+  if (downloaded !== expectedSize) {
+    throw new Error(`Downloaded catalog artifact size mismatch: expected ${expectedSize}, got ${downloaded}`)
+  }
+  if (digest.digest('hex') !== expectedSha256) {
+    throw new Error('Downloaded catalog artifact SHA-256 mismatch')
+  }
+}
+
+async function resolveDeployedCatalog(localCatalog) {
+  if (!RESOLVE_DEPLOYED) return localCatalog
+
+  try {
+    const versionResponse = await fetch(new URL('/api/catalog-version', SITE_URL), {
+      headers: { 'Cache-Control': 'no-cache' },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!versionResponse.ok) throw new Error(`Catalog version returned HTTP ${versionResponse.status}`)
+    const deployed = await versionResponse.json()
+    if (deployed?.sha256 === localCatalog.fingerprint) return localCatalog
+    if (typeof deployed?.snapshotId !== 'string' || !SNAPSHOT_ID_PATTERN.test(deployed.snapshotId)) {
+      throw new Error('Cannot resolve deployed catalog: production returned an invalid snapshotId')
+    }
+    if (typeof deployed?.sha256 !== 'string' || !CATALOG_FINGERPRINT_PATTERN.test(deployed.sha256)) {
+      throw new Error('Cannot resolve deployed catalog: production returned an invalid fingerprint')
+    }
+
+    // Release asset digests come from GitHub, independently of SQLite metadata.
+    // Do not trust only the digest stored inside a downloaded SQLite file.
+    const { artifactUrl, expectedSha256, expectedSize } = await resolveReleaseArtifact(deployed.snapshotId)
+    const tempDir = mkdtempSync(join(tmpdir(), 'indexnow-catalog-'))
+    const tempPath = join(tempDir, 'catalog.sqlite')
+    try {
+      await downloadVerifiedArtifact({ artifactUrl, tempPath, expectedSize, expectedSha256, snapshotId: deployed.snapshotId })
+      const resolved = buildCatalogRecordsFromSqlite(tempPath, SITE_URL, {
+        snapshotId: deployed.snapshotId,
+        catalogFingerprint: deployed.sha256,
+      })
+      console.log(`Resolved deployed catalog snapshot ${deployed.snapshotId} (SHA-256 verified).`)
+      return resolved
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true })
+    }
+  } catch (error) {
+    if (!DEFER_UNTIL_DEPLOYED) throw error
+    console.log(
+      `IndexNow deferred until the next scheduled run: ${error instanceof Error ? error.message : String(error)}. Baseline was not advanced.`
+    )
+    return null
+  }
+}
+
 async function waitForChangedPages(urls) {
   let pending = urls.map((url) => ({ url, reason: 'not checked' }))
   for (let attempt = 1; attempt <= MAX_READY_ATTEMPTS && pending.length > 0; attempt += 1) {
@@ -199,7 +335,9 @@ async function submitUrls(urls, expectedFingerprint) {
 }
 
 async function runIndexNow() {
-  const { records: currentRecords, fingerprint: currentFingerprint } = readCurrentCatalog()
+  const currentCatalog = await resolveDeployedCatalog(readCurrentCatalog())
+  if (!currentCatalog) return
+  const { records: currentRecords, fingerprint: currentFingerprint } = currentCatalog
   // An HTTP 200 on a pre-existing page does not prove that new catalog data is live.
   // Never advance the baseline until the deployed build exposes the exact catalog snapshot.
   const isDeployed = await waitForCatalogDeployment(currentFingerprint)
