@@ -461,11 +461,7 @@ test('IndexNow resolves and submits the deployed SQLite snapshot when production
           }
         }
         if (endpoint === artifactUrl) {
-          return {
-            ok: true,
-            arrayBuffer: async () =>
-              artifactBytes.buffer.slice(artifactBytes.byteOffset, artifactBytes.byteOffset + artifactBytes.byteLength),
-          }
+          return new Response(artifactBytes)
         }
         if (endpoint === `${site}/sitemap.xml`) {
           return { ok: true, text: async () => `<urlset><loc>${firstUrl}</loc></urlset>` }
@@ -488,7 +484,16 @@ test('IndexNow resolves and submits the deployed SQLite snapshot when production
 })
 
 test('scheduled IndexNow keeps its baseline on invalid rollback release artifacts or a changing deployment', async () => {
-  for (const scenario of ['digest-mismatch', 'missing-digest', 'snapshot-mismatch', 'deployment-changed']) {
+  for (const scenario of [
+    'digest-mismatch',
+    'missing-digest',
+    'snapshot-mismatch',
+    'deployment-changed',
+    'oversized-release',
+    'stream-overflow',
+    'truncated-stream',
+    'missing-body',
+  ]) {
     const dir = mkdtempSync(join(tmpdir(), `indexnow-integrity-${scenario}-`))
     const baselinePath = join(dir, 'baseline.sqlite')
     const snapshotPath = join(dir, 'snapshot.sqlite')
@@ -510,6 +515,7 @@ test('scheduled IndexNow keeps its baseline on invalid rollback release artifact
     const artifactUrl = `https://github.com/quemsah/awesome-claude-plugins/releases/download/${tag}/catalog.sqlite`
     const submitted = []
     let versionChecks = 0
+    let downloadRequests = 0
     saveBaseline(baselinePath, new Map([['retained/repo', { url: `${site}/retained/repo`, fingerprint: 'baseline' }]]))
 
     try {
@@ -542,7 +548,7 @@ test('scheduled IndexNow keeps its baseline on invalid rollback release artifact
                     state: 'uploaded',
                     // biome-ignore lint/style/useNamingConvention: GitHub release API uses snake_case keys
                     browser_download_url: artifactUrl,
-                    size: artifactBytes.byteLength,
+                    size: scenario === 'oversized-release' ? 512 * 1024 * 1024 + 1 : artifactBytes.byteLength,
                     digest: scenario === 'missing-digest' ? null : `sha256:${scenario === 'digest-mismatch' ? '0'.repeat(64) : digest}`,
                   },
                 ],
@@ -550,11 +556,11 @@ test('scheduled IndexNow keeps its baseline on invalid rollback release artifact
             }
           }
           if (endpoint === artifactUrl) {
-            return {
-              ok: true,
-              arrayBuffer: async () =>
-                artifactBytes.buffer.slice(artifactBytes.byteOffset, artifactBytes.byteOffset + artifactBytes.byteLength),
-            }
+            downloadRequests++
+            if (scenario === 'missing-body') return { ok: true, body: null }
+            if (scenario === 'stream-overflow') return new Response(Buffer.concat([artifactBytes, Buffer.from('extra')]))
+            if (scenario === 'truncated-stream') return new Response(artifactBytes.subarray(0, -1))
+            return new Response(artifactBytes)
           }
           if (endpoint === 'https://api.indexnow.org/indexnow') {
             submitted.push(endpoint)
@@ -564,6 +570,7 @@ test('scheduled IndexNow keeps its baseline on invalid rollback release artifact
         },
       })
       assert.deepEqual(submitted, [], `No IndexNow submission expected for ${scenario}`)
+      if (scenario === 'oversized-release' || scenario === 'missing-digest') assert.equal(downloadRequests, 0)
       assert.deepEqual([...loadBaseline(baselinePath)], [['retained/repo', { url: `${site}/retained/repo`, fingerprint: 'baseline' }]])
     } finally {
       rmSync(dir, { recursive: true, force: true })
