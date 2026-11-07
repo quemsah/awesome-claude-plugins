@@ -72,8 +72,8 @@ function isWebVital(value: unknown): value is {
   rating: string
   release?: string
   value: number
-  lcpElementType?: string
-  lcpResourceOrigin?: string
+  lcpElementType?: unknown
+  lcpResourceOrigin?: unknown
 } {
   if (!(isRecord(value) && 'name' in value && 'rating' in value && 'value' in value)) {
     return false
@@ -87,8 +87,6 @@ function isWebVital(value: unknown): value is {
     (value.navigationType === undefined || isContextString(value.navigationType)) &&
     (value.path === undefined || (isContextString(value.path) && value.path.startsWith('/'))) &&
     (value.release === undefined || isContextString(value.release)) &&
-    (value.lcpElementType === undefined || (typeof value.lcpElementType === 'string' && ELEMENT_NAME_PATTERN.test(value.lcpElementType))) &&
-    (value.lcpResourceOrigin === undefined || isHttpOrigin(value.lcpResourceOrigin)) &&
     typeof value.value === 'number' &&
     Number.isFinite(value.value)
   )
@@ -102,12 +100,12 @@ function isContextString(value: unknown, maxLength = MAX_CONTEXT_LENGTH): value 
   return typeof value === 'string' && value.length <= maxLength && !CONTROL_CHARACTER_PATTERN.test(value)
 }
 
-function normalizeElementType(value: string | undefined): string | null {
-  return value && ELEMENT_NAME_PATTERN.test(value) ? value.toUpperCase() : null
+function normalizeElementType(value: unknown): string | null {
+  return typeof value === 'string' && ELEMENT_NAME_PATTERN.test(value) ? value.toUpperCase() : null
 }
 
-function normalizeHttpOrigin(value: string | undefined): string | null {
-  return value && isHttpOrigin(value) ? value : null
+function normalizeHttpOrigin(value: unknown): string | null {
+  return isHttpOrigin(value) ? value : null
 }
 
 function isHttpOrigin(value: unknown): value is string {
