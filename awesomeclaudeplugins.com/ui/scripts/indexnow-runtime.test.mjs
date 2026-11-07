@@ -516,6 +516,7 @@ test('scheduled IndexNow keeps its baseline on invalid rollback release artifact
     const submitted = []
     let versionChecks = 0
     let downloadRequests = 0
+    let cancelledDownloads = 0
     saveBaseline(baselinePath, new Map([['retained/repo', { url: `${site}/retained/repo`, fingerprint: 'baseline' }]]))
 
     try {
@@ -558,7 +559,19 @@ test('scheduled IndexNow keeps its baseline on invalid rollback release artifact
           if (endpoint === artifactUrl) {
             downloadRequests++
             if (scenario === 'missing-body') return { ok: true, body: null }
-            if (scenario === 'stream-overflow') return new Response(Buffer.concat([artifactBytes, Buffer.from('extra')]))
+            if (scenario === 'stream-overflow') {
+              // Keep the stream open after its oversized first chunk. It must be
+              // explicitly canceled rather than merely unlocked by the consumer.
+              const body = new ReadableStream({
+                start(controller) {
+                  controller.enqueue(Buffer.concat([artifactBytes, Buffer.from('extra')]))
+                },
+                cancel() {
+                  cancelledDownloads++
+                },
+              })
+              return new Response(body)
+            }
             if (scenario === 'truncated-stream') return new Response(artifactBytes.subarray(0, -1))
             return new Response(artifactBytes)
           }
@@ -571,6 +584,7 @@ test('scheduled IndexNow keeps its baseline on invalid rollback release artifact
       })
       assert.deepEqual(submitted, [], `No IndexNow submission expected for ${scenario}`)
       if (scenario === 'oversized-release' || scenario === 'missing-digest') assert.equal(downloadRequests, 0)
+      if (scenario === 'stream-overflow') assert.equal(cancelledDownloads, 1, 'An incomplete artifact stream must be canceled')
       assert.deepEqual([...loadBaseline(baselinePath)], [['retained/repo', { url: `${site}/retained/repo`, fingerprint: 'baseline' }]])
     } finally {
       rmSync(dir, { recursive: true, force: true })

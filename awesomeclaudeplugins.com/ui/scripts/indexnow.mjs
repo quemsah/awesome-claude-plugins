@@ -186,6 +186,53 @@ async function resolveReleaseArtifact(snapshotId) {
   return { artifactUrl: assetUrl, expectedSha256: asset.digest.slice('sha256:'.length).toLowerCase(), expectedSize: asset.size }
 }
 
+/** Download a release asset with bounded memory, streaming hash verification and clean cancellation. */
+async function downloadVerifiedArtifact({ artifactUrl, tempPath, expectedSize, expectedSha256, snapshotId }) {
+  const response = await fetch(artifactUrl, { signal: AbortSignal.timeout(300_000) })
+  if (!response.ok) throw new Error(`Failed to download deployed catalog ${snapshotId}: HTTP ${response.status}`)
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('Deployed catalog download has no readable body')
+
+  const digest = createHash('sha256')
+  let fd
+  let downloaded = 0
+  let completed = false
+  try {
+    fd = openSync(tempPath, 'wx')
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      downloaded += value.byteLength
+      if (downloaded > expectedSize || downloaded > MAX_CATALOG_ARTIFACT_BYTES) {
+        throw new Error('Downloaded catalog artifact exceeds its declared or maximum permitted size')
+      }
+      digest.update(value)
+      let offset = 0
+      while (offset < value.byteLength) {
+        const written = writeSync(fd, value, offset, value.byteLength - offset)
+        if (written <= 0) throw new Error('Unable to write downloaded catalog artifact')
+        offset += written
+      }
+    }
+    completed = true
+  } finally {
+    try {
+      if (fd !== undefined) closeSync(fd)
+    } finally {
+      // releaseLock() alone does not stop an unfinished HTTP response body.
+      if (!completed) await reader.cancel().catch(() => {})
+      reader.releaseLock()
+    }
+  }
+
+  if (downloaded !== expectedSize) {
+    throw new Error(`Downloaded catalog artifact size mismatch: expected ${expectedSize}, got ${downloaded}`)
+  }
+  if (digest.digest('hex') !== expectedSha256) {
+    throw new Error('Downloaded catalog artifact SHA-256 mismatch')
+  }
+}
+
 async function resolveDeployedCatalog(localCatalog) {
   if (!RESOLVE_DEPLOYED) return localCatalog
 
@@ -210,39 +257,7 @@ async function resolveDeployedCatalog(localCatalog) {
     const tempDir = mkdtempSync(join(tmpdir(), 'indexnow-catalog-'))
     const tempPath = join(tempDir, 'catalog.sqlite')
     try {
-      const response = await fetch(artifactUrl, { signal: AbortSignal.timeout(300_000) })
-      if (!response.ok) throw new Error(`Failed to download deployed catalog ${deployed.snapshotId}: HTTP ${response.status}`)
-      const reader = response.body?.getReader()
-      if (!reader) throw new Error('Deployed catalog download has no readable body')
-      const digest = createHash('sha256')
-      const fd = openSync(tempPath, 'wx')
-      let downloaded = 0
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          downloaded += value.byteLength
-          if (downloaded > expectedSize || downloaded > MAX_CATALOG_ARTIFACT_BYTES) {
-            throw new Error('Downloaded catalog artifact exceeds its declared or maximum permitted size')
-          }
-          digest.update(value)
-          let offset = 0
-          while (offset < value.byteLength) {
-            const written = writeSync(fd, value, offset, value.byteLength - offset)
-            if (written <= 0) throw new Error('Unable to write downloaded catalog artifact')
-            offset += written
-          }
-        }
-      } finally {
-        closeSync(fd)
-        reader.releaseLock()
-      }
-      if (downloaded !== expectedSize) {
-        throw new Error(`Downloaded catalog artifact size mismatch: expected ${expectedSize}, got ${downloaded}`)
-      }
-      if (digest.digest('hex') !== expectedSha256) {
-        throw new Error('Downloaded catalog artifact SHA-256 mismatch')
-      }
+      await downloadVerifiedArtifact({ artifactUrl, tempPath, expectedSize, expectedSha256, snapshotId: deployed.snapshotId })
       const resolved = buildCatalogRecordsFromSqlite(tempPath, SITE_URL, {
         snapshotId: deployed.snapshotId,
         catalogFingerprint: deployed.sha256,
