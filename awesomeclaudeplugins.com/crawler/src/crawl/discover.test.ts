@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { afterEach, expect, it } from 'vitest'
-import { GitHubFatalError, type GitHubReader, GitHubTemporaryError, type SearchPage } from '../github/client.js'
+import { GitHubClient, GitHubFatalError, type GitHubReader, GitHubTemporaryError, type SearchPage } from '../github/client.js'
 import type { SizeRange } from '../github/sizeRanges.js'
 import { recordRejectedCandidate } from '../storage/rejectedCandidates.js'
 import { updateEnriched, upsertDiscovery } from '../storage/repositories.js'
@@ -138,6 +138,109 @@ it('honors rejection caching in Code Search but retries after the 90-day TTL', a
   const second = await discover(db, client, 'run-1', [firstRange], undefined, () => '2027-01-01T00:00:00Z')
   expect(second.newUrls).toBe(1)
   expect(db.prepare('SELECT COUNT(*) AS count FROM repositories').get()).toEqual({ count: 1 })
+})
+
+it('discovers the original repository after a transient Code Search secondary limit', async () => {
+  const db = database()
+  const attempts: Array<{ query: string; time: number }> = []
+  let time = 0
+  let limited = false
+  const github = new GitHubClient({
+    token: 'test-secret',
+    random: () => 0,
+    clock: {
+      now: () => time,
+      sleep: async (ms) => {
+        time += ms
+      },
+    },
+    fetch: (async (input: RequestInfo | URL) => {
+      const query = new URL(String(input)).searchParams.get('q') ?? ''
+      attempts.push({ query, time })
+      if (query.startsWith('filename:marketplace.json') && !limited) {
+        limited = true
+        return Response.json({ message: 'You have exceeded a secondary rate limit' }, { status: 403 })
+      }
+      return Response.json(page(query.startsWith('filename:marketplace.json') ? [item('https://github.com/acme/recovered')] : []))
+    }) as typeof fetch,
+  })
+  const metrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0 }
+  const result = await discover(db, github, 'run-1', [firstRange], undefined, undefined, undefined, metrics)
+
+  expect(result.newUrls).toBe(1)
+  expect(result.warningCount).toBe(0)
+  expect(metrics.incompletePartitions).toBe(0)
+  expect(db.prepare('SELECT html_url FROM repositories').all()).toEqual([{ html_url: 'https://github.com/acme/recovered' }])
+  const marketplaceRequests = attempts.filter(({ query }) => query.startsWith('filename:marketplace.json'))
+  expect(marketplaceRequests).toHaveLength(2)
+  expect(marketplaceRequests[0].query).toBe(marketplaceRequests[1].query)
+  expect(marketplaceRequests.map(({ time }) => time)).toEqual([0, 60_000])
+})
+
+it('stops unvisited Code Search ranges after a shared circuit opens without claiming coverage', async () => {
+  const db = database()
+  let time = 0
+  const requests: string[] = []
+  const github = new GitHubClient({
+    token: 'test-secret',
+    random: () => 0,
+    clock: {
+      now: () => time,
+      sleep: async (ms) => {
+        time += ms
+      },
+    },
+    fetch: (async (input: RequestInfo | URL) => {
+      requests.push(String(input))
+      return Response.json({ message: 'You have exceeded a secondary rate limit' }, { status: 403 })
+    }) as typeof fetch,
+  })
+  const metrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0 }
+  const result = await discover(db, github, 'run-1', [firstRange, secondRange], undefined, undefined, undefined, metrics)
+
+  expect(github.isCodeSearchCircuitOpen()).toBe(true)
+  expect(requests).toHaveLength(4)
+  expect(metrics.incompletePartitions).toBe(2)
+  expect(result.warningCount).toBe(2)
+  expect(result.warnings).toEqual([
+    { range: firstRange, category: 'temporary-error', query_family: 'marketplace_filename_path' },
+    { range: secondRange, category: 'temporary-error', query_family: 'marketplace_filename_path' },
+  ])
+  expect(db.prepare('SELECT COUNT(*) AS count FROM discovery_ranges').get()).toEqual({ count: 0 })
+})
+
+it('keeps repeated secondary-limited search ranges incomplete and reports each failure', async () => {
+  const db = database()
+  const warnings: string[] = []
+  const metrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0 }
+  const result = await discover(
+    db,
+    reader(async (query) => {
+      if (query.startsWith('filename:marketplace.json')) {
+        throw new GitHubTemporaryError('GitHub rate limited', 403, 0)
+      }
+      return page([])
+    }),
+    'run-1',
+    [firstRange, secondRange],
+    undefined,
+    undefined,
+    (event) => {
+      if (event.event === 'crawl.warning') warnings.push(event.category)
+    },
+    metrics,
+  )
+
+  expect(result.warningCount).toBe(2)
+  expect(metrics.incompletePartitions).toBe(2)
+  expect(warnings).toEqual(['temporary-error', 'temporary-error'])
+  expect(result.warnings).toEqual([
+    { range: firstRange, category: 'temporary-error', query_family: 'marketplace_filename_path' },
+    { range: secondRange, category: 'temporary-error', query_family: 'marketplace_filename_path' },
+  ])
+  expect(db.prepare("SELECT COUNT(*) AS count FROM discovery_ranges WHERE query_family = 'marketplace_filename_path'").get()).toEqual({
+    count: 0,
+  })
 })
 
 it('runs both marketplace queries and counts an empty first page as successful coverage', async () => {

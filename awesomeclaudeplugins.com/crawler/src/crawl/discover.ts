@@ -552,6 +552,9 @@ export async function discover(
   log?: Log,
   metrics: CodeDiscoveryMetrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0 },
 ): Promise<DiscoverySummary> {
+  // A GitHubReader may be reused for independent crawls. Keep the circuit
+  // bounded to the current discovery pass, not the lifetime of the client.
+  reader.resetCodeSearchCircuit?.()
   const summary: DiscoverySummary = {
     newUrls: 0,
     existingUrls: 0,
@@ -568,17 +571,23 @@ export async function discover(
   const countedUrls = new Set<string>()
 
   try {
-    for (const family of discoverySearchFamilies) {
+    discovery: for (const family of discoverySearchFamilies) {
       for (const rootRange of ranges) {
         const cachedRanges = listCachedDiscoveryRanges(db, family.queryFamily, rootRange) ?? [rootRange]
         const coverage: CoverageState = { complete: true, leaves: [], log, metrics }
         for (const range of cachedRanges) {
           await searchRange(db, reader, runId, family.queryFamily, writeDiscovery, range, summary, now, coverage, onProgress, countedUrls)
+          if (reader.isCodeSearchCircuitOpen?.()) {
+            // Preserve cached coverage and defer every unvisited range to a later run.
+            coverage.complete = false
+            break
+          }
         }
         if (coverage.complete) {
           runWhileActive(db, runId, () => replaceCachedDiscoveryRanges(db, family.queryFamily, rootRange, coverage.leaves))
         }
         onProgress?.()
+        if (reader.isCodeSearchCircuitOpen?.()) break discovery
       }
     }
   } catch (error) {

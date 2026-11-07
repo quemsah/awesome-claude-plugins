@@ -121,6 +121,8 @@ export interface GitHubReader {
   checkRepository?(owner: string, repo: string, options?: { signal?: AbortSignal }): Promise<RepoResult<{ html_url: string }>>
   searchRepositories(query: string, page: number, options?: GitHubRequestOptions): Promise<RepositorySearchPage>
   searchCode(query: string, page: number): Promise<SearchPage>
+  isCodeSearchCircuitOpen?(): boolean
+  resetCodeSearchCircuit?(): void
   getRepository(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<GitHubRepo>>
   getMarketplace(owner: string, repo: string, etag?: string, options?: GitHubRequestOptions): Promise<RepoResult<Marketplace>>
   noteRetry?(bucket: RateResource, reason: GitHubRetryReason, waitMs?: number): void
@@ -160,6 +162,7 @@ type Options = {
 }
 
 const MAX_REQUEST_ATTEMPTS = 3
+const MAX_CONSECUTIVE_CODE_SEARCH_LIMITED_PAGES = 2
 
 function requestAttempts(value: number | undefined): number {
   if (value === undefined) return MAX_REQUEST_ATTEMPTS
@@ -429,6 +432,8 @@ export class GitHubClient implements GitHubReader {
   private readonly random: () => number
   private readonly token: string
   private readonly signal?: AbortSignal
+  private consecutiveCodeSearchLimitedPages = 0
+  private codeSearchCircuitOpen = false
 
   constructor(options: Options) {
     if (!options.token.trim()) throw new GitHubFatalError('GitHub token is required', null)
@@ -452,16 +457,38 @@ export class GitHubClient implements GitHubReader {
     return waitMs
   }
 
+  isCodeSearchCircuitOpen(): boolean {
+    return this.codeSearchCircuitOpen
+  }
+
+  resetCodeSearchCircuit(): void {
+    this.codeSearchCircuitOpen = false
+    this.consecutiveCodeSearchLimitedPages = 0
+  }
+
   async searchCode(query: string, page: number): Promise<SearchPage> {
     if (!Number.isInteger(page) || page < 1 || page > 10) throw new GitHubFatalError('Code search page must be 1..10', null)
-    const params = new URLSearchParams({ q: query, per_page: '100', page: String(page) })
-    const result = await this.request('code_search', `/search/code?${params}`, parseSearch)
-    if (result.kind === 'not-found') throw new GitHubTemporaryError('Code search not found', 404, result.retryCount ?? 0)
-    if (result.kind === 'temporary-error') throw new GitHubTemporaryError(result.reason, result.status, result.retryCount)
-    if (result.kind === 'invalid-content') throw new GitHubTemporaryError(result.reason, result.status, result.retryCount)
-    if (result.kind === 'not-modified') throw new GitHubTemporaryError('Unexpected code search 304', 304)
-    if (result.kind === 'repository-blocked') throw new GitHubFatalError('Unexpected code search repository-blocked', result.status)
-    return result.data
+    if (this.codeSearchCircuitOpen) {
+      throw new GitHubTemporaryError('Code Search suspended after repeated secondary rate limits', 403)
+    }
+    // Only a page that exhausts its secondary-limit retry contributes to the
+    // consecutive-failure circuit. Other outcomes, including thrown errors,
+    // break the streak without altering the original error.
+    const limitedPagesBefore = this.consecutiveCodeSearchLimitedPages
+    try {
+      const params = new URLSearchParams({ q: query, per_page: '100', page: String(page) })
+      const result = await this.request('code_search', `/search/code?${params}`, parseSearch)
+      if (result.kind === 'not-found') throw new GitHubTemporaryError('Code search not found', 404, result.retryCount ?? 0)
+      if (result.kind === 'temporary-error') throw new GitHubTemporaryError(result.reason, result.status, result.retryCount)
+      if (result.kind === 'invalid-content') throw new GitHubTemporaryError(result.reason, result.status, result.retryCount)
+      if (result.kind === 'not-modified') throw new GitHubTemporaryError('Unexpected code search 304', 304)
+      if (result.kind === 'repository-blocked') throw new GitHubFatalError('Unexpected code search repository-blocked', result.status)
+      return result.data
+    } finally {
+      if (this.consecutiveCodeSearchLimitedPages === limitedPagesBefore) {
+        this.consecutiveCodeSearchLimitedPages = 0
+      }
+    }
   }
 
   async searchRepositories(query: string, page: number, options?: GitHubRequestOptions): Promise<RepositorySearchPage> {
@@ -1234,9 +1261,20 @@ export class GitHubClient implements GitHubReader {
       secondary = action.secondary
     }
     if (secondary) secondaryCount++
-    this.budget.defer(bucket, Math.max(delay ?? 0, secondary ? 60_000 * 2 ** (secondaryCount - 1) + Math.floor(this.random() * 1_000) : 0))
+    // One Code Search retry after the shared cooldown recovers brief secondary
+    // limits without the exponential wait of the generic retry policy.
+    // A second secondary limit marks the page incomplete for a future crawl.
+    const codeSearchSecondary = bucket === 'code_search' && secondary
+    const secondaryDelay = codeSearchSecondary ? 60_000 : 60_000 * 2 ** (secondaryCount - 1)
+    this.budget.defer(bucket, Math.max(delay ?? 0, secondary ? secondaryDelay + Math.floor(this.random() * 1_000) : 0))
     const failureReason: GitHubRetryReason = secondary ? 'secondary_rate_limit' : 'primary_rate_limit'
-    if (finalAttempt) {
+    if (finalAttempt || (codeSearchSecondary && secondaryCount >= 2)) {
+      if (codeSearchSecondary && secondaryCount >= 2) {
+        this.consecutiveCodeSearchLimitedPages++
+        if (this.consecutiveCodeSearchLimitedPages >= MAX_CONSECUTIVE_CODE_SEARCH_LIMITED_PAGES) {
+          this.codeSearchCircuitOpen = true
+        }
+      }
       return {
         kind: 'result',
         result: {
