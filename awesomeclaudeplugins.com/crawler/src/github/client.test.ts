@@ -166,38 +166,58 @@ describe('GitHubClient', () => {
     expect(test.requests.map(({ time }) => time)).toEqual([0, 0, 7_000])
   })
 
-  it('returns Code Search secondary limits without multiplying retries across crawl pages', async () => {
-    const secondaryLimit = Response.json({ message: 'You have exceeded a secondary rate limit' }, { status: 403 })
-    const test = harness([secondaryLimit, Response.json(page)])
+  it('retries the same Code Search page once after a secondary-limit cooldown', async () => {
+    const limited = Response.json({ message: 'You have exceeded a secondary rate limit' }, { status: 403 })
+    const test = harness([limited, Response.json(page)])
+
+    await expect(test.client.searchCode('marketplace.json', 3)).resolves.toEqual(page)
+    expect(test.requests).toHaveLength(2)
+    expect(test.requests[0].url).toBe(test.requests[1].url)
+    expect(test.requests.map(({ time }) => time)).toEqual([0, 60_000])
+    expect(test.logs).toContainEqual({ bucket: 'code_search', retryReason: 'secondary_rate_limit', retryWaitMs: 60_000 })
+  })
+
+  it('marks a page temporary after the second secondary limit, preserving the cooldown for the next page', async () => {
+    const limited = () => Response.json({ message: 'You have exceeded a secondary rate limit' }, { status: 403 })
+    const test = harness([limited(), limited(), Response.json(page)])
 
     await expect(test.client.searchCode('marketplace.json', 1)).rejects.toMatchObject({
       name: 'GitHubTemporaryError',
       status: 403,
-      retryCount: 0,
+      retryCount: 1,
     })
-    expect(test.requests).toHaveLength(1)
-
-    await test.client.searchCode('marketplace.json', 2)
     expect(test.requests).toHaveLength(2)
-    expect(test.requests[1].time - test.requests[0].time).toBeGreaterThanOrEqual(60_000)
+    expect(test.requests[0].url).toBe(test.requests[1].url)
+    await expect(test.client.searchCode('marketplace.json', 2)).resolves.toEqual(page)
+    expect(test.requests.map(({ time }) => time)).toEqual([0, 60_000, 120_000])
   })
 
-  it('bounds repeated Code Search secondary limits to one attempt per page with shared cooldown', async () => {
-    const rateLimited = () => Response.json({ message: 'You have exceeded a secondary rate limit' }, { status: 403 })
-    const test = harness([rateLimited(), rateLimited(), rateLimited(), Response.json(page)])
+  it('bounds repeated Code Search secondary limits to two attempts per page without exponential cooldowns', async () => {
+    const limited = () => Response.json({ message: 'You have exceeded a secondary rate limit' }, { status: 403 })
+    const test = harness([...Array.from({ length: 6 }, limited), Response.json(page)])
 
     for (let pageNumber = 1; pageNumber <= 3; pageNumber++) {
       await expect(test.client.searchCode('marketplace.json', pageNumber)).rejects.toMatchObject({
         name: 'GitHubTemporaryError',
         status: 403,
-        retryCount: 0,
+        retryCount: 1,
       })
-      expect(test.requests).toHaveLength(pageNumber)
+      expect(test.requests).toHaveLength(pageNumber * 2)
     }
 
     await expect(test.client.searchCode('marketplace.json', 4)).resolves.toEqual(page)
-    expect(test.requests).toHaveLength(4)
-    expect(test.requests.map(({ time }) => time)).toEqual([0, 60_000, 120_000, 180_000])
+    expect(test.requests).toHaveLength(7)
+    expect(test.requests.map(({ time }) => time)).toEqual([0, 60_000, 120_000, 180_000, 240_000, 300_000, 360_000])
+  })
+
+  it('honors GitHub Retry-After when longer than the Code Search recovery cooldown', async () => {
+    const limited = Response.json(
+      { message: 'You have exceeded a secondary rate limit' },
+      { status: 403, headers: { 'retry-after': '180' } },
+    )
+    const test = harness([limited, Response.json(page)])
+    await expect(test.client.searchCode('marketplace.json', 1)).resolves.toEqual(page)
+    expect(test.requests.map(({ time }) => time)).toEqual([0, 180_000])
   })
 
   it('retries repository search primary limits at the server reset', async () => {
