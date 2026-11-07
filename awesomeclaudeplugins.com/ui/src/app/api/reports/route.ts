@@ -7,6 +7,7 @@ const MAX_BODY_BYTES = 16_384
 const MAX_FIELD_LENGTH = 128
 const BLOCKED_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]{0,31}:?$/i
 const TRAILING_SCHEME_COLON_PATTERN = /:$/
+const EXTENSION_SCHEMES = new Set(['chrome-extension', 'moz-extension', 'safari-web-extension', 'ms-browser-extension'])
 const rateLimiter = new RateLimiter(10_000, MAX_REPORTS_PER_MINUTE, 60_000)
 
 type NormalizedReport = {
@@ -131,39 +132,42 @@ function classifyBlockedResource(value: unknown): { kind: string | null; origin:
   }
 
   const blockedUri = value.trim()
-  const schemeToken = BLOCKED_SCHEME_PATTERN.test(blockedUri) ? blockedUri.toLowerCase().replace(TRAILING_SCHEME_COLON_PATTERN, '') : null
-  if (schemeToken === 'inline' || schemeToken === 'eval' || schemeToken === 'wasm-eval') {
-    return { kind: schemeToken, origin: null, scheme: null }
-  }
-  if (schemeToken === 'data' || schemeToken === 'blob') {
-    return { kind: schemeToken, origin: null, scheme: schemeToken }
-  }
-  if (schemeToken && ['chrome-extension', 'moz-extension', 'safari-web-extension', 'ms-browser-extension'].includes(schemeToken)) {
-    return { kind: 'extension', origin: null, scheme: schemeToken }
-  }
-  if (schemeToken) {
-    return { kind: 'scheme', origin: null, scheme: schemeToken }
-  }
+  const schemeToken = getSchemeToken(blockedUri)
+  if (schemeToken) return classifySchemeToken(schemeToken)
 
   try {
-    const parsed = new URL(blockedUri)
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-      return { kind: 'url', origin: parsed.origin, scheme: null }
-    }
-    if (parsed.protocol === 'data:' || parsed.protocol === 'blob:') {
-      return { kind: parsed.protocol.slice(0, -1), origin: null, scheme: parsed.protocol.slice(0, -1) }
-    }
-    if (['chrome-extension:', 'moz-extension:', 'safari-web-extension:', 'ms-browser-extension:'].includes(parsed.protocol)) {
-      return { kind: 'extension', origin: null, scheme: parsed.protocol.slice(0, -1) }
-    }
-    return { kind: 'other', origin: null, scheme: parsed.protocol.slice(0, -1) || null }
+    return classifyParsedUrl(new URL(blockedUri))
   } catch (error) {
     if (!(error instanceof TypeError)) {
       throw error
     }
+    return { kind: 'other', origin: null, scheme: null }
   }
+}
 
-  return { kind: 'other', origin: null, scheme: null }
+function getSchemeToken(value: string): string | null {
+  return BLOCKED_SCHEME_PATTERN.test(value) ? value.toLowerCase().replace(TRAILING_SCHEME_COLON_PATTERN, '') : null
+}
+
+function classifySchemeToken(scheme: string): { kind: string; origin: null; scheme: string | null } {
+  if (scheme === 'inline' || scheme === 'eval' || scheme === 'wasm-eval') {
+    return { kind: scheme, origin: null, scheme: null }
+  }
+  if (scheme === 'data' || scheme === 'blob') {
+    return { kind: scheme, origin: null, scheme }
+  }
+  if (EXTENSION_SCHEMES.has(scheme)) {
+    return { kind: 'extension', origin: null, scheme }
+  }
+  return { kind: 'scheme', origin: null, scheme }
+}
+
+function classifyParsedUrl(url: URL): { kind: string; origin: string | null; scheme: string | null } {
+  if (url.protocol === 'http:' || url.protocol === 'https:') {
+    return { kind: 'url', origin: url.origin, scheme: null }
+  }
+  const scheme = url.protocol.slice(0, -1)
+  return classifySchemeToken(scheme)
 }
 
 function getPathname(value: unknown): string | null {
