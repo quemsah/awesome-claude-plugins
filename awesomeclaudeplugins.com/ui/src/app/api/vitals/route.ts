@@ -6,7 +6,9 @@ const MAX_REPORTS_PER_MINUTE = 30
 const MAX_BODY_BYTES = 4_096
 const MAX_RATING_LENGTH = 32
 const MAX_CONTEXT_LENGTH = 128
+const MAX_RESOURCE_ORIGIN_LENGTH = 256
 const CONTROL_CHARACTER_PATTERN = /[\r\n]/
+const ELEMENT_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9-]{0,31}$/
 const rateLimiter = new RateLimiter(10_000, MAX_REPORTS_PER_MINUTE, 60_000)
 const VALID_METRICS = new Set(['CLS', 'FCP', 'INP', 'LCP', 'TTFB'])
 const VALID_RATINGS = new Set(['good', 'needs-improvement', 'poor'])
@@ -28,6 +30,8 @@ export async function POST(request: Request) {
 
   // Only the validated fields are logged so attacker-supplied keys never reach production logs.
   const rating = VALID_RATINGS.has(payload.rating) ? payload.rating : 'unknown'
+  const lcpElementType = normalizeElementType(payload.lcpElementType)
+  const lcpResourceOrigin = normalizeHttpOrigin(payload.lcpResourceOrigin)
   console.info(
     JSON.stringify({
       message: 'Web vital',
@@ -38,6 +42,7 @@ export async function POST(request: Request) {
       path: payload.path === undefined ? null : toRouteTemplate(payload.path),
       rating,
       release: payload.release ?? null,
+      ...(payload.name === 'LCP' ? { lcpElementType, lcpResourceOrigin } : {}),
       value: payload.value,
     })
   )
@@ -60,9 +65,16 @@ async function parsePayload(request: Request): Promise<unknown> {
   }
 }
 
-function isWebVital(
-  value: unknown
-): value is { name: string; navigationType?: string; path?: string; rating: string; release?: string; value: number } {
+function isWebVital(value: unknown): value is {
+  name: string
+  navigationType?: string
+  path?: string
+  rating: string
+  release?: string
+  value: number
+  lcpElementType?: unknown
+  lcpResourceOrigin?: unknown
+} {
   if (!(isRecord(value) && 'name' in value && 'rating' in value && 'value' in value)) {
     return false
   }
@@ -84,6 +96,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-function isContextString(value: unknown): value is string {
-  return typeof value === 'string' && value.length <= MAX_CONTEXT_LENGTH && !CONTROL_CHARACTER_PATTERN.test(value)
+function isContextString(value: unknown, maxLength = MAX_CONTEXT_LENGTH): value is string {
+  return typeof value === 'string' && value.length <= maxLength && !CONTROL_CHARACTER_PATTERN.test(value)
+}
+
+function normalizeElementType(value: unknown): string | null {
+  return typeof value === 'string' && ELEMENT_NAME_PATTERN.test(value) ? value.toUpperCase() : null
+}
+
+function normalizeHttpOrigin(value: unknown): string | null {
+  return isHttpOrigin(value) ? value : null
+}
+
+function isHttpOrigin(value: unknown): value is string {
+  if (!isContextString(value, MAX_RESOURCE_ORIGIN_LENGTH)) return false
+
+  try {
+    const url = new URL(value)
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.origin === value
+  } catch (error) {
+    if (error instanceof TypeError) return false
+    throw error
+  }
 }
