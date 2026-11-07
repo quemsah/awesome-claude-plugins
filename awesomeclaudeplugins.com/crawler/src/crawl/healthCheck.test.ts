@@ -415,9 +415,9 @@ it('allows a full 200-repository health-check batch to finish within its time bu
   const db = database()
   for (let index = 0; index < 200; index++) seed(db, `https://github.com/team/batch-${index}`)
   const reader = client(() => new Response(null, { status: 200 }))
-  reader.checkRepository = async () => {
+  reader.checkRepository = async (owner, repo) => {
     await new Promise((resolve) => setTimeout(resolve, 600))
-    return { kind: 'found' as const, data: { html_url: 'https://github.com/team/batch' } as never }
+    return { kind: 'found' as const, data: { html_url: `https://github.com/${owner}/${repo}` } as never }
   }
 
   const pending = healthCheck(
@@ -429,6 +429,7 @@ it('allows a full 200-repository health-check batch to finish within its time bu
   )
   await vi.advanceTimersByTimeAsync(30_000)
   await expect(pending).resolves.toMatchObject({ checked: 200, warnings: 0 })
+  expect(listPublishable(db)).toHaveLength(200)
 })
 
 it('keeps a failed network request in the catalog and rotates it behind unchecked rows', async () => {
