@@ -8,15 +8,16 @@ import { fileURLToPath } from 'node:url'
 
 const script = fileURLToPath(new URL('./benchmark-catalog-memory.mjs', import.meta.url))
 
-function compare(
-  baselineImport,
-  candidateImport,
+/** Runs the comparison CLI against synthetic RSS reports. */
+function compare({
+  baselineImport = 100,
+  candidateImport = 100,
   baselineWarm = 100,
   candidateWarm = 100,
   baselinePeak = 100,
   candidatePeak = 100,
-  extraArgs = []
-) {
+  extraArgs = [],
+} = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'catalog-memory-gate-'))
   const report = (afterImport, afterQueries, peakRssMiB) => ({
     catalogSize: 1,
@@ -42,28 +43,39 @@ function compare(
 }
 
 test('regular comparisons accept an import increase within the 10% regression budget', () => {
-  const result = compare(100, 105, 100, 105, 100, 110)
+  const result = compare({
+    baselineImport: 100,
+    candidateImport: 105,
+    baselineWarm: 100,
+    candidateWarm: 105,
+    baselinePeak: 100,
+    candidatePeak: 110,
+  })
   assert.equal(result.status, 0, result.stderr)
 })
 
 test('regular comparisons reject RSS growth above 10%', () => {
-  const result = compare(100, 100, 100, 111)
+  const result = compare({ baselineImport: 100, candidateImport: 100, baselineWarm: 100, candidateWarm: 111 })
   assert.notEqual(result.status, 0)
   assert.ok(result.stderr.includes('Warm search RSS regression exceeds 10%'))
 })
 
 test('regular comparisons also cap initialization and peak RSS growth at 10%', () => {
-  const importResult = compare(100, 111)
+  const importResult = compare({ baselineImport: 100, candidateImport: 111 })
   assert.notEqual(importResult.status, 0)
   assert.ok(importResult.stderr.includes('Catalog initialization RSS regression exceeds 10%'))
 
-  const peakResult = compare(100, 100, 100, 100, 100, 111)
+  const peakResult = compare({ baselineImport: 100, candidateImport: 100, baselinePeak: 100, candidatePeak: 111 })
   assert.notEqual(peakResult.status, 0)
   assert.ok(peakResult.stderr.includes('Peak RSS regression exceeds 10%'))
 })
 
 test('migration comparisons still require at least 10% lower import RSS', () => {
-  const result = compare(100, 95, 100, 100, 100, 100, ['--require-import-improvement'])
+  const result = compare({
+    baselineImport: 100,
+    candidateImport: 95,
+    extraArgs: ['--require-import-improvement'],
+  })
   assert.notEqual(result.status, 0)
   assert.ok(result.stderr.includes('Migration must reduce catalog initialization RSS at least 10%'))
 })
