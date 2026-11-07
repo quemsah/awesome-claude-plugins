@@ -551,10 +551,10 @@ test('scheduled IndexNow keeps its baseline on invalid rollback release artifact
           }
           if (endpoint === artifactUrl) {
             return {
-            ok: true,
-            arrayBuffer: async () =>
-              artifactBytes.buffer.slice(artifactBytes.byteOffset, artifactBytes.byteOffset + artifactBytes.byteLength),
-          }
+              ok: true,
+              arrayBuffer: async () =>
+                artifactBytes.buffer.slice(artifactBytes.byteOffset, artifactBytes.byteOffset + artifactBytes.byteLength),
+            }
           }
           if (endpoint === 'https://api.indexnow.org/indexnow') {
             submitted.push(endpoint)
