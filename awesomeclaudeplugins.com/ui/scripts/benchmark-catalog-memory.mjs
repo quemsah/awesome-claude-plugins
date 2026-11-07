@@ -67,8 +67,8 @@ if (values.baseline || values.candidate) {
   process.stdout.write(`${output}\n`)
   // CI protects the optimization from future memory regressions. An on-demand index
   // may use more transient memory, but it must stay within a bounded overhead.
-  const baselineImport = median(base.map(stageDelta('afterImport', 'beforeImport')))
-  const candidateImport = median(pr.map(stageDelta('afterImport', 'beforeImport')))
+  const baselineImport = median(base.map(snapshotValue('afterImport')))
+  const candidateImport = median(pr.map(snapshotValue('afterImport')))
   const baselineWarm = median(base.map(snapshotValue('afterQueries')))
   const candidateWarm = median(pr.map(snapshotValue('afterQueries')))
   const baselinePeak = median(base.map((run) => run.phases.afterQueries.peakRssMiB))
