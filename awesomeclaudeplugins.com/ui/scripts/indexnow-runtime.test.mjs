@@ -445,8 +445,18 @@ test('IndexNow resolves and submits the deployed SQLite snapshot when production
           return {
             ok: true,
             json: async () => ({
+              // biome-ignore lint/style/useNamingConvention: GitHub release API uses snake_case keys
               tag_name: `catalog-${deployedSnapshotId}`,
-              assets: [{ name: 'catalog.sqlite', state: 'uploaded', browser_download_url: artifactUrl, size: artifactBytes.byteLength, digest: `sha256:${artifactDigest}` }],
+              assets: [
+                {
+                  name: 'catalog.sqlite',
+                  state: 'uploaded',
+                  // biome-ignore lint/style/useNamingConvention: GitHub release API uses snake_case keys
+                  browser_download_url: artifactUrl,
+                  size: artifactBytes.byteLength,
+                  digest: `sha256:${artifactDigest}`,
+                },
+              ],
             }),
           }
         }
@@ -520,10 +530,12 @@ test('scheduled IndexNow keeps its baseline on invalid rollback release artifact
             return {
               ok: true,
               json: async () => ({
+                // biome-ignore lint/style/useNamingConvention: GitHub release API uses snake_case keys
                 tag_name: tag,
                 assets: [{
                   name: 'catalog.sqlite',
                   state: 'uploaded',
+                  // biome-ignore lint/style/useNamingConvention: GitHub release API uses snake_case keys
                   browser_download_url: artifactUrl,
                   size: artifactBytes.byteLength,
                   digest: scenario === 'missing-digest' ? null : `sha256:${scenario === 'digest-mismatch' ? '0'.repeat(64) : digest}`,
