@@ -166,6 +166,22 @@ describe('GitHubClient', () => {
     expect(test.requests.map(({ time }) => time)).toEqual([0, 0, 7_000])
   })
 
+  it('returns Code Search secondary limits without multiplying retries across crawl pages', async () => {
+    const secondaryLimit = Response.json({ message: 'You have exceeded a secondary rate limit' }, { status: 403 })
+    const test = harness([secondaryLimit, Response.json(page)])
+
+    await expect(test.client.searchCode('marketplace.json', 1)).rejects.toMatchObject({
+      name: 'GitHubTemporaryError',
+      status: 403,
+      retryCount: 0,
+    })
+    expect(test.requests).toHaveLength(1)
+
+    await test.client.searchCode('marketplace.json', 2)
+    expect(test.requests).toHaveLength(2)
+    expect(test.requests[1].time - test.requests[0].time).toBeGreaterThanOrEqual(60_000)
+  })
+
   it('retries repository search primary limits at the server reset', async () => {
     const result = { total_count: 0, incomplete_results: false, items: [] }
     const test = harness([

@@ -1236,7 +1236,9 @@ export class GitHubClient implements GitHubReader {
     if (secondary) secondaryCount++
     this.budget.defer(bucket, Math.max(delay ?? 0, secondary ? 60_000 * 2 ** (secondaryCount - 1) + Math.floor(this.random() * 1_000) : 0))
     const failureReason: GitHubRetryReason = secondary ? 'secondary_rate_limit' : 'primary_rate_limit'
-    if (finalAttempt) {
+    // Code Search can fan out into many independent pages and partitions. Retrying
+    // each secondary limit here compounds the crawler's own recovery attempts.
+    if (finalAttempt || (bucket === 'code_search' && secondary)) {
       return {
         kind: 'result',
         result: {
