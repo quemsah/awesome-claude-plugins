@@ -161,9 +161,7 @@ it('discovers the original repository after a transient Code Search secondary li
         limited = true
         return Response.json({ message: 'You have exceeded a secondary rate limit' }, { status: 403 })
       }
-      return Response.json(
-        page(query.startsWith('filename:marketplace.json') ? [item('https://github.com/acme/recovered')] : []),
-      )
+      return Response.json(page(query.startsWith('filename:marketplace.json') ? [item('https://github.com/acme/recovered')] : []))
     }) as typeof fetch,
   })
   const metrics = { pagesFetched: 0, totalResults: 0, partitions: 0, incompletePartitions: 0 }
