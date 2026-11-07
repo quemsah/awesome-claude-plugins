@@ -74,6 +74,10 @@ node --expose-gc /path/to/pr/ui/scripts/benchmark-catalog-memory.mjs --label pr 
 node /path/to/pr/ui/scripts/benchmark-catalog-memory.mjs --baseline /tmp/main-memory.json --candidate /tmp/pr-memory.json
 ```
 
+Regular pull request comparisons fail when any measured RSS grows by more than
+10%. The manual workflow's `migration` comparison also requires at least a 10%
+reduction in post-import RSS; its default `regression` comparison does not.
+
 This isolates the incremental footprint of the catalog module and different
 search cache strategies. It **does not measure the full Next.js production process**:
 separate server bundles can initialize more than one module/index instance. RSS

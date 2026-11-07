@@ -5,9 +5,14 @@ import { toRouteTemplate } from '../../../lib/webVitalsPath.ts'
 const MAX_REPORTS_PER_MINUTE = 30
 const MAX_BODY_BYTES = 16_384
 const MAX_FIELD_LENGTH = 128
+const BLOCKED_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]{0,31}:?$/i
+const TRAILING_SCHEME_COLON_PATTERN = /:$/
+const EXTENSION_SCHEMES = new Set(['chrome-extension', 'moz-extension', 'safari-web-extension', 'ms-browser-extension'])
 const rateLimiter = new RateLimiter(10_000, MAX_REPORTS_PER_MINUTE, 60_000)
 
 type NormalizedReport = {
+  blockedUri: unknown
+  disposition: unknown
   documentUri: unknown
   violatedDirective: unknown
 }
@@ -39,7 +44,9 @@ export async function POST(request: Request) {
     const document = getPathname(normalized.documentUri)
     const route = document === null ? null : toRouteTemplate(document)
     const directive = sanitize(normalized.violatedDirective)
-    const key = JSON.stringify([route, directive])
+    const disposition = normalizeDisposition(normalized.disposition)
+    const blockedResource = classifyBlockedResource(normalized.blockedUri)
+    const key = JSON.stringify([route, directive, disposition, blockedResource.kind, blockedResource.origin, blockedResource.scheme])
     if (seen.has(key)) {
       continue
     }
@@ -48,10 +55,14 @@ export async function POST(request: Request) {
     console.info(
       JSON.stringify({
         message: 'CSP violation report',
-        level: 'warn',
+        level: disposition === 'report' ? 'info' : 'warn',
         event: 'csp_violation',
         route,
         directive,
+        disposition,
+        blockedKind: blockedResource.kind,
+        blockedOrigin: blockedResource.origin,
+        blockedScheme: blockedResource.scheme,
       })
     )
   }
@@ -82,12 +93,22 @@ function normalizeReport(value: unknown): NormalizedReport | null {
 
   const legacyReport = value['csp-report']
   if (isRecord(legacyReport)) {
-    return { documentUri: legacyReport['document-uri'], violatedDirective: legacyReport['violated-directive'] }
+    return {
+      documentUri: legacyReport['document-uri'],
+      violatedDirective: legacyReport['violated-directive'],
+      blockedUri: legacyReport['blocked-uri'],
+      disposition: legacyReport.disposition,
+    }
   }
 
   const reportBody = value.body
   if (isRecord(reportBody) && (value.type === undefined || value.type === 'csp-violation')) {
-    return { documentUri: reportBody.documentURL, violatedDirective: reportBody.effectiveDirective }
+    return {
+      documentUri: reportBody.documentURL,
+      violatedDirective: reportBody.effectiveDirective,
+      blockedUri: reportBody.blockedURL,
+      disposition: reportBody.disposition,
+    }
   }
 
   return null
@@ -99,6 +120,54 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function sanitize(value: unknown): string | null {
   return typeof value === 'string' ? value.replaceAll(/[\p{Cc}\p{Cf}]/gu, ' ').slice(0, MAX_FIELD_LENGTH) : null
+}
+
+function normalizeDisposition(value: unknown): 'enforce' | 'report' | null {
+  return value === 'enforce' || value === 'report' ? value : null
+}
+
+function classifyBlockedResource(value: unknown): { kind: string | null; origin: string | null; scheme: string | null } {
+  if (typeof value !== 'string' || !value.trim()) {
+    return { kind: null, origin: null, scheme: null }
+  }
+
+  const blockedUri = value.trim()
+  const schemeToken = getSchemeToken(blockedUri)
+  if (schemeToken) return classifySchemeToken(schemeToken)
+
+  try {
+    return classifyParsedUrl(new URL(blockedUri))
+  } catch (error) {
+    if (!(error instanceof TypeError)) {
+      throw error
+    }
+    return { kind: 'other', origin: null, scheme: null }
+  }
+}
+
+function getSchemeToken(value: string): string | null {
+  return BLOCKED_SCHEME_PATTERN.test(value) ? value.toLowerCase().replace(TRAILING_SCHEME_COLON_PATTERN, '') : null
+}
+
+function classifySchemeToken(scheme: string): { kind: string; origin: null; scheme: string | null } {
+  if (scheme === 'inline' || scheme === 'eval' || scheme === 'wasm-eval') {
+    return { kind: scheme, origin: null, scheme: null }
+  }
+  if (scheme === 'data' || scheme === 'blob') {
+    return { kind: scheme, origin: null, scheme }
+  }
+  if (EXTENSION_SCHEMES.has(scheme)) {
+    return { kind: 'extension', origin: null, scheme }
+  }
+  return { kind: 'scheme', origin: null, scheme }
+}
+
+function classifyParsedUrl(url: URL): { kind: string; origin: string | null; scheme: string | null } {
+  if (url.protocol === 'http:' || url.protocol === 'https:') {
+    return { kind: 'url', origin: url.origin, scheme: null }
+  }
+  const scheme = url.protocol.slice(0, -1)
+  return classifySchemeToken(scheme)
 }
 
 function getPathname(value: unknown): string | null {
