@@ -192,11 +192,11 @@ describe('GitHubClient', () => {
     expect(test.requests.map(({ time }) => time)).toEqual([0, 60_000, 120_000])
   })
 
-  it('bounds repeated Code Search secondary limits to two attempts per page without exponential cooldowns', async () => {
+  it('opens a shared Code Search circuit after two rate-limited pages, without a third delay', async () => {
     const limited = () => Response.json({ message: 'You have exceeded a secondary rate limit' }, { status: 403 })
-    const test = harness([...Array.from({ length: 6 }, limited), Response.json(page)])
+    const test = harness([...Array.from({ length: 4 }, limited)])
 
-    for (let pageNumber = 1; pageNumber <= 3; pageNumber++) {
+    for (let pageNumber = 1; pageNumber <= 2; pageNumber++) {
       await expect(test.client.searchCode('marketplace.json', pageNumber)).rejects.toMatchObject({
         name: 'GitHubTemporaryError',
         status: 403,
@@ -205,9 +205,23 @@ describe('GitHubClient', () => {
       expect(test.requests).toHaveLength(pageNumber * 2)
     }
 
-    await expect(test.client.searchCode('marketplace.json', 4)).resolves.toEqual(page)
-    expect(test.requests).toHaveLength(7)
-    expect(test.requests.map(({ time }) => time)).toEqual([0, 60_000, 120_000, 180_000, 240_000, 300_000, 360_000])
+    expect(test.client.isCodeSearchCircuitOpen()).toBe(true)
+    await expect(test.client.searchCode('marketplace.json', 3)).rejects.toMatchObject({
+      name: 'GitHubTemporaryError',
+      status: 403,
+    })
+    expect(test.requests).toHaveLength(4)
+    expect(test.requests.map(({ time }) => time)).toEqual([0, 60_000, 120_000, 180_000])
+  })
+
+  it('resets the consecutive limited-page count after successful Code Search recovery', async () => {
+    const limited = () => Response.json({ message: 'You have exceeded a secondary rate limit' }, { status: 403 })
+    const test = harness([limited(), limited(), Response.json(page), limited(), limited()])
+    await expect(test.client.searchCode('marketplace.json', 1)).rejects.toBeInstanceOf(GitHubTemporaryError)
+    await expect(test.client.searchCode('marketplace.json', 2)).resolves.toEqual(page)
+    await expect(test.client.searchCode('marketplace.json', 3)).rejects.toBeInstanceOf(GitHubTemporaryError)
+    expect(test.client.isCodeSearchCircuitOpen()).toBe(false)
+    expect(test.requests).toHaveLength(5)
   })
 
   it('honors GitHub Retry-After when longer than the Code Search recovery cooldown', async () => {
