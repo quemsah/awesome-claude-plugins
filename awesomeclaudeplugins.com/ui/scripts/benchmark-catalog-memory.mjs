@@ -11,6 +11,7 @@ const { values } = parseArgs({
     out: { type: 'string' },
     baseline: { type: 'string' },
     candidate: { type: 'string' },
+    'require-import-improvement': { type: 'boolean', default: false },
   },
 })
 const mib = 1024 * 1024
@@ -65,17 +66,20 @@ if (values.baseline || values.candidate) {
   )
   const output = md.join('\n')
   process.stdout.write(`${output}\n`)
-  // CI protects the optimization from future memory regressions. An on-demand index
-  // may use more transient memory, but it must stay within a bounded overhead.
+  // Regular changes may not regress any measured RSS by more than 10%. The
+  // dedicated migration A/B can additionally require the original import win.
   const baselineImport = median(base.map(snapshotValue('afterImport')))
   const candidateImport = median(pr.map(snapshotValue('afterImport')))
   const baselineWarm = median(base.map(snapshotValue('afterQueries')))
   const candidateWarm = median(pr.map(snapshotValue('afterQueries')))
   const baselinePeak = median(base.map((run) => run.phases.afterQueries.peakRssMiB))
   const candidatePeak = median(pr.map((run) => run.phases.afterQueries.peakRssMiB))
-  assert(candidateImport <= baselineImport * 0.9, 'Catalog initialization must reduce RSS at least 10%')
+  assert(candidateImport <= baselineImport * 1.1, 'Catalog initialization RSS regression exceeds 10%')
   assert(candidateWarm <= baselineWarm * 1.1, 'Warm search RSS regression exceeds 10%')
-  assert(candidatePeak <= baselinePeak * 1.2, 'Peak RSS regression exceeds 20%')
+  assert(candidatePeak <= baselinePeak * 1.1, 'Peak RSS regression exceeds 10%')
+  if (values['require-import-improvement']) {
+    assert(candidateImport <= baselineImport * 0.9, 'Migration must reduce catalog initialization RSS at least 10%')
+  }
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${output}\n`)
 } else {
   assert(global.gc, 'Run with node --expose-gc')
