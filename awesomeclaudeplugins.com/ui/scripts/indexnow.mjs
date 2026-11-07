@@ -16,6 +16,7 @@ const RESOLVE_DEPLOYED = process.env.INDEXNOW_RESOLVE_DEPLOYED === 'true'
 const SNAPSHOT_ID_PATTERN = /^[a-zA-Z0-9._-]+$/
 const REPOSITORY_PATTERN = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/
 const RELEASE_SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/i
+const CATALOG_FINGERPRINT_PATTERN = /^[a-f0-9]{64}$/i
 const BASELINE_PATH =
   process.env.INDEXNOW_BASELINE_PATH ?? fileURLToPath(new URL('../.indexnow-cache/indexnow-state.sqlite', import.meta.url))
 const CATALOG_PATH = process.env.CATALOG_SQLITE_PATH ?? fileURLToPath(new URL('../src/data/catalog.sqlite', import.meta.url))
@@ -155,11 +156,10 @@ async function resolveReleaseArtifact(snapshotId) {
   const releaseTag = `catalog-${snapshotId}`
   const assetUrl = `https://github.com/${repository}/releases/download/${releaseTag}/catalog.sqlite`
   const releaseApiUrl = `https://api.github.com/repos/${repository}/releases/tags/${releaseTag}`
+  const headers = new Headers({ accept: 'application/vnd.github+json' })
+  if (process.env.GITHUB_TOKEN) headers.set('authorization', `Bearer ${process.env.GITHUB_TOKEN}`)
   const response = await fetch(releaseApiUrl, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
-    },
+    headers,
     signal: AbortSignal.timeout(20_000),
   })
   if (!response.ok) throw new Error(`Failed to read catalog release ${releaseTag}: HTTP ${response.status}`)
@@ -196,7 +196,7 @@ async function resolveDeployedCatalog(localCatalog) {
     if (typeof deployed?.snapshotId !== 'string' || !SNAPSHOT_ID_PATTERN.test(deployed.snapshotId)) {
       throw new Error('Cannot resolve deployed catalog: production returned an invalid snapshotId')
     }
-    if (typeof deployed?.sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(deployed.sha256)) {
+    if (typeof deployed?.sha256 !== 'string' || !CATALOG_FINGERPRINT_PATTERN.test(deployed.sha256)) {
       throw new Error('Cannot resolve deployed catalog: production returned an invalid fingerprint')
     }
 
@@ -229,7 +229,9 @@ async function resolveDeployedCatalog(localCatalog) {
     }
   } catch (error) {
     if (!DEFER_UNTIL_DEPLOYED) throw error
-    console.log(`IndexNow deferred until the next scheduled run: ${error instanceof Error ? error.message : String(error)}. Baseline was not advanced.`)
+    console.log(
+      `IndexNow deferred until the next scheduled run: ${error instanceof Error ? error.message : String(error)}. Baseline was not advanced.`
+    )
     return null
   }
 }
