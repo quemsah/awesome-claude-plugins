@@ -26,7 +26,7 @@
     "@awesome-claude-plugins/catalog-snapshot": "^0.1.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.3",
+    "@biomejs/biome": "2.6.6",
     "@octokit/openapi-types": "^29.0.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.19.2",
