@@ -21,8 +21,8 @@
     "format": "biome format --write ."
   },
   "dependencies": {
-    "@awesome-claude-plugins/catalog-contract": "^0.1.0",
-    "@awesome-claude-plugins/catalog-snapshot": "^0.1.0",
+    "@awesome-claude-plugins/catalog-contract": "workspace:*",
+    "@awesome-claude-plugins/catalog-snapshot": "workspace:*",
     "@radix-ui/react-avatar": "^1.2.6",
     "@radix-ui/react-dropdown-menu": "2.2.1",
     "@radix-ui/react-select": "^2.3.7",
