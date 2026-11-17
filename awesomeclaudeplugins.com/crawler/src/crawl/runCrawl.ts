@@ -30,7 +30,9 @@ export type RunCrawlOptions = {
   signal?: AbortSignal
   started?: boolean
   repositorySearchEnabled?: boolean
+  repositorySearchMaxRequests?: number
   reconcileExpiredGaps?: boolean
+  enrichmentMaxPendingCandidates?: number
   log?: Log
   onPhase?: (phase: 'discovery' | 'enrichment') => void
 }
@@ -149,9 +151,19 @@ async function discoverOptionalRepositories(
   if (options.repositorySearchEnabled) {
     const partial: { current: RepositorySearchResult | null } = { current: null }
     try {
-      repo = await discoverRepositories(db, reader, runId, heartbeat, now, options.log, options.reconcileExpiredGaps, (summary) => {
-        partial.current = summary
-      })
+      repo = await discoverRepositories(
+        db,
+        reader,
+        runId,
+        heartbeat,
+        now,
+        options.log,
+        options.reconcileExpiredGaps,
+        (summary) => {
+          partial.current = summary
+        },
+        options.repositorySearchMaxRequests,
+      )
     } catch (error) {
       if (error instanceof ShutdownError || error instanceof RunNotActiveError || options.signal?.aborted) throw error
       if (!(error instanceof GitHubFatalError || error instanceof GitHubTemporaryError)) throw error
@@ -256,7 +268,8 @@ async function crawlAndComplete(
   const enrichmentTotal = (db.prepare('SELECT COUNT(*) AS count FROM repositories').get() as { count: number }).count
   startRunPhase(db, runId, 'enrichment', now(), enrichmentTotal)
   options.onPhase?.('enrichment')
-  const enrichment = await enrichRepositories(db, reader, runId, heartbeat, now, options.log, MAX_PENDING_CANDIDATES_PER_RUN)
+  const maxPendingCandidates = options.enrichmentMaxPendingCandidates ?? MAX_PENDING_CANDIDATES_PER_RUN
+  const enrichment = await enrichRepositories(db, reader, runId, heartbeat, now, options.log, maxPendingCandidates)
   options.log?.({
     level: 'info',
     event: 'crawl.phase_completed',

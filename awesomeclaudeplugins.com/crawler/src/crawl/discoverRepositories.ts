@@ -29,10 +29,8 @@ import {
 } from '../storage/repositorySearch.js'
 import { runWhileActive } from '../storage/runs.js'
 
-const MAX_REPOSITORY_SEARCH_REQUESTS = 20
-const HISTORICAL_REQUEST_RESERVE = 5
-// Keep most requests on recent work while guaranteeing room for due historical partitions.
-const ROLLING_REQUEST_BUDGET = MAX_REPOSITORY_SEARCH_REQUESTS - HISTORICAL_REQUEST_RESERVE
+export const MAX_REPOSITORY_SEARCH_REQUESTS = 20
+export const HISTORICAL_REQUEST_RESERVE = 5
 
 export type RepositoryDiscoverySummary = {
   /** Completion of this invocation's configured due work, never GitHub-wide coverage. */
@@ -164,6 +162,8 @@ type SearchContext = {
   attempted: Set<RepositorySearchPartition>
   activePushedStart: string
   writeDiscovery: ReturnType<typeof createDiscoveryWriter>
+  maxRequests: number
+  rollingBudget: number
 }
 
 function prepareRepositoryWork(db: Database.Database, runId: string, at: string, reconcileExpiredGaps: boolean): Work[] {
@@ -259,7 +259,10 @@ function createSearchReporter(context: SearchContext) {
     const unattempted = work.filter(
       ({ partition }) => partition.status !== 'split' && !completed.has(partition) && !attempted.has(partition),
     )
-    if (summary.pagesFetched >= 20 && work.some(({ partition }) => partition.status !== 'split' && !completed.has(partition)))
+    if (
+      summary.pagesFetched >= context.maxRequests &&
+      work.some(({ partition }) => partition.status !== 'split' && !completed.has(partition))
+    )
       warnings.add('request-budget')
     // Emit an outcome for budget-skipped leaves too; old completion timestamps do not mean this run covered them.
     for (const entry of unattempted) emitPartition(entry, failure ? 'source-interrupted' : 'request-budget')
@@ -429,22 +432,22 @@ function repositoryPageStopReason(
   return null
 }
 
-function repositoryPartitionLimits(work: readonly Work[], index: number) {
+function repositoryPartitionLimits(work: readonly Work[], index: number, maxRequests: number, rollingBudget: number) {
   const { window, partition } = work[index]
   const requestLimit =
     window.field === 'pushed' &&
     work.some((entry, pendingIndex) => pendingIndex > index && entry.window.field === 'created' && entry.partition.status !== 'split')
-      ? ROLLING_REQUEST_BUDGET
-      : MAX_REPOSITORY_SEARCH_REQUESTS
+      ? rollingBudget
+      : maxRequests
   const firstPage = partition.status === 'complete' || partition.next_page < 1 || partition.next_page > 10 ? 1 : partition.next_page
   return { requestLimit, firstPage }
 }
 
 async function scanRepositoryPartition(context: SearchContext, index: number, reporter: SearchReporter): Promise<void> {
-  const { db, reader, runId, onProgress, now, log, summary, work, completed, attempted } = context
+  const { db, reader, runId, onProgress, now, log, summary, work, completed, attempted, maxRequests, rollingBudget } = context
   const { warnings, emitPartition } = reporter
   const { query, window, partition } = work[index]
-  if (summary.pagesFetched >= MAX_REPOSITORY_SEARCH_REQUESTS) return
+  if (summary.pagesFetched >= maxRequests) return
   log?.({
     level: 'info',
     event: 'crawl.repository_search.started',
@@ -459,7 +462,7 @@ async function scanRepositoryPartition(context: SearchContext, index: number, re
   })
   attempted.add(partition)
   let reason = 'request-budget'
-  const { requestLimit, firstPage } = repositoryPartitionLimits(work, index)
+  const { requestLimit, firstPage } = repositoryPartitionLimits(work, index, maxRequests, rollingBudget)
   Object.assign(partition, {
     status: 'incomplete',
     last_attempt_at: now(),
@@ -529,6 +532,7 @@ export async function discoverRepositories(
   log?: Log,
   reconcileExpiredGaps = false,
   onPartial?: (summary: RepositoryDiscoverySummary) => void,
+  maxRequests = MAX_REPOSITORY_SEARCH_REQUESTS,
 ): Promise<RepositoryDiscoverySummary> {
   const at = now()
   const summary: RepositoryDiscoverySummary = {
@@ -551,6 +555,8 @@ export async function discoverRepositories(
   const attempted = new Set<RepositorySearchPartition>()
   const work = prepareRepositoryWork(db, runId, at, reconcileExpiredGaps)
   const activePushedStart = rollingPushedWindow(at).start
+  const historicalReserve = Math.min(Math.max(Math.floor(maxRequests * 0.25), HISTORICAL_REQUEST_RESERVE), 30)
+  const rollingBudget = Math.max(maxRequests - historicalReserve, 1)
   const context: SearchContext = {
     db,
     reader,
@@ -565,12 +571,14 @@ export async function discoverRepositories(
     attempted,
     activePushedStart,
     writeDiscovery,
+    maxRequests,
+    rollingBudget,
   }
   const reporter = createSearchReporter(context)
   try {
     for (let index = 0; index < work.length; index++) {
-      if (summary.pagesFetched >= MAX_REPOSITORY_SEARCH_REQUESTS) break
-      if (summary.pagesFetched >= ROLLING_REQUEST_BUDGET) {
+      if (summary.pagesFetched >= maxRequests) break
+      if (summary.pagesFetched >= rollingBudget) {
         const createdIndex = work.findIndex(
           ({ window, partition }, pendingIndex) => pendingIndex >= index && window.field === 'created' && partition.status !== 'split',
         )

@@ -16,6 +16,7 @@ import {
   claimPublicationLease,
   completeRun,
   failRun,
+  getActiveRun,
   getRun,
   getSetting,
   listRunErrors,
@@ -805,6 +806,28 @@ describe('CLI', () => {
     const db = openDatabase(path)
     expect(getRun(db, 'automatic')?.status).toBe('published')
     expect(db.prepare('SELECT COUNT(*) AS n FROM stats WHERE run_id = ?').get('automatic')).toEqual({ n: 1 })
+    db.close()
+  })
+
+  it('rejects crawl early if RECONCILE_EXPIRED_GAPS is enabled without REPOSITORY_SEARCH_ENABLED', async () => {
+    const path = databasePath()
+    populateTestDatabase(path)
+    const reader = vi.fn()
+    await expect(
+      runCli(['crawl', '--dry-run'], {
+        env: {
+          DB_PATH: path,
+          GITHUB_READ_TOKEN: 'read-token',
+          PUBLISH_ENABLED: 'false',
+          RECONCILE_EXPIRED_GAPS: 'true',
+          REPOSITORY_SEARCH_ENABLED: 'false',
+        },
+        reader,
+      }),
+    ).rejects.toThrow('Gap reconciliation requires REPOSITORY_SEARCH_ENABLED=true')
+    expect(reader).not.toHaveBeenCalled()
+    const db = openDatabase(path)
+    expect(getActiveRun(db)).toBeNull()
     db.close()
   })
 })

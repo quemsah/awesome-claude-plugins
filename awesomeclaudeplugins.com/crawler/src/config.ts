@@ -1,9 +1,15 @@
 import { isValidGitBranch, parseGitHubRepository } from './github/identifiers.js'
 
+export const DEFAULT_REPOSITORY_SEARCH_MAX_REQUESTS = 120
+export const DEFAULT_ENRICHMENT_MAX_PENDING_CANDIDATES = 1000
+
 export type RuntimeConfig = {
   dbPath: string
   publishEnabled: boolean
   repositorySearchEnabled: boolean
+  repositorySearchMaxRequests: number
+  reconcileExpiredGaps: boolean
+  enrichmentMaxPendingCandidates: number
   readToken?: string
   publishToken?: string
   owner?: string
@@ -37,6 +43,20 @@ function publicationConfig(env: NodeJS.ProcessEnv, readToken?: string) {
   return { publishToken, owner: parts[0], repo: parts[1], branch }
 }
 
+function parsePositiveInteger(value: string | undefined, defaultValue: number): number {
+  if (value === undefined || value.trim() === '') return defaultValue
+  const parsed = Number(value.trim())
+  if (!Number.isInteger(parsed) || parsed <= 0) throw new ConfigurationError()
+  return parsed
+}
+
+function parseBooleanFlag(value: string | undefined, defaultValue = false): boolean {
+  if (value === undefined || value.trim() === '') return defaultValue
+  const flag = value.trim()
+  if (flag !== 'true' && flag !== 'false') throw new ConfigurationError()
+  return flag === 'true'
+}
+
 export function parseConfig(command: 'crawl' | 'publish', env: NodeJS.ProcessEnv): RuntimeConfig {
   if (!env.DB_PATH?.trim()) throw new ConfigurationError()
   const flag = env.PUBLISH_ENABLED ?? 'false'
@@ -45,6 +65,12 @@ export function parseConfig(command: 'crawl' | 'publish', env: NodeJS.ProcessEnv
   const repoSearchFlag = env.REPOSITORY_SEARCH_ENABLED ?? 'false'
   if (repoSearchFlag !== 'true' && repoSearchFlag !== 'false') throw new ConfigurationError()
   const repositorySearchEnabled = repoSearchFlag === 'true'
+  const repositorySearchMaxRequests = parsePositiveInteger(env.REPOSITORY_SEARCH_MAX_REQUESTS, DEFAULT_REPOSITORY_SEARCH_MAX_REQUESTS)
+  const enrichmentMaxPendingCandidates = parsePositiveInteger(
+    env.ENRICHMENT_MAX_PENDING_CANDIDATES,
+    DEFAULT_ENRICHMENT_MAX_PENDING_CANDIDATES,
+  )
+  const reconcileExpiredGaps = parseBooleanFlag(env.RECONCILE_EXPIRED_GAPS, false)
   const { botToken, chatId } = telegramCredentials(env, publishEnabled)
   if (command === 'publish' && !publishEnabled) throw new ConfigurationError()
   const readToken = env.GITHUB_READ_TOKEN?.trim()
@@ -54,6 +80,9 @@ export function parseConfig(command: 'crawl' | 'publish', env: NodeJS.ProcessEnv
     dbPath: env.DB_PATH,
     publishEnabled,
     repositorySearchEnabled,
+    repositorySearchMaxRequests,
+    reconcileExpiredGaps,
+    enrichmentMaxPendingCandidates,
     readToken,
     ...publisher,
     botToken,

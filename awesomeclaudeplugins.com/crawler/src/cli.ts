@@ -297,7 +297,9 @@ async function runCrawl(
       signal: dependencies.signal,
       started: true,
       repositorySearchEnabled: config.repositorySearchEnabled,
-      reconcileExpiredGaps: options.reconcileExpiredGaps,
+      repositorySearchMaxRequests: config.repositorySearchMaxRequests,
+      reconcileExpiredGaps: options.reconcileExpiredGaps || config.reconcileExpiredGaps,
+      enrichmentMaxPendingCandidates: config.enrichmentMaxPendingCandidates,
       log,
     })
     output(JSON.stringify(result))
@@ -324,8 +326,8 @@ async function runCrawlCommand(
   now: () => Date,
   output: (line: string) => void,
 ): Promise<void> {
-  if (options.reconcileExpiredGaps && !config.repositorySearchEnabled)
-    throw new Error('Gap reconciliation requires REPOSITORY_SEARCH_ENABLED=true')
+  const reconcileExpiredGaps = options.reconcileExpiredGaps || config.reconcileExpiredGaps
+  if (reconcileExpiredGaps && !config.repositorySearchEnabled) throw new Error('Gap reconciliation requires REPOSITORY_SEARCH_ENABLED=true')
   const activeRunId = await ensureCrawlAvailable(db, config, dependencies, now)
   if (activeRunId) {
     output(JSON.stringify({ status: 'skipped', reason: 'active_run', runId: activeRunId }))
@@ -360,7 +362,7 @@ async function runCrawlCommand(
   })
   try {
     rates.checkpoint()
-    await runCrawl(db, config, dependencies, options, runId, now, output, rates)
+    await runCrawl(db, config, dependencies, { ...options, reconcileExpiredGaps }, runId, now, output, rates)
   } catch (error) {
     try {
       failRun(db, runId, now().toISOString(), 'startup_failed')
