@@ -5,6 +5,10 @@
     "helpers:pinGitHubActionDigests"
   ],
   "timezone": "Europe/Athens",
+  "ignoreDeps": [
+    "@awesome-claude-plugins/catalog-contract",
+    "@awesome-claude-plugins/catalog-snapshot"
+  ],
   "separateMultipleMajor": true,
   "lockFileMaintenance": {
     "enabled": true,
