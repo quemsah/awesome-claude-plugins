@@ -36,7 +36,9 @@ export type CrawlOptions = ExecuteOptions & {
   ranges?: readonly SizeRange[]
   dryRun: boolean
   repositorySearchEnabled?: boolean
+  repositorySearchMaxRequests?: number
   reconcileExpiredGaps?: boolean
+  enrichmentMaxPendingCandidates?: number
   started?: boolean
   git?: GitHubGit
   rateBuckets?: () => GitHubRateBuckets
@@ -573,7 +575,9 @@ async function crawlAndPrepare(
     signal: options.signal,
     started: options.started,
     repositorySearchEnabled: options.repositorySearchEnabled,
+    repositorySearchMaxRequests: options.repositorySearchMaxRequests,
     reconcileExpiredGaps: options.reconcileExpiredGaps,
+    enrichmentMaxPendingCandidates: options.enrichmentMaxPendingCandidates,
     log: options.log,
     onPhase,
   })

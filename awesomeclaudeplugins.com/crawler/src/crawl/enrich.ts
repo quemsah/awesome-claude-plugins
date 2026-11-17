@@ -51,7 +51,7 @@ export type EnrichmentCounts = {
   knownInvalidSkipped?: number
 }
 
-export const MAX_PENDING_CANDIDATES_PER_RUN = 200
+export const MAX_PENDING_CANDIDATES_PER_RUN = 1000
 const PENDING_CANDIDATE_CURSOR_SETTING = 'enrichment_pending_candidate_cursor'
 
 function selectPendingCandidateIds(db: Database.Database, cursor: number, limit: number): number[] {

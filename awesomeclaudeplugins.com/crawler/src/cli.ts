@@ -297,7 +297,9 @@ async function runCrawl(
       signal: dependencies.signal,
       started: true,
       repositorySearchEnabled: config.repositorySearchEnabled,
-      reconcileExpiredGaps: options.reconcileExpiredGaps,
+      repositorySearchMaxRequests: config.repositorySearchMaxRequests,
+      reconcileExpiredGaps: options.reconcileExpiredGaps || config.reconcileExpiredGaps,
+      enrichmentMaxPendingCandidates: config.enrichmentMaxPendingCandidates,
       log,
     })
     output(JSON.stringify(result))

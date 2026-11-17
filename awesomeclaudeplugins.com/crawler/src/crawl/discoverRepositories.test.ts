@@ -853,6 +853,36 @@ it('reports due rolling partitions as incomplete when the budget expires before 
   expect(result).toMatchObject({ state: 'incomplete', pagesFetched: 20, completedPartitions: 2, incompletePartitions: 6 })
 })
 
+it('respects a custom maxRequests budget', async () => {
+  const db = database()
+  for (let run = 0; run < 13; run++)
+    await discoverRepositories(
+      db,
+      reader(async () => page()),
+      'run',
+      undefined,
+      () => at,
+    )
+  const result = await discoverRepositories(
+    db,
+    reader(async (query, number) => {
+      expect(query.includes(' pushed:')).toBe(true)
+      return page(
+        Array.from({ length: number === 10 ? 99 : 100 }, () => item('catalog')),
+        999,
+      )
+    }),
+    'run',
+    undefined,
+    () => at,
+    undefined,
+    false,
+    undefined,
+    30,
+  )
+  expect(result).toMatchObject({ state: 'incomplete', pagesFetched: 30, completedPartitions: 3, incompletePartitions: 5 })
+})
+
 it('resumes a split historical tree without repeating its parent or its completed child', async () => {
   const db = database()
   const left = `${firstQuery.queryText} created:2008-01-01..2008-07-01`

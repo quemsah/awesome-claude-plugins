@@ -40,4 +40,29 @@ describe('parseConfig', () => {
     ).toThrow(/configuration/)
     expect(() => parseConfig('publish', { ...env, GITHUB_REPOSITORY: 'owner/repo', GITHUB_BRANCH: 'main' })).toThrow(/configuration/)
   })
+
+  it('configures repository search request budget with default 120 and accepts valid positive integers', () => {
+    expect(parseConfig('crawl', base).repositorySearchMaxRequests).toBe(120)
+    expect(parseConfig('crawl', { ...base, REPOSITORY_SEARCH_MAX_REQUESTS: '50' }).repositorySearchMaxRequests).toBe(50)
+    for (const invalid of ['0', '-10', 'abc', '12.5']) {
+      expect(() => parseConfig('crawl', { ...base, REPOSITORY_SEARCH_MAX_REQUESTS: invalid })).toThrow(/configuration/)
+    }
+  })
+
+  it('configures enrichment pending candidates cap with default 1000 and accepts valid positive integers', () => {
+    expect(parseConfig('crawl', base).enrichmentMaxPendingCandidates).toBe(1000)
+    expect(parseConfig('crawl', { ...base, ENRICHMENT_MAX_PENDING_CANDIDATES: '500' }).enrichmentMaxPendingCandidates).toBe(500)
+    for (const invalid of ['0', '-5', 'foo', '1.5']) {
+      expect(() => parseConfig('crawl', { ...base, ENRICHMENT_MAX_PENDING_CANDIDATES: invalid })).toThrow(/configuration/)
+    }
+  })
+
+  it('configures gap reconciliation flag with default false and accepts boolean values', () => {
+    expect(parseConfig('crawl', base).reconcileExpiredGaps).toBe(false)
+    expect(parseConfig('crawl', { ...base, RECONCILE_EXPIRED_GAPS: 'true' }).reconcileExpiredGaps).toBe(true)
+    expect(parseConfig('crawl', { ...base, RECONCILE_EXPIRED_GAPS: 'false' }).reconcileExpiredGaps).toBe(false)
+    for (const invalid of ['1', 'yes', 'TRUE']) {
+      expect(() => parseConfig('crawl', { ...base, RECONCILE_EXPIRED_GAPS: invalid })).toThrow(/configuration/)
+    }
+  })
 })
