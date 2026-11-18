@@ -276,7 +276,7 @@ async function crawlAndComplete(
     phase: 'enrichment',
     category: 'phase_completed',
     runId,
-    message: `Enrichment completed: ${enrichment.conclusive} conclusive, ${enrichment.unchangedOnError} kept unchanged after errors, ${enrichment.newIncomplete} incomplete, ${enrichment.deferredCandidates} candidates deferred by cap`,
+    message: `Enrichment completed: ${enrichment.conclusive} conclusive, ${enrichment.unchangedOnError} kept unchanged after errors, ${enrichment.newIncomplete} incomplete, ${enrichment.deferredCandidates} deferred; pending queue ${enrichment.pendingQueueBefore} -> ${enrichment.pendingQueueAfter} (${enrichment.pendingQueueSelected} selected)`,
     ...enrichment,
   })
   heartbeat()
