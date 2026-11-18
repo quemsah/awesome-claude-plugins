@@ -48,10 +48,14 @@ export type EnrichmentCounts = {
   conclusive: number
   warnings: number
   deferredCandidates: number
+  pendingQueueBefore: number
+  pendingQueueSelected: number
+  pendingQueueAfter: number
+  oldestPendingCreatedAt: string | null
   knownInvalidSkipped?: number
 }
 
-export const MAX_PENDING_CANDIDATES_PER_RUN = 1000
+export const MAX_PENDING_CANDIDATES_PER_RUN = 3000
 const PENDING_CANDIDATE_CURSOR_SETTING = 'enrichment_pending_candidate_cursor'
 
 function selectPendingCandidateIds(db: Database.Database, cursor: number, limit: number): number[] {
@@ -81,6 +85,18 @@ function selectPendingCandidateIds(db: Database.Database, cursor: number, limit:
     ids.push(...before.map(({ id }) => id))
   }
   return ids
+}
+
+/** Count the exact candidate pool used by the rotating per-run enrichment cap. */
+function snapshotPendingCandidateQueue(db: Database.Database): { count: number; oldestCreatedAt: string | null } {
+  return db
+    .prepare(`
+      SELECT COUNT(*) AS count, MIN(createdAt) AS oldestCreatedAt
+      FROM repositories
+      WHERE plugins_count IS NULL
+        AND (marketplace_failed_oid IS NULL OR marketplace_failed_parser_version IS NULL OR marketplace_failed_parser_version != ?)
+    `)
+    .get(MARKETPLACE_INVALID_CONTENT_CACHE_VERSION) as { count: number; oldestCreatedAt: string | null }
 }
 
 type EnrichmentWriteBatch = {
@@ -2351,12 +2367,18 @@ export async function enrichRepositories(
     conclusive: 0,
     warnings: 0,
     deferredCandidates: 0,
+    pendingQueueBefore: 0,
+    pendingQueueSelected: 0,
+    pendingQueueAfter: 0,
+    oldestPendingCreatedAt: null,
     knownInvalidSkipped: 0,
   }
   let lastId = 0
   const storedCursor = Number(getSetting(db, PENDING_CANDIDATE_CURSOR_SETTING) ?? '0')
   const candidateCursor = Number.isSafeInteger(storedCursor) && storedCursor > 0 ? storedCursor : 0
+  counts.pendingQueueBefore = snapshotPendingCandidateQueue(db).count
   const pendingCandidateIds = new Set(selectPendingCandidateIds(db, candidateCursor, maxPendingCandidates))
+  counts.pendingQueueSelected = pendingCandidateIds.size
   if (pendingCandidateIds.size > 0) {
     setSetting(db, PENDING_CANDIDATE_CURSOR_SETTING, String([...pendingCandidateIds].at(-1)))
   }
@@ -2412,5 +2434,8 @@ export async function enrichRepositories(
       queued: retryQueue.tasks.length,
     })
   }
+  const pendingQueueAfter = snapshotPendingCandidateQueue(db)
+  counts.pendingQueueAfter = pendingQueueAfter.count
+  counts.oldestPendingCreatedAt = pendingQueueAfter.oldestCreatedAt
   return counts
 }
