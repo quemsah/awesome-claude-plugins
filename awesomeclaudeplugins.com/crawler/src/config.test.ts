@@ -49,8 +49,8 @@ describe('parseConfig', () => {
     }
   })
 
-  it('configures enrichment pending candidates cap with default 1000 and accepts valid positive integers', () => {
-    expect(parseConfig('crawl', base).enrichmentMaxPendingCandidates).toBe(1000)
+  it('configures enrichment pending candidates cap with default 3000 and accepts valid positive integers', () => {
+    expect(parseConfig('crawl', base).enrichmentMaxPendingCandidates).toBe(3000)
     expect(parseConfig('crawl', { ...base, ENRICHMENT_MAX_PENDING_CANDIDATES: '500' }).enrichmentMaxPendingCandidates).toBe(500)
     for (const invalid of ['0', '-5', 'foo', '1.5']) {
       expect(() => parseConfig('crawl', { ...base, ENRICHMENT_MAX_PENDING_CANDIDATES: invalid })).toThrow(/configuration/)

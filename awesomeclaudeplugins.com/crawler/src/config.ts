@@ -1,7 +1,7 @@
 import { isValidGitBranch, parseGitHubRepository } from './github/identifiers.js'
 
 export const DEFAULT_REPOSITORY_SEARCH_MAX_REQUESTS = 120
-export const DEFAULT_ENRICHMENT_MAX_PENDING_CANDIDATES = 1000
+export const DEFAULT_ENRICHMENT_MAX_PENDING_CANDIDATES = 3000
 
 export type RuntimeConfig = {
   dbPath: string

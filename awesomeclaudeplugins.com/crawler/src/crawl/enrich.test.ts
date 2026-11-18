@@ -312,6 +312,10 @@ it('pages by id after deleting blank and 404 rows, visiting newly discovered ids
     conclusive: 52,
     warnings: 0,
     deferredCandidates: 0,
+    pendingQueueBefore: 54,
+    pendingQueueSelected: 54,
+    pendingQueueAfter: 0,
+    oldestPendingCreatedAt: null,
     knownInvalidSkipped: 0,
   })
   expect(seen).toHaveLength(52)
@@ -359,7 +363,13 @@ it('limits per-run enrichment of unprocessed marketplace candidates and leaves t
   )
 
   expect(fetched).toEqual(['team/candidate-1', 'team/candidate-2'])
-  expect(result.deferredCandidates).toBe(1)
+  expect(result).toMatchObject({
+    deferredCandidates: 1,
+    pendingQueueBefore: 3,
+    pendingQueueSelected: 2,
+    pendingQueueAfter: 1,
+    oldestPendingCreatedAt: expect.any(String),
+  })
   expect(db.prepare('SELECT plugins_count FROM repositories ORDER BY id').all()).toEqual([
     { plugins_count: validMarketplaceFixture.pluginsCount },
     { plugins_count: validMarketplaceFixture.pluginsCount },
@@ -378,7 +388,7 @@ it('rotates the candidate cap so a failing low-id candidate does not starve late
   })
   const first = await enrichRepositories(db, failingReader, 'crawl-1', undefined, () => '2026-10-30T12:00:00Z', undefined, 1)
   expect(firstRunFetches).toContain('candidate-1')
-  expect(first.deferredCandidates).toBe(1)
+  expect(first).toMatchObject({ deferredCandidates: 1, pendingQueueBefore: 2, pendingQueueSelected: 1, pendingQueueAfter: 2 })
   completeRun(db, 'crawl-1', '2026-10-30T12:30:00Z', first.warnings)
   beginRun(db, 'crawl-2', '2026-10-31T12:00:00Z')
 
@@ -400,7 +410,7 @@ it('rotates the candidate cap so a failing low-id candidate does not starve late
   )
 
   expect(laterRunFetches).toContain('candidate-2')
-  expect(second.deferredCandidates).toBe(1)
+  expect(second).toMatchObject({ deferredCandidates: 1, pendingQueueBefore: 2, pendingQueueSelected: 1, pendingQueueAfter: 1 })
 })
 
 it('uses batched GraphQL metadata and skips marketplace REST when the stored OID is unchanged', async () => {
