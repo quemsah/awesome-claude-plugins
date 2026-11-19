@@ -72,7 +72,8 @@ export function parseConfig(command: 'crawl' | 'publish' | 'backfill-enrichment'
     DEFAULT_ENRICHMENT_MAX_PENDING_CANDIDATES,
   )
   const reconcileExpiredGaps = parseBooleanFlag(env.RECONCILE_EXPIRED_GAPS, false)
-  const { botToken, chatId } = command === 'backfill-enrichment' ? { botToken: undefined, chatId: undefined } : telegramCredentials(env, publishEnabled)
+  const { botToken, chatId } =
+    command === 'backfill-enrichment' ? { botToken: undefined, chatId: undefined } : telegramCredentials(env, publishEnabled)
   if (command === 'publish' && !publishEnabled) throw new ConfigurationError()
   const readToken = env.GITHUB_READ_TOKEN?.trim()
   if ((command === 'crawl' || command === 'backfill-enrichment') && !readToken) throw new ConfigurationError()
