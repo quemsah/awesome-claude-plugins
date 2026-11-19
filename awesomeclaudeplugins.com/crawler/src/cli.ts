@@ -3,8 +3,8 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type Database from 'better-sqlite3'
 import { ConfigurationError, parseConfig, type RuntimeConfig } from './config.js'
-import { CrawlError } from './crawl/runCrawl.js'
 import { enrichPendingCandidates } from './crawl/enrich.js'
+import { CrawlError } from './crawl/runCrawl.js'
 import { GitHubClient, type GitHubReader } from './github/client.js'
 import type { GitHubRateBuckets, RateLog } from './github/rateBudget.js'
 import type { SizeRange } from './github/sizeRanges.js'
@@ -141,10 +141,15 @@ function parseOptions(command: CliCommand, args: string[]): ParsedOptions {
 }
 
 function parseCommand(value: string | undefined): CliCommand {
-  if (value && ['inspect', 'inspect-progress', 'crawl', 'backfill-enrichment', 'publish', 'recover-crawl', 'export', 'maintenance'].includes(value)) {
+  if (
+    value &&
+    ['inspect', 'inspect-progress', 'crawl', 'backfill-enrichment', 'publish', 'recover-crawl', 'export', 'maintenance'].includes(value)
+  ) {
     return value as CliCommand
   }
-  throw new Error('Unknown command. Available: inspect, inspect-progress, crawl, backfill-enrichment, publish, recover-crawl, export, maintenance')
+  throw new Error(
+    'Unknown command. Available: inspect, inspect-progress, crawl, backfill-enrichment, publish, recover-crawl, export, maintenance',
+  )
 }
 
 async function notifyBlockedCrawl(
@@ -442,7 +447,8 @@ async function runBackfillCommand(
     output(JSON.stringify({ timestamp: new Date().toISOString(), message: event.message ?? `${event.phase}: ${event.category}`, ...event }))
   try {
     rates.checkpoint()
-    const reader = dependencies.reader?.(config, rates.log, dependencies.signal) ??
+    const reader =
+      dependencies.reader?.(config, rates.log, dependencies.signal) ??
       new GitHubClient({ token: config.readToken ?? '', log: rates.log, signal: dependencies.signal })
     const heartbeat = () => {
       throwIfShutdown(dependencies.signal)
@@ -470,15 +476,16 @@ async function runBackfillCommand(
     throw error
   } finally {
     rates.checkpoint()
-    if (rates.observed()) log({
-      level: 'info',
-      event: 'github.rate_summary',
-      phase: 'github_rate',
-      category: 'rate_summary',
-      runId,
-      message: 'GitHub API rate-limit summary',
-      buckets: rates.buckets,
-    })
+    if (rates.observed())
+      log({
+        level: 'info',
+        event: 'github.rate_summary',
+        phase: 'github_rate',
+        category: 'rate_summary',
+        runId,
+        message: 'GitHub API rate-limit summary',
+        buckets: rates.buckets,
+      })
   }
 }
 
@@ -579,7 +586,8 @@ export function formatCliError(error: unknown): string {
         ? error.category
         : error instanceof DraftExportError
           ? error.category
-          : error instanceof Error && /^(Unknown|backfill-enrichment requires|publish requires|recover-crawl requires|export requires)/.test(error.message)
+          : error instanceof Error &&
+              /^(Unknown|backfill-enrichment requires|publish requires|recover-crawl requires|export requires)/.test(error.message)
             ? 'invalid_option'
             : error instanceof Error && /^(Recovery requires|DB_PATH|Railway|Cannot verify|Inconsistent)/.test(error.message)
               ? 'input_or_storage_error'
