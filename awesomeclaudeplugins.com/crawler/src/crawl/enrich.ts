@@ -2350,11 +2350,15 @@ export async function enrichRepositories(
   now: () => string = () => new Date().toISOString(),
   log?: Log,
   maxPendingCandidates = MAX_PENDING_CANDIDATES_PER_RUN,
+  pendingOnly = false,
 ): Promise<EnrichmentCounts> {
   if (!Number.isSafeInteger(maxPendingCandidates) || maxPendingCandidates < 0)
     throw new Error('maxPendingCandidates must be a nonnegative safe integer')
+  const pendingBefore = snapshotPendingCandidateQueue(db)
   if (getRun(db, runId)?.phase !== 'enrichment') {
-    const total = (db.prepare('SELECT COUNT(*) AS count FROM repositories').get() as { count: number }).count
+    const total = pendingOnly
+      ? Math.min(pendingBefore.count, maxPendingCandidates)
+      : (db.prepare('SELECT COUNT(*) AS count FROM repositories').get() as { count: number }).count
     startRunPhase(db, runId, 'enrichment', now(), total)
   }
   const counts: EnrichmentCounts = {
@@ -2376,9 +2380,10 @@ export async function enrichRepositories(
   let lastId = 0
   const storedCursor = Number(getSetting(db, PENDING_CANDIDATE_CURSOR_SETTING) ?? '0')
   const candidateCursor = Number.isSafeInteger(storedCursor) && storedCursor > 0 ? storedCursor : 0
-  counts.pendingQueueBefore = snapshotPendingCandidateQueue(db).count
+  counts.pendingQueueBefore = pendingBefore.count
   const pendingCandidateIds = new Set(selectPendingCandidateIds(db, candidateCursor, maxPendingCandidates))
   counts.pendingQueueSelected = pendingCandidateIds.size
+  if (pendingOnly) counts.deferredCandidates = pendingBefore.count - pendingCandidateIds.size
   if (pendingCandidateIds.size > 0) {
     setSetting(db, PENDING_CANDIDATE_CURSOR_SETTING, String([...pendingCandidateIds].at(-1)))
   }
@@ -2386,10 +2391,7 @@ export async function enrichRepositories(
   const retryQueue: RetryQueue = { tasks: [], deferredIds: new Set<number>() }
   const markRepositoryProcessed = createRepositoryProgressTracker(db, runId, removedIds, now)
   const batchState = { size: 25, stableBatches: 0 }
-  while (true) {
-    const rows = listForEnrichment(db, lastId, 50)
-    if (rows.length === 0) break
-    for (const row of rows) lastId = row.id
+  const processRows = async (rows: RepositoryRow[]): Promise<void> => {
     await enrichPage(rows, {
       db,
       reader,
@@ -2405,6 +2407,24 @@ export async function enrichRepositories(
       markRepositoryProcessed,
     })
     onProgress?.()
+  }
+  if (pendingOnly) {
+    // Only hydrate the selected pending candidates: never re-fetch already enriched repositories.
+    // Sort because the persisted fair-rotation cursor can wrap around to lower IDs.
+    const selectedIds = [...pendingCandidateIds].sort((a, b) => a - b)
+    for (let offset = 0; offset < selectedIds.length; offset += 50) {
+      const rows = selectedIds.slice(offset, offset + 50)
+        .map((id) => getRepositoryById(db, id))
+        .filter((row): row is RepositoryRow => row !== null)
+      await processRows(rows)
+    }
+  } else {
+    while (true) {
+      const rows = listForEnrichment(db, lastId, 50)
+      if (rows.length === 0) break
+      for (const row of rows) lastId = row.id
+      await processRows(rows)
+    }
   }
 
   if (retryQueue.tasks.length > 0) {
@@ -2438,4 +2458,17 @@ export async function enrichRepositories(
   counts.pendingQueueAfter = pendingQueueAfter.count
   counts.oldestPendingCreatedAt = pendingQueueAfter.oldestCreatedAt
   return counts
+}
+
+/** Run an explicitly bounded pending-only backfill using the regular cursor, batching and retry policies. */
+export function enrichPendingCandidates(
+  db: Database.Database,
+  reader: GitHubReader,
+  runId: string,
+  onProgress?: () => void,
+  now: () => string = () => new Date().toISOString(),
+  log?: Log,
+  maxPendingCandidates = MAX_PENDING_CANDIDATES_PER_RUN,
+): Promise<EnrichmentCounts> {
+  return enrichRepositories(db, reader, runId, onProgress, now, log, maxPendingCandidates, true)
 }
