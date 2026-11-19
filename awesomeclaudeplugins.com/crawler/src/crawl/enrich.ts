@@ -2413,7 +2413,8 @@ export async function enrichRepositories(
     // Sort because the persisted fair-rotation cursor can wrap around to lower IDs.
     const selectedIds = [...pendingCandidateIds].sort((a, b) => a - b)
     for (let offset = 0; offset < selectedIds.length; offset += 50) {
-      const rows = selectedIds.slice(offset, offset + 50)
+      const rows = selectedIds
+        .slice(offset, offset + 50)
         .map((id) => getRepositoryById(db, id))
         .filter((row): row is RepositoryRow => row !== null)
       await processRows(rows)
