@@ -161,6 +161,126 @@ describe('CLI', () => {
     expect(result.stderr).toMatch(/invalid_option/i)
   })
 
+  it.each([[], ['--limit', '0'], ['--limit', '3001'], ['--limit', 'abc'], ['--limit', '1', '--other']])(
+    'rejects invalid enrichment-only backfill options before opening the database: %j',
+    async (args) => {
+      const open = vi.fn()
+      await expect(
+        runCli(['backfill-enrichment', ...args], {
+          env: { DB_PATH: 'unused.sqlite', GITHUB_READ_TOKEN: 'read-token' },
+          open,
+        }),
+      ).rejects.toThrow(/backfill-enrichment requires/)
+      expect(open).not.toHaveBeenCalled()
+    },
+  )
+
+  it('backfills only the bounded pending queue, keeps the persistent cursor, and never searches or publishes', async () => {
+    const path = databasePath()
+    const setup = openDatabase(path)
+    const insert = setup.prepare(`
+      INSERT INTO repositories (html_url, plugins_count, createdAt, updatedAt)
+      VALUES (?, ?, '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z')
+    `)
+    insert.run('https://github.com/alpha/already-ready', 1)
+    for (const repo of ['pending-one', 'pending-two', 'pending-three']) insert.run(`https://github.com/alpha/${repo}`, null)
+    setup.close()
+
+    const client = readerFixture()
+    const reader = vi.fn(() => client)
+    const git = vi.fn()
+    const notifier = vi.fn()
+    const firstOutput = vi.fn()
+    const env = {
+      DB_PATH: path,
+      GITHUB_READ_TOKEN: 'read-token',
+      PUBLISH_ENABLED: 'true',
+      REPOSITORY_SEARCH_ENABLED: 'true',
+    }
+    await runCli(['backfill-enrichment', '--limit', '2'], {
+      env,
+      runId: () => 'backfill-one',
+      now: () => new Date('2026-11-19T12:00:00.000Z'),
+      reader,
+      git,
+      notifier,
+      output: firstOutput,
+    })
+    const firstResult = firstOutput.mock.calls.map(([line]) => JSON.parse(line))
+      .find((entry) => entry.command === 'backfill-enrichment')
+    expect(firstResult).toMatchObject({
+      status: 'completed',
+      limit: 2,
+      enrichment: { pendingQueueBefore: 3, pendingQueueSelected: 2, pendingQueueAfter: 1, newReady: 2 },
+    })
+    expect(client.searchCode).not.toHaveBeenCalled()
+    expect(client.searchRepositories).not.toHaveBeenCalled()
+    expect(client.getRepository).toHaveBeenCalledTimes(2)
+    expect(client.getRepository).not.toHaveBeenCalledWith('alpha', 'already-ready', expect.anything(), expect.anything())
+    expect(git).not.toHaveBeenCalled()
+    expect(notifier).not.toHaveBeenCalled()
+
+    const afterFirst = openDatabase(path)
+    expect(getRun(afterFirst, 'backfill-one')).toMatchObject({ status: 'completed', phase_total: 2, phase_processed: 2, draft_hash: null })
+    expect(afterFirst.prepare('SELECT plugins_count FROM repositories WHERE repo_name IS NULL AND html_url LIKE ?')
+      .all('%pending-three')).toEqual([{ plugins_count: null }])
+    afterFirst.close()
+
+    const secondOutput = vi.fn()
+    await runCli(['backfill-enrichment', '--limit', '2'], {
+      env,
+      runId: () => 'backfill-two',
+      now: () => new Date('2026-11-19T14:00:00.000Z'),
+      reader,
+      output: secondOutput,
+    })
+    const secondResult = secondOutput.mock.calls.map(([line]) => JSON.parse(line))
+      .find((entry) => entry.command === 'backfill-enrichment')
+    expect(secondResult).toMatchObject({
+      status: 'completed',
+      enrichment: { pendingQueueBefore: 1, pendingQueueSelected: 1, pendingQueueAfter: 0, newReady: 1 },
+    })
+    expect(client.getRepository).toHaveBeenCalledTimes(3)
+    const verified = openDatabase(path)
+    expect(getRun(verified, 'backfill-two')).toMatchObject({ status: 'completed', phase_total: 1, phase_processed: 1, draft_hash: null })
+    expect(verified.prepare('SELECT plugins_count FROM repositories WHERE html_url = ?').get('https://github.com/alpha/already-ready')).toEqual({ plugins_count: 1 })
+    verified.close()
+  })
+
+  it('skips enrichment-only backfill when a regular crawl is active without touching its lease', async () => {
+    const path = databasePath()
+    const setup = openDatabase(path)
+    beginRun(setup, 'active-regular-crawl', '2026-11-19T00:00:00Z')
+    setup.close()
+    const reader = vi.fn()
+    const output = vi.fn()
+    await runCli(['backfill-enrichment', '--limit', '2'], {
+      env: { DB_PATH: path, GITHUB_READ_TOKEN: 'read-token' },
+      now: () => new Date('2026-11-19T12:00:00Z'),
+      reader,
+      output,
+    })
+    expect(output).toHaveBeenCalledWith(JSON.stringify({ status: 'skipped', reason: 'active_run', runId: 'active-regular-crawl' }))
+    expect(reader).not.toHaveBeenCalled()
+    const verified = openDatabase(path)
+    expect(getRun(verified, 'active-regular-crawl')).toMatchObject({ status: 'running' })
+    verified.close()
+  })
+
+  it('fails a claimed backfill run when GitHub setup fails and never leaves the DB locked', async () => {
+    const path = databasePath()
+    await expect(runCli(['backfill-enrichment', '--limit', '1'], {
+      env: { DB_PATH: path, GITHUB_READ_TOKEN: 'read-token' },
+      runId: () => 'failed-backfill',
+      reader: () => { throw new Error('reader setup failed') },
+      output: vi.fn(),
+    })).rejects.toThrow('reader setup failed')
+    const verified = openDatabase(path)
+    expect(getRun(verified, 'failed-backfill')).toMatchObject({ status: 'failed', last_error: 'backfill_failed' })
+    expect(getActiveRun(verified)).toBeNull()
+    verified.close()
+  })
+
   it('runs explicit maintenance and prunes old terminal runs', async () => {
     const path = databasePath()
     const db = openDatabase(path)
