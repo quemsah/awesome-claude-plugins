@@ -11,7 +11,7 @@ bun run build
 bun run backfill:enrichment --limit 1000
 ```
 
-- `--limit` is **required**, must be an integer from **1 to 3000**, and is an upper bound on *pending candidates selected*, not on individual HTTP requests.
+- `--limit` is **required**, must be an integer from **1 to 3000**, and is an upper bound on _pending candidates selected_, not on individual HTTP requests.
 - The backfill is **opt-in and manually invoked**. It is not added to the Railway cron or automatic deploy/start command.
 - It uses the same persisted SQLite **pending-candidate cursor**, the existing GraphQL/REST batching and retry policy, and the existing GitHub API rate-budget logic.
 - It **does not run Code Search, Repository Search, health checks, or full-catalog refresh**. Already-enriched repositories are not queried again.
@@ -30,7 +30,7 @@ Start with `--limit 1000`. Check the structured `crawl.backfill_completed` event
 - `oldestPendingCreatedAt` — how far back the remaining queue reaches
 - `rateBuckets.core` / `rateBuckets.graphql` — request counts, waits, retries, remaining
 
-If rate limits or execution time become excessive, use a smaller `--limit` on the *next* manual invocation. No environment or production cron change is necessary.
+If rate limits or execution time become excessive, use a smaller `--limit` on the _next_ manual invocation. No environment or production cron change is necessary.
 
 ## Notes
 
