@@ -168,16 +168,15 @@ describe('CLI', () => {
     { args: ['--limit', 'abc'] },
     { args: ['--limit', '1', '--other'] },
   ])('rejects invalid enrichment-only backfill options before opening the database: $args', async ({ args }) => {
-      const open = vi.fn()
-      await expect(
-        runCli(['backfill-enrichment', ...args], {
-          env: { DB_PATH: 'unused.sqlite', GITHUB_READ_TOKEN: 'read-token' },
-          open,
-        }),
-      ).rejects.toThrow(/backfill-enrichment requires/)
-      expect(open).not.toHaveBeenCalled()
-    },
-  )
+    const open = vi.fn()
+    await expect(
+      runCli(['backfill-enrichment', ...args], {
+        env: { DB_PATH: 'unused.sqlite', GITHUB_READ_TOKEN: 'read-token' },
+        open,
+      }),
+    ).rejects.toThrow(/backfill-enrichment requires/)
+    expect(open).not.toHaveBeenCalled()
+  })
 
   it('backfills only the bounded pending queue, keeps the persistent cursor, and never searches or publishes', async () => {
     const path = databasePath()
@@ -210,8 +209,7 @@ describe('CLI', () => {
       notifier,
       output: firstOutput,
     })
-    const firstResult = firstOutput.mock.calls.map(([line]) => JSON.parse(line))
-      .find((entry) => entry.command === 'backfill-enrichment')
+    const firstResult = firstOutput.mock.calls.map(([line]) => JSON.parse(line)).find((entry) => entry.command === 'backfill-enrichment')
     expect(firstResult).toMatchObject({
       status: 'completed',
       limit: 2,
@@ -226,8 +224,9 @@ describe('CLI', () => {
 
     const afterFirst = openDatabase(path)
     expect(getRun(afterFirst, 'backfill-one')).toMatchObject({ status: 'completed', phase_total: 2, phase_processed: 2, draft_hash: null })
-    expect(afterFirst.prepare('SELECT plugins_count FROM repositories WHERE repo_name IS NULL AND html_url LIKE ?')
-      .all('%pending-three')).toEqual([{ plugins_count: null }])
+    expect(
+      afterFirst.prepare('SELECT plugins_count FROM repositories WHERE repo_name IS NULL AND html_url LIKE ?').all('%pending-three'),
+    ).toEqual([{ plugins_count: null }])
     afterFirst.close()
 
     const secondOutput = vi.fn()
@@ -238,8 +237,7 @@ describe('CLI', () => {
       reader,
       output: secondOutput,
     })
-    const secondResult = secondOutput.mock.calls.map(([line]) => JSON.parse(line))
-      .find((entry) => entry.command === 'backfill-enrichment')
+    const secondResult = secondOutput.mock.calls.map(([line]) => JSON.parse(line)).find((entry) => entry.command === 'backfill-enrichment')
     expect(secondResult).toMatchObject({
       status: 'completed',
       enrichment: { pendingQueueBefore: 1, pendingQueueSelected: 1, pendingQueueAfter: 0, newReady: 1 },
@@ -247,7 +245,9 @@ describe('CLI', () => {
     expect(client.getRepository).toHaveBeenCalledTimes(3)
     const verified = openDatabase(path)
     expect(getRun(verified, 'backfill-two')).toMatchObject({ status: 'completed', phase_total: 1, phase_processed: 1, draft_hash: null })
-    expect(verified.prepare('SELECT plugins_count FROM repositories WHERE html_url = ?').get('https://github.com/alpha/already-ready')).toEqual({ plugins_count: 1 })
+    expect(
+      verified.prepare('SELECT plugins_count FROM repositories WHERE html_url = ?').get('https://github.com/alpha/already-ready'),
+    ).toEqual({ plugins_count: 1 })
     verified.close()
   })
 
@@ -273,12 +273,16 @@ describe('CLI', () => {
 
   it('fails a claimed backfill run when GitHub setup fails and never leaves the DB locked', async () => {
     const path = databasePath()
-    await expect(runCli(['backfill-enrichment', '--limit', '1'], {
-      env: { DB_PATH: path, GITHUB_READ_TOKEN: 'read-token' },
-      runId: () => 'failed-backfill',
-      reader: () => { throw new Error('reader setup failed') },
-      output: vi.fn(),
-    })).rejects.toThrow('reader setup failed')
+    await expect(
+      runCli(['backfill-enrichment', '--limit', '1'], {
+        env: { DB_PATH: path, GITHUB_READ_TOKEN: 'read-token' },
+        runId: () => 'failed-backfill',
+        reader: () => {
+          throw new Error('reader setup failed')
+        },
+        output: vi.fn(),
+      }),
+    ).rejects.toThrow('reader setup failed')
     const verified = openDatabase(path)
     expect(getRun(verified, 'failed-backfill')).toMatchObject({ status: 'failed', last_error: 'backfill_failed' })
     expect(getActiveRun(verified)).toBeNull()
