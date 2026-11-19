@@ -16,6 +16,7 @@
     "inspect": "node dist/cli.js inspect",
     "inspect:progress": "node dist/cli.js inspect-progress",
     "crawl": "node dist/cli.js crawl",
+    "backfill:enrichment": "node dist/cli.js backfill-enrichment",
     "publish": "node dist/cli.js publish",
     "maintenance": "node dist/cli.js maintenance",
     "smoke:sqlite": "node scripts/smoke-sqlite.mjs"
