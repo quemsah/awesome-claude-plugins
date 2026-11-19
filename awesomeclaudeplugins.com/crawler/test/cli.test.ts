@@ -190,6 +190,7 @@ describe('CLI', () => {
     setup.close()
 
     const client = readerFixture()
+    client.searchRepositories = vi.fn(client.searchRepositories)
     const reader = vi.fn(() => client)
     const git = vi.fn()
     const notifier = vi.fn()
