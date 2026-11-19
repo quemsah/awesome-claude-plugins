@@ -161,9 +161,13 @@ describe('CLI', () => {
     expect(result.stderr).toMatch(/invalid_option/i)
   })
 
-  it.each([[], ['--limit', '0'], ['--limit', '3001'], ['--limit', 'abc'], ['--limit', '1', '--other']])(
-    'rejects invalid enrichment-only backfill options before opening the database: %j',
-    async (args) => {
+  it.each([
+    { args: [] },
+    { args: ['--limit', '0'] },
+    { args: ['--limit', '3001'] },
+    { args: ['--limit', 'abc'] },
+    { args: ['--limit', '1', '--other'] },
+  ])('rejects invalid enrichment-only backfill options before opening the database: $args', async ({ args }) => {
       const open = vi.fn()
       await expect(
         runCli(['backfill-enrichment', ...args], {
