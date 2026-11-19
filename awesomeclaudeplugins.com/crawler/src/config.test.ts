@@ -50,12 +50,14 @@ describe('parseConfig', () => {
   })
 
   it('allows read-only enrichment backfill in a publishing environment without publishing credentials', () => {
-    expect(parseConfig('backfill-enrichment', {
-      ...base,
-      PUBLISH_ENABLED: 'true',
-      REPOSITORY_SEARCH_ENABLED: 'true',
-      TELEGRAM_BOT_TOKEN: 'configured-bot',
-    })).toMatchObject({
+    expect(
+      parseConfig('backfill-enrichment', {
+        ...base,
+        PUBLISH_ENABLED: 'true',
+        REPOSITORY_SEARCH_ENABLED: 'true',
+        TELEGRAM_BOT_TOKEN: 'configured-bot',
+      }),
+    ).toMatchObject({
       publishEnabled: false,
       readToken: 'read-secret',
       botToken: undefined,
