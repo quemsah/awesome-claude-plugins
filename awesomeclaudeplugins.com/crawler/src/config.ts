@@ -57,11 +57,12 @@ function parseBooleanFlag(value: string | undefined, defaultValue = false): bool
   return flag === 'true'
 }
 
-export function parseConfig(command: 'crawl' | 'publish', env: NodeJS.ProcessEnv): RuntimeConfig {
+export function parseConfig(command: 'crawl' | 'publish' | 'backfill-enrichment', env: NodeJS.ProcessEnv): RuntimeConfig {
   if (!env.DB_PATH?.trim()) throw new ConfigurationError()
   const flag = env.PUBLISH_ENABLED ?? 'false'
   if (flag !== 'true' && flag !== 'false') throw new ConfigurationError()
-  const publishEnabled = flag === 'true'
+  // Backfill never publishes and must not require a production write token or Telegram credentials.
+  const publishEnabled = command !== 'backfill-enrichment' && flag === 'true'
   const repoSearchFlag = env.REPOSITORY_SEARCH_ENABLED ?? 'false'
   if (repoSearchFlag !== 'true' && repoSearchFlag !== 'false') throw new ConfigurationError()
   const repositorySearchEnabled = repoSearchFlag === 'true'
@@ -71,10 +72,11 @@ export function parseConfig(command: 'crawl' | 'publish', env: NodeJS.ProcessEnv
     DEFAULT_ENRICHMENT_MAX_PENDING_CANDIDATES,
   )
   const reconcileExpiredGaps = parseBooleanFlag(env.RECONCILE_EXPIRED_GAPS, false)
-  const { botToken, chatId } = telegramCredentials(env, publishEnabled)
+  const { botToken, chatId } =
+    command === 'backfill-enrichment' ? { botToken: undefined, chatId: undefined } : telegramCredentials(env, publishEnabled)
   if (command === 'publish' && !publishEnabled) throw new ConfigurationError()
   const readToken = env.GITHUB_READ_TOKEN?.trim()
-  if (command === 'crawl' && !readToken) throw new ConfigurationError()
+  if ((command === 'crawl' || command === 'backfill-enrichment') && !readToken) throw new ConfigurationError()
   const publisher = publishEnabled ? publicationConfig(env, readToken) : {}
   return {
     dbPath: env.DB_PATH,

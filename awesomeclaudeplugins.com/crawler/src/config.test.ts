@@ -49,6 +49,23 @@ describe('parseConfig', () => {
     }
   })
 
+  it('allows read-only enrichment backfill in a publishing environment without publishing credentials', () => {
+    expect(
+      parseConfig('backfill-enrichment', {
+        ...base,
+        PUBLISH_ENABLED: 'true',
+        REPOSITORY_SEARCH_ENABLED: 'true',
+        TELEGRAM_BOT_TOKEN: 'configured-bot',
+      }),
+    ).toMatchObject({
+      publishEnabled: false,
+      readToken: 'read-secret',
+      botToken: undefined,
+      repositorySearchEnabled: true,
+    })
+    expect(() => parseConfig('backfill-enrichment', { DB_PATH: 'catalog.sqlite' })).toThrow(/configuration/)
+  })
+
   it('configures enrichment pending candidates cap with default 3000 and accepts valid positive integers', () => {
     expect(parseConfig('crawl', base).enrichmentMaxPendingCandidates).toBe(3000)
     expect(parseConfig('crawl', { ...base, ENRICHMENT_MAX_PENDING_CANDIDATES: '500' }).enrichmentMaxPendingCandidates).toBe(500)

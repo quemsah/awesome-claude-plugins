@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type Database from 'better-sqlite3'
 import { ConfigurationError, parseConfig, type RuntimeConfig } from './config.js'
+import { enrichPendingCandidates } from './crawl/enrich.js'
 import { CrawlError } from './crawl/runCrawl.js'
 import { GitHubClient, type GitHubReader } from './github/client.js'
 import type { GitHubRateBuckets, RateLog } from './github/rateBudget.js'
@@ -13,7 +14,7 @@ import { DraftExportError, exportDraftSnapshot } from './output/exportDraft.js'
 import { type GitHubGit, GitHubGitClient } from './publish/githubGit.js'
 import { PublicationError } from './publish/publishRun.js'
 import { ActiveRunError, executeCrawl, executePublish, type Notifier } from './service/execute.js'
-import { ShutdownError } from './shutdown.js'
+import { ShutdownError, throwIfShutdown } from './shutdown.js'
 import { openDatabase, openReadOnlyDatabase } from './storage/db.js'
 import { inspect } from './storage/inspect.js'
 import { optimizeDatabase, runMaintenance } from './storage/maintenance.js'
@@ -21,11 +22,15 @@ import { inspectProgress } from './storage/progress.js'
 import { listPublishable } from './storage/repositories.js'
 import {
   beginRun,
+  completeRun,
   failRun,
   getActiveRun,
   getPublicationLease,
   getSetting,
+  heartbeatRun,
+  listRunErrors,
   PublicationLeaseError,
+  RunNotActiveError,
   recoverStaleRun,
   recoverStoppedCrawl,
   setSetting,
@@ -67,10 +72,11 @@ function notifierFor(config: RuntimeConfig, dependencies: CliDependencies): Noti
   )
 }
 
-type CliCommand = 'inspect' | 'inspect-progress' | 'crawl' | 'publish' | 'recover-crawl' | 'export' | 'maintenance'
+type CliCommand = 'inspect' | 'inspect-progress' | 'crawl' | 'backfill-enrichment' | 'publish' | 'recover-crawl' | 'export' | 'maintenance'
 type ParsedOptions = {
   dryRun: boolean
   reconcileExpiredGaps: boolean
+  backfillLimit?: number
   publishId?: string
   exportId?: string
   exportDirectory?: string
@@ -88,6 +94,19 @@ function parseCrawlOptions(args: string[]): Pick<ParsedOptions, 'dryRun' | 'reco
   const reconcileExpiredGaps = seen.has('--reconcile-expired-gaps')
   if (reconcileExpiredGaps && !dryRun) throw new Error('Gap reconciliation requires --dry-run')
   return { dryRun, reconcileExpiredGaps }
+}
+
+const MAX_BACKFILL_CANDIDATES = 3000
+
+function parseBackfillOptions(args: string[]): Pick<ParsedOptions, 'backfillLimit'> {
+  if (args.length !== 2 || args[0] !== '--limit' || !/^[1-9][0-9]*$/.test(args[1] ?? '')) {
+    throw new Error('backfill-enrichment requires --limit <1..3000>')
+  }
+  const backfillLimit = Number(args[1])
+  if (!Number.isSafeInteger(backfillLimit) || backfillLimit > MAX_BACKFILL_CANDIDATES) {
+    throw new Error('backfill-enrichment requires --limit <1..3000>')
+  }
+  return { backfillLimit }
 }
 
 function parsePublishOptions(args: string[]): Pick<ParsedOptions, 'publishId' | 'recoverPublication'> {
@@ -109,6 +128,7 @@ function parseRunId(args: string[], command: 'recover-crawl' | 'export'): string
 function parseOptions(command: CliCommand, args: string[]): ParsedOptions {
   const defaults: ParsedOptions = { dryRun: false, reconcileExpiredGaps: false, recoverPublication: false }
   if (command === 'crawl') return { ...defaults, ...parseCrawlOptions(args) }
+  if (command === 'backfill-enrichment') return { ...defaults, ...parseBackfillOptions(args) }
   if (command === 'publish') return { ...defaults, ...parsePublishOptions(args) }
   if (command === 'recover-crawl') return { ...defaults, recoverId: parseRunId(args, command) }
   if (command === 'export') {
@@ -121,10 +141,15 @@ function parseOptions(command: CliCommand, args: string[]): ParsedOptions {
 }
 
 function parseCommand(value: string | undefined): CliCommand {
-  if (value && ['inspect', 'inspect-progress', 'crawl', 'publish', 'recover-crawl', 'export', 'maintenance'].includes(value)) {
+  if (
+    value &&
+    ['inspect', 'inspect-progress', 'crawl', 'backfill-enrichment', 'publish', 'recover-crawl', 'export', 'maintenance'].includes(value)
+  ) {
     return value as CliCommand
   }
-  throw new Error('Unknown command. Available: inspect, inspect-progress, crawl, publish, recover-crawl, export, maintenance')
+  throw new Error(
+    'Unknown command. Available: inspect, inspect-progress, crawl, backfill-enrichment, publish, recover-crawl, export, maintenance',
+  )
 }
 
 async function notifyBlockedCrawl(
@@ -377,6 +402,93 @@ async function runCrawlCommand(
   }
 }
 
+/**
+ * Manually drain only pending repositories. No Discovery, health checks, draft creation,
+ * publication or Telegram notifications. Shares the persistent cursor and run lease.
+ */
+async function runBackfillCommand(
+  db: Database.Database,
+  config: RuntimeConfig,
+  dependencies: CliDependencies,
+  limit: number,
+  now: () => Date,
+  output: (line: string) => void,
+): Promise<void> {
+  // Never recover or replace an active crawl: both modes mutate the same database.
+  if (getPublicationLease(db)) throw new PublicationLeaseError('publication_locked')
+  const active = getActiveRun(db)
+  if (active) {
+    output(JSON.stringify({ status: 'skipped', reason: 'active_run', runId: active.run_id }))
+    return
+  }
+
+  const runId = (dependencies.runId ?? randomUUID)()
+  try {
+    beginRun(db, runId, now().toISOString())
+  } catch (error) {
+    if (error !== null && typeof error === 'object' && 'code' in error && error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      const concurrent = getActiveRun(db)
+      if (concurrent) {
+        output(JSON.stringify({ status: 'skipped', reason: 'active_run', runId: concurrent.run_id }))
+        return
+      }
+    }
+    throw error
+  }
+
+  const rates = rateTracker((buckets) => {
+    try {
+      setSetting(db, `run_rate_metrics_${runId}`, JSON.stringify(buckets))
+    } catch {
+      console.error(JSON.stringify({ level: 'error', phase: 'github_rate', category: 'rate_checkpoint_failed', runId }))
+    }
+  })
+  const log = (event: LogEvent) =>
+    output(JSON.stringify({ timestamp: new Date().toISOString(), message: event.message ?? `${event.phase}: ${event.category}`, ...event }))
+  try {
+    rates.checkpoint()
+    const reader =
+      dependencies.reader?.(config, rates.log, dependencies.signal) ??
+      new GitHubClient({ token: config.readToken ?? '', log: rates.log, signal: dependencies.signal })
+    const heartbeat = () => {
+      throwIfShutdown(dependencies.signal)
+      if (!heartbeatRun(db, runId, now().toISOString())) throw new RunNotActiveError(runId)
+    }
+    const enrichment = await enrichPendingCandidates(db, reader, runId, heartbeat, () => now().toISOString(), log, limit)
+    heartbeat()
+    if (!completeRun(db, runId, now().toISOString(), listRunErrors(db, runId).length)) throw new RunNotActiveError(runId)
+    log({
+      level: 'info',
+      event: 'crawl.backfill_completed',
+      phase: 'enrichment',
+      category: 'backfill_completed',
+      runId,
+      message: `Pending-only backfill completed: ${enrichment.pendingQueueBefore} -> ${enrichment.pendingQueueAfter}, ${enrichment.pendingQueueSelected} selected`,
+      ...enrichment,
+    })
+    output(JSON.stringify({ status: 'completed', command: 'backfill-enrichment', runId, limit, enrichment, rateBuckets: rates.buckets }))
+  } catch (error) {
+    try {
+      failRun(db, runId, now().toISOString(), error instanceof ShutdownError ? 'terminated' : 'backfill_failed')
+    } catch {
+      // Never replace the original failure with a secondary status-write failure.
+    }
+    throw error
+  } finally {
+    rates.checkpoint()
+    if (rates.observed())
+      log({
+        level: 'info',
+        event: 'github.rate_summary',
+        phase: 'github_rate',
+        category: 'rate_summary',
+        runId,
+        message: 'GitHub API rate-limit summary',
+        buckets: rates.buckets,
+      })
+  }
+}
+
 async function runPublishCommand(
   db: Database.Database,
   config: RuntimeConfig,
@@ -446,13 +558,15 @@ export async function runCli(argv: string[], dependencies: CliDependencies = {})
   const now = dependencies.now ?? (() => new Date())
   const command = parseCommand(rawCommand)
   const parsed = parseOptions(command, args)
-  const config = command === 'crawl' || command === 'publish' ? parseConfig(command, env) : undefined
+  const config = command === 'crawl' || command === 'publish' || command === 'backfill-enrichment' ? parseConfig(command, env) : undefined
   const open = command === 'inspect-progress' ? (dependencies.openReadonly ?? openReadOnlyDatabase) : (dependencies.open ?? openDatabase)
   const db = open(config?.dbPath ?? env.DB_PATH ?? '')
   try {
     const handled = await runLocalCommand(db, command, parsed, now, output)
     if (!handled && command === 'crawl' && config) {
       await runCrawlCommand(db, config, dependencies, parsed, now, output)
+    } else if (!handled && command === 'backfill-enrichment' && config && parsed.backfillLimit) {
+      await runBackfillCommand(db, config, dependencies, parsed.backfillLimit, now, output)
     } else if (!handled && command === 'publish' && config) {
       await runPublishCommand(db, config, dependencies, parsed, now, output)
     }
@@ -472,7 +586,8 @@ export function formatCliError(error: unknown): string {
         ? error.category
         : error instanceof DraftExportError
           ? error.category
-          : error instanceof Error && /^(Unknown|publish requires|recover-crawl requires|export requires)/.test(error.message)
+          : error instanceof Error &&
+              /^(Unknown|backfill-enrichment requires|publish requires|recover-crawl requires|export requires)/.test(error.message)
             ? 'invalid_option'
             : error instanceof Error && /^(Recovery requires|DB_PATH|Railway|Cannot verify|Inconsistent)/.test(error.message)
               ? 'input_or_storage_error'
