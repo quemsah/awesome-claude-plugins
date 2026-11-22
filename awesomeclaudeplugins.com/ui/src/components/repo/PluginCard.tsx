@@ -25,7 +25,7 @@ export function PluginCard({ marketplaceName, plugin, repoPath, repo, manifestKi
   const repoName = repo?.name ?? repoFromPath
 
   return (
-    <Card className="group hover:border-primary/30 hover:from-muted hover:to-background w-full transition-all duration-300 hover:bg-linear-to-tl">
+    <Card className="group hover:border-primary/30 hover:bg-muted/40 w-full transition-colors duration-150 ease-out">
       <PluginHeader category={plugin.category} name={plugin.name} version={plugin.version} />
       {manifestKind === 'standalone-plugin' ? (
         <StandalonePluginLoad owner={owner} repoName={repoName} />

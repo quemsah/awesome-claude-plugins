@@ -190,7 +190,7 @@ export function RepoCard({ repo, className }: RepoCardProps) {
 
   return (
     <Card
-      className={`group hover:border-primary/30 hover:from-muted hover:to-background relative h-full transition-all duration-300 hover:bg-linear-to-tl ${className}`}
+      className={`group hover:border-primary/30 hover:bg-muted/40 relative h-full transition-colors duration-150 ease-out ${className}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
