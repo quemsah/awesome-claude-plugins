@@ -3,6 +3,9 @@ import { type CatalogRepo, extractPluginSummaries, getRepoCanonicalPath } from '
 const MINIMUM_MEANINGFUL_PLUGIN_DESCRIPTION_LENGTH = 40
 
 function getVerifiedPluginDescription(repo: CatalogRepo): string | undefined {
+  // Snapshot summaries can be truncated even when a marketplace has multiple plugins.
+  if (repo.manifest_kind !== 'standalone-plugin' && repo.plugins_count !== 1) return undefined
+
   const plugins = extractPluginSummaries(repo)
   if (plugins?.length !== 1) return undefined
 

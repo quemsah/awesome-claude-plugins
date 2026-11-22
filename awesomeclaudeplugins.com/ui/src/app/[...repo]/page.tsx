@@ -95,7 +95,7 @@ export default async function RepoPage({ params }: RouteParams) {
 
   return (
     <>
-      <RepoStructuredData repo={repository} />
+      <RepoStructuredData description={getRepoPageMetadata(catalogRepo).description} repo={repository} />
       <RepoPageClient
         apiBaseUrl={GITHUB_API_URL}
         catalogPlugins={catalogRepo.plugins}

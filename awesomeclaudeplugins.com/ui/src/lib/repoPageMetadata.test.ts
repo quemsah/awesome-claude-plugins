@@ -63,6 +63,32 @@ describe('getRepoPageMetadata', () => {
     })
   })
 
+  it('does not describe a multi-plugin marketplace using its only published plugin summary', () => {
+    expect(
+      getRepoPageMetadata({
+        ...baseRepo,
+        plugins_count: 2,
+        manifest_kind: 'marketplace',
+        plugins: [
+          {
+            name: 'first-plugin',
+            description: 'Only the first plugin has a published description with sufficient length.',
+          },
+        ],
+      }).description
+    ).toBe('Explore example-owner/example-repo in the Awesome Claude Plugins directory.')
+  })
+
+  it('allows a verified single-plugin marketplace to use its only plugin summary', () => {
+    expect(
+      getRepoPageMetadata({
+        ...baseRepo,
+        plugins_count: 1,
+        plugins: [{ name: 'only-plugin', description: 'A useful plugin description for the whole single-plugin marketplace.' }],
+      }).description
+    ).toBe('A useful plugin description for the whole single-plugin marketplace.')
+  })
+
   it('does not treat short plugin labels as meaningful fallback descriptions', () => {
     expect(
       getRepoPageMetadata({
