@@ -243,12 +243,7 @@ export function InfiniteRepoGrid({ hasMore, items, onLoadMore, pendingLoad, repl
           className="text-muted-foreground flex w-full flex-col items-center justify-center gap-2 py-8 text-sm [overflow-anchor:none]"
           ref={observerTarget}
         >
-          {/* `invisible` rather than dropping the node: the row keeps its 28px, and a document that
-              changes height between loading and idle is a document whose saved scroll offsets clamp.
-              An append hides the text because its placeholder rows already say what is happening. */}
-          <span className={pendingLoad === 'append' ? 'invisible' : undefined}>
-            {pendingLoad === 'replace' ? SEARCHING_LABEL : 'More repositories available'}
-          </span>
+          {pendingLoad === 'replace' ? <span>{SEARCHING_LABEL}</span> : null}
           <button
             className="text-foreground hover:bg-muted rounded-md border px-4 py-2 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             disabled={isLoading}
