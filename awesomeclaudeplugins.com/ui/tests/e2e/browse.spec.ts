@@ -2,7 +2,7 @@ import { expect, type Page, test } from '@playwright/test'
 import { CATALOG_PAGE_SIZE } from '../../src/lib/catalogPagination.ts'
 
 const browseHeading = 'Browse Claude Code plugin repositories'
-const homeHeading = 'Awesome Claude Plugins'
+const homeHeading = 'Claude Code Plugin Directory'
 const paginationName = 'Catalog pagination'
 const previousPageName = 'Previous page'
 const nextPageName = 'Next page'
