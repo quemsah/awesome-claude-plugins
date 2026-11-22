@@ -21,12 +21,39 @@ vi.mock('../../lib/catalog.ts', async (importOriginal) => {
             forks_count: 0,
             subscribers_count: 0,
             plugins_count: 1,
+            manifest_kind: 'standalone-plugin',
+            plugins: [
+              {
+                name: 'nanoresearch',
+                description: 'A high-performance research automation plugin for Claude Code workflows.',
+              },
+            ],
           }
-        : original.findCatalogRepo(path),
+        : path === 'sparse/repo'
+          ? {
+              id: 123456790,
+              owner: 'sparse',
+              repo_name: 'repo',
+              html_url: 'https://github.com/sparse/repo',
+              owner_url: 'https://github.com/sparse',
+              description: null,
+              stargazers_count: 0,
+              forks_count: 0,
+              subscribers_count: 0,
+              plugins_count: null,
+              plugins: [{ name: 'Only a name; no description.' }],
+            }
+          : original.findCatalogRepo(path),
     getCatalogQualityForRepo: (repo: Parameters<typeof original.getCatalogQualityForRepo>[0]) =>
       repo.owner === 'chrisliu298'
-        ? { descriptionQuality: 'missing' as const, publicationState: 'indexable' as const, qualityReason: 'Validated plugins.' }
-        : original.getCatalogQualityForRepo(repo),
+        ? { descriptionQuality: 'strong' as const, publicationState: 'indexable' as const, qualityReason: 'Validated plugins.' }
+        : repo.owner === 'sparse'
+          ? {
+              descriptionQuality: 'missing' as const,
+              publicationState: 'needs-review' as const,
+              qualityReason: 'Validated plugin count is unavailable.',
+            }
+          : original.getCatalogQualityForRepo(repo),
   }
 })
 const detailImagePattern = /\/og\/ykdojo\/claude-code-tips$/
@@ -36,68 +63,47 @@ describe('generateMetadata', () => {
     vi.restoreAllMocks()
   })
 
-  it('uses standalone description after marketplace 404 without changing publication policy', async () => {
-    vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(new Response(null, { status: 404 }))
-      .mockResolvedValueOnce(Response.json({ name: 'reviewer', description: 'A standalone code reviewer' }))
+  it('uses the catalog verified plugin summary for standalone metadata without fetching GitHub', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
     const metadata = await generateMetadata({ params: Promise.resolve({ repo: ['chrisliu298', 'nanoresearch'] }) })
-    expect(metadata.description).toBe('A standalone code reviewer')
+
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(metadata.title).toBe('chrisliu298/nanoresearch — Standalone plugin')
+    expect(metadata.description).toBe('A high-performance research automation plugin for Claude Code workflows.')
+    expect(metadata.openGraph).toMatchObject({
+      title: metadata.title,
+      description: metadata.description,
+    })
+    expect(metadata.twitter).toMatchObject({
+      title: metadata.title,
+      description: metadata.description,
+    })
     expect(metadata.robots).toEqual({ index: true, follow: true })
   })
 
-  it('includes the detail page Open Graph image', async () => {
-    const metadata = await generateMetadata({ params: Promise.resolve({ repo: ['ykdojo', 'claude-code-tips'] }) })
+  it('uses the repository description and canonical case for a legacy marketplace', async () => {
+    const metadata = await generateMetadata({ params: Promise.resolve({ repo: ['YkDoJo', 'CLAUDE-CODE-TIPS'] }) })
 
+    expect(metadata.title).toBe('ykdojo/claude-code-tips — Marketplace')
+    expect(metadata.description).toBe('Tips and practical advice for using Claude Code.')
+    expect(metadata.alternates).toMatchObject({ canonical: 'https://awesomeclaudeplugins.com/ykdojo/claude-code-tips' })
     expect(metadata.openGraph).toMatchObject({
+      url: 'https://awesomeclaudeplugins.com/ykdojo/claude-code-tips',
+      title: metadata.title,
+      description: metadata.description,
       images: [{ url: expect.stringMatching(detailImagePattern) }],
     })
-  })
-
-  it('uses manifest description fallback and permits indexing when repo description is null', async () => {
-    const manifestDescription = 'A high-performance research automation plugin for Claude Code workflows.'
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        name: 'nanoresearch',
-        owner: { name: 'maintainer' },
-        description: manifestDescription,
-        plugins: [{ name: 'nanoresearch', source: './' }],
-      }),
-    } as Response)
-
-    const metadata = await generateMetadata({ params: Promise.resolve({ repo: ['chrisliu298', 'nanoresearch'] }) })
-
-    expect(fetchSpy).toHaveBeenCalled()
-    expect(metadata.description).toBe(manifestDescription)
+    expect(metadata.twitter).toMatchObject({ title: metadata.title, description: metadata.description })
     expect(metadata.robots).toEqual({ index: true, follow: true })
   })
 
-  it('keeps publication stable when manifest description is unavailable', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: false,
-      status: 404,
-    } as Response)
+  it('uses a generic description and keeps review-needed records noindex when snapshot metadata is sparse', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const metadata = await generateMetadata({ params: Promise.resolve({ repo: ['sparse', 'repo'] }) })
 
-    const metadata = await generateMetadata({ params: Promise.resolve({ repo: ['chrisliu298', 'nanoresearch'] }) })
-
-    expect(metadata.description).toBe('Explore chrisliu298/nanoresearch in the Awesome Claude Plugins directory.')
-    expect(metadata.robots).toEqual({ index: true, follow: true })
-  })
-
-  it('keeps publication stable when manifest description is short (< 40 chars)', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        name: 'nanoresearch',
-        owner: { name: 'maintainer' },
-        description: 'Short tool',
-        plugins: [{ name: 'nanoresearch', source: './' }],
-      }),
-    } as Response)
-
-    const metadata = await generateMetadata({ params: Promise.resolve({ repo: ['chrisliu298', 'nanoresearch'] }) })
-
-    expect(metadata.description).toBe('Short tool')
-    expect(metadata.robots).toEqual({ index: true, follow: true })
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(metadata.title).toBe('sparse/repo')
+    expect(metadata.description).toBe('Explore sparse/repo in the Awesome Claude Plugins directory.')
+    expect(metadata.robots).toEqual({ index: false, follow: true })
   })
 })
