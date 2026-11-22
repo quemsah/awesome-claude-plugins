@@ -4,7 +4,8 @@ import StructuredData from '../components/search/StructuredData.tsx'
 import { TitleSection } from '../components/search/TitleSection.tsx'
 import { searchCatalogRepos } from '../lib/catalog.ts'
 import { CATALOG_PAGE_SIZE } from '../lib/catalogPagination.ts'
-import { BASE_URL } from '../lib/constants.ts'
+import { BASE_URL, DEFAULT_OG_IMAGE } from '../lib/constants.ts'
+import { HOME_PAGE_DESCRIPTION, HOME_PAGE_TITLE } from '../lib/homePageMetadata.ts'
 import { withSiteAlternates } from '../lib/metadata.ts'
 import { parseSortOption } from '../lib/searchState.ts'
 
@@ -17,6 +18,30 @@ export async function generateMetadata({ searchParams }: HomeProps): Promise<Met
   const hasSearchParams = params?.q !== undefined || params?.sort !== undefined
 
   return {
+    title: { absolute: HOME_PAGE_TITLE },
+    description: HOME_PAGE_DESCRIPTION,
+    openGraph: {
+      type: 'website',
+      locale: 'en_US',
+      url: BASE_URL,
+      title: HOME_PAGE_TITLE,
+      description: HOME_PAGE_DESCRIPTION,
+      siteName: 'Awesome Claude Plugins',
+      images: [
+        {
+          url: DEFAULT_OG_IMAGE,
+          width: 1200,
+          height: 630,
+          alt: HOME_PAGE_TITLE,
+        },
+      ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: HOME_PAGE_TITLE,
+      description: HOME_PAGE_DESCRIPTION,
+      images: [DEFAULT_OG_IMAGE],
+    },
     alternates: withSiteAlternates({
       canonical: `${BASE_URL}/`,
       types: {

@@ -2,6 +2,7 @@
 
 import { getRepoCanonicalPath } from '../../lib/catalog.ts'
 import { BASE_URL } from '../../lib/constants.ts'
+import { HOME_PAGE_DESCRIPTION } from '../../lib/homePageMetadata.ts'
 import { serializeJsonLd } from '../../lib/jsonLd.ts'
 import type { Repo } from '../../schemas/repo.schema.ts'
 
@@ -14,7 +15,7 @@ export default function StructuredData({ repos }: StructuredDataProps) {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     name: 'Awesome Claude Plugins',
-    description: 'Search GitHub repositories with Claude Code plugin marketplaces. Copy install commands. Updated daily.',
+    description: HOME_PAGE_DESCRIPTION,
     url: BASE_URL,
   }
 
