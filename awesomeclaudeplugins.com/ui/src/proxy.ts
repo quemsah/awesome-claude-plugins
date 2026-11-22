@@ -52,30 +52,13 @@ export function proxy(request: NextRequest) {
   }
 
   const requestedPath = pathname.slice(1)
-  const accept = request.method === 'GET' || request.method === 'HEAD' ? request.headers.get('accept') : null
+  const wantsMarkdown = (request.method === 'GET' || request.method === 'HEAD') && acceptsMarkdown(request.headers.get('accept'))
 
   if (pathname.toLowerCase().endsWith('.md')) {
-    const segments = requestedPath.slice(0, -3).split('/').filter(Boolean)
-    if (segments.length !== 2 || RESERVED_REPOSITORY_ROOTS.has(segments[0]?.toLowerCase() ?? '')) {
-      return NextResponse.next()
-    }
-
-    // A repository name can itself end in `.md`, which makes its HTML page indistinguishable from the
-    // markdown representation of a different repository.
-    if (isRepoPageEndingInMd(requestedPath)) {
-      if (!acceptsMarkdown(accept)) {
-        return NextResponse.next()
-      }
-
-      return serveRepositoryMarkdown(request, requestedPath)
-    }
-
-    const response = rewriteRepositoryMarkdownAlias(request, segments)
-    response.headers.set('X-Robots-Tag', 'noindex')
-    return response
+    return handleMarkdownSuffix(request, requestedPath, wantsMarkdown)
   }
 
-  if (!acceptsMarkdown(accept)) {
+  if (!wantsMarkdown) {
     return NextResponse.next()
   }
 
@@ -96,6 +79,22 @@ export function proxy(request: NextRequest) {
   }
 
   return serveRepositoryMarkdown(request, segments.join('/'))
+}
+
+function handleMarkdownSuffix(request: NextRequest, requestedPath: string, wantsMarkdown: boolean) {
+  const segments = requestedPath.slice(0, -3).split('/').filter(Boolean)
+  if (segments.length !== 2 || RESERVED_REPOSITORY_ROOTS.has(segments[0]?.toLowerCase() ?? '')) {
+    return NextResponse.next()
+  }
+
+  // A repository name can itself end in .md and own this URL.
+  if (isRepoPageEndingInMd(requestedPath)) {
+    return wantsMarkdown ? serveRepositoryMarkdown(request, requestedPath) : NextResponse.next()
+  }
+
+  const response = rewriteRepositoryMarkdownAlias(request, segments)
+  response.headers.set('X-Robots-Tag', 'noindex')
+  return response
 }
 
 export const config = {
