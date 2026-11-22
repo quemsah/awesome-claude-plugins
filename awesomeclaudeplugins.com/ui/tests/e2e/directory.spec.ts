@@ -43,9 +43,9 @@ const darkThemeName = /dark/
 const statsUrl = /\/stats$/
 const aboutUrl = /\/about$/
 const darkThemeButtonName = /Current theme: Dark/
-const allTimeChartText = /^All time - Daily repository count/
-const last30DaysChartText = /^Last 30 days - Daily repository count/
-const last7DaysChartText = /^Last 7 days - Daily repository count/
+const allTimeChartText = /^All time \(/
+const last30DaysChartText = /^Last 30 days \(/
+const last7DaysChartText = /^Last 7 days \(/
 const qSuperpowersRegex = /\?q=superpowers$/
 const sortForksRegex = /\?sort=forks-desc$/
 const sortPluginsRegex = /\?sort=plugins-desc$/
