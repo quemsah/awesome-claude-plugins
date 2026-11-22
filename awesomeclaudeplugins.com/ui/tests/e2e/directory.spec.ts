@@ -5,6 +5,7 @@ import type { Repo } from '../../src/schemas/repo.schema.ts'
 import { copiedText, mockClipboard } from './helpers.ts'
 
 const pluginsAvailableText = /plugins available across/i
+const aboutHeadingPattern = /about this project/i
 
 test('standalone search cards do not offer marketplace add', async ({ page }) => {
   await page.route('**/api/catalog*', (route) =>
@@ -135,14 +136,14 @@ test('header navigation, external actions, and theme selection work across route
   await expect(page.locator('html')).toHaveClass(darkThemeName)
   await expect.poll(() => page.evaluate(() => localStorage.getItem('theme-preference'))).toBe('dark')
 
-  await page.getByRole('link', { name: 'View statistics' }).click()
+  await page.getByRole('link', { name: 'Stats' }).click()
   await expect(page).toHaveURL(statsUrl)
   await expect(page.getByRole('heading', { name: 'Repository statistics' })).toBeVisible()
   await expect(page.getByRole('button', { name: darkThemeButtonName })).toBeVisible()
 
-  await page.getByRole('link', { name: 'About project' }).click()
+  await page.getByRole('link', { name: 'About' }).click()
   await expect(page).toHaveURL(aboutUrl)
-  await expect(page.getByRole('heading', { name: 'About This Project' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: aboutHeadingPattern })).toBeVisible()
 
   await page.locator('a[aria-label="Search repositories"]').click()
   await page.waitForURL('/#search')

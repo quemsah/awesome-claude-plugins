@@ -60,7 +60,7 @@ function NotFoundContent({ repository }: { repository: MissingRepository | null 
       <p className="text-muted-foreground">
         {repository
           ? "We couldn't find this repository in our catalog. It may have been removed, renamed, or not indexed yet."
-          : "Sorry, we couldn't find the page you're looking for."}
+          : 'This page could not be found.'}
       </p>
       <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
         {repository ? (
