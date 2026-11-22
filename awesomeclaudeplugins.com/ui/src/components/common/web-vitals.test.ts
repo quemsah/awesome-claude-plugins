@@ -16,7 +16,7 @@ describe('WebVitals', () => {
     vi.stubEnv('NODE_ENV', 'production')
     const sendBeacon = vi.fn()
     vi.stubGlobal('navigator', { sendBeacon })
-    vi.stubGlobal('window', { location: { pathname: '/alice/repo' } })
+    vi.stubGlobal('window', { innerWidth: 390, location: { pathname: '/alice/repo' } })
 
     WebVitals()
     const report = useReportWebVitals.mock.calls[0]?.[0]
@@ -40,6 +40,7 @@ describe('WebVitals', () => {
         name: 'LCP',
         navigationType: 'navigate',
         path: '/alice/repo',
+        viewportWidth: 390,
         lcpElementType: 'IMG',
         lcpResourceOrigin: 'https://avatars.githubusercontent.com',
         rating: 'poor',

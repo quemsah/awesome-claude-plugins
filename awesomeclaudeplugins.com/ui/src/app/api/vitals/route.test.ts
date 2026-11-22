@@ -10,7 +10,13 @@ afterEach(() => {
 describe('POST /api/vitals', () => {
   it('logs one structured info event with the route template', async () => {
     const info = mockInfo()
-    const response = await post({ ...BASE_METRIC, navigationType: 'navigate', path: '/obra/superpowers', release: 'abc123' })
+    const response = await post({
+      ...BASE_METRIC,
+      navigationType: 'navigate',
+      path: '/obra/superpowers',
+      release: 'abc123',
+      viewportWidth: 390,
+    })
 
     expect(response.status).toBe(204)
     expect(info).toHaveBeenCalledTimes(1)
@@ -23,6 +29,7 @@ describe('POST /api/vitals', () => {
       metric: 'LCP',
       navigationType: 'navigate',
       path: '/[owner]/[repo]',
+      viewportClass: 'mobile',
       rating: 'good',
       release: 'abc123',
       lcpElementType: null,
@@ -92,6 +99,21 @@ describe('POST /api/vitals', () => {
     await post(BASE_METRIC, '198.51.100.9')
 
     expect(parseEvent(info)).toMatchObject({ path: null })
+  })
+
+  it('classifies CSS viewport widths without logging the raw width', async () => {
+    const info = mockInfo()
+    await post({ ...BASE_METRIC, viewportWidth: 768 }, '198.51.100.13')
+
+    expect(parseEvent(info)).toMatchObject({ viewportClass: 'desktop' })
+    expect(String(info.mock.calls[0]?.[0])).not.toContain('768')
+  })
+
+  it('keeps older beacons in an unknown viewport bucket', async () => {
+    const info = mockInfo()
+    await post(BASE_METRIC, '198.51.100.14')
+
+    expect(parseEvent(info)).toMatchObject({ viewportClass: null })
   })
 
   it('still rejects payloads with an unknown metric name', async () => {

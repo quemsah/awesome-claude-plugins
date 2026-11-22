@@ -17,6 +17,7 @@ export function WebVitals() {
         name: metric.name,
         navigationType: metric.navigationType,
         path: window.location.pathname,
+        viewportWidth: window.innerWidth,
         lcpElementType: lcpEntry?.element?.tagName,
         lcpResourceOrigin,
         rating: metric.rating,

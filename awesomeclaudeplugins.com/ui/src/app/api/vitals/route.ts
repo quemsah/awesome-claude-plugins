@@ -7,6 +7,8 @@ const MAX_BODY_BYTES = 4_096
 const MAX_RATING_LENGTH = 32
 const MAX_CONTEXT_LENGTH = 128
 const MAX_RESOURCE_ORIGIN_LENGTH = 256
+const MAX_VIEWPORT_WIDTH = 10_000
+const MOBILE_VIEWPORT_WIDTH = 768
 const CONTROL_CHARACTER_PATTERN = /[\r\n]/
 const ELEMENT_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9-]{0,31}$/
 const rateLimiter = new RateLimiter(10_000, MAX_REPORTS_PER_MINUTE, 60_000)
@@ -32,6 +34,7 @@ export async function POST(request: Request) {
   const rating = VALID_RATINGS.has(payload.rating) ? payload.rating : 'unknown'
   const lcpElementType = normalizeElementType(payload.lcpElementType)
   const lcpResourceOrigin = normalizeHttpOrigin(payload.lcpResourceOrigin)
+  const viewportClass = normalizeViewportClass(payload.viewportWidth)
   console.info(
     JSON.stringify({
       message: 'Web vital',
@@ -40,6 +43,7 @@ export async function POST(request: Request) {
       metric: payload.name,
       navigationType: payload.navigationType ?? null,
       path: payload.path === undefined ? null : toRouteTemplate(payload.path),
+      viewportClass,
       rating,
       release: payload.release ?? null,
       ...(payload.name === 'LCP' ? { lcpElementType, lcpResourceOrigin } : {}),
@@ -74,6 +78,7 @@ function isWebVital(value: unknown): value is {
   value: number
   lcpElementType?: unknown
   lcpResourceOrigin?: unknown
+  viewportWidth?: unknown
 } {
   if (!(isRecord(value) && 'name' in value && 'rating' in value && 'value' in value)) {
     return false
@@ -106,6 +111,14 @@ function normalizeElementType(value: unknown): string | null {
 
 function normalizeHttpOrigin(value: unknown): string | null {
   return isHttpOrigin(value) ? value : null
+}
+
+function normalizeViewportClass(value: unknown): 'mobile' | 'desktop' | null {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > MAX_VIEWPORT_WIDTH) {
+    return null
+  }
+
+  return value < MOBILE_VIEWPORT_WIDTH ? 'mobile' : 'desktop'
 }
 
 function isHttpOrigin(value: unknown): value is string {

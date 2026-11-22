@@ -96,7 +96,9 @@ export default function PrivacyPage() {
               In production, we collect Core Web Vitals measurements (CLS, FCP, INP, LCP and TTFB) with their value, rating and navigation
               type, plus an optional release label. Your browser also sends the path of the page being measured, which we reduce to a route
               template such as /, /browse/[page] or /[owner]/[repo] before recording it, so the owner and repository you opened are never
-              stored. These reports do not include your search terms, query parameters, full URLs, or other page content.
+              stored. We group these reports by a coarse viewport class derived from CSS viewport width: mobile below 768 pixels and desktop
+              at 768 pixels or wider. The raw width is not recorded. These reports do not include your search terms, query parameters, full
+              URLs, or other page content.
             </p>
           </section>
           <section>

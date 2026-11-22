@@ -16,6 +16,7 @@
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:standalone": "playwright test --config=playwright.standalone.config.ts",
+    "benchmark:vitals": "playwright test --config=playwright.vitals.config.ts",
     "lint": "biome check .",
     "fix": "biome check --write --unsafe .",
     "format": "biome format --write ."
