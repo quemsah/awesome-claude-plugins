@@ -12,6 +12,7 @@ test('serves the html page of a repository whose name ends in .md', async ({ pag
 
   expect(response?.status()).toBe(200)
   expect(response?.headers()['content-type']).toContain('text/html')
+  expect(response?.headers()['x-robots-tag']).toBeUndefined()
   await expect(page.getByRole('heading', { level: 1, name: mdSuffixedRepoHeading })).toBeVisible()
   await expect(page.locator('link[rel="alternate"][type="text/markdown"]')).toHaveAttribute('href', mdSuffixedMarkdownAlternatePattern)
 })
@@ -21,6 +22,7 @@ test('serves that repository as markdown from the doubled suffix', async ({ requ
 
   expect(response.ok()).toBe(true)
   expect(response.headers()['content-type']).toContain('text/markdown')
+  expect(response.headers()['x-robots-tag']).toBe('noindex')
   expect(await response.text()).toContain(mdSuffixedMarkdownTitle)
 })
 
@@ -29,5 +31,16 @@ test('serves ordinary repository markdown with a case-insensitive suffix', async
 
   expect(response.ok()).toBe(true)
   expect(response.headers()['content-type']).toContain('text/markdown')
+  expect(response.headers()['x-robots-tag']).toBe('noindex')
   expect(await response.text()).toContain(ordinaryRepoMarkdownTitle)
+})
+
+test('keeps the Markdown response at the repository URL eligible for indexing', async ({ request }) => {
+  await request.get(`${mdSuffixedRepoUrl}.md`)
+  const response = await request.get(mdSuffixedRepoUrl, { headers: { accept: 'text/markdown' } })
+
+  expect(response.ok()).toBe(true)
+  expect(response.headers()['content-type']).toContain('text/markdown')
+  expect(response.headers()['x-robots-tag']).toBeUndefined()
+  expect(await response.text()).toContain(mdSuffixedMarkdownTitle)
 })

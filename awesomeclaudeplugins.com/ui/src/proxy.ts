@@ -58,7 +58,9 @@ export function proxy(request: NextRequest) {
       return rewriteRepositoryMarkdown(request, requestedPath.split('/').filter(Boolean), true)
     }
 
-    return rewriteRepositoryMarkdown(request, segments)
+    const response = rewriteRepositoryMarkdown(request, segments)
+    response.headers.set('X-Robots-Tag', 'noindex')
+    return response
   }
 
   if (!acceptsMarkdown(accept)) {
