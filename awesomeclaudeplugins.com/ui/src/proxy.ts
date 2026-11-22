@@ -1,13 +1,11 @@
 import { type NextRequest, NextResponse } from 'next/server'
 
-import { findCatalogRepo } from './lib/catalog.ts'
-import { buildAboutMarkdown, buildHomeMarkdown, buildRepoMarkdown, buildStatsMarkdown } from './lib/markdown.ts'
 import { isRepoPageEndingInMd } from './lib/markdownPaths.ts'
 
-const STATIC_MARKDOWN: Readonly<Record<string, () => string>> = {
-  '/': buildHomeMarkdown,
-  '/about': buildAboutMarkdown,
-  '/stats': buildStatsMarkdown,
+const STATIC_MARKDOWN_PATHS: Readonly<Record<string, string>> = {
+  '/': '/index.md',
+  '/about': '/about.md',
+  '/stats': '/stats.md',
 }
 
 const RESERVED_REPOSITORY_ROOTS = new Set(['.well-known', '_next', 'api', 'browse', 'sitemap'])
@@ -37,28 +35,35 @@ type MediaPreference = {
 
 export function proxy(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl
-  const markdownApiRequest = isMarkdownApiPath(pathname)
-
   if (hasMalformedPath(pathname)) {
-    const response = new NextResponse(null, { status: 404 })
-    if (markdownApiRequest) response.headers.set('X-Robots-Tag', 'noindex')
-    return response
+    return new NextResponse(null, { status: 404 })
   }
 
-  if (markdownApiRequest) {
-    const response = NextResponse.next()
+  const requestedPath = pathname.slice(1)
+  const accept = request.headers.get('accept')
+
+  if (pathname.toLowerCase().endsWith('.md')) {
+    const segments = requestedPath.slice(0, -3).split('/').filter(Boolean)
+    if (segments.length !== 2 || RESERVED_REPOSITORY_ROOTS.has(segments[0]?.toLowerCase() ?? '')) {
+      return NextResponse.next()
+    }
+
+    // A repository name can itself end in `.md`, which makes its HTML page indistinguishable from the
+    // markdown representation of a different repository.
+    if (isRepoPageEndingInMd(requestedPath)) {
+      if (!acceptsMarkdown(accept)) {
+        return NextResponse.next()
+      }
+
+      return rewriteRepositoryMarkdown(request, requestedPath.split('/').filter(Boolean), true)
+    }
+
+    const response = rewriteRepositoryMarkdown(request, segments)
     response.headers.set('X-Robots-Tag', 'noindex')
     return response
   }
 
-  const requestedPath = pathname.slice(1)
-  const wantsMarkdown = (request.method === 'GET' || request.method === 'HEAD') && acceptsMarkdown(request.headers.get('accept'))
-
-  if (pathname.toLowerCase().endsWith('.md')) {
-    return handleMarkdownSuffix(request, requestedPath, wantsMarkdown)
-  }
-
-  if (!wantsMarkdown) {
+  if (!acceptsMarkdown(accept)) {
     return NextResponse.next()
   }
 
@@ -68,9 +73,9 @@ export function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  const buildMarkdown = STATIC_MARKDOWN[pathname]
-  if (buildMarkdown) {
-    return serveMarkdown(request, buildMarkdown())
+  const staticMarkdownPath = STATIC_MARKDOWN_PATHS[pathname]
+  if (staticMarkdownPath) {
+    return rewriteMarkdown(request, staticMarkdownPath, true)
   }
 
   const segments = requestedPath.split('/').filter(Boolean)
@@ -78,27 +83,11 @@ export function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  return serveRepositoryMarkdown(request, segments.join('/'))
-}
-
-function handleMarkdownSuffix(request: NextRequest, requestedPath: string, wantsMarkdown: boolean) {
-  const segments = requestedPath.slice(0, -3).split('/').filter(Boolean)
-  if (segments.length !== 2 || RESERVED_REPOSITORY_ROOTS.has(segments[0]?.toLowerCase() ?? '')) {
-    return NextResponse.next()
-  }
-
-  // A repository name can itself end in .md and own this URL.
-  if (isRepoPageEndingInMd(requestedPath)) {
-    return wantsMarkdown ? serveRepositoryMarkdown(request, requestedPath) : NextResponse.next()
-  }
-
-  const response = rewriteRepositoryMarkdownAlias(request, segments)
-  response.headers.set('X-Robots-Tag', 'noindex')
-  return response
+  return rewriteRepositoryMarkdown(request, segments, true)
 }
 
 export const config = {
-  matcher: ['/((?!api(?:/|$)|_next(?:/|$)|og(?:/|$)|favicon\\.ico$).*)', '/api/markdown/:path*'],
+  matcher: ['/((?!api(?:/|$)|_next(?:/|$)|og(?:/|$)|favicon\\.ico$).*)'],
 }
 
 function acceptsMarkdown(accept: string | null): boolean {
@@ -162,31 +151,18 @@ function getMediaPreference(accept: string, target: string): MediaPreference {
   return best
 }
 
-function rewriteRepositoryMarkdownAlias(request: NextRequest, segments: string[]) {
+function rewriteRepositoryMarkdown(request: NextRequest, segments: string[], varyOnAccept = false) {
+  return rewriteMarkdown(request, `/api/markdown/${segments.map(encodeURIComponent).join('/')}`, varyOnAccept)
+}
+
+function rewriteMarkdown(request: NextRequest, pathname: string, varyOnAccept: boolean) {
   const rewriteUrl = request.nextUrl.clone()
-  rewriteUrl.pathname = `/api/markdown/${segments.map(encodeURIComponent).join('/')}`
-  return NextResponse.rewrite(rewriteUrl)
-}
+  rewriteUrl.pathname = pathname
+  const response = NextResponse.rewrite(rewriteUrl)
 
-function serveRepositoryMarkdown(request: NextRequest, repoPath: string) {
-  const repo = findCatalogRepo(decodeURIComponent(repoPath))
-  const response = serveMarkdown(request, repo ? buildRepoMarkdown(repo) : null)
-  response.headers.set('Access-Control-Allow-Origin', '*')
+  if (varyOnAccept) {
+    response.headers.set('Vary', 'Accept')
+  }
+
   return response
-}
-
-function serveMarkdown(request: NextRequest, body: string | null) {
-  return new NextResponse(request.method === 'HEAD' ? null : (body ?? 'Not found'), {
-    status: body === null ? 404 : 200,
-    headers: {
-      'Cache-Control': 'private, no-store',
-      'Content-Type': body === null ? 'text/plain; charset=utf-8' : 'text/markdown; charset=utf-8',
-      vary: 'Accept',
-    },
-  })
-}
-
-function isMarkdownApiPath(pathname: string): boolean {
-  const normalizedPath = pathname.toLowerCase()
-  return normalizedPath === '/api/markdown' || normalizedPath.startsWith('/api/markdown/')
 }

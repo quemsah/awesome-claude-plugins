@@ -1,6 +1,5 @@
 import { findCatalogRepo } from '../../../../lib/catalog.ts'
 import { buildRepoMarkdown } from '../../../../lib/markdown.ts'
-import { getMarkdownResponseHeaders } from '../../../../lib/markdownResponse.ts'
 
 type RouteContext = {
   params: Promise<{ repo: string[] }>
@@ -26,34 +25,24 @@ export function GET(_request: Request, { params }: RouteContext) {
     return new Response(buildRepoMarkdown(catalogRepo), {
       headers: {
         ...CORS_HEADERS,
-        ...Object.fromEntries(getMarkdownResponseHeaders('public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800')),
+        'Cache-Control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800',
+        'Content-Type': 'text/markdown; charset=utf-8',
       },
     })
   })
 }
 
-export function HEAD(request: Request, context: RouteContext) {
-  return GET(request, context).then((response) => new Response(null, { status: response.status, headers: response.headers }))
-}
-
 export function OPTIONS(_request: Request) {
-  const headers = new Headers({
-    ...CORS_HEADERS,
-    'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-    'Access-Control-Max-Age': '86400',
-  })
-  headers.set('X-Robots-Tag', 'noindex')
-
   return new Response(null, {
     status: 204,
-    headers,
+    headers: {
+      ...CORS_HEADERS,
+      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+      'Access-Control-Max-Age': '86400',
+    },
   })
 }
 
 function notFound() {
-  const headers = new Headers({ ...CORS_HEADERS, 'Cache-Control': 'no-store' })
-  headers.set('Content-Type', 'text/plain; charset=utf-8')
-  headers.set('X-Robots-Tag', 'noindex')
-
-  return new Response('Not found', { status: 404, headers })
+  return new Response('Not found', { status: 404, headers: CORS_HEADERS })
 }

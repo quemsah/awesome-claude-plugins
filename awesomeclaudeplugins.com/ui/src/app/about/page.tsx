@@ -4,9 +4,6 @@ import { Breadcrumbs } from '../../components/common/Breadcrumbs.tsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card.tsx'
 import { getAboutBreadcrumbs } from '../../lib/breadcrumbs.ts'
 
-// Prevent shared caches from reusing the HTML response for a Markdown request.
-export const dynamic = 'force-dynamic'
-
 export default function AboutPage() {
   return (
     <main className="bg-background min-h-dvh" id="main-content" tabIndex={-1}>
