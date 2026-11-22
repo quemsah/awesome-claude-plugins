@@ -44,7 +44,7 @@ export function Header() {
         <nav aria-label="Main navigation">
           <div className="flex gap-3 sm:gap-4" style={{ alignItems: 'last baseline' }}>
             <Link
-              aria-label="Home — awesome-claude-plugins"
+              aria-label="Home"
               className="text-foreground hover:text-primary hidden text-lg font-medium transition-colors md:block"
               href="/"
             >
@@ -63,7 +63,7 @@ export function Header() {
 
             <Link
               aria-current={pathname === '/stats' ? 'page' : undefined}
-              aria-label="Stats — View statistics"
+              aria-label="Stats"
               className={`touch-target flex items-center gap-2 text-sm ${pathname === '/stats' ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
               href="/stats"
               prefetch={false}
@@ -73,7 +73,7 @@ export function Header() {
             </Link>
             <Link
               aria-current={pathname === '/about' ? 'page' : undefined}
-              aria-label="About — About project"
+              aria-label="About"
               className={`touch-target flex items-center gap-2 text-sm ${pathname === '/about' ? 'text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'} transition-colors`}
               href="/about"
               prefetch={false}
