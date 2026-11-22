@@ -175,7 +175,7 @@ test('repository skeleton mirrors coarse-pointer touch target geometry', async (
   await page.goto('/')
 
   await expect(page.getByRole('link', { name: detailsLinkName }).first()).toBeVisible()
-  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await page.getByRole('button', { name: 'Load more' }).scrollIntoViewIfNeeded()
 
   const skeleton = page.locator('#repo-results > ul > li[aria-hidden="true"] [data-slot="card"]').first()
   await expect(skeleton).toBeVisible()
@@ -222,7 +222,7 @@ test('reaching the end of the grid reports loading more rather than searching', 
   await expect(page.getByRole('link', { name: detailsLinkName }).first()).toBeVisible()
   const loadStatus = page.locator('#repo-results > p[role="status"]')
 
-  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await page.getByRole('button', { name: 'Load more' }).scrollIntoViewIfNeeded()
   await expect(loadStatus).toHaveText('Loading more repositories.')
   await expect(page.getByText('Searching repositories')).toHaveCount(0)
 
@@ -356,7 +356,7 @@ test('repository grid loads more cards as the user reaches the end of the curren
   const detailsLinks = page.getByRole('link', { name: detailsLinkName })
   await expect(detailsLinks).toHaveCount(24)
 
-  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await page.getByRole('button', { name: 'Load more' }).scrollIntoViewIfNeeded()
   await expect.poll(() => detailsLinks.count()).toBeGreaterThan(24)
 })
 
@@ -366,12 +366,12 @@ test('a footer arrival during the settle window is deferred instead of dropped',
   const detailsLinks = page.getByRole('link', { name: detailsLinkName })
   await expect(detailsLinks).toHaveCount(24)
 
-  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await page.getByRole('button', { name: 'Load more' }).scrollIntoViewIfNeeded()
   await expect(detailsLinks).toHaveCount(48)
 
   // The previous page has only just landed, so this second arrival is inside SETTLE_MS. It must be
   // remembered and replayed after the landing layout settles rather than requiring another scroll.
-  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await page.getByRole('button', { name: 'Load more' }).scrollIntoViewIfNeeded()
   await expect(detailsLinks).toHaveCount(72)
 })
 
@@ -396,12 +396,12 @@ test('a deferred paging scroll cannot leak into a replacement result set', async
     await route.continue()
   })
 
-  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await page.getByRole('button', { name: 'Load more' }).scrollIntoViewIfNeeded()
   await expect(detailsLinks).toHaveCount(48)
 
   // Queue a real scroll during the landing settle window, then replace the result set before its
   // deferred re-arm fires.
-  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await page.getByRole('button', { name: 'Load more' }).scrollIntoViewIfNeeded()
   await page.getByRole('searchbox', { name: 'Search repositories' }).evaluate((input) => {
     const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
     valueSetter?.call(input, 'hello')
@@ -430,7 +430,7 @@ test('a layout move that scrolls nothing loads no further page', async ({ page }
 
   const detailsLinks = page.getByRole('link', { name: detailsLinkName })
   await expect(detailsLinks).toHaveCount(24)
-  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await page.getByRole('button', { name: 'Load more' }).scrollIntoViewIfNeeded()
   await expect.poll(() => detailsLinks.count()).toBeGreaterThan(24)
 
   const cards = await detailsLinks.count()
@@ -490,7 +490,7 @@ test('automatic paging rearms after a replacement shortens the document', async 
   // the footer and back again must re-arm automatic paging without requiring an impossible scrollY.
   await page.evaluate(() => window.scrollTo(0, 0))
   await page.waitForTimeout(500)
-  await page.getByText('More repositories available').scrollIntoViewIfNeeded()
+  await page.getByRole('button', { name: 'Load more' }).scrollIntoViewIfNeeded()
   await expect.poll(() => detailsLinks.count()).toBeGreaterThan(24)
 })
 
