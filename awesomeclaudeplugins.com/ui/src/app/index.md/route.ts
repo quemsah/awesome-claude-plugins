@@ -1,16 +1,10 @@
 import { buildHomeMarkdown } from '../../lib/markdown.ts'
+import { getMarkdownResponseHeaders } from '../../lib/markdownResponse.ts'
 
 export const dynamic = 'force-static'
 
 export function GET() {
-  return markdownResponse(buildHomeMarkdown())
-}
-
-function markdownResponse(content: string) {
-  return new Response(content, {
-    headers: {
-      'Cache-Control': 'public, max-age=3600',
-      'Content-Type': 'text/markdown; charset=utf-8',
-    },
+  return new Response(buildHomeMarkdown(), {
+    headers: getMarkdownResponseHeaders('public, max-age=3600'),
   })
 }

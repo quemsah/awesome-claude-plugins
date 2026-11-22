@@ -1,5 +1,6 @@
 import { BASE_URL } from '../../lib/constants.ts'
 import { renderCatalogApiContract, renderCatalogResourceLinks } from '../../lib/discovery.ts'
+import { getMarkdownResponseHeaders } from '../../lib/markdownResponse.ts'
 
 export const dynamic = 'force-static'
 
@@ -100,10 +101,5 @@ ${renderCatalogResourceLinks()}
 - [Security contact](${BASE_URL}/.well-known/security.txt): where to report issues.
 `
 
-  return new Response(content, {
-    headers: {
-      'Cache-Control': 'public, max-age=3600',
-      'Content-Type': 'text/markdown; charset=utf-8',
-    },
-  })
+  return new Response(content, { headers: getMarkdownResponseHeaders('public, max-age=3600') })
 }

@@ -21,7 +21,29 @@ test('serves that repository as markdown from the doubled suffix', async ({ requ
 
   expect(response.ok()).toBe(true)
   expect(response.headers()['content-type']).toContain('text/markdown')
+  expect(response.headers()['x-robots-tag']).toBe('noindex')
   expect(await response.text()).toContain(mdSuffixedMarkdownTitle)
+})
+
+test('keeps the negotiated Markdown representation separate from HTML in either request order', async ({ request }) => {
+  for (const accept of ['text/html', 'text/markdown', 'text/html']) {
+    const response = await request.get(mdSuffixedRepoUrl, { headers: { accept } })
+
+    expect(response.ok()).toBe(true)
+    expect(response.headers()['content-type']).toContain(accept)
+    expect(response.headers()['cache-control']).toContain('no-store')
+    expect(response.headers()['x-robots-tag']).toBeUndefined()
+    if (accept === 'text/markdown') {
+      expect(
+        response
+          .headers()
+          .vary?.toLowerCase()
+          .split(',')
+          .map((header) => header.trim())
+      ).toContain('accept')
+      expect(await response.text()).toContain(mdSuffixedMarkdownTitle)
+    }
+  }
 })
 
 test('serves ordinary repository markdown with a case-insensitive suffix', async ({ request }) => {
