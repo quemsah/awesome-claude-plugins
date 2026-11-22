@@ -46,6 +46,15 @@ describe('getRepoStructuredData', () => {
     expect(sourceCode).not.toHaveProperty('dateModified')
   })
 
+  it('uses the catalog metadata description in JSON-LD without changing repository display data', () => {
+    const snapshot = createCatalogRepositorySnapshot({ ...catalogRepo, description: null })
+    const description = 'A detailed catalog summary for a verified standalone Claude Code plugin.'
+    const sourceCode = nodeByType(getRepoStructuredData(snapshot, description), 'SoftwareSourceCode')
+
+    expect(sourceCode?.description).toBe(description)
+    expect(snapshot.description).toBeNull()
+  })
+
   it('types the author as a person once GitHub reports the owner as a user', () => {
     const nodes = getRepoStructuredData({
       ...createCatalogRepositorySnapshot(catalogRepo),

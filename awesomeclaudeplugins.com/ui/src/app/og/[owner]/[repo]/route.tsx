@@ -1,6 +1,7 @@
 import { ImageResponse } from 'next/og'
 import { findCatalogRepo } from '../../../../lib/catalog.ts'
 import { sanitizeOgDescription } from '../../../../lib/ogText.ts'
+import { getRepoPageMetadata } from '../../../../lib/repoPageMetadata.ts'
 
 export const runtime = 'nodejs'
 
@@ -15,6 +16,8 @@ export async function GET(_: Request, { params }: RouteContext) {
   if (!catalogRepo) {
     return new Response('Not found', { status: 404 })
   }
+
+  const { title, description } = getRepoPageMetadata(catalogRepo)
 
   return new ImageResponse(
     <div
@@ -31,11 +34,9 @@ export async function GET(_: Request, { params }: RouteContext) {
       }}
     >
       <div style={{ color: '#b8b8b8', fontSize: 32 }}>Awesome Claude Plugins</div>
-      <div style={{ fontSize: 64, fontWeight: 700, marginTop: 28, textAlign: 'center' }}>
-        {`${catalogRepo.owner}/${catalogRepo.repo_name}`}
-      </div>
+      <div style={{ fontSize: 64, fontWeight: 700, marginTop: 28, textAlign: 'center' }}>{title}</div>
       <div style={{ color: '#d0d0d0', fontSize: 28, marginTop: 28, textAlign: 'center' }}>
-        {sanitizeOgDescription(catalogRepo.description ?? 'Claude Code plugin repository').slice(0, 220) || 'Claude Code plugin repository'}
+        {sanitizeOgDescription(description).slice(0, 220) || 'Claude Code plugin repository'}
       </div>
     </div>,
     {

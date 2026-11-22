@@ -7,7 +7,7 @@ import { getGitHubRepoPath } from './repositoryIdentity.ts'
 /** GitHub reports owners as User or Organization; an unrecorded type stays untyped rather than guessed. */
 const AUTHOR_TYPES: Record<string, 'Organization' | 'Person'> = { Organization: 'Organization', User: 'Person' }
 
-export function getRepoStructuredData(repo: GitHubRepository): Record<string, unknown>[] {
+export function getRepoStructuredData(repo: GitHubRepository, description = repo.description): Record<string, unknown>[] {
   const canonicalUrl = `${BASE_URL}/${getGitHubRepoPath(repo.owner.login, repo.name)}`
   const authorType = repo.owner.type === null ? undefined : AUTHOR_TYPES[repo.owner.type]
 
@@ -28,7 +28,7 @@ export function getRepoStructuredData(repo: GitHubRepository): Record<string, un
     name: repo.name,
     url: canonicalUrl,
     codeRepository: repo.html_url,
-    ...(repo.description ? { description: repo.description } : {}),
+    ...(description?.trim() ? { description: description.trim() } : {}),
     ...(repo.language ? { programmingLanguage: repo.language } : {}),
     ...(repo.created_at ? { dateCreated: repo.created_at } : {}),
     ...(repo.pushed_at ? { dateModified: repo.pushed_at } : {}),

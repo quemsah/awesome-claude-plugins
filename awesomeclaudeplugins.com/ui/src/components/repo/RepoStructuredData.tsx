@@ -4,13 +4,14 @@ import { getRepoStructuredData } from '../../lib/repoStructuredData.ts'
 import type { GitHubRepository } from '../../schemas/github.schema.ts'
 
 interface RepoStructuredDataProps {
+  description?: string
   repo: GitHubRepository
 }
 
-export default function RepoStructuredData({ repo }: RepoStructuredDataProps) {
+export default function RepoStructuredData({ description, repo }: RepoStructuredDataProps) {
   return (
     <>
-      {getRepoStructuredData(repo).map((node) => (
+      {getRepoStructuredData(repo, description).map((node) => (
         <script dangerouslySetInnerHTML={{ __html: serializeJsonLd(node) }} key={String(node['@type'])} type="application/ld+json" />
       ))}
     </>
