@@ -2330,6 +2330,8 @@ async function enrichPage(
       row.plugins_count !== null &&
       (row.manifest_kind === null ||
         (row.manifest_kind === 'marketplace' && row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION) ||
+        (row.marketplace_failed_oid !== null &&
+          row.marketplace_failed_parser_version !== MARKETPLACE_INVALID_CONTENT_CACHE_VERSION) ||
         (row.manifest_kind === 'standalone-plugin' && !hasUsableStandaloneCache(row)) ||
         parsePluginSummariesJson(row.plugins_json) === null)
     if (row.plugins_count !== null && wasReady(row) && !staleManifestCache && !readyRefreshIds.has(row.id)) {
@@ -2439,8 +2441,12 @@ export async function enrichRepositories(
   let nextReadyIndex = 0
   const markRepositoryProcessed = (row: RepositoryRow): void => {
     trackRepositoryProgress(row)
-    if (!readyRefreshIds.has(row.id)) return
-    completedReadyIds.add(row.id)
+    // A canonical merge can delete a later selected row before it is visited.
+    // Its refresh is no longer needed, so it cannot block the cursor prefix.
+    for (const removedId of removedIds) {
+      if (readyRefreshIds.has(removedId)) completedReadyIds.add(removedId)
+    }
+    if (readyRefreshIds.has(row.id)) completedReadyIds.add(row.id)
     // Rows are processed by ascending DB ID, but a rotating selection can wrap
     // past the largest ID. Only commit a contiguous prefix of the *selection*,
     // including after retries, to avoid skipping unfinished rows after a crash.
