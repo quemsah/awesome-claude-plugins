@@ -48,6 +48,8 @@ export type EnrichmentCounts = {
   conclusive: number
   warnings: number
   deferredCandidates: number
+  readyRefreshSelected: number
+  readyRefreshSkipped: number
   pendingQueueBefore: number
   pendingQueueSelected: number
   pendingQueueAfter: number
@@ -56,7 +58,30 @@ export type EnrichmentCounts = {
 }
 
 export const MAX_PENDING_CANDIDATES_PER_RUN = 3000
+export const MAX_READY_REFRESH_CANDIDATES_PER_RUN = 8000
 const PENDING_CANDIDATE_CURSOR_SETTING = 'enrichment_pending_candidate_cursor'
+const READY_REFRESH_CURSOR_SETTING = 'enrichment_ready_refresh_cursor'
+
+/**
+ * Refresh a bounded, rotating cohort of already-enriched repositories each day.
+ * The persistent cursor prevents permanently failing low-id repositories from
+ * starving the rest of the catalog. New/incomplete rows have a separate budget.
+ */
+function selectReadyRefreshIds(db: Database.Database, cursor: number, limit: number): number[] {
+  if (limit === 0) return []
+  const after = db
+    .prepare('SELECT id FROM repositories WHERE plugins_count IS NOT NULL AND id > ? ORDER BY id LIMIT ?')
+    .all(cursor, limit) as Array<{ id: number }>
+  const ids = after.map(({ id }) => id)
+  const remaining = limit - ids.length
+  if (remaining > 0 && cursor > 0) {
+    const before = db
+      .prepare('SELECT id FROM repositories WHERE plugins_count IS NOT NULL AND id <= ? ORDER BY id LIMIT ?')
+      .all(cursor, remaining) as Array<{ id: number }>
+    ids.push(...before.map(({ id }) => id))
+  }
+  return ids
+}
 
 function selectPendingCandidateIds(db: Database.Database, cursor: number, limit: number): number[] {
   if (limit === 0) return []
@@ -2270,6 +2295,7 @@ type EnrichmentPageContext = {
   counts: EnrichmentCounts
   removedIds: Set<number>
   pendingCandidateIds: Set<number>
+  readyRefreshIds: Set<number>
   retryQueue: RetryQueue
   batchState: { size: number; stableBatches: number }
   now: () => string
@@ -2287,6 +2313,7 @@ async function enrichPage(
     counts,
     removedIds,
     pendingCandidateIds,
+    readyRefreshIds,
     retryQueue,
     batchState,
     now,
@@ -2297,6 +2324,13 @@ async function enrichPage(
 ): Promise<void> {
   const eligibleRows: RepositoryRow[] = []
   for (const row of rows) {
+    // The ready catalog is rechecked in rotating batches rather than re-fetched
+    // wholesale every day. Incomplete/corrupt identities still refresh immediately.
+    if (row.plugins_count !== null && wasReady(row) && !readyRefreshIds.has(row.id)) {
+      counts.readyRefreshSkipped++
+      markRepositoryProcessed(row)
+      continue
+    }
     if (isBlockedRepositoryCandidate(db, row.html_url ?? '', row.github_node_id, now())) {
       counts.conclusive++
       counts.unchangedOnError++
@@ -2350,9 +2384,12 @@ export async function enrichRepositories(
   now: () => string = () => new Date().toISOString(),
   log?: Log,
   maxPendingCandidates = MAX_PENDING_CANDIDATES_PER_RUN,
+  maxReadyRefreshCandidates = MAX_READY_REFRESH_CANDIDATES_PER_RUN,
 ): Promise<EnrichmentCounts> {
   if (!Number.isSafeInteger(maxPendingCandidates) || maxPendingCandidates < 0)
     throw new Error('maxPendingCandidates must be a nonnegative safe integer')
+  if (!Number.isSafeInteger(maxReadyRefreshCandidates) || maxReadyRefreshCandidates < 0)
+    throw new Error('maxReadyRefreshCandidates must be a nonnegative safe integer')
   if (getRun(db, runId)?.phase !== 'enrichment') {
     const total = (db.prepare('SELECT COUNT(*) AS count FROM repositories').get() as { count: number }).count
     startRunPhase(db, runId, 'enrichment', now(), total)
@@ -2367,6 +2404,8 @@ export async function enrichRepositories(
     conclusive: 0,
     warnings: 0,
     deferredCandidates: 0,
+    readyRefreshSelected: 0,
+    readyRefreshSkipped: 0,
     pendingQueueBefore: 0,
     pendingQueueSelected: 0,
     pendingQueueAfter: 0,
@@ -2381,6 +2420,13 @@ export async function enrichRepositories(
   counts.pendingQueueSelected = pendingCandidateIds.size
   if (pendingCandidateIds.size > 0) {
     setSetting(db, PENDING_CANDIDATE_CURSOR_SETTING, String([...pendingCandidateIds].at(-1)))
+  }
+  const storedReadyCursor = Number(getSetting(db, READY_REFRESH_CURSOR_SETTING) ?? '0')
+  const readyCursor = Number.isSafeInteger(storedReadyCursor) && storedReadyCursor > 0 ? storedReadyCursor : 0
+  const readyRefreshIds = new Set(selectReadyRefreshIds(db, readyCursor, maxReadyRefreshCandidates))
+  counts.readyRefreshSelected = readyRefreshIds.size
+  if (readyRefreshIds.size > 0) {
+    setSetting(db, READY_REFRESH_CURSOR_SETTING, String([...readyRefreshIds].at(-1)))
   }
   const removedIds = new Set<number>()
   const retryQueue: RetryQueue = { tasks: [], deferredIds: new Set<number>() }
@@ -2397,6 +2443,7 @@ export async function enrichRepositories(
       counts,
       removedIds,
       pendingCandidateIds,
+      readyRefreshIds,
       retryQueue,
       batchState,
       now,
