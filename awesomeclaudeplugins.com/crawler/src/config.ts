@@ -2,6 +2,7 @@ import { isValidGitBranch, parseGitHubRepository } from './github/identifiers.js
 
 export const DEFAULT_REPOSITORY_SEARCH_MAX_REQUESTS = 120
 export const DEFAULT_ENRICHMENT_MAX_PENDING_CANDIDATES = 3000
+export const DEFAULT_READY_REFRESH_MAX_CANDIDATES = 8000
 
 export type RuntimeConfig = {
   dbPath: string
@@ -10,6 +11,7 @@ export type RuntimeConfig = {
   repositorySearchMaxRequests: number
   reconcileExpiredGaps: boolean
   enrichmentMaxPendingCandidates: number
+  readyRefreshMaxCandidates: number
   readToken?: string
   publishToken?: string
   owner?: string
@@ -70,6 +72,7 @@ export function parseConfig(command: 'crawl' | 'publish', env: NodeJS.ProcessEnv
     env.ENRICHMENT_MAX_PENDING_CANDIDATES,
     DEFAULT_ENRICHMENT_MAX_PENDING_CANDIDATES,
   )
+  const readyRefreshMaxCandidates = parsePositiveInteger(env.READY_REFRESH_MAX_CANDIDATES, DEFAULT_READY_REFRESH_MAX_CANDIDATES)
   const reconcileExpiredGaps = parseBooleanFlag(env.RECONCILE_EXPIRED_GAPS, false)
   const { botToken, chatId } = telegramCredentials(env, publishEnabled)
   if (command === 'publish' && !publishEnabled) throw new ConfigurationError()
@@ -83,6 +86,7 @@ export function parseConfig(command: 'crawl' | 'publish', env: NodeJS.ProcessEnv
     repositorySearchMaxRequests,
     reconcileExpiredGaps,
     enrichmentMaxPendingCandidates,
+    readyRefreshMaxCandidates,
     readToken,
     ...publisher,
     botToken,
