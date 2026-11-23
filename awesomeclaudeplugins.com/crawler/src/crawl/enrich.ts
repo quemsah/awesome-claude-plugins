@@ -2470,12 +2470,7 @@ export async function enrichRepositories(
   const removedIds = new Set<number>()
   const retryQueue: RetryQueue = { tasks: [], deferredIds: new Set<number>() }
   const trackRepositoryProgress = createRepositoryProgressTracker(db, runId, removedIds, now)
-  const markRepositoryProcessed = createReadyRefreshProgressTracker(
-    db,
-    readyRefreshSelection,
-    removedIds,
-    trackRepositoryProgress,
-  )
+  const markRepositoryProcessed = createReadyRefreshProgressTracker(db, readyRefreshSelection, removedIds, trackRepositoryProgress)
   const batchState = { size: 25, stableBatches: 0 }
   while (true) {
     const rows = listForEnrichment(db, lastId, 50)
