@@ -2326,7 +2326,13 @@ async function enrichPage(
   for (const row of rows) {
     // The ready catalog is rechecked in rotating batches rather than re-fetched
     // wholesale every day. Incomplete/corrupt identities still refresh immediately.
-    if (row.plugins_count !== null && wasReady(row) && !readyRefreshIds.has(row.id)) {
+    const staleManifestCache =
+      row.plugins_count !== null &&
+      (row.manifest_kind === null ||
+        (row.manifest_kind === 'marketplace' && row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION) ||
+        (row.manifest_kind === 'standalone-plugin' && row.plugin_manifest_parser_version !== STANDALONE_PLUGIN_PARSER_VERSION) ||
+        parsePluginSummariesJson(row.plugins_json) === null)
+    if (row.plugins_count !== null && wasReady(row) && !staleManifestCache && !readyRefreshIds.has(row.id)) {
       counts.readyRefreshSkipped++
       markRepositoryProcessed(row)
       continue
