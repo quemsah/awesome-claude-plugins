@@ -606,6 +606,62 @@ it('repairs an invalid standalone cache outside the ready refresh cohort', async
   })
 })
 
+it('refreshes stale rejected marketplace OIDs outside the ready cohort but skips current caches', async () => {
+  const db = database()
+  const names = ['healthy', 'stale-failure', 'current-failure']
+  for (const name of names) {
+    const id = upsertDiscovery(db, `https://github.com/team/${name}`, null)
+    ready(db, id, 'team', name)
+    db.prepare('UPDATE repositories SET manifest_kind = ?, marketplace_parser_version = ? WHERE id = ?').run(
+      'marketplace',
+      MARKETPLACE_PARSER_VERSION,
+      id,
+    )
+    if (name !== 'healthy') {
+      db.prepare('UPDATE repositories SET marketplace_failed_oid = ?, marketplace_failed_parser_version = ? WHERE id = ?').run(
+        'a'.repeat(40),
+        name === 'stale-failure' ? MARKETPLACE_INVALID_CONTENT_CACHE_VERSION - 1 : MARKETPLACE_INVALID_CONTENT_CACHE_VERSION,
+        id,
+      )
+    }
+  }
+  const fetched: string[] = []
+  const api = reader(async (owner, name) => {
+    fetched.push(name)
+    return { kind: 'found', data: githubRepo(owner, name) }
+  })
+
+  const counts = await enrichRepositories(db, api, 'crawl-1', undefined, undefined, undefined, 0, 1)
+  expect(fetched).toEqual(['healthy', 'stale-failure'])
+  expect(counts).toMatchObject({ readyRefreshSelected: 1, readyRefreshSkipped: 1, updated: 2 })
+  expect(
+    db.prepare("SELECT marketplace_failed_oid FROM repositories WHERE repo_name = 'stale-failure'").get(),
+  ).toEqual({ marketplace_failed_oid: null })
+  expect(
+    db.prepare("SELECT marketplace_failed_oid FROM repositories WHERE repo_name = 'current-failure'").get(),
+  ).toEqual({ marketplace_failed_oid: 'a'.repeat(40) })
+})
+
+it('advances ready cursor past a selected row removed by a canonical merge', async () => {
+  const db = database()
+  const oldId = upsertDiscovery(db, 'https://github.com/team/old', null)
+  const targetId = upsertDiscovery(db, 'https://github.com/team/target', null)
+  ready(db, oldId, 'team', 'old')
+  ready(db, targetId, 'team', 'target')
+  for (const id of [oldId, targetId]) {
+    db.prepare('UPDATE repositories SET manifest_kind = ?, marketplace_parser_version = ? WHERE id = ?').run(
+      'marketplace',
+      MARKETPLACE_PARSER_VERSION,
+      id,
+    )
+  }
+  const api = reader(async (owner) => ({ kind: 'found', data: githubRepo(owner, 'target') }))
+  await enrichRepositories(db, api, 'crawl-1', undefined, undefined, undefined, 0, 2)
+
+  expect(db.prepare('SELECT id FROM repositories ORDER BY id').all()).toEqual([{ id: oldId }])
+  expect(getSetting(db, 'enrichment_ready_refresh_cursor')).toBe(String(targetId))
+})
+
 it('does not skip a ready row with a corrupt cache even when outside the refresh cohort', async () => {
   const db = database()
   for (const name of ['healthy-1', 'corrupt-2', 'healthy-3']) {
