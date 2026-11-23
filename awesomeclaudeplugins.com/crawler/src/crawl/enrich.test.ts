@@ -634,12 +634,12 @@ it('refreshes stale rejected marketplace OIDs outside the ready cohort but skips
   const counts = await enrichRepositories(db, api, 'crawl-1', undefined, undefined, undefined, 0, 1)
   expect(fetched).toEqual(['healthy', 'stale-failure'])
   expect(counts).toMatchObject({ readyRefreshSelected: 1, readyRefreshSkipped: 1, updated: 2 })
-  expect(
-    db.prepare("SELECT marketplace_failed_oid FROM repositories WHERE repo_name = 'stale-failure'").get(),
-  ).toEqual({ marketplace_failed_oid: null })
-  expect(
-    db.prepare("SELECT marketplace_failed_oid FROM repositories WHERE repo_name = 'current-failure'").get(),
-  ).toEqual({ marketplace_failed_oid: 'a'.repeat(40) })
+  expect(db.prepare("SELECT marketplace_failed_oid FROM repositories WHERE repo_name = 'stale-failure'").get()).toEqual({
+    marketplace_failed_oid: null,
+  })
+  expect(db.prepare("SELECT marketplace_failed_oid FROM repositories WHERE repo_name = 'current-failure'").get()).toEqual({
+    marketplace_failed_oid: 'a'.repeat(40),
+  })
 })
 
 it('advances ready cursor past a selected row removed by a canonical merge', async () => {
