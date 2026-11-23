@@ -21,7 +21,12 @@ import {
 } from '../storage/runs.js'
 import { type DiscoverySummary, discover } from './discover.js'
 import { discoverRepositories } from './discoverRepositories.js'
-import { type EnrichmentCounts, enrichRepositories, MAX_PENDING_CANDIDATES_PER_RUN, MAX_READY_REFRESH_CANDIDATES_PER_RUN } from './enrich.js'
+import {
+  type EnrichmentCounts,
+  enrichRepositories,
+  MAX_PENDING_CANDIDATES_PER_RUN,
+  MAX_READY_REFRESH_CANDIDATES_PER_RUN,
+} from './enrich.js'
 import { type HealthCheckSummary, healthCheck } from './healthCheck.js'
 
 export type RunCrawlOptions = {
@@ -271,7 +276,16 @@ async function crawlAndComplete(
   options.onPhase?.('enrichment')
   const maxPendingCandidates = options.enrichmentMaxPendingCandidates ?? MAX_PENDING_CANDIDATES_PER_RUN
   const maxReadyRefreshCandidates = options.readyRefreshMaxCandidates ?? MAX_READY_REFRESH_CANDIDATES_PER_RUN
-  const enrichment = await enrichRepositories(db, reader, runId, heartbeat, now, options.log, maxPendingCandidates, maxReadyRefreshCandidates)
+  const enrichment = await enrichRepositories(
+    db,
+    reader,
+    runId,
+    heartbeat,
+    now,
+    options.log,
+    maxPendingCandidates,
+    maxReadyRefreshCandidates,
+  )
   options.log?.({
     level: 'info',
     event: 'crawl.phase_completed',
