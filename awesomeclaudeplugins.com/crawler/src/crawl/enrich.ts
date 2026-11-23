@@ -2288,6 +2288,40 @@ function createRepositoryProgressTracker(
   }
 }
 
+/**
+ * Persist only the contiguous completed prefix of the rotating selection.
+ * A selected ID removed by a canonical merge has no remaining work.
+ */
+function createReadyRefreshProgressTracker(
+  db: Database.Database,
+  selectedIds: number[],
+  removedIds: Set<number>,
+  trackRepositoryProgress: (row: RepositoryRow) => void,
+): (row: RepositoryRow) => void {
+  const selected = new Set(selectedIds)
+  const completed = new Set<number>()
+  let next = 0
+  return (row) => {
+    trackRepositoryProgress(row)
+    if (selected.has(row.id)) completed.add(row.id)
+    for (const removedId of removedIds) {
+      if (selected.has(removedId)) completed.add(removedId)
+    }
+
+    // Processing happens in ascending ID order, but selection may wrap. Never
+    // checkpoint past an unfinished ID, including during deferred retries.
+    let lastCompleted: number | undefined
+    while (next < selectedIds.length) {
+      const id = selectedIds[next]
+      if (id === undefined || !completed.has(id)) break
+      completed.delete(id)
+      lastCompleted = id
+      next++
+    }
+    if (lastCompleted !== undefined) setSetting(db, READY_REFRESH_CURSOR_SETTING, String(lastCompleted))
+  }
+}
+
 type EnrichmentPageContext = {
   db: Database.Database
   reader: GitHubReader
@@ -2436,31 +2470,12 @@ export async function enrichRepositories(
   const removedIds = new Set<number>()
   const retryQueue: RetryQueue = { tasks: [], deferredIds: new Set<number>() }
   const trackRepositoryProgress = createRepositoryProgressTracker(db, runId, removedIds, now)
-  const completedReadyIds = new Set<number>()
-  let nextReadyIndex = 0
-  const markRepositoryProcessed = (row: RepositoryRow): void => {
-    trackRepositoryProgress(row)
-    // A canonical merge can delete a later selected row before it is visited.
-    // Its refresh is no longer needed, so it cannot block the cursor prefix.
-    for (const removedId of removedIds) {
-      if (readyRefreshIds.has(removedId)) completedReadyIds.add(removedId)
-    }
-    if (readyRefreshIds.has(row.id)) completedReadyIds.add(row.id)
-    // Rows are processed by ascending DB ID, but a rotating selection can wrap
-    // past the largest ID. Only commit a contiguous prefix of the *selection*,
-    // including after retries, to avoid skipping unfinished rows after a crash.
-    let lastCompletedId: number | undefined
-    while (nextReadyIndex < readyRefreshSelection.length) {
-      const id = readyRefreshSelection[nextReadyIndex]
-      if (id === undefined || !completedReadyIds.has(id)) break
-      completedReadyIds.delete(id)
-      lastCompletedId = id
-      nextReadyIndex++
-    }
-    if (lastCompletedId !== undefined) {
-      setSetting(db, READY_REFRESH_CURSOR_SETTING, String(lastCompletedId))
-    }
-  }
+  const markRepositoryProcessed = createReadyRefreshProgressTracker(
+    db,
+    readyRefreshSelection,
+    removedIds,
+    trackRepositoryProgress,
+  )
   const batchState = { size: 25, stableBatches: 0 }
   while (true) {
     const rows = listForEnrichment(db, lastId, 50)
