@@ -12,7 +12,7 @@ import {
 import { MARKETPLACE_INVALID_CONTENT_CACHE_VERSION, MARKETPLACE_PARSER_VERSION } from '../github/marketplace.js'
 import { renderRepos } from '../output/catalogSnapshot.js'
 import { listCoreComplete, listPublishable, markRepositoryBlocked, updateEnriched, upsertDiscovery } from '../storage/repositories.js'
-import { beginRun, completeRun, getRun, listRunErrors } from '../storage/runs.js'
+import { beginRun, completeRun, failRun, getRun, getSetting, listRunErrors } from '../storage/runs.js'
 import { initializeSchema } from '../storage/schema.js'
 import { enrichRepositories } from './enrich.js'
 
@@ -464,6 +464,150 @@ it('rotates ready refreshes independently of pending enrichment without refetchi
   fetched.length = 0
   await enrichRepositories(db, api, 'crawl-4', undefined, undefined, undefined, 1, 1)
   expect(fetched).toEqual(['pending'])
+})
+
+it('resumes an unfinished ready cohort after a fatal error instead of skipping to later IDs', async () => {
+  const db = database()
+  for (const name of ['ready-1', 'ready-2', 'ready-3', 'ready-4']) {
+    const id = upsertDiscovery(db, `https://github.com/team/${name}`, null)
+    ready(db, id, 'team', name)
+    db.prepare('UPDATE repositories SET manifest_kind = ?, marketplace_parser_version = ? WHERE id = ?').run(
+      'marketplace',
+      MARKETPLACE_PARSER_VERSION,
+      id,
+    )
+  }
+  const firstFetches: string[] = []
+  const failing = reader(async (owner, name) => {
+    firstFetches.push(name)
+    if (name === 'ready-2') throw new Error('fatal mid-cohort error')
+    return { kind: 'found', data: githubRepo(owner, name) }
+  })
+
+  await expect(enrichRepositories(db, failing, 'crawl-1', undefined, undefined, undefined, 0, 2)).rejects.toThrow(
+    'fatal mid-cohort error',
+  )
+  expect(firstFetches).toEqual(['ready-1', 'ready-2'])
+  expect(getSetting(db, 'enrichment_ready_refresh_cursor')).toBe('1')
+
+  failRun(db, 'crawl-1', '2026-09-23T01:00:00Z', 'crawl_error')
+  beginRun(db, 'crawl-2', '2026-09-24T00:00:00Z')
+  const resumed: string[] = []
+  const api = reader(async (owner, name) => {
+    resumed.push(name)
+    return { kind: 'found', data: githubRepo(owner, name) }
+  })
+  await enrichRepositories(db, api, 'crawl-2', undefined, undefined, undefined, 0, 2)
+  expect(resumed).toEqual(['ready-2', 'ready-3'])
+  expect(getSetting(db, 'enrichment_ready_refresh_cursor')).toBe('3')
+})
+
+it('keeps an unprocessed first ready row after an early fatal error', async () => {
+  const db = database()
+  for (const name of ['ready-1', 'ready-2', 'ready-3', 'ready-4']) {
+    const id = upsertDiscovery(db, `https://github.com/team/${name}`, null)
+    ready(db, id, 'team', name)
+    db.prepare('UPDATE repositories SET manifest_kind = ?, marketplace_parser_version = ? WHERE id = ?').run(
+      'marketplace',
+      MARKETPLACE_PARSER_VERSION,
+      id,
+    )
+  }
+  const failing = reader(async () => {
+    throw new Error('fatal before first success')
+  })
+  await expect(enrichRepositories(db, failing, 'crawl-1', undefined, undefined, undefined, 0, 2)).rejects.toThrow(
+    'fatal before first success',
+  )
+  expect(getSetting(db, 'enrichment_ready_refresh_cursor')).toBeNull()
+
+  failRun(db, 'crawl-1', '2026-09-23T01:00:00Z', 'crawl_error')
+  beginRun(db, 'crawl-2', '2026-09-24T00:00:00Z')
+  const resumed: string[] = []
+  const api = reader(async (owner, name) => {
+    resumed.push(name)
+    return { kind: 'found', data: githubRepo(owner, name) }
+  })
+  await enrichRepositories(db, api, 'crawl-2', undefined, undefined, undefined, 0, 2)
+  expect(resumed).toEqual(['ready-1', 'ready-2'])
+})
+
+it('does not checkpoint out-of-order ready rows across the rotating cursor wrap', async () => {
+  const db = database()
+  for (const name of ['ready-1', 'ready-2', 'ready-3', 'ready-4']) {
+    const id = upsertDiscovery(db, `https://github.com/team/${name}`, null)
+    ready(db, id, 'team', name)
+    db.prepare('UPDATE repositories SET manifest_kind = ?, marketplace_parser_version = ? WHERE id = ?').run(
+      'marketplace',
+      MARKETPLACE_PARSER_VERSION,
+      id,
+    )
+  }
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('enrichment_ready_refresh_cursor', '3')
+  const firstFetches: string[] = []
+  const failing = reader(async (owner, name) => {
+    firstFetches.push(name)
+    if (name === 'ready-4') throw new Error('fatal after wrapped row')
+    return { kind: 'found', data: githubRepo(owner, name) }
+  })
+  await expect(enrichRepositories(db, failing, 'crawl-1', undefined, undefined, undefined, 0, 2)).rejects.toThrow(
+    'fatal after wrapped row',
+  )
+  expect(firstFetches).toEqual(['ready-1', 'ready-4'])
+  expect(getSetting(db, 'enrichment_ready_refresh_cursor')).toBe('3')
+
+  failRun(db, 'crawl-1', '2026-09-23T01:00:00Z', 'crawl_error')
+  beginRun(db, 'crawl-2', '2026-09-24T00:00:00Z')
+  const resumed: string[] = []
+  const api = reader(async (owner, name) => {
+    resumed.push(name)
+    return { kind: 'found', data: githubRepo(owner, name) }
+  })
+  await enrichRepositories(db, api, 'crawl-2', undefined, undefined, undefined, 0, 2)
+  expect(resumed).toEqual(['ready-1', 'ready-4'])
+  expect(getSetting(db, 'enrichment_ready_refresh_cursor')).toBe('1')
+})
+
+it('repairs an invalid standalone cache outside the ready refresh cohort', async () => {
+  const db = database()
+  const healthyId = upsertDiscovery(db, 'https://github.com/team/healthy', null)
+  ready(db, healthyId, 'team', 'healthy')
+  db.prepare('UPDATE repositories SET manifest_kind = ?, marketplace_parser_version = ? WHERE id = ?').run(
+    'marketplace',
+    MARKETPLACE_PARSER_VERSION,
+    healthyId,
+  )
+  const corruptId = upsertDiscovery(db, 'https://github.com/team/corrupt', null)
+  ready(db, corruptId, 'team', 'corrupt')
+  db.prepare(
+    "UPDATE repositories SET manifest_kind = 'standalone-plugin', plugins_count = 1, plugins_json = '[]', plugin_manifest_parser_version = 1 WHERE id = ?",
+  ).run(corruptId)
+  const validId = upsertDiscovery(db, 'https://github.com/team/valid', null)
+  ready(db, validId, 'team', 'valid')
+  db.prepare(
+    "UPDATE repositories SET manifest_kind = 'standalone-plugin', plugins_count = 1, plugins_json = '[{\"name\":\"valid\"}]', plugin_manifest_parser_version = 1 WHERE id = ?",
+  ).run(validId)
+  const fetched: string[] = []
+  const api = reader(
+    async (owner, name) => {
+      fetched.push(name)
+      return { kind: 'found', data: githubRepo(owner, name) }
+    },
+    async (_owner, name) => (name === 'corrupt' ? { kind: 'not-found' } : { kind: 'found', data: { plugins: [] } }),
+  )
+  const plugin = vi.fn(async () => ({ kind: 'found' as const, data: { name: 'recovered' } }))
+  api.getPluginManifest = plugin
+
+  const counts = await enrichRepositories(db, api, 'crawl-1', undefined, undefined, undefined, 0, 1)
+  expect(fetched).toEqual(['healthy', 'corrupt'])
+  expect(plugin).toHaveBeenCalledOnce()
+  expect(counts).toMatchObject({ readyRefreshSelected: 1, readyRefreshSkipped: 1, updated: 2 })
+  expect(db.prepare('SELECT plugins_json FROM repositories WHERE id = ?').get(corruptId)).toEqual({
+    plugins_json: '[{"name":"recovered"}]',
+  })
+  expect(db.prepare('SELECT plugins_json FROM repositories WHERE id = ?').get(validId)).toEqual({
+    plugins_json: '[{"name":"valid"}]',
+  })
 })
 
 it('does not skip a ready row with a corrupt cache even when outside the refresh cohort', async () => {
