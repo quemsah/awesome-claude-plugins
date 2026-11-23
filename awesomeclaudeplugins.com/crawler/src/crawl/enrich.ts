@@ -2378,23 +2378,8 @@ function selectEligibleEnrichmentRows(
   return eligibleRows
 }
 
-async function enrichPage(
-  rows: RepositoryRow[],
-  context: EnrichmentPageContext,
-): Promise<void> {
-  const {
-    db,
-    reader,
-    runId,
-    counts,
-    removedIds,
-    retryQueue,
-    batchState,
-    now,
-    onProgress,
-    log,
-    markRepositoryProcessed,
-  } = context
+async function enrichPage(rows: RepositoryRow[], context: EnrichmentPageContext): Promise<void> {
+  const { db, reader, runId, counts, removedIds, retryQueue, batchState, now, onProgress, log, markRepositoryProcessed } = context
   const eligibleRows = selectEligibleEnrichmentRows(rows, context)
   const graphQLRows = eligibleRows.filter((row) => row.github_node_id && parseRepositoryUrl(row.html_url ?? ''))
   const legacyRows = eligibleRows.filter((row) => !row.github_node_id || !parseRepositoryUrl(row.html_url ?? ''))
