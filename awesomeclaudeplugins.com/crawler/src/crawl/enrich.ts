@@ -58,7 +58,7 @@ export type EnrichmentCounts = {
 }
 
 export const MAX_PENDING_CANDIDATES_PER_RUN = 3000
-export const MAX_READY_REFRESH_CANDIDATES_PER_RUN = 8000
+export const MAX_READY_REFRESH_CANDIDATES_PER_RUN = 10000
 const PENDING_CANDIDATE_CURSOR_SETTING = 'enrichment_pending_candidate_cursor'
 const READY_REFRESH_CURSOR_SETTING = 'enrichment_ready_refresh_cursor'
 
@@ -2330,7 +2330,7 @@ async function enrichPage(
       row.plugins_count !== null &&
       (row.manifest_kind === null ||
         (row.manifest_kind === 'marketplace' && row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION) ||
-        (row.manifest_kind === 'standalone-plugin' && row.plugin_manifest_parser_version !== STANDALONE_PLUGIN_PARSER_VERSION) ||
+        (row.manifest_kind === 'standalone-plugin' && !hasUsableStandaloneCache(row)) ||
         parsePluginSummariesJson(row.plugins_json) === null)
     if (row.plugins_count !== null && wasReady(row) && !staleManifestCache && !readyRefreshIds.has(row.id)) {
       counts.readyRefreshSkipped++
@@ -2429,14 +2429,33 @@ export async function enrichRepositories(
   }
   const storedReadyCursor = Number(getSetting(db, READY_REFRESH_CURSOR_SETTING) ?? '0')
   const readyCursor = Number.isSafeInteger(storedReadyCursor) && storedReadyCursor > 0 ? storedReadyCursor : 0
-  const readyRefreshIds = new Set(selectReadyRefreshIds(db, readyCursor, maxReadyRefreshCandidates))
+  const readyRefreshSelection = selectReadyRefreshIds(db, readyCursor, maxReadyRefreshCandidates)
+  const readyRefreshIds = new Set(readyRefreshSelection)
   counts.readyRefreshSelected = readyRefreshIds.size
-  if (readyRefreshIds.size > 0) {
-    setSetting(db, READY_REFRESH_CURSOR_SETTING, String([...readyRefreshIds].at(-1)))
-  }
   const removedIds = new Set<number>()
   const retryQueue: RetryQueue = { tasks: [], deferredIds: new Set<number>() }
-  const markRepositoryProcessed = createRepositoryProgressTracker(db, runId, removedIds, now)
+  const trackRepositoryProgress = createRepositoryProgressTracker(db, runId, removedIds, now)
+  const completedReadyIds = new Set<number>()
+  let nextReadyIndex = 0
+  const markRepositoryProcessed = (row: RepositoryRow): void => {
+    trackRepositoryProgress(row)
+    if (!readyRefreshIds.has(row.id)) return
+    completedReadyIds.add(row.id)
+    // Rows are processed by ascending DB ID, but a rotating selection can wrap
+    // past the largest ID. Only commit a contiguous prefix of the *selection*,
+    // including after retries, to avoid skipping unfinished rows after a crash.
+    let lastCompletedId: number | undefined
+    while (nextReadyIndex < readyRefreshSelection.length) {
+      const id = readyRefreshSelection[nextReadyIndex]
+      if (id === undefined || !completedReadyIds.has(id)) break
+      completedReadyIds.delete(id)
+      lastCompletedId = id
+      nextReadyIndex++
+    }
+    if (lastCompletedId !== undefined) {
+      setSetting(db, READY_REFRESH_CURSOR_SETTING, String(lastCompletedId))
+    }
+  }
   const batchState = { size: 25, stableBatches: 0 }
   while (true) {
     const rows = listForEnrichment(db, lastId, 50)
