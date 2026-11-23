@@ -300,6 +300,7 @@ async function runCrawl(
       repositorySearchMaxRequests: config.repositorySearchMaxRequests,
       reconcileExpiredGaps: options.reconcileExpiredGaps || config.reconcileExpiredGaps,
       enrichmentMaxPendingCandidates: config.enrichmentMaxPendingCandidates,
+      readyRefreshMaxCandidates: config.readyRefreshMaxCandidates,
       log,
     })
     output(JSON.stringify(result))
