@@ -2388,8 +2388,6 @@ async function enrichPage(
     runId,
     counts,
     removedIds,
-    pendingCandidateIds,
-    readyRefreshIds,
     retryQueue,
     batchState,
     now,
@@ -2424,6 +2422,60 @@ async function enrichPage(
       log,
       markRepositoryProcessed,
     )
+  }
+}
+
+function selectPendingCandidatesForRun(db: Database.Database, counts: EnrichmentCounts, limit: number): Set<number> {
+  const storedCursor = Number(getSetting(db, PENDING_CANDIDATE_CURSOR_SETTING) ?? '0')
+  const candidateCursor = Number.isSafeInteger(storedCursor) && storedCursor > 0 ? storedCursor : 0
+  counts.pendingQueueBefore = snapshotPendingCandidateQueue(db).count
+  const ids = new Set(selectPendingCandidateIds(db, candidateCursor, limit))
+  counts.pendingQueueSelected = ids.size
+  if (ids.size > 0) setSetting(db, PENDING_CANDIDATE_CURSOR_SETTING, String([...ids].at(-1)))
+  return ids
+}
+
+function selectReadyCandidatesForRun(db: Database.Database, counts: EnrichmentCounts, limit: number): number[] {
+  const storedCursor = Number(getSetting(db, READY_REFRESH_CURSOR_SETTING) ?? '0')
+  const readyCursor = Number.isSafeInteger(storedCursor) && storedCursor > 0 ? storedCursor : 0
+  const selected = selectReadyRefreshIds(db, readyCursor, limit)
+  counts.readyRefreshSelected = selected.length
+  return selected
+}
+
+async function drainEnrichmentRetries(
+  queue: RetryQueue,
+  runId: string,
+  markRepositoryProcessed: (row: RepositoryRow) => void,
+  onProgress?: () => void,
+  log?: Log,
+): Promise<void> {
+  if (queue.tasks.length > 0) {
+    log?.({
+      level: 'info',
+      event: 'crawl.retry_queue_started',
+      phase: 'enrichment',
+      category: 'retry_queue',
+      runId,
+      message: `Retrying ${queue.tasks.length} repositories after the first enrichment pass`,
+      queued: queue.tasks.length,
+    })
+  }
+  for (const retry of queue.tasks) {
+    await retry.run()
+    markRepositoryProcessed(retry.row)
+    onProgress?.()
+  }
+  if (queue.tasks.length > 0) {
+    log?.({
+      level: 'info',
+      event: 'crawl.retry_queue_completed',
+      phase: 'enrichment',
+      category: 'retry_queue',
+      runId,
+      message: `Completed retry queue for ${queue.tasks.length} repositories`,
+      queued: queue.tasks.length,
+    })
   }
 }
 
@@ -2464,19 +2516,9 @@ export async function enrichRepositories(
     knownInvalidSkipped: 0,
   }
   let lastId = 0
-  const storedCursor = Number(getSetting(db, PENDING_CANDIDATE_CURSOR_SETTING) ?? '0')
-  const candidateCursor = Number.isSafeInteger(storedCursor) && storedCursor > 0 ? storedCursor : 0
-  counts.pendingQueueBefore = snapshotPendingCandidateQueue(db).count
-  const pendingCandidateIds = new Set(selectPendingCandidateIds(db, candidateCursor, maxPendingCandidates))
-  counts.pendingQueueSelected = pendingCandidateIds.size
-  if (pendingCandidateIds.size > 0) {
-    setSetting(db, PENDING_CANDIDATE_CURSOR_SETTING, String([...pendingCandidateIds].at(-1)))
-  }
-  const storedReadyCursor = Number(getSetting(db, READY_REFRESH_CURSOR_SETTING) ?? '0')
-  const readyCursor = Number.isSafeInteger(storedReadyCursor) && storedReadyCursor > 0 ? storedReadyCursor : 0
-  const readyRefreshSelection = selectReadyRefreshIds(db, readyCursor, maxReadyRefreshCandidates)
+  const pendingCandidateIds = selectPendingCandidatesForRun(db, counts, maxPendingCandidates)
+  const readyRefreshSelection = selectReadyCandidatesForRun(db, counts, maxReadyRefreshCandidates)
   const readyRefreshIds = new Set(readyRefreshSelection)
-  counts.readyRefreshSelected = readyRefreshIds.size
   const removedIds = new Set<number>()
   const retryQueue: RetryQueue = { tasks: [], deferredIds: new Set<number>() }
   const trackRepositoryProgress = createRepositoryProgressTracker(db, runId, removedIds, now)
@@ -2504,33 +2546,7 @@ export async function enrichRepositories(
     onProgress?.()
   }
 
-  if (retryQueue.tasks.length > 0) {
-    log?.({
-      level: 'info',
-      event: 'crawl.retry_queue_started',
-      phase: 'enrichment',
-      category: 'retry_queue',
-      runId,
-      message: `Retrying ${retryQueue.tasks.length} repositories after the first enrichment pass`,
-      queued: retryQueue.tasks.length,
-    })
-  }
-  for (const retry of retryQueue.tasks) {
-    await retry.run()
-    markRepositoryProcessed(retry.row)
-    onProgress?.()
-  }
-  if (retryQueue.tasks.length > 0) {
-    log?.({
-      level: 'info',
-      event: 'crawl.retry_queue_completed',
-      phase: 'enrichment',
-      category: 'retry_queue',
-      runId,
-      message: `Completed retry queue for ${retryQueue.tasks.length} repositories`,
-      queued: retryQueue.tasks.length,
-    })
-  }
+  await drainEnrichmentRetries(retryQueue, runId, markRepositoryProcessed, onProgress, log)
   const pendingQueueAfter = snapshotPendingCandidateQueue(db)
   counts.pendingQueueAfter = pendingQueueAfter.count
   counts.oldestPendingCreatedAt = pendingQueueAfter.oldestCreatedAt
