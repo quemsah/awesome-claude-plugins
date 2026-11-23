@@ -17,6 +17,6 @@ With ~67,000 ready repositories and the default 8,000 ready-refresh cap, a full 
 
 For each successful crawl inspect `enrichment.readyRefreshSelected` and `enrichment.readyRefreshSkipped` alongside `pendingQueueBefore` / `pendingQueueAfter`, API request totals and elapsed time. `updated` will decrease sharply by design: skipping an unchanged cached row is not data loss.
 
-To change the trade-off, set the env variable on the *existing* Railway crawler service (for example `READY_REFRESH_MAX_CANDIDATES=12000`); no extra service or database is required. If a complete ready refresh is urgently necessary, temporarily set the cap above the current ready catalog size and watch API budgets and run duration; restore the bounded value afterwards.
+To change the trade-off, set the env variable on the _existing_ Railway crawler service (for example `READY_REFRESH_MAX_CANDIDATES=12000`); no extra service or database is required. If a complete ready refresh is urgently necessary, temporarily set the cap above the current ready catalog size and watch API budgets and run duration; restore the bounded value afterwards.
 
 The setting is independent of the Repository Search budget (120) and pending-enrichment budget (3,000), and does not change the schedule or automatically run the draft backfill PR #449.
