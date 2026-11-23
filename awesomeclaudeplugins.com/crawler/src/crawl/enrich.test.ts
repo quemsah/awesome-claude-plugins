@@ -484,9 +484,7 @@ it('resumes an unfinished ready cohort after a fatal error instead of skipping t
     return { kind: 'found', data: githubRepo(owner, name) }
   })
 
-  await expect(enrichRepositories(db, failing, 'crawl-1', undefined, undefined, undefined, 0, 2)).rejects.toThrow(
-    'fatal mid-cohort error',
-  )
+  await expect(enrichRepositories(db, failing, 'crawl-1', undefined, undefined, undefined, 0, 2)).rejects.toThrow('fatal mid-cohort error')
   expect(firstFetches).toEqual(['ready-1', 'ready-2'])
   expect(getSetting(db, 'enrichment_ready_refresh_cursor')).toBe('1')
 
@@ -550,9 +548,7 @@ it('does not checkpoint out-of-order ready rows across the rotating cursor wrap'
     if (name === 'ready-4') throw new Error('fatal after wrapped row')
     return { kind: 'found', data: githubRepo(owner, name) }
   })
-  await expect(enrichRepositories(db, failing, 'crawl-1', undefined, undefined, undefined, 0, 2)).rejects.toThrow(
-    'fatal after wrapped row',
-  )
+  await expect(enrichRepositories(db, failing, 'crawl-1', undefined, undefined, undefined, 0, 2)).rejects.toThrow('fatal after wrapped row')
   expect(firstFetches).toEqual(['ready-1', 'ready-4'])
   expect(getSetting(db, 'enrichment_ready_refresh_cursor')).toBe('3')
 
@@ -585,8 +581,8 @@ it('repairs an invalid standalone cache outside the ready refresh cohort', async
   const validId = upsertDiscovery(db, 'https://github.com/team/valid', null)
   ready(db, validId, 'team', 'valid')
   db.prepare(
-    "UPDATE repositories SET manifest_kind = 'standalone-plugin', plugins_count = 1, plugins_json = '[{\"name\":\"valid\"}]', plugin_manifest_parser_version = 1 WHERE id = ?",
-  ).run(validId)
+    "UPDATE repositories SET manifest_kind = 'standalone-plugin', plugins_count = 1, plugins_json = ?, plugin_manifest_parser_version = 1 WHERE id = ?",
+  ).run('[{"name":"valid"}]', validId)
   const fetched: string[] = []
   const api = reader(
     async (owner, name) => {
