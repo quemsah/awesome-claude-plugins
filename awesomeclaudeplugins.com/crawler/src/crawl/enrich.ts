@@ -48,6 +48,8 @@ export type EnrichmentCounts = {
   conclusive: number
   warnings: number
   deferredCandidates: number
+  readyRefreshSelected: number
+  readyRefreshSkipped: number
   pendingQueueBefore: number
   pendingQueueSelected: number
   pendingQueueAfter: number
@@ -56,7 +58,30 @@ export type EnrichmentCounts = {
 }
 
 export const MAX_PENDING_CANDIDATES_PER_RUN = 3000
+export const MAX_READY_REFRESH_CANDIDATES_PER_RUN = 10000
 const PENDING_CANDIDATE_CURSOR_SETTING = 'enrichment_pending_candidate_cursor'
+const READY_REFRESH_CURSOR_SETTING = 'enrichment_ready_refresh_cursor'
+
+/**
+ * Refresh a bounded, rotating cohort of already-enriched repositories each day.
+ * The persistent cursor prevents permanently failing low-id repositories from
+ * starving the rest of the catalog. New/incomplete rows have a separate budget.
+ */
+function selectReadyRefreshIds(db: Database.Database, cursor: number, limit: number): number[] {
+  if (limit === 0) return []
+  const after = db
+    .prepare('SELECT id FROM repositories WHERE plugins_count IS NOT NULL AND id > ? ORDER BY id LIMIT ?')
+    .all(cursor, limit) as Array<{ id: number }>
+  const ids = after.map(({ id }) => id)
+  const remaining = limit - ids.length
+  if (remaining > 0 && cursor > 0) {
+    const before = db
+      .prepare('SELECT id FROM repositories WHERE plugins_count IS NOT NULL AND id <= ? ORDER BY id LIMIT ?')
+      .all(cursor, remaining) as Array<{ id: number }>
+    ids.push(...before.map(({ id }) => id))
+  }
+  return ids
+}
 
 function selectPendingCandidateIds(db: Database.Database, cursor: number, limit: number): number[] {
   if (limit === 0) return []
@@ -2263,6 +2288,40 @@ function createRepositoryProgressTracker(
   }
 }
 
+/**
+ * Persist only the contiguous completed prefix of the rotating selection.
+ * A selected ID removed by a canonical merge has no remaining work.
+ */
+function createReadyRefreshProgressTracker(
+  db: Database.Database,
+  selectedIds: number[],
+  removedIds: Set<number>,
+  trackRepositoryProgress: (row: RepositoryRow) => void,
+): (row: RepositoryRow) => void {
+  const selected = new Set(selectedIds)
+  const completed = new Set<number>()
+  let next = 0
+  return (row) => {
+    trackRepositoryProgress(row)
+    if (selected.has(row.id)) completed.add(row.id)
+    for (const removedId of removedIds) {
+      if (selected.has(removedId)) completed.add(removedId)
+    }
+
+    // Processing happens in ascending ID order, but selection may wrap. Never
+    // checkpoint past an unfinished ID, including during deferred retries.
+    let lastCompleted: number | undefined
+    while (next < selectedIds.length) {
+      const id = selectedIds[next]
+      if (id === undefined || !completed.has(id)) break
+      completed.delete(id)
+      lastCompleted = id
+      next++
+    }
+    if (lastCompleted !== undefined) setSetting(db, READY_REFRESH_CURSOR_SETTING, String(lastCompleted))
+  }
+}
+
 type EnrichmentPageContext = {
   db: Database.Database
   reader: GitHubReader
@@ -2270,6 +2329,7 @@ type EnrichmentPageContext = {
   counts: EnrichmentCounts
   removedIds: Set<number>
   pendingCandidateIds: Set<number>
+  readyRefreshIds: Set<number>
   retryQueue: RetryQueue
   batchState: { size: number; stableBatches: number }
   now: () => string
@@ -2278,25 +2338,29 @@ type EnrichmentPageContext = {
   markRepositoryProcessed: (row: RepositoryRow) => void
 }
 
-async function enrichPage(
+function hasStaleReadyCache(row: RepositoryRow): boolean {
+  return (
+    row.plugins_count !== null &&
+    (row.manifest_kind === null ||
+      (row.manifest_kind === 'marketplace' && row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION) ||
+      (row.marketplace_failed_oid !== null && row.marketplace_failed_parser_version !== MARKETPLACE_INVALID_CONTENT_CACHE_VERSION) ||
+      (row.manifest_kind === 'standalone-plugin' && !hasUsableStandaloneCache(row)) ||
+      parsePluginSummariesJson(row.plugins_json) === null)
+  )
+}
+
+function selectEligibleEnrichmentRows(
   rows: RepositoryRow[],
-  {
-    db,
-    reader,
-    runId,
-    counts,
-    removedIds,
-    pendingCandidateIds,
-    retryQueue,
-    batchState,
-    now,
-    onProgress,
-    log,
-    markRepositoryProcessed,
-  }: EnrichmentPageContext,
-): Promise<void> {
+  { db, counts, pendingCandidateIds, readyRefreshIds, now, markRepositoryProcessed }: EnrichmentPageContext,
+): RepositoryRow[] {
   const eligibleRows: RepositoryRow[] = []
   for (const row of rows) {
+    // Valid ready rows outside the rotating cohort retain their cached metadata.
+    if (row.plugins_count !== null && wasReady(row) && !hasStaleReadyCache(row) && !readyRefreshIds.has(row.id)) {
+      counts.readyRefreshSkipped++
+      markRepositoryProcessed(row)
+      continue
+    }
     if (isBlockedRepositoryCandidate(db, row.html_url ?? '', row.github_node_id, now())) {
       counts.conclusive++
       counts.unchangedOnError++
@@ -2305,14 +2369,18 @@ async function enrichPage(
     }
     const knownInvalidMarketplace =
       row.marketplace_failed_oid !== null && row.marketplace_failed_parser_version === MARKETPLACE_INVALID_CONTENT_CACHE_VERSION
-    if (row.plugins_count !== null || knownInvalidMarketplace) {
-      eligibleRows.push(row)
-    } else if (pendingCandidateIds.has(row.id)) {
+    if (row.plugins_count !== null || knownInvalidMarketplace || pendingCandidateIds.has(row.id)) {
       eligibleRows.push(row)
     } else {
       counts.deferredCandidates++
     }
   }
+  return eligibleRows
+}
+
+async function enrichPage(rows: RepositoryRow[], context: EnrichmentPageContext): Promise<void> {
+  const { db, reader, runId, counts, removedIds, retryQueue, batchState, now, onProgress, log, markRepositoryProcessed } = context
+  const eligibleRows = selectEligibleEnrichmentRows(rows, context)
   const graphQLRows = eligibleRows.filter((row) => row.github_node_id && parseRepositoryUrl(row.html_url ?? ''))
   const legacyRows = eligibleRows.filter((row) => !row.github_node_id || !parseRepositoryUrl(row.html_url ?? ''))
   for (const row of legacyRows) {
@@ -2342,6 +2410,60 @@ async function enrichPage(
   }
 }
 
+function selectPendingCandidatesForRun(db: Database.Database, counts: EnrichmentCounts, limit: number): Set<number> {
+  const storedCursor = Number(getSetting(db, PENDING_CANDIDATE_CURSOR_SETTING) ?? '0')
+  const candidateCursor = Number.isSafeInteger(storedCursor) && storedCursor > 0 ? storedCursor : 0
+  counts.pendingQueueBefore = snapshotPendingCandidateQueue(db).count
+  const ids = new Set(selectPendingCandidateIds(db, candidateCursor, limit))
+  counts.pendingQueueSelected = ids.size
+  if (ids.size > 0) setSetting(db, PENDING_CANDIDATE_CURSOR_SETTING, String([...ids].at(-1)))
+  return ids
+}
+
+function selectReadyCandidatesForRun(db: Database.Database, counts: EnrichmentCounts, limit: number): number[] {
+  const storedCursor = Number(getSetting(db, READY_REFRESH_CURSOR_SETTING) ?? '0')
+  const readyCursor = Number.isSafeInteger(storedCursor) && storedCursor > 0 ? storedCursor : 0
+  const selected = selectReadyRefreshIds(db, readyCursor, limit)
+  counts.readyRefreshSelected = selected.length
+  return selected
+}
+
+async function drainEnrichmentRetries(
+  queue: RetryQueue,
+  runId: string,
+  markRepositoryProcessed: (row: RepositoryRow) => void,
+  onProgress?: () => void,
+  log?: Log,
+): Promise<void> {
+  if (queue.tasks.length > 0) {
+    log?.({
+      level: 'info',
+      event: 'crawl.retry_queue_started',
+      phase: 'enrichment',
+      category: 'retry_queue',
+      runId,
+      message: `Retrying ${queue.tasks.length} repositories after the first enrichment pass`,
+      queued: queue.tasks.length,
+    })
+  }
+  for (const retry of queue.tasks) {
+    await retry.run()
+    markRepositoryProcessed(retry.row)
+    onProgress?.()
+  }
+  if (queue.tasks.length > 0) {
+    log?.({
+      level: 'info',
+      event: 'crawl.retry_queue_completed',
+      phase: 'enrichment',
+      category: 'retry_queue',
+      runId,
+      message: `Completed retry queue for ${queue.tasks.length} repositories`,
+      queued: queue.tasks.length,
+    })
+  }
+}
+
 export async function enrichRepositories(
   db: Database.Database,
   reader: GitHubReader,
@@ -2350,9 +2472,12 @@ export async function enrichRepositories(
   now: () => string = () => new Date().toISOString(),
   log?: Log,
   maxPendingCandidates = MAX_PENDING_CANDIDATES_PER_RUN,
+  maxReadyRefreshCandidates = MAX_READY_REFRESH_CANDIDATES_PER_RUN,
 ): Promise<EnrichmentCounts> {
   if (!Number.isSafeInteger(maxPendingCandidates) || maxPendingCandidates < 0)
     throw new Error('maxPendingCandidates must be a nonnegative safe integer')
+  if (!Number.isSafeInteger(maxReadyRefreshCandidates) || maxReadyRefreshCandidates < 0)
+    throw new Error('maxReadyRefreshCandidates must be a nonnegative safe integer')
   if (getRun(db, runId)?.phase !== 'enrichment') {
     const total = (db.prepare('SELECT COUNT(*) AS count FROM repositories').get() as { count: number }).count
     startRunPhase(db, runId, 'enrichment', now(), total)
@@ -2367,6 +2492,8 @@ export async function enrichRepositories(
     conclusive: 0,
     warnings: 0,
     deferredCandidates: 0,
+    readyRefreshSelected: 0,
+    readyRefreshSkipped: 0,
     pendingQueueBefore: 0,
     pendingQueueSelected: 0,
     pendingQueueAfter: 0,
@@ -2374,17 +2501,13 @@ export async function enrichRepositories(
     knownInvalidSkipped: 0,
   }
   let lastId = 0
-  const storedCursor = Number(getSetting(db, PENDING_CANDIDATE_CURSOR_SETTING) ?? '0')
-  const candidateCursor = Number.isSafeInteger(storedCursor) && storedCursor > 0 ? storedCursor : 0
-  counts.pendingQueueBefore = snapshotPendingCandidateQueue(db).count
-  const pendingCandidateIds = new Set(selectPendingCandidateIds(db, candidateCursor, maxPendingCandidates))
-  counts.pendingQueueSelected = pendingCandidateIds.size
-  if (pendingCandidateIds.size > 0) {
-    setSetting(db, PENDING_CANDIDATE_CURSOR_SETTING, String([...pendingCandidateIds].at(-1)))
-  }
+  const pendingCandidateIds = selectPendingCandidatesForRun(db, counts, maxPendingCandidates)
+  const readyRefreshSelection = selectReadyCandidatesForRun(db, counts, maxReadyRefreshCandidates)
+  const readyRefreshIds = new Set(readyRefreshSelection)
   const removedIds = new Set<number>()
   const retryQueue: RetryQueue = { tasks: [], deferredIds: new Set<number>() }
-  const markRepositoryProcessed = createRepositoryProgressTracker(db, runId, removedIds, now)
+  const trackRepositoryProgress = createRepositoryProgressTracker(db, runId, removedIds, now)
+  const markRepositoryProcessed = createReadyRefreshProgressTracker(db, readyRefreshSelection, removedIds, trackRepositoryProgress)
   const batchState = { size: 25, stableBatches: 0 }
   while (true) {
     const rows = listForEnrichment(db, lastId, 50)
@@ -2397,6 +2520,7 @@ export async function enrichRepositories(
       counts,
       removedIds,
       pendingCandidateIds,
+      readyRefreshIds,
       retryQueue,
       batchState,
       now,
@@ -2407,33 +2531,7 @@ export async function enrichRepositories(
     onProgress?.()
   }
 
-  if (retryQueue.tasks.length > 0) {
-    log?.({
-      level: 'info',
-      event: 'crawl.retry_queue_started',
-      phase: 'enrichment',
-      category: 'retry_queue',
-      runId,
-      message: `Retrying ${retryQueue.tasks.length} repositories after the first enrichment pass`,
-      queued: retryQueue.tasks.length,
-    })
-  }
-  for (const retry of retryQueue.tasks) {
-    await retry.run()
-    markRepositoryProcessed(retry.row)
-    onProgress?.()
-  }
-  if (retryQueue.tasks.length > 0) {
-    log?.({
-      level: 'info',
-      event: 'crawl.retry_queue_completed',
-      phase: 'enrichment',
-      category: 'retry_queue',
-      runId,
-      message: `Completed retry queue for ${retryQueue.tasks.length} repositories`,
-      queued: retryQueue.tasks.length,
-    })
-  }
+  await drainEnrichmentRetries(retryQueue, runId, markRepositoryProcessed, onProgress, log)
   const pendingQueueAfter = snapshotPendingCandidateQueue(db)
   counts.pendingQueueAfter = pendingQueueAfter.count
   counts.oldestPendingCreatedAt = pendingQueueAfter.oldestCreatedAt

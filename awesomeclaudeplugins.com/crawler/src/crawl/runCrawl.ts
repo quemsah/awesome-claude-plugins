@@ -21,7 +21,12 @@ import {
 } from '../storage/runs.js'
 import { type DiscoverySummary, discover } from './discover.js'
 import { discoverRepositories } from './discoverRepositories.js'
-import { type EnrichmentCounts, enrichRepositories, MAX_PENDING_CANDIDATES_PER_RUN } from './enrich.js'
+import {
+  type EnrichmentCounts,
+  enrichRepositories,
+  MAX_PENDING_CANDIDATES_PER_RUN,
+  MAX_READY_REFRESH_CANDIDATES_PER_RUN,
+} from './enrich.js'
 import { type HealthCheckSummary, healthCheck } from './healthCheck.js'
 
 export type RunCrawlOptions = {
@@ -33,6 +38,7 @@ export type RunCrawlOptions = {
   repositorySearchMaxRequests?: number
   reconcileExpiredGaps?: boolean
   enrichmentMaxPendingCandidates?: number
+  readyRefreshMaxCandidates?: number
   log?: Log
   onPhase?: (phase: 'discovery' | 'enrichment') => void
 }
@@ -269,14 +275,24 @@ async function crawlAndComplete(
   startRunPhase(db, runId, 'enrichment', now(), enrichmentTotal)
   options.onPhase?.('enrichment')
   const maxPendingCandidates = options.enrichmentMaxPendingCandidates ?? MAX_PENDING_CANDIDATES_PER_RUN
-  const enrichment = await enrichRepositories(db, reader, runId, heartbeat, now, options.log, maxPendingCandidates)
+  const maxReadyRefreshCandidates = options.readyRefreshMaxCandidates ?? MAX_READY_REFRESH_CANDIDATES_PER_RUN
+  const enrichment = await enrichRepositories(
+    db,
+    reader,
+    runId,
+    heartbeat,
+    now,
+    options.log,
+    maxPendingCandidates,
+    maxReadyRefreshCandidates,
+  )
   options.log?.({
     level: 'info',
     event: 'crawl.phase_completed',
     phase: 'enrichment',
     category: 'phase_completed',
     runId,
-    message: `Enrichment completed: ${enrichment.conclusive} conclusive, ${enrichment.unchangedOnError} kept unchanged after errors, ${enrichment.newIncomplete} incomplete, ${enrichment.deferredCandidates} deferred; pending queue ${enrichment.pendingQueueBefore} -> ${enrichment.pendingQueueAfter} (${enrichment.pendingQueueSelected} selected)`,
+    message: `Enrichment completed: ${enrichment.conclusive} conclusive, ${enrichment.unchangedOnError} kept unchanged after errors, ${enrichment.newIncomplete} incomplete, ${enrichment.deferredCandidates} deferred; pending queue ${enrichment.pendingQueueBefore} -> ${enrichment.pendingQueueAfter} (${enrichment.pendingQueueSelected} selected); ready refresh ${enrichment.readyRefreshSelected} selected, ${enrichment.readyRefreshSkipped} skipped`,
     ...enrichment,
   })
   heartbeat()

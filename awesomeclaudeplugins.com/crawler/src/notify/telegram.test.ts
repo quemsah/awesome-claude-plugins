@@ -151,6 +151,8 @@ describe('TelegramNotifier', () => {
         conclusive: 30,
         warnings: 2,
         deferredCandidates: 0,
+        readyRefreshSelected: 0,
+        readyRefreshSkipped: 0,
         pendingQueueBefore: 0,
         pendingQueueSelected: 0,
         pendingQueueAfter: 0,
