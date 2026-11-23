@@ -312,6 +312,8 @@ it('pages by id after deleting blank and 404 rows, visiting newly discovered ids
     conclusive: 52,
     warnings: 0,
     deferredCandidates: 0,
+    readyRefreshSelected: 0,
+    readyRefreshSkipped: 0,
     pendingQueueBefore: 54,
     pendingQueueSelected: 54,
     pendingQueueAfter: 0,
