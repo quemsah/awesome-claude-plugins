@@ -2338,9 +2338,51 @@ type EnrichmentPageContext = {
   markRepositoryProcessed: (row: RepositoryRow) => void
 }
 
+function hasStaleReadyCache(row: RepositoryRow): boolean {
+  return (
+    row.plugins_count !== null &&
+    (row.manifest_kind === null ||
+      (row.manifest_kind === 'marketplace' && row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION) ||
+      (row.marketplace_failed_oid !== null && row.marketplace_failed_parser_version !== MARKETPLACE_INVALID_CONTENT_CACHE_VERSION) ||
+      (row.manifest_kind === 'standalone-plugin' && !hasUsableStandaloneCache(row)) ||
+      parsePluginSummariesJson(row.plugins_json) === null)
+  )
+}
+
+function selectEligibleEnrichmentRows(
+  rows: RepositoryRow[],
+  { db, counts, pendingCandidateIds, readyRefreshIds, now, markRepositoryProcessed }: EnrichmentPageContext,
+): RepositoryRow[] {
+  const eligibleRows: RepositoryRow[] = []
+  for (const row of rows) {
+    // Valid ready rows outside the rotating cohort retain their cached metadata.
+    if (row.plugins_count !== null && wasReady(row) && !hasStaleReadyCache(row) && !readyRefreshIds.has(row.id)) {
+      counts.readyRefreshSkipped++
+      markRepositoryProcessed(row)
+      continue
+    }
+    if (isBlockedRepositoryCandidate(db, row.html_url ?? '', row.github_node_id, now())) {
+      counts.conclusive++
+      counts.unchangedOnError++
+      markRepositoryProcessed(row)
+      continue
+    }
+    const knownInvalidMarketplace =
+      row.marketplace_failed_oid !== null && row.marketplace_failed_parser_version === MARKETPLACE_INVALID_CONTENT_CACHE_VERSION
+    if (row.plugins_count !== null || knownInvalidMarketplace || pendingCandidateIds.has(row.id)) {
+      eligibleRows.push(row)
+    } else {
+      counts.deferredCandidates++
+    }
+  }
+  return eligibleRows
+}
+
 async function enrichPage(
   rows: RepositoryRow[],
-  {
+  context: EnrichmentPageContext,
+): Promise<void> {
+  const {
     db,
     reader,
     runId,
@@ -2354,40 +2396,8 @@ async function enrichPage(
     onProgress,
     log,
     markRepositoryProcessed,
-  }: EnrichmentPageContext,
-): Promise<void> {
-  const eligibleRows: RepositoryRow[] = []
-  for (const row of rows) {
-    // The ready catalog is rechecked in rotating batches rather than re-fetched
-    // wholesale every day. Incomplete/corrupt identities still refresh immediately.
-    const staleManifestCache =
-      row.plugins_count !== null &&
-      (row.manifest_kind === null ||
-        (row.manifest_kind === 'marketplace' && row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION) ||
-        (row.marketplace_failed_oid !== null && row.marketplace_failed_parser_version !== MARKETPLACE_INVALID_CONTENT_CACHE_VERSION) ||
-        (row.manifest_kind === 'standalone-plugin' && !hasUsableStandaloneCache(row)) ||
-        parsePluginSummariesJson(row.plugins_json) === null)
-    if (row.plugins_count !== null && wasReady(row) && !staleManifestCache && !readyRefreshIds.has(row.id)) {
-      counts.readyRefreshSkipped++
-      markRepositoryProcessed(row)
-      continue
-    }
-    if (isBlockedRepositoryCandidate(db, row.html_url ?? '', row.github_node_id, now())) {
-      counts.conclusive++
-      counts.unchangedOnError++
-      markRepositoryProcessed(row)
-      continue
-    }
-    const knownInvalidMarketplace =
-      row.marketplace_failed_oid !== null && row.marketplace_failed_parser_version === MARKETPLACE_INVALID_CONTENT_CACHE_VERSION
-    if (row.plugins_count !== null || knownInvalidMarketplace) {
-      eligibleRows.push(row)
-    } else if (pendingCandidateIds.has(row.id)) {
-      eligibleRows.push(row)
-    } else {
-      counts.deferredCandidates++
-    }
-  }
+  } = context
+  const eligibleRows = selectEligibleEnrichmentRows(rows, context)
   const graphQLRows = eligibleRows.filter((row) => row.github_node_id && parseRepositoryUrl(row.html_url ?? ''))
   const legacyRows = eligibleRows.filter((row) => !row.github_node_id || !parseRepositoryUrl(row.html_url ?? ''))
   for (const row of legacyRows) {
