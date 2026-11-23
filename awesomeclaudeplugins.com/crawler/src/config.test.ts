@@ -57,6 +57,14 @@ describe('parseConfig', () => {
     }
   })
 
+  it('caps the number of already-ready repositories refreshed per run and validates overrides', () => {
+    expect(parseConfig('crawl', base).readyRefreshMaxCandidates).toBe(8000)
+    expect(parseConfig('crawl', { ...base, READY_REFRESH_MAX_CANDIDATES: '2500' }).readyRefreshMaxCandidates).toBe(2500)
+    for (const invalid of ['0', '-1', 'abc', '1.5']) {
+      expect(() => parseConfig('crawl', { ...base, READY_REFRESH_MAX_CANDIDATES: invalid })).toThrow(/configuration/)
+    }
+  })
+
   it('configures gap reconciliation flag with default false and accepts boolean values', () => {
     expect(parseConfig('crawl', base).reconcileExpiredGaps).toBe(false)
     expect(parseConfig('crawl', { ...base, RECONCILE_EXPIRED_GAPS: 'true' }).reconcileExpiredGaps).toBe(true)
