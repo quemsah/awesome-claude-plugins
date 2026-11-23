@@ -2330,8 +2330,7 @@ async function enrichPage(
       row.plugins_count !== null &&
       (row.manifest_kind === null ||
         (row.manifest_kind === 'marketplace' && row.marketplace_parser_version !== MARKETPLACE_PARSER_VERSION) ||
-        (row.marketplace_failed_oid !== null &&
-          row.marketplace_failed_parser_version !== MARKETPLACE_INVALID_CONTENT_CACHE_VERSION) ||
+        (row.marketplace_failed_oid !== null && row.marketplace_failed_parser_version !== MARKETPLACE_INVALID_CONTENT_CACHE_VERSION) ||
         (row.manifest_kind === 'standalone-plugin' && !hasUsableStandaloneCache(row)) ||
         parsePluginSummariesJson(row.plugins_json) === null)
     if (row.plugins_count !== null && wasReady(row) && !staleManifestCache && !readyRefreshIds.has(row.id)) {
