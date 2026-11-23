@@ -415,6 +415,113 @@ it('rotates the candidate cap so a failing low-id candidate does not starve late
   expect(second).toMatchObject({ deferredCandidates: 1, pendingQueueBefore: 2, pendingQueueSelected: 1, pendingQueueAfter: 1 })
 })
 
+it('rotates ready refreshes independently of pending enrichment without refetching already-ready rows', async () => {
+  const db = database()
+  const names = ['ready-1', 'ready-2', 'ready-3']
+  for (const name of names) {
+    const id = upsertDiscovery(db, `https://github.com/team/${name}`, null)
+    ready(db, id, 'team', name)
+    db.prepare('UPDATE repositories SET manifest_kind = ?, marketplace_parser_version = ? WHERE id = ?').run(
+      'marketplace',
+      MARKETPLACE_PARSER_VERSION,
+      id,
+    )
+  }
+  const pendingId = upsertDiscovery(db, 'https://github.com/team/pending', null)
+  const fetched: string[] = []
+  const api = reader(async (owner, name) => {
+    fetched.push(name)
+    return { kind: 'found', data: githubRepo(owner, name) }
+  })
+
+  const first = await enrichRepositories(db, api, 'crawl-1', undefined, undefined, undefined, 1, 1)
+  expect(first).toMatchObject({
+    readyRefreshSelected: 1,
+    readyRefreshSkipped: 2,
+    pendingQueueSelected: 1,
+    newReady: 1,
+    updated: 1,
+  })
+  expect(fetched).toEqual(['ready-1', 'pending'])
+  expect(db.prepare('SELECT plugins_count FROM repositories WHERE id = ?').get(pendingId)).toEqual({ plugins_count: 0 })
+
+  completeRun(db, 'crawl-1', '2026-09-24T00:00:00Z', first.warnings)
+  beginRun(db, 'crawl-2', '2026-09-25T00:00:00Z')
+  fetched.length = 0
+  const second = await enrichRepositories(db, api, 'crawl-2', undefined, undefined, undefined, 1, 1)
+  expect(second).toMatchObject({ readyRefreshSelected: 1, readyRefreshSkipped: 3, pendingQueueSelected: 0, updated: 1 })
+  expect(fetched).toEqual(['ready-2'])
+
+  completeRun(db, 'crawl-2', '2026-09-25T01:00:00Z', second.warnings)
+  beginRun(db, 'crawl-3', '2026-09-26T00:00:00Z')
+  fetched.length = 0
+  const third = await enrichRepositories(db, api, 'crawl-3', undefined, undefined, undefined, 1, 1)
+  expect(third.readyRefreshSelected).toBe(1)
+  expect(fetched).toEqual(['ready-3'])
+
+  completeRun(db, 'crawl-3', '2026-09-26T01:00:00Z', third.warnings)
+  beginRun(db, 'crawl-4', '2026-09-27T00:00:00Z')
+  fetched.length = 0
+  await enrichRepositories(db, api, 'crawl-4', undefined, undefined, undefined, 1, 1)
+  expect(fetched).toEqual(['pending'])
+})
+
+it('does not skip a ready row with a corrupt cache even when outside the refresh cohort', async () => {
+  const db = database()
+  for (const name of ['healthy-1', 'corrupt-2', 'healthy-3']) {
+    const id = upsertDiscovery(db, `https://github.com/team/${name}`, null)
+    ready(db, id, 'team', name)
+    db.prepare('UPDATE repositories SET manifest_kind = ?, marketplace_parser_version = ? WHERE id = ?').run(
+      'marketplace',
+      MARKETPLACE_PARSER_VERSION,
+      id,
+    )
+    if (name === 'corrupt-2') db.prepare('UPDATE repositories SET plugins_json = ? WHERE id = ?').run('{broken', id)
+  }
+  const fetched: string[] = []
+  const api = reader(async (owner, name) => {
+    fetched.push(name)
+    return { kind: 'found', data: githubRepo(owner, name) }
+  })
+
+  const counts = await enrichRepositories(db, api, 'crawl-1', undefined, undefined, undefined, 0, 1)
+  expect(fetched).toEqual(['healthy-1', 'corrupt-2'])
+  expect(counts).toMatchObject({ readyRefreshSelected: 1, readyRefreshSkipped: 1, updated: 2 })
+  expect(db.prepare('SELECT plugins_json FROM repositories WHERE repo_name = ?').get('corrupt-2')).toMatchObject({
+    plugins_json: '[]',
+  })
+})
+
+it('rotates ready refreshes after an API error instead of starving later repositories', async () => {
+  const db = database()
+  for (const name of ['broken', 'healthy']) {
+    const id = upsertDiscovery(db, `https://github.com/team/${name}`, null)
+    ready(db, id, 'team', name)
+    db.prepare('UPDATE repositories SET manifest_kind = ?, marketplace_parser_version = ? WHERE id = ?').run(
+      'marketplace',
+      MARKETPLACE_PARSER_VERSION,
+      id,
+    )
+  }
+  const fetched: string[] = []
+  const api = reader(async (owner, name) => {
+    fetched.push(name)
+    return name === 'broken'
+      ? { kind: 'invalid-content', failure: 'invalid-manifest', status: 200, reason: 'invalid metadata', retryCount: 0 }
+      : { kind: 'found', data: githubRepo(owner, name) }
+  })
+
+  const first = await enrichRepositories(db, api, 'crawl-1', undefined, undefined, undefined, 0, 1)
+  expect(fetched).toEqual(['broken'])
+  expect(first).toMatchObject({ readyRefreshSelected: 1, readyRefreshSkipped: 1, unchangedOnError: 1 })
+  completeRun(db, 'crawl-1', '2026-09-24T00:00:00Z', first.warnings)
+  beginRun(db, 'crawl-2', '2026-09-25T00:00:00Z')
+  fetched.length = 0
+  const second = await enrichRepositories(db, api, 'crawl-2', undefined, undefined, undefined, 0, 1)
+  expect(fetched).toEqual(['healthy'])
+  expect(second).toMatchObject({ readyRefreshSelected: 1, readyRefreshSkipped: 1, updated: 1 })
+})
+
 it('uses batched GraphQL metadata and skips marketplace REST when the stored OID is unchanged', async () => {
   const db = database()
   const id = upsertDiscovery(db, 'https://github.com/team/repo', 'old', new Date().toISOString(), 'MDEwOlJlcG9zaXRvcnkx')
