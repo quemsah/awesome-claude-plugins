@@ -1,11 +1,11 @@
 # Awesome Claude Code Plugins: Top 100 Repositories
 
-> Last updated: 25.11.2026 with 72110 total repositories indexed.
+> Last updated: 26.11.2026 with 74205 total repositories indexed.
 
 | # | Repo Name | Description | Stars | Watchers | Plugins |
 |---|-----------|-------------|-------|-------------|---------|
 | 1 | [rea](https://github.com/morluto/rea) | Reverse engineer anything with agents, from app behavior down to native binaries. | 474484 | 1780 | 1 |
-| 2 | [skills](https://github.com/mattpocock/skills) | Skills for Real Engineers. Straight from my .agents directory. | 330686 | 1699 | 1 |
+| 2 | [skills](https://github.com/mattpocock/skills) | Skills for Real Engineers. Straight from my .agents directory. | 333023 | 1700 | 1 |
 | 3 | [superpowers](https://github.com/obra/superpowers) | An agentic skills framework & software development methodology that works. | 325237 | 1181 | 1 |
 | 4 | [ECC](https://github.com/affaan-m/ECC) | The agent harness performance optimization system. Skills, instincts, memory, security, and research-first development for Claude Code, Codex, Opencode, Cursor and beyond. | 310287 | 1527 | 1 |
 | 5 | [andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) | A single CLAUDE.md file to improve Claude Code behavior, derived from Andrej Karpathy's observations on LLM coding pitfalls. | 235542 | 1320 | 1 |
@@ -15,7 +15,7 @@
 | 9 | [prompts.chat](https://github.com/f/prompts.chat) | f.k.a. Awesome ChatGPT Prompts. Share, discover, and collect prompts from the community. Free and open source — self-host for your organization with complete privacy. | 178340 | 1681 | 1 |
 | 10 | [claude-code](https://github.com/anthropics/claude-code) | Claude Code is an agentic coding tool that lives in your terminal, understands your codebase, and helps you code faster by executing routine tasks, explaining complex code, and handling git workflows - all through natural language commands. | 156847 | 922 | 12 |
 | 11 | [ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | An AI skill that provides design intelligence for building professional UI/UX across multiple platforms. | 153387 | 605 | 1 |
-| 12 | [next.js](https://github.com/vercel/next.js) | The React Framework | 143607 | 1629 | 1 |
+| 12 | [next.js](https://github.com/vercel/next.js) | The React Framework | 143732 | 1623 | 1 |
 | 13 | [caveman](https://github.com/JuliusBrussee/caveman) | why use many token when few token do trick. Skill + local proxy for coding agents: shorter answers, smaller tool output, every original recoverable. | 122465 | 261 | 1 |
 | 14 | [taste-skill](https://github.com/Leonxlnx/taste-skill) | Agent skills that give coding agents taste: art direction, reference images and a browser check instead of generic AI pages | 121204 | 307 | 1 |
 | 15 | [agent-skills](https://github.com/addyosmani/agent-skills) | Production-grade engineering skills for AI coding agents. | 120033 | 583 | 1 |
@@ -24,7 +24,7 @@
 | 18 | [open-design](https://github.com/nexu-io/open-design) | The 1st Collaborative AI Design Agent Workspace. Local-first and open source. Create motion, prototypes, websites, apps, dashboards, presentations, images, and videos with your team and AI agents. Share work, exchange feedback, and iterate together in one workspace. | 109360 | 305 | 1 |
 | 19 | [RuView](https://github.com/ruvnet/RuView) | π RuView turns commodity WiFi signals into real-time spatial intelligence, vital sign monitoring, and presence detection — all without a single pixel of video. | 105087 | 913 | 2 |
 | 20 | [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) | Graphs that teach > graphs that impress. Turn any code into an interactive knowledge graph you can explore, search, and ask questions about. Works with Claude Code, Codex, Cursor, Copilot, Gemini CLI, and more. | 93814 | 295 | 1 |
-| 21 | [storybook](https://github.com/storybookjs/storybook) | Storybook is the industry standard workshop for building, documenting, and testing UI components in isolation | 91687 | 944 | 1 |
+| 21 | [storybook](https://github.com/storybookjs/storybook) | Storybook is the industry standard workshop for building, documenting, and testing UI components in isolation | 91728 | 942 | 1 |
 | 22 | [hyperframes](https://github.com/heygen-com/hyperframes) | Open-source AI video editor: edit your own footage, or create and remake any video with Claude Code, Codex or the free Studio app. Write HTML, render MP4. By HeyGen. | 89698 | 209 | 2 |
 | 23 | [career-ops](https://github.com/career-ops-hq/career-ops) | Open-source AI job search agent and job finder: scan job boards, score each job 1-5 against your CV before you apply, tailor an ATS-friendly resume and cover letter, get interview prep and an application tracker. It helps you fill in each application; you press Submit. Runs locally in Codex, OpenCode and other AI CLIs, or as a Claude Code plugin. | 84675 | 262 | 1 |
 | 24 | [ruflo](https://github.com/ruvnet/ruflo) | 🌊 The original agent harness. Deploy intelligent multi-player swarms, coordinate autonomous workflows, and build conversational AI systems. Features adaptive memory, self-learning intelligence, federation, vector RAG integration, and native Claude Code / Codex / Hermes and many more Integrated | 82386 | 481 | 49 |
@@ -32,12 +32,12 @@
 | 26 | [ppt-master](https://github.com/hugohe3/ppt-master) | AI turns documents or topics into real, native PowerPoint decks—with native shapes, transitions and animations, data-backed charts and tables on demand, audio narration from speaker notes, and support for your own .pptx templates. · by Hugo He | 79951 | 149 | 1 |
 | 27 | [Mole](https://github.com/tw93/Mole) | 🐹 Open-source Mac and PC cleaner. Keep your machine clean, light, and running like new. Fast CLI, plus native Mac and Windows apps. | 75890 | 152 | 1 |
 | 28 | [Front-End-Checklist](https://github.com/thedaviddias/Front-End-Checklist) | 🗂 The essential checklist for modern web development, for humans and AI agents | 74799 | 1418 | 1 |
-| 29 | [last30days-skill](https://github.com/mvanhorn/last30days-skill) | AI agent skill that researches any topic across Reddit, X, YouTube, HN, Polymarket, and the web - then synthesizes a grounded summary | 73576 | 227 | 1 |
-| 30 | [humanizer](https://github.com/blader/humanizer) | Agent skill that removes signs of AI-generated writing from text | 72417 | 292 | 1 |
+| 29 | [humanizer](https://github.com/blader/humanizer) | Agent skill that removes signs of AI-generated writing from text | 73658 | 297 | 1 |
+| 30 | [last30days-skill](https://github.com/mvanhorn/last30days-skill) | AI agent skill that researches any topic across Reddit, X, YouTube, HN, Polymarket, and the web - then synthesizes a grounded summary | 73576 | 227 | 1 |
 | 31 | [diagram-design](https://github.com/cathrynlavery/diagram-design) | Editorial diagram design for Claude Code, Codex, GitHub Copilot, Cursor, Factory Droid, Qoder, and Pi. 52 diagram types. Self-contained HTML + SVG. No shadows. No Mermaid slop. | 72240 | 162 | 1 |
 | 32 | [mem0](https://github.com/mem0ai/mem0) | The Memory Layer for AI Agents - Drop-in memory infrastructure for AI agents and apps. Context that persists. Built for production. | 69398 | 253 | 1 |
 | 33 | [context7](https://github.com/upstash/context7) | Context7 Platform -- Up-to-date docs for AI agents | 65352 | 165 | 1 |
-| 34 | [Pake](https://github.com/tw93/Pake) | Turn any website into a lightweight desktop app with one command, on macOS, Windows and Linux. | 63949 | 275 | 1 |
+| 34 | [Pake](https://github.com/tw93/Pake) | Turn any website into a lightweight desktop app with one command, on macOS, Windows and Linux. | 64045 | 275 | 1 |
 | 35 | [CLI-Anything](https://github.com/HKUDS/CLI-Anything) | "CLI-Anything: Making ALL Software Agent-Native" -- CLI-Hub: https://clianything.cc/ | 63881 | 234 | 1 |
 | 36 | [marketingskills](https://github.com/coreyhaines31/marketingskills) | Marketing skills for Claude Code and AI agents. CRO, copywriting, SEO, analytics, and growth engineering. | 62294 | 406 | 1 |
 | 37 | [i-have-adhd](https://github.com/ayghri/i-have-adhd) | A skill to stop your coding agent from burying the answer. ADHD-friendly output. | 62200 | 166 | 1 |
@@ -55,13 +55,13 @@
 | 49 | [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp) | Local code intelligence for developers and AI agents. Connect code, docs and infrastructure in a persistent graph, with CBM Lens, MCP tools, agent integrations and change-aware test selection. | 49054 | 168 | 1 |
 | 50 | [GitNexus](https://github.com/abhigyanpatwari/GitNexus) | GitNexus: The Zero-Server Code Intelligence Engine  | 48763 | 157 | 1 |
 | 51 | [claude-plugins-official](https://github.com/anthropics/claude-plugins-official) | Official, Anthropic-managed directory of high quality Claude Code Plugins. | 48074 | 267 | 317 |
-| 52 | [iFixAi](https://github.com/ifixai-ai/iFixAi) | Independent Auditing of AI Agents. Run by human or the agent itself, to answer the most crucial question in the AI Agent Economy. Is the agent doing what is supposed to do? With iFixAi you can have this answer in less than 120 seconds. | 46873 | 509 | 1 |
+| 52 | [iFixAi](https://github.com/ifixai-ai/iFixAi) | Independent Auditing of AI Agents. Run by human or the agent itself, to answer the most crucial question in the AI Agent Economy. Is the agent doing what is supposed to do? With iFixAi you can have this answer in less than 120 seconds. | 47371 | 509 | 1 |
 | 53 | [reactive-resume](https://github.com/reactive-resume/reactive-resume) | A one-of-a-kind resume builder that keeps your privacy in mind. Completely secure, customizable, portable, open-source and free forever. Try it out today! | 46000 | 128 | 1 |
 | 54 | [payload](https://github.com/payloadcms/payload) | Payload is the open-source, fullstack Next.js framework, giving you instant backend superpowers. Get a full TypeScript backend and admin panel instantly. Use Payload as a headless CMS or for building powerful applications. | 45976 | 164 | 1 |
 | 55 | [ccxt](https://github.com/ccxt/ccxt) | A unified trading API with more than 100 crypto exchanges and prediction markets in JavaScript / TypeScript / Python / C# / PHP / Go / Java / Rust | 44961 | 942 | 1 |
-| 56 | [daisyui](https://github.com/saadeghi/daisyui) | 🌼 🌼 🌼 🌼 🌼  The most popular, free and open-source Tailwind CSS component library | 42942 | 164 | 2 |
+| 56 | [daisyui](https://github.com/saadeghi/daisyui) | 🌼 🌼 🌼 🌼 🌼  The most popular, free and open-source Tailwind CSS component library | 42999 | 164 | 2 |
 | 57 | [agents](https://github.com/wshobson/agents) | Plugins, agents, skills, and commands for Claude Code, Codex CLI, Cursor, OpenCode, Antigravity CLI, GitHub Copilot, and Pi, written once in Markdown and adapted to each tool by generators with validation and evals. | 42851 | 313 | 93 |
-| 58 | [OpenViking](https://github.com/volcengine/OpenViking) | Self-evolving Context Database for AI Agents. Unify Agent Memory, Knowledge RAG and Skills. | 42629 | 112 | 1 |
+| 58 | [OpenViking](https://github.com/volcengine/OpenViking) | Self-evolving Context Database for AI Agents. Unify Agent Memory, Knowledge RAG and Skills. | 42808 | 111 | 1 |
 | 59 | [financial-services](https://github.com/anthropics/financial-services) |  | 41486 | 301 | 19 |
 | 60 | [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) | Teams-first Multi-agent orchestration for Claude Code | 41039 | 113 | 1 |
 | 61 | [CopilotKit](https://github.com/CopilotKit/CopilotKit) | The Frontend Stack for Agents & Generative UI. React, Angular, Mobile, Slack, and more.  Makers of the AG-UI Protocol | 38958 | 183 | 1 |
@@ -84,7 +84,7 @@
 | 78 | [claude-hud](https://github.com/jarrodwatts/claude-hud) | A Claude Code plugin that shows what's happening - context usage, active tools, running agents, and todo progress | 29289 | 36 | 1 |
 | 79 | [beads](https://github.com/gastownhall/beads) | Beads - A memory upgrade for your coding agent | 28966 | 90 | 1 |
 | 80 | [mlflow](https://github.com/mlflow/mlflow) | The open source AI engineering platform for agents, LLMs, and ML models. MLflow enables teams of all sizes to debug, evaluate, monitor, and optimize production-quality AI applications while controlling costs and managing access to models and data. | 28956 | 329 | 1 |
-| 81 | [open-seo](https://github.com/every-app/open-seo) | Open source alternative to Semrush and Ahrefs | 28636 | 85 | 1 |
+| 81 | [open-seo](https://github.com/every-app/open-seo) | Open source alternative to Semrush and Ahrefs | 28925 | 86 | 1 |
 | 82 | [claude-task-master](https://github.com/eyaltoledano/claude-task-master) | An AI-powered task-management system you can drop into Cursor, Lovable, Windsurf, Roo, and others. | 28533 | 155 | 1 |
 | 83 | [pm-skills](https://github.com/phuryn/pm-skills) | PM Skills Marketplace: 100+ agentic skills, commands, and plugins — from discovery to strategy, execution, launch, and growth. | 28266 | 226 | 9 |
 | 84 | [planning-with-files](https://github.com/OthmanAdi/planning-with-files) | Persistent file-based planning for AI coding agents and long-running tasks. Crash-proof markdown plans, session recovery after /clear and compaction, per-turn re-injection against context rot, deterministic completion gate. Manus-style. Install from npm, the Claude Code plugin marketplace, or npx skills. Codex, Cursor, OpenCode, 60+ agents. | 28208 | 113 | 1 |
@@ -96,11 +96,11 @@
 | 90 | [compound-engineering-plugin](https://github.com/EveryInc/compound-engineering-plugin) | Official Compound Engineering plugin for Claude Code, Codex, Cursor, and more | 26213 | 129 | 1 |
 | 91 | [modern-web-guidance](https://github.com/GoogleChrome/modern-web-guidance) | Keep your coding agent up to date with the latest web best practices | 25936 | 95 | 1 |
 | 92 | [editor](https://github.com/pascalorg/editor) | Open-source 3D architecture software for AECO, scan-to-BIM. Agent-friendly, browser-first, MCP, CLI. | 25685 | 133 | 1 |
-| 93 | [SpacetimeDB](https://github.com/clockworklabs/SpacetimeDB) | Development at the speed of light | 25569 | 90 | 1 |
+| 93 | [SpacetimeDB](https://github.com/clockworklabs/SpacetimeDB) | Development at the speed of light | 25573 | 88 | 1 |
 | 94 | [iris](https://github.com/kataras/iris) | The fastest HTTP/2 Go Web Framework. New, modern and easy to learn. Fast development with Code you control. Unbeatable cost-performance ratio :rocket: | 25554 | 652 | 1 |
-| 95 | [skills](https://github.com/google/skills) | Agent Skills for Google products and technologies | 24557 | 146 | 17 |
+| 95 | [skills](https://github.com/google/skills) | Agent Skills for Google products and technologies | 24687 | 150 | 18 |
 | 96 | [ego-lite](https://github.com/citrolabs/ego-lite) | The fastest browser for AI agents to run browser automation, built for sharing your logged-in browser state with your AI agents, like Codex or Claude Code, without disturbing you. Zero cost, zero config. | 24424 | 54 | 1 |
 | 97 | [witr](https://github.com/pranshuparmar/witr) | Why is this running? Trace any process, port, container, or file back to what started it - CLI + TUI.  | 23179 | 50 | 1 |
-| 98 | [khazix-skills](https://github.com/KKKKhazix/khazix-skills) | 数字生命卡兹克开源的 AI Skills 合集 &#124; Agent Skills: leader（帮你定义目标）, neat-freak 洁癖, hv-analysis, khazix-writer & more — Claude Code, Codex & 40+ agents | 22471 | 114 | 1 |
-| 99 | [ralph](https://github.com/snarktank/ralph) | Ralph is an autonomous AI agent loop that runs repeatedly until all PRD items are complete.  | 22337 | 115 | 1 |
-| 100 | [brag](https://github.com/latent-spaces/brag) | You built it. Now brag. Turn the project you just created into a short, shareable launch video with one command. | 22261 | 73 | 1 |
+| 98 | [brag](https://github.com/latent-spaces/brag) | You built it. Now brag. Turn the project you just created into a short, shareable launch video with one command. | 22589 | 75 | 1 |
+| 99 | [khazix-skills](https://github.com/KKKKhazix/khazix-skills) | 数字生命卡兹克开源的 AI Skills 合集 &#124; Agent Skills: leader（帮你定义目标）, neat-freak 洁癖, hv-analysis, khazix-writer & more — Claude Code, Codex & 40+ agents | 22471 | 114 | 1 |
+| 100 | [ralph](https://github.com/snarktank/ralph) | Ralph is an autonomous AI agent loop that runs repeatedly until all PRD items are complete.  | 22337 | 115 | 1 |
